@@ -8,8 +8,7 @@ describe("test infrastructure", () => {
   it("starts postgres and redis on random loopback ports and removes them", async () => {
     const infra = await startInfra();
     try {
-      expect(infra.databaseUrl).toContain("127.0.0.1");
-      expect(infra.redisUrl).toContain("127.0.0.1");
+      expect(infra.containerIds).toHaveLength(2);
 
       const client = new pg.Client({ connectionString: infra.databaseUrl });
       await client.connect();
@@ -23,8 +22,10 @@ describe("test infrastructure", () => {
     } finally {
       await infra.stop();
     }
-    const left = execFileSync("docker", ["ps", "-q", "--filter", "ancestor=postgres:17-alpine"]).toString().trim();
-    expect(left).toBe("");
+    for (const id of infra.containerIds) {
+      const left = execFileSync("docker", ["ps", "-aq", "--filter", `id=${id}`]).toString().trim();
+      expect(left, `container ${id} still exists`).toBe("");
+    }
   });
 
   it("fails fast naming OrbStack when no daemon is reachable", async () => {

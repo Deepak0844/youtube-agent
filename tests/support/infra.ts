@@ -30,6 +30,7 @@ export async function assertDockerUp(): Promise<void> {
 export interface Infra {
   databaseUrl: string;
   redisUrl: string;
+  containerIds: string[];
   stop(): Promise<void>;
 }
 
@@ -43,6 +44,7 @@ export async function startInfra(): Promise<Infra> {
   return {
     databaseUrl: `postgres://${postgres.getUsername()}:${postgres.getPassword()}@127.0.0.1:${postgres.getMappedPort(5432)}/${postgres.getDatabase()}`,
     redisUrl: `redis://127.0.0.1:${redis.getMappedPort(6379)}`,
+    containerIds: [postgres.getId(), redis.getId()],
     async stop() {
       await Promise.all([postgres.stop(), redis.stop()]);
     },
