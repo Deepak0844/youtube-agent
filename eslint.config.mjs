@@ -3,20 +3,31 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
 // Flat config replaces (not merges) a rule across overlapping blocks, so each
-// block below lists its full set from these shared groups.
+// block below lists its full set from these shared groups. Relative patterns
+// (`**/db`) catch `../db` imports that the `@/` aliases would miss.
 const framework = ["react", "react-dom", "next", "next/*"];
-const presentation = ["@/app/*", "@/ui/*"];
-const io = [
-  "fs", "fs/promises", "net", "http", "https", "child_process", "dgram", "dns", "tls",
-  "node:fs", "node:fs/promises", "node:net", "node:http", "node:https",
-  "node:child_process", "node:dgram", "node:dns", "node:tls",
-];
-const effects = ["@/server/db", "@/server/db/*", "@/server/providers", "@/server/providers/*", "@/server/llm", "@/server/llm/*", "@/server/queue", "@/server/queue/*"];
+const presentation = ["@/app/*", "@/ui/*", "**/ui", "**/ui/*", "**/app", "**/app/*"];
+const nodeIo = ["fs", "fs/promises", "net", "http", "http2", "https", "child_process", "dgram", "dns", "tls"];
+const ioPackages = ["pg", "ioredis", "bullmq", "undici"];
+const io = [...nodeIo, ...nodeIo.map((m) => `node:${m}`), ...ioPackages];
+const effectDirs = ["db", "providers", "llm", "queue", "render"];
+const effects = effectDirs.flatMap((d) => [`@/server/${d}`, `@/server/${d}/*`, `**/${d}`, `**/${d}/*`]);
 const orm = ["drizzle-orm", "drizzle-orm/*"];
 
 const restrict = (...groups) => ({
   "no-restricted-imports": ["error", { patterns: [{ group: groups.flat() }] }],
 });
+
+const coreOnly = {
+  "no-restricted-globals": [
+    "error",
+    ...["fetch", "WebSocket", "XMLHttpRequest"].map((name) => ({ name, message: "server/core does no IO; inject a port." })),
+  ],
+  "no-restricted-syntax": [
+    "error",
+    { selector: "ImportExpression", message: "server/core does no IO; dynamic import could hide it." },
+  ],
+};
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -33,10 +44,10 @@ const eslintConfig = defineConfig([
   ]),
   // Import boundaries (Doc 2 §2). Raw table access is db-only; the package is
   // not installed yet, the rule is pre-wired.
-  { files: ["src/**/*.{ts,tsx}"], ignores: ["src/server/**", "src/worker/**"], rules: restrict(orm) },
-  { files: ["src/server/**/*.ts", "src/worker/**/*.ts"], rules: restrict(framework, presentation, orm) },
-  { files: ["src/server/db/**/*.ts"], rules: restrict(framework, presentation) },
-  { files: ["src/server/core/**/*.ts"], rules: restrict(framework, presentation, orm, io, effects) },
+  { files: ["src/**/*.{ts,tsx,mts}"], ignores: ["src/server/**", "src/worker/**"], rules: restrict(orm) },
+  { files: ["src/server/**/*.{ts,tsx,mts}", "src/worker/**/*.{ts,tsx,mts}"], rules: restrict(framework, presentation, orm) },
+  { files: ["src/server/db/**/*.{ts,tsx,mts}"], rules: restrict(framework, presentation) },
+  { files: ["src/server/core/**/*.{ts,tsx,mts}"], rules: { ...restrict(framework, presentation, orm, io, effects), ...coreOnly } },
 ]);
 
 export default eslintConfig;
