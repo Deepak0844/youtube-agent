@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+.superpowers
+docs
+test-results
+playwright-report
+.env*
