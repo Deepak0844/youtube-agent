@@ -1,5 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
+import { availableParallelism, totalmem } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -13,6 +14,31 @@ const LOG_CAP = 1024 * 1024;
 const JOB_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/;
 const IMAGE_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.:/@-]{0,255}$/;
 const DEFAULT_LIMITS = { cpus: 4, memoryMb: 4096, pids: 512 };
+
+export interface HostLimits {
+  cpus: number;
+  memoryMb: number;
+}
+
+let hostLimitsCache: Promise<HostLimits> | undefined;
+
+// What the Docker daemon can actually give (cached per process). Falls back to this machine if docker info fails.
+export function daemonLimits(): Promise<HostLimits> {
+  hostLimitsCache ??= (async (): Promise<HostLimits> => {
+    const fallback: HostLimits = { cpus: availableParallelism(), memoryMb: Math.floor(totalmem() / 1048576) };
+    try {
+      const { stdout } = await run("docker", ["info", "--format", "{{.NCPU}} {{.MemTotal}}"], { timeout: 10_000 });
+      const [ncpu = Number.NaN, mem = Number.NaN] = stdout.trim().split(/\s+/).map(Number);
+      return {
+        cpus: Number.isFinite(ncpu) && ncpu > 0 ? ncpu : fallback.cpus,
+        memoryMb: Number.isFinite(mem) && mem > 0 ? Math.floor(mem / 1048576) : fallback.memoryMb,
+      };
+    } catch {
+      return fallback;
+    }
+  })();
+  return hostLimitsCache;
+}
 
 export interface RenderJobSpec {
   jobId: string;
@@ -61,7 +87,7 @@ function assertTmpfs(t: string): void {
   if (RESERVED_TMPFS.some((r) => t === r || t.startsWith(r + "/"))) throw new Error(`reserved tmpfs path: ${t}`);
 }
 
-export async function buildDockerArgs(spec: RenderJobSpec): Promise<string[]> {
+export async function buildDockerArgs(spec: RenderJobSpec, host?: HostLimits): Promise<string[]> {
   assertJobId(spec.jobId);
   assertMountable(spec.storageRoot, "storageRoot");
   assertMountable(spec.jobDir, "jobDir");
@@ -82,6 +108,10 @@ export async function buildDockerArgs(spec: RenderJobSpec): Promise<string[]> {
   for (const v of [limits.cpus, limits.memoryMb, limits.pids]) {
     if (!Number.isFinite(v) || v <= 0) throw new Error("invalid limits");
   }
+  // Only ever lowers a limit: never above the request, never above what the daemon has (10% memory margin).
+  const available = host ?? (await daemonLimits());
+  const cpus = Math.min(limits.cpus, available.cpus);
+  const memoryMb = Math.min(limits.memoryMb, Math.floor(available.memoryMb * 0.9));
   if (!Array.isArray(spec.command) || spec.command.length === 0 || spec.command.some((c) => typeof c !== "string")) {
     throw new Error("command must be a non-empty string array");
   }
@@ -107,9 +137,9 @@ export async function buildDockerArgs(spec: RenderJobSpec): Promise<string[]> {
     "--cap-drop", "ALL",
     "--security-opt", "no-new-privileges",
     "--pids-limit", String(Math.ceil(limits.pids)),
-    "--memory", `${Math.ceil(limits.memoryMb)}m`,
-    "--memory-swap", `${Math.ceil(limits.memoryMb)}m`,
-    "--cpus", String(limits.cpus),
+    "--memory", `${Math.ceil(memoryMb)}m`,
+    "--memory-swap", `${Math.ceil(memoryMb)}m`,
+    "--cpus", String(cpus),
     "--log-driver", "local",
     "--log-opt", "max-size=10m",
     "--log-opt", "max-file=2",
