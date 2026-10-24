@@ -48,7 +48,7 @@ describe("render image", () => {
         .catch((e) => { console.error(e); process.exit(1); });
     `;
     const r = docker(
-      "run", "--rm", "--network", "none", "--read-only", "--tmpfs", "/tmp", "-e", "HOME=/tmp",
+      "run", "--rm", "--network", "none", "--read-only", "--tmpfs", "/tmp",
       IMAGE, "node", "-e", script,
     );
     expect(r.status, r.stderr).toBe(0);
@@ -56,4 +56,32 @@ describe("render image", () => {
     expect(exe.status, exe.stderr).toBe(0);
     expect(exe.stdout).toMatch(/Chrome|Chromium/i);
   });
+
+  const lockdown = ["run", "--rm", "--network", "none", "--read-only", "--tmpfs", "/tmp", "--user", "10001:10001"];
+
+  it("image_defaults_give_a_writable_home", () => {
+    const r = docker(...lockdown, IMAGE, "sh", "-c", 'test -d "$HOME" && touch "$HOME/x" && echo "$HOME"');
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  // Root cause of the earlier hang: headless_shell's one-shot CLI modes (--dump-dom,
+  // --screenshot) never exit in this build, even with a writable root. Remotion drives the
+  // browser over DevTools instead, so the check launches it the way a render does.
+  it("chrome_headless_shell_launches_read_only", () => {
+    const script = `
+      const r = require("@remotion/renderer");
+      (async () => {
+        const b = await r.openBrowser("chrome", { browserExecutable: process.env.REMOTION_BROWSER_EXECUTABLE });
+        await b.newPage({ context: {}, logLevel: "info", indent: false, pageIndex: 0, onBrowserLog: null, onLog: () => {} });
+        console.log("LAUNCHED");
+        await b.close({ silent: true });
+        process.exit(0);
+      })().catch((e) => { console.error(e); process.exit(1); });
+    `;
+    const r = spawnSync("docker", [...lockdown, "--shm-size=256m", IMAGE, "node", "-e", script], {
+      encoding: "utf8", timeout: 60_000, killSignal: "SIGKILL",
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("LAUNCHED");
+  }, 90_000);
 });

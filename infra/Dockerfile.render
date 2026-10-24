@@ -34,5 +34,6 @@ ENV NODE_PATH=/opt/render/node_modules \
 
 RUN useradd --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin render \
  && mkdir /job && chown render:render /job
+ENV HOME=/tmp TMPDIR=/tmp
 USER render
 WORKDIR /job
