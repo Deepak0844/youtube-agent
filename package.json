@@ -14,6 +14,7 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
     "test:api": "playwright test --project=api",
+    "image:render": "docker build -f infra/Dockerfile.render -t ytstudio-render:dev .",
     "test:ui": "playwright test --project=ui-desktop --project=ui-phone"
   },
   "dependencies": {
