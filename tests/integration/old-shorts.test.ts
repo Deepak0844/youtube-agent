@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { assertFfprobeAvailable } from "../support/tools";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { cpus, tmpdir, totalmem } from "node:os";
 import path from "node:path";
@@ -108,6 +109,7 @@ describe.skipIf(skipReason !== null)("old shorts", () => {
   it(
     "three_old_shorts_render_in_the_sandbox",
     async () => {
+      assertFfprobeAvailable();
       await assertDockerUp();
       await run("docker", ["image", "inspect", RENDER_IMAGE]);
       mkdirSync(RESULTS, { recursive: true });

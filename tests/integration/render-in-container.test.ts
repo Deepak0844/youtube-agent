@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { PNG } from "pngjs";
+import { assertFfprobeAvailable } from "../support/tools";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { RENDER_IMAGE, removeJobContainers, startRenderJob } from "@/server/render/runner";
 import { assertDockerUp } from "../support/infra";
@@ -94,6 +95,7 @@ function inkPerRegion(file: string): number[] {
 }
 
 beforeAll(async () => {
+  assertFfprobeAvailable();
   await assertDockerUp();
   await run("docker", ["image", "inspect", RENDER_IMAGE]).catch(async () => {
     await run("docker", ["build", "-f", "infra/Dockerfile.render", "-t", RENDER_IMAGE, "."]);
