@@ -17,6 +17,7 @@
     "test:ui": "playwright test --project=ui-desktop --project=ui-phone"
   },
   "dependencies": {
+    "ipaddr.js": "^2.5.0",
     "next": "16.4.3",
     "react": "19.3.0",
     "react-dom": "19.3.0"
