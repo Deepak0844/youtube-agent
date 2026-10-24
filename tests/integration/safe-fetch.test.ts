@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { BlockedAddressError, safeFetch } from "@/server/providers/net/safe-fetch";
+import { BlockedAddressError, BlockedRedirectError, safeFetch } from "@/server/providers/net/safe-fetch";
 
 type Handler = (req: IncomingMessage, res: ServerResponse) => void;
 
@@ -19,6 +19,37 @@ let redirectToOk: number;
 let redirectToMetadataLiteral: number;
 let redirectChain: number;
 let hostSeen: string | undefined;
+
+// Two "hub" servers on different loopback ports: each records every request and, given ?to=&status=, redirects.
+interface Seen {
+  url: string;
+  method: string;
+  headers: IncomingMessage["headers"];
+  body: string;
+}
+const hubs: Array<{ port: number; seen: Seen[] }> = [];
+async function startHub(): Promise<void> {
+  const seen: Seen[] = [];
+  const { server, port } = await listen((req, res) => {
+    let body = "";
+    req.on("data", (d: Buffer) => (body += d.toString()));
+    req.on("end", () => {
+      seen.push({ url: req.url ?? "", method: req.method ?? "", headers: req.headers, body });
+      const q = new URL(req.url ?? "/", "http://x").searchParams;
+      const to = q.get("to");
+      if (to) res.writeHead(Number(q.get("status") ?? "302"), { location: to }).end();
+      else res.end("hub");
+    });
+  });
+  servers.push(server);
+  hubs.push({ port, seen });
+}
+const go = (to: string, status = 302) => `/?status=${status}&to=${encodeURIComponent(to)}`;
+const byHost = (map: Record<string, string>) => async (host: string) => {
+  const a = map[host.toLowerCase()];
+  if (!a) throw new Error(`unexpected lookup ${host}`);
+  return [a];
+};
 
 beforeAll(async () => {
   const a = await listen((req, res) => {
@@ -44,6 +75,8 @@ beforeAll(async () => {
   });
   redirectChain = e.port;
   servers.push(a.server, b.server, c.server, d.server, e.server);
+  await startHub();
+  await startHub();
 });
 
 afterAll(async () => {
@@ -221,13 +254,111 @@ describe("safeFetch", () => {
   });
 
   it("redirect_hop_follows_to_validated_target", async () => {
-    const res = await safeFetch(`http://127.0.0.1:${redirectToOk}/`, undefined, { mode: "typed", lookup: lookupTo("127.0.0.1") });
-    expect(await res.text()).toBe("ok");
+    // Doc 2 §9.6: the typed policy covers the typed origin only. Leaving it (here to another port) is strict.
+    const err = await safeFetch(`http://127.0.0.1:${redirectToOk}/`, undefined, { mode: "typed", lookup: lookupTo("127.0.0.1") }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("loopback");
+    const [a] = hubs as [(typeof hubs)[number]];
+    const res = await safeFetch(`http://127.0.0.1:${a.port}${go("/followed")}`, undefined, { mode: "typed" });
+    expect(await res.text()).toBe("hub");
+    expect(a.seen.at(-1)?.url).toBe("/followed");
+  });
+
+  it("typed_redirect_same_origin_stays_typed", async () => {
+    const [a] = hubs as [(typeof hubs)[number]];
+    // Absolute, differently-cased spelling of the same origin: still typed, still allowed to reach loopback.
+    const res = await safeFetch(`http://Feed.Test:${a.port}${go(`http://feed.test:${a.port}/same`)}`, undefined, {
+      mode: "typed",
+      lookup: byHost({ "feed.test": "127.0.0.1" }),
+    });
+    expect(await res.text()).toBe("hub");
+    expect(a.seen.at(-1)?.url).toBe("/same");
+  });
+
+  it("typed_redirect_cross_origin_to_loopback_refused", async () => {
+    const [a] = hubs as [(typeof hubs)[number]];
+    const before = a.seen.length;
+    const err = await safeFetch(`http://feed.test:${a.port}${go(`http://other.test:${a.port}/x`)}`, undefined, {
+      mode: "typed",
+      lookup: byHost({ "feed.test": "127.0.0.1", "other.test": "127.0.0.1" }),
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("loopback");
+    expect(a.seen.length).toBe(before + 1); // only the first hop arrived
+  });
+
+  it("typed_redirect_cross_origin_to_private_refused", async () => {
+    const [a] = hubs as [(typeof hubs)[number]];
+    const err = await safeFetch(`http://127.0.0.1:${a.port}${go("http://nas.test/")}`, undefined, {
+      mode: "typed",
+      lookup: byHost({ "nas.test": "192.168.1.20" }),
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("private");
+  });
+
+  it("typed_redirect_cross_origin_to_metadata_refused", async () => {
+    const [a] = hubs as [(typeof hubs)[number]];
+    const err = await safeFetch(`http://127.0.0.1:${a.port}${go("http://meta.test/latest")}`, undefined, {
+      mode: "typed",
+      lookup: byHost({ "meta.test": "169.254.169.254" }),
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("metadata");
+  });
+
+  it("typed_redirect_to_other_port_same_host_is_cross_origin", async () => {
+    const [a, b] = hubs as [(typeof hubs)[number], (typeof hubs)[number]];
+    const before = b.seen.length;
+    const err = await safeFetch(`http://127.0.0.1:${a.port}${go(`http://127.0.0.1:${b.port}/x`)}`, undefined, { mode: "typed" }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("loopback");
+    expect(b.seen.length).toBe(before);
+  });
+
+  it("same_origin_redirect_keeps_headers", async () => {
+    const [a] = hubs as [(typeof hubs)[number]];
+    const res = await safeFetch(
+      `http://127.0.0.1:${a.port}${go("/kept", 307)}`,
+      { method: "POST", body: "payload", headers: { "x-api-key": "k1", authorization: "Bearer t", "content-type": "text/plain" } },
+      { mode: "typed" },
+    );
+    expect(await res.text()).toBe("hub");
+    const last = a.seen.at(-1);
+    expect(last).toMatchObject({ url: "/kept", method: "POST", body: "payload" });
+    expect(last?.headers["x-api-key"]).toBe("k1");
+    expect(last?.headers.authorization).toBe("Bearer t");
+  });
+
+  it("cross_origin_307_with_body_is_refused", async () => {
+    const [a, b] = hubs as [(typeof hubs)[number], (typeof hubs)[number]];
+    const before = b.seen.length;
+    const err = await safeFetch(
+      `http://127.0.0.1:${a.port}${go(`http://127.0.0.1:${b.port}/leak`, 307)}`,
+      { method: "POST", body: "secret-body", headers: { "x-api-key": "k1" } },
+      { mode: "typed" },
+    ).catch((e) => e);
+    // Refused on the redirect decision itself, before the next hop is even resolved.
+    expect(err).toBeInstanceOf(BlockedRedirectError);
+    expect(err.reason).toBe("cross-origin-redirect-with-body");
+    expect(b.seen.length).toBe(before);
+  });
+
+  it("cross_origin_redirect_drops_custom_secret_headers", async () => {
+    // A followed cross-origin hop must classify public, which no local stand-in can; the header decision is
+    // covered by tests/unit/safe-fetch-redirect.test.ts. Here: the secret never reaches the other port.
+    const [a, b] = hubs as [(typeof hubs)[number], (typeof hubs)[number]];
+    const before = b.seen.length;
+    await safeFetch(`http://127.0.0.1:${a.port}${go(`http://127.0.0.1:${b.port}/leak`)}`, { headers: { "xi-api-key": "k2" } }, { mode: "typed" }).catch(
+      () => undefined,
+    );
+    expect(b.seen.slice(before).filter((s) => s.headers["xi-api-key"])).toEqual([]);
   });
 
   it("connects_to_validated_ip_not_second_lookup", async () => {
+    const [a] = hubs as [(typeof hubs)[number]];
     const calls: string[] = [];
-    const res = await safeFetch(`http://127.0.0.1:${redirectToOk}/`, undefined, {
+    const res = await safeFetch(`http://one.test:${a.port}${go("/next")}`, undefined, {
       mode: "typed",
       lookup: async (host) => {
         calls.push(host);
@@ -235,8 +366,8 @@ describe("safeFetch", () => {
       },
     });
     await res.text();
-    // literal first hop is not looked up; redirect hop looked up exactly once
-    expect(calls).toEqual(["public.test"]);
+    // each hop looked up exactly once; the connect itself never looks up again
+    expect(calls).toEqual(["one.test", "one.test"]);
   });
 
   it("lookup_called_once_per_hop_for_hostnames", async () => {

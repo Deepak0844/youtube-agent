@@ -25,6 +25,18 @@ export class BlockedAddressError extends Error {
   }
 }
 
+export type RedirectRefusal = "cross-origin-redirect-with-body" | "https-downgrade";
+
+export class BlockedRedirectError extends Error {
+  constructor(
+    public readonly location: string,
+    public readonly reason: RedirectRefusal,
+  ) {
+    super(`Refused redirect to ${location} (${reason})`);
+    this.name = "BlockedRedirectError";
+  }
+}
+
 const TYPED_ALLOWED: ReadonlySet<AddressClass> = new Set(["public", "private", "loopback", "linklocal", "cgnat", "docker"]);
 const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
 
@@ -37,6 +49,46 @@ function stripBrackets(host: string): string {
 
 function defaultPort(url: URL): number {
   return url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
+}
+
+/** scheme://host:port with the URL parser's normalisation (case, IP spellings), brackets stripped, default port explicit. */
+export function originKey(url: URL): string {
+  return `${url.protocol}//${stripBrackets(url.hostname).toLowerCase()}:${defaultPort(url)}`;
+}
+
+/** Doc 2 §9.6: the typed policy covers only the origin the user typed; every other origin in a chain is strict. */
+export function policyFor(url: URL, origin: string, mode: FetchMode): FetchMode {
+  return originKey(url) === origin ? mode : "indirect";
+}
+
+// Request headers that may follow a redirect off the original origin. A body never does (see planRedirect),
+// so content-type is never among them.
+const CROSS_ORIGIN_HEADERS = ["accept", "accept-language", "user-agent"];
+
+export interface RedirectStep {
+  method: string;
+  body: RequestInit["body"] | undefined;
+  headers: Headers;
+}
+
+/** Decides the next request of a redirect chain, or refuses it. Pure: no I/O. */
+export function planRedirect(from: URL, to: URL, status: number, origin: string, step: RedirectStep): RedirectStep {
+  if (from.protocol === "https:" && to.protocol === "http:") throw new BlockedRedirectError(to.href, "https-downgrade");
+  let { method, body, headers } = step;
+  if (status === 303 || ((status === 301 || status === 302) && method !== "GET" && method !== "HEAD")) {
+    method = "GET";
+    body = undefined;
+  }
+  if (originKey(to) !== origin) {
+    if (body !== undefined && body !== null) throw new BlockedRedirectError(to.href, "cross-origin-redirect-with-body");
+    const kept = new Headers();
+    for (const name of CROSS_ORIGIN_HEADERS) {
+      const value = headers.get(name);
+      if (value !== null) kept.set(name, value);
+    }
+    headers = kept;
+  }
+  return { method, body, headers };
 }
 
 function canonical(address: string): string {
@@ -88,7 +140,7 @@ async function resolveOwnServices(opts: SafeFetchOptions, signal: AbortSignal): 
   );
 }
 
-function check(address: string, url: URL, opts: SafeFetchOptions, own: OwnService[]): void {
+function check(address: string, url: URL, mode: FetchMode, own: OwnService[]): void {
   const port = defaultPort(url);
   const hostname = stripBrackets(url.hostname).toLowerCase();
   const ip = canonical(address);
@@ -99,17 +151,17 @@ function check(address: string, url: URL, opts: SafeFetchOptions, own: OwnServic
       throw new BlockedAddressError(address, "own-service");
     }
   }
-  const allowed = opts.mode === "typed" ? TYPED_ALLOWED.has(cls) : cls === "public";
+  const allowed = mode === "typed" ? TYPED_ALLOWED.has(cls) : cls === "public";
   if (!allowed) throw new BlockedAddressError(address, cls);
 }
 
 // Validates every address the host resolves to; returns them for pinning.
-async function resolveValidated(url: URL, opts: SafeFetchOptions, own: OwnService[], signal: AbortSignal): Promise<string[]> {
+async function resolveValidated(url: URL, mode: FetchMode, opts: SafeFetchOptions, own: OwnService[], signal: AbortSignal): Promise<string[]> {
   const host = stripBrackets(url.hostname);
   // IP literals (URL parser already normalised decimal/hex/octal spellings) skip DNS.
   const addresses = isIP(host) !== 0 ? [host] : await race((opts.lookup ?? defaultLookup)(host), signal);
   if (addresses.length === 0) throw new Error(`No addresses for ${host}`);
-  for (const address of addresses) check(address, url, opts, own);
+  for (const address of addresses) check(address, url, mode, own);
   return addresses;
 }
 
@@ -140,23 +192,22 @@ export async function safeFetch(url: string, init: RequestInit | undefined, opti
   const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
   const own = await resolveOwnServices(options, signal);
   let current = new URL(url);
-  let method = init?.method ?? "GET";
-  let body = init?.body;
-  let headers = new Headers(init?.headers);
+  const origin = originKey(current);
+  let step: RedirectStep = { method: init?.method ?? "GET", body: init?.body, headers: new Headers(init?.headers) };
 
   for (let hop = 0; ; hop++) {
     if (current.protocol !== "http:" && current.protocol !== "https:") {
       throw new Error(`Unsupported URL scheme ${current.protocol}`);
     }
-    const addresses = await resolveValidated(current, options, own, signal);
+    const addresses = await resolveValidated(current, policyFor(current, origin, options.mode), options, own, signal);
     const agent = pinnedAgent(addresses, timeoutMs);
     let closeNow = true;
     try {
       const res = (await undiciFetch(current, {
         ...(init as object),
-        method,
-        body: body as never,
-        headers,
+        method: step.method,
+        body: step.body as never,
+        headers: step.headers,
         signal,
         redirect: "manual",
         dispatcher: agent,
@@ -172,21 +223,11 @@ export async function safeFetch(url: string, init: RequestInit | undefined, opti
       if (hop >= maxRedirects) throw new Error(`Too many redirects (max ${maxRedirects})`);
 
       const next = new URL(location, current);
-      if (next.origin !== current.origin) headers = stripCredentials(headers);
-      if (res.status === 303 || ((res.status === 301 || res.status === 302) && method !== "GET" && method !== "HEAD")) {
-        method = "GET";
-        body = undefined;
-      }
+      step = planRedirect(current, next, res.status, origin, step);
       current = next;
     } finally {
       // Not awaited: close() waits for a pending connect, which must not outlive the call.
       if (closeNow) void agent.close().catch(() => undefined);
     }
   }
-}
-
-function stripCredentials(headers: Headers): Headers {
-  const copy = new Headers(headers);
-  for (const name of ["authorization", "cookie", "proxy-authorization"]) copy.delete(name);
-  return copy;
 }
