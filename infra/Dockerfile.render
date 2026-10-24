@@ -15,12 +15,16 @@ RUN apt-get update \
 COPY infra/render/fonts/*.ttf /usr/share/fonts/truetype/vendored/
 RUN fc-cache -f
 
-# Remotion + browser live inside the image, not in a per-user cache.
+# Remotion + browser live inside the image, not in a per-user cache. The second package line is what the
+# old shorts kit imports beyond Remotion core (lib/collage, lib/chatui, lib/browser, lib/kit). @remotion/*
+# follow the image Remotion version (the old lockfile pins 4.0.486, whose @remotion/shapes would nest a
+# second remotion copy); chroma-js and lucide-react are pinned to the old lockfile.
 WORKDIR /opt/render
 RUN npm init -y >/dev/null \
  && npm i --omit=dev --no-audit --no-fund --save-exact \
       remotion@4.0.538 @remotion/cli@4.0.538 @remotion/bundler@4.0.538 @remotion/renderer@4.0.538 \
       react@19.3.0 react-dom@19.3.0 \
+      @remotion/shapes@4.0.538 @remotion/paths@4.0.538 chroma-js@3.2.0 lucide-react@1.23.0 \
  && npx remotion browser ensure \
  && ln -s "$(find /opt/render/node_modules/.remotion -type f -name headless_shell | head -n1)" /opt/render/chrome-headless-shell \
  && /opt/render/chrome-headless-shell --version \
