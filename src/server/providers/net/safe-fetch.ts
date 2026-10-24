@@ -1,5 +1,6 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import ipaddr from "ipaddr.js";
 import { Agent, fetch as undiciFetch } from "undici";
 import { classifyAddress, type AddressClass } from "@/server/core/net-policy";
 
@@ -37,29 +38,75 @@ function defaultPort(url: URL): number {
   return url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
 }
 
-function check(address: string, url: URL, opts: SafeFetchOptions): void {
-  const cls = classifyAddress(address);
-  const allowed = opts.mode === "typed" ? TYPED_ALLOWED.has(cls) : cls === "public";
-  if (!allowed) throw new BlockedAddressError(address, cls);
-  if (opts.mode === "typed") {
-    const port = defaultPort(url);
-    const hostname = stripBrackets(url.hostname).toLowerCase();
-    for (const svc of opts.ownServices ?? []) {
-      const own = svc.host.toLowerCase();
-      if (svc.port === port && (own === hostname || own === address.toLowerCase())) {
-        throw new BlockedAddressError(address, "own-service");
+function canonical(address: string): string {
+  const bare = address.split("%")[0] ?? address;
+  if (!ipaddr.isValid(bare)) return bare.toLowerCase();
+  const parsed = ipaddr.parse(bare);
+  if (parsed.kind() === "ipv6" && (parsed as ipaddr.IPv6).isIPv4MappedAddress()) {
+    return (parsed as ipaddr.IPv6).toIPv4Address().toString();
+  }
+  return parsed.toString();
+}
+
+interface OwnService {
+  host: string;
+  port: number;
+  ips: Set<string>;
+  loopback: boolean;
+}
+
+function race<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+// Resolves ownServices hosts to canonical IPs so aliases (localhost, mapped, Docker DNS) match.
+async function resolveOwnServices(opts: SafeFetchOptions, signal: AbortSignal): Promise<OwnService[]> {
+  return Promise.all(
+    (opts.ownServices ?? []).map(async (svc) => {
+      const host = stripBrackets(svc.host).toLowerCase();
+      let addrs: string[] = [];
+      if (isIP(host) !== 0) addrs = [host];
+      else {
+        try {
+          addrs = await race((opts.lookup ?? defaultLookup)(host), signal);
+        } catch (e) {
+          if (signal.aborted) throw e;
+        }
       }
+      const ips = new Set(addrs.map(canonical));
+      const loopback = [...ips].some((ip) => ip === "0.0.0.0" || ip === "::" || classifyAddress(ip) === "loopback");
+      return { host, port: svc.port, ips, loopback };
+    }),
+  );
+}
+
+function check(address: string, url: URL, opts: SafeFetchOptions, own: OwnService[]): void {
+  const port = defaultPort(url);
+  const hostname = stripBrackets(url.hostname).toLowerCase();
+  const ip = canonical(address);
+  const cls = classifyAddress(address);
+  for (const svc of own) {
+    if (svc.port !== port) continue;
+    if (svc.host === hostname || svc.ips.has(ip) || (svc.loopback && cls === "loopback")) {
+      throw new BlockedAddressError(address, "own-service");
     }
   }
+  const allowed = opts.mode === "typed" ? TYPED_ALLOWED.has(cls) : cls === "public";
+  if (!allowed) throw new BlockedAddressError(address, cls);
 }
 
 // Validates every address the host resolves to; returns them for pinning.
-async function resolveValidated(url: URL, opts: SafeFetchOptions): Promise<string[]> {
+async function resolveValidated(url: URL, opts: SafeFetchOptions, own: OwnService[], signal: AbortSignal): Promise<string[]> {
   const host = stripBrackets(url.hostname);
   // IP literals (URL parser already normalised decimal/hex/octal spellings) skip DNS.
-  const addresses = isIP(host) !== 0 ? [host] : await (opts.lookup ?? defaultLookup)(host);
+  const addresses = isIP(host) !== 0 ? [host] : await race((opts.lookup ?? defaultLookup)(host), signal);
   if (addresses.length === 0) throw new Error(`No addresses for ${host}`);
-  for (const address of addresses) check(address, url, opts);
+  for (const address of addresses) check(address, url, opts, own);
   return addresses;
 }
 
@@ -86,6 +133,7 @@ export async function safeFetch(url: string, init: RequestInit | undefined, opti
   const maxRedirects = options.maxRedirects ?? 5;
   const timeout = AbortSignal.timeout(options.timeoutMs ?? 10_000);
   const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+  const own = await resolveOwnServices(options, signal);
   let current = new URL(url);
   let method = init?.method ?? "GET";
   let body = init?.body;
@@ -95,32 +143,39 @@ export async function safeFetch(url: string, init: RequestInit | undefined, opti
     if (current.protocol !== "http:" && current.protocol !== "https:") {
       throw new Error(`Unsupported URL scheme ${current.protocol}`);
     }
-    const addresses = await resolveValidated(current, options);
+    const addresses = await resolveValidated(current, options, own, signal);
     const agent = pinnedAgent(addresses);
-    const res = (await undiciFetch(current, {
-      ...(init as object),
-      method,
-      body: body as never,
-      headers,
-      signal,
-      redirect: "manual",
-      dispatcher: agent,
-    })) as unknown as Response;
+    let closeNow = true;
+    try {
+      const res = (await undiciFetch(current, {
+        ...(init as object),
+        method,
+        body: body as never,
+        headers,
+        signal,
+        redirect: "manual",
+        dispatcher: agent,
+      })) as unknown as Response;
 
-    const location = res.headers.get("location");
-    if (!REDIRECT_STATUS.has(res.status) || location === null) return res;
+      const location = res.headers.get("location");
+      if (!REDIRECT_STATUS.has(res.status) || location === null) {
+        closeNow = false; // body still streaming; keepAliveTimeout:1 releases the socket
+        return res;
+      }
 
-    await res.body?.cancel();
-    await agent.close();
-    if (hop >= maxRedirects) throw new Error(`Too many redirects (max ${maxRedirects})`);
+      await res.body?.cancel();
+      if (hop >= maxRedirects) throw new Error(`Too many redirects (max ${maxRedirects})`);
 
-    const next = new URL(location, current);
-    if (next.origin !== current.origin) headers = stripCredentials(headers);
-    if (res.status === 303 || ((res.status === 301 || res.status === 302) && method !== "GET" && method !== "HEAD")) {
-      method = "GET";
-      body = undefined;
+      const next = new URL(location, current);
+      if (next.origin !== current.origin) headers = stripCredentials(headers);
+      if (res.status === 303 || ((res.status === 301 || res.status === 302) && method !== "GET" && method !== "HEAD")) {
+        method = "GET";
+        body = undefined;
+      }
+      current = next;
+    } finally {
+      if (closeNow) await agent.close().catch(() => undefined);
     }
-    current = next;
   }
 }
 

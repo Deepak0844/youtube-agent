@@ -31,11 +31,29 @@ const cases: [string, AddressClass][] = [
   ["0x7f.0.0.1", "loopback"],
   ["017700000001", "loopback"],
   ["127.1", "loopback"],
+  ["169.254.170.2", "metadata"],
+  ["100.100.100.200", "metadata"],
+  ["192.0.0.192", "metadata"],
+  ["::ffff:169.254.169.254", "metadata"],
+  ["::ffff:169.254.170.2", "metadata"],
+  ["::ffff:100.100.100.200", "metadata"],
+  ["::ffff:192.0.0.192", "metadata"],
+  ["fd00:ec2:0:0:0:0:0:254", "metadata"],
+  ["::7f00:1", "reserved"],
+  ["::a00:1", "reserved"],
+  ["2002:7f00:1::", "reserved"],
+  ["64:ff9b::7f00:1", "reserved"],
 ];
 
 describe("classifyAddress", () => {
   it.each(cases)("%s -> %s", (address, expected) => {
     expect(classifyAddress(address)).toBe(expected);
+  });
+});
+
+describe("zone ids", () => {
+  it("fe80::1%eth0 is never public", () => {
+    expect(["invalid", "linklocal"]).toContain(classifyAddress("fe80::1%eth0"));
   });
 });
 

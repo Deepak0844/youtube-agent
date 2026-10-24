@@ -85,6 +85,55 @@ describe("safeFetch", () => {
     expect(err.reason).toBe("own-service");
   });
 
+  it("typed_refuses_own_service_via_ipv4_mapped_literal", async () => {
+    const err = await safeFetch(`http://[::ffff:127.0.0.1]:${ok}/`, undefined, {
+      mode: "typed",
+      ownServices: [{ host: "127.0.0.1", port: ok }],
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("own-service");
+  });
+
+  it("typed_refuses_own_service_listed_by_hostname", async () => {
+    const err = await safeFetch(`http://127.0.0.1:${ok}/`, undefined, {
+      mode: "typed",
+      ownServices: [{ host: "localhost", port: ok }],
+      lookup: lookupTo("::1", "127.0.0.1"),
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("own-service");
+  });
+
+  it("typed_refuses_own_service_on_any_loopback_address", async () => {
+    const err = await safeFetch(`http://127.0.0.2:${ok}/`, undefined, {
+      mode: "typed",
+      ownServices: [{ host: "127.0.0.1", port: ok }],
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("own-service");
+  });
+
+  it("own_service_refused_via_redirect_hop", async () => {
+    // redirect target public.test resolves to the own service's mapped spelling
+    const err = await safeFetch(`http://127.0.0.1:${redirectToOk}/`, undefined, {
+      mode: "typed",
+      ownServices: [{ host: "127.0.0.1", port: ok }],
+      lookup: lookupTo("::ffff:127.0.0.1"),
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("own-service");
+  });
+
+  it("indirect_also_checks_own_services", async () => {
+    const err = await safeFetch("http://pub.test:8080/", undefined, {
+      mode: "indirect",
+      ownServices: [{ host: "93.184.216.34", port: 8080 }],
+      lookup: lookupTo("93.184.216.34"),
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("own-service");
+  });
+
   it("typed_refuses_metadata_address", async () => {
     const err = await safeFetch("http://meta.test/", undefined, { mode: "typed", lookup: lookupTo("169.254.169.254") }).catch((e) => e);
     expect(err).toBeInstanceOf(BlockedAddressError);
@@ -184,6 +233,14 @@ describe("safeFetch", () => {
     servers.push(counter.server);
     await safeFetch(`http://127.0.0.1:${counter.port}/?n=0`, undefined, { mode: "typed", maxRedirects: 2 }).catch(() => undefined);
     expect(seen).toHaveLength(3);
+  });
+
+  it("times_out_when_dns_lookup_never_resolves", async () => {
+    const start = Date.now();
+    await expect(
+      safeFetch("http://slow.test/", undefined, { mode: "typed", timeoutMs: 300, lookup: () => new Promise<string[]>(() => undefined) }),
+    ).rejects.toThrow();
+    expect(Date.now() - start).toBeLessThan(1000);
   });
 
   it("times_out_when_server_never_answers", async () => {

@@ -18,6 +18,10 @@ export const DOCKER_RANGES: string[] = ["172.17.0.0/16", "192.168.215.0/24", "19
 const DOCKER_CIDRS = DOCKER_RANGES.map((cidr) => ipaddr.IPv4.parseCIDR(cidr));
 const METADATA_V6 = ipaddr.IPv6.parse("fd00:ec2::254");
 
+// Cloud metadata/credential endpoints: AWS/GCP/Azure, AWS ECS, Alibaba, Oracle.
+const METADATA_V4 = new Set(["169.254.169.254", "169.254.170.2", "100.100.100.200", "192.0.0.192"]);
+const V4_COMPATIBLE = ipaddr.IPv6.parseCIDR("::/96");
+
 const NUMBER = /^(?:0x[0-9a-f]+|0[0-7]*|[1-9][0-9]*)$/i;
 
 // Resolvers (inet_aton) accept 1-4 dotted parts, each decimal/0x-hex/0-octal, the last part
@@ -34,7 +38,7 @@ function normaliseLegacyIPv4(input: string): string | undefined {
 }
 
 function classifyV4(addr: ipaddr.IPv4): AddressClass {
-  if (addr.toString() === "169.254.169.254") return "metadata";
+  if (METADATA_V4.has(addr.toString())) return "metadata";
   if (DOCKER_CIDRS.some((cidr) => addr.match(cidr))) return "docker";
   switch (addr.range()) {
     case "unicast":
@@ -59,6 +63,8 @@ export function classifyAddress(address: string): AddressClass {
     const v6 = ipaddr.IPv6.parse(address);
     if (v6.isIPv4MappedAddress()) return classifyV4(v6.toIPv4Address());
     if (v6.toNormalizedString() === METADATA_V6.toNormalizedString()) return "metadata";
+    // Deprecated IPv4-compatible ::a.b.c.d: reserved, except :: and ::1 handled by range().
+    if (v6.match(V4_COMPATIBLE) && v6.range() !== "unspecified" && v6.range() !== "loopback") return "reserved";
     switch (v6.range()) {
       case "unicast":
         return "public";
