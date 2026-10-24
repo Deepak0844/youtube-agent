@@ -270,3 +270,90 @@ describe("render sandbox input validation", () => {
     expect(await dockerOut("ps", "-aq", "--filter", `label=ytstudio.job=${base().jobId}`)).toBe("");
   });
 });
+
+describe("render sandbox round-1 fixes", () => {
+  const labelled = (id: string) => dockerOut("ps", "-aq", "--filter", `label=ytstudio.job=${id}`);
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("start_failure_leaves_no_container", async () => {
+    const { jobId, jobDir } = makeJob();
+    // create succeeds, start fails (tmpfs over a file): docker leaves a Created container
+    await expect(startRenderJob({ jobId, storageRoot, jobDir, command: ["node", "-e", "1"], tmpfs: ["/usr/local/bin/node"] })).rejects.toThrow();
+    expect(await labelled(jobId)).toBe("");
+  });
+
+  it("abort_during_start_removes_container", async () => {
+    const { jobId, jobDir } = makeJob();
+    const ac = new AbortController();
+    const p = startRenderJob({ jobId, storageRoot, jobDir, command: ["node", "-e", "setTimeout(()=>{},60000)"], signal: ac.signal });
+    setTimeout(() => ac.abort(), 30);
+    await p.catch(() => undefined);
+    await sleep(2500);
+    expect(await labelled(jobId)).toBe("");
+    const pre = new AbortController();
+    pre.abort();
+    await expect(startRenderJob({ jobId, storageRoot, jobDir, command: ["true"], signal: pre.signal })).rejects.toThrow();
+    await sleep(1500);
+    expect(await labelled(jobId)).toBe("");
+  });
+
+  it.each(["/proc", "/sys", "/dev", "/proc/sys", "/dev/shm", "/sys/fs", "/tmp"])("tmpfs_proc_sys_dev_rejected %s", async (t) => {
+    const { jobId, jobDir } = makeJob();
+    await expect(startRenderJob({ jobId, storageRoot, jobDir, command: ["true"], tmpfs: [t] })).rejects.toThrow(/tmpfs/);
+    expect(await labelled(jobId)).toBe("");
+  });
+
+  it("jobdir_inside_assets_rejected", async () => {
+    const { jobId } = makeJob();
+    const jobDir = path.join(storageRoot, "assets", "evil");
+    mkdirSync(jobDir, { recursive: true });
+    await expect(startRenderJob({ jobId, storageRoot, jobDir, command: ["true"] })).rejects.toThrow(/assets/);
+    rmSync(path.join(storageRoot, "assets"), { recursive: true, force: true });
+  });
+
+  it("jobdir_is_assets_rejected", async () => {
+    const { jobId } = makeJob();
+    const jobDir = path.join(storageRoot, "assets");
+    mkdirSync(jobDir, { recursive: true });
+    await expect(startRenderJob({ jobId, storageRoot, jobDir, command: ["true"] })).rejects.toThrow();
+    rmSync(jobDir, { recursive: true, force: true });
+  });
+
+  it("jobdir_ancestor_of_assets_rejected", async () => {
+    const { jobId } = makeJob();
+    await expect(startRenderJob({ jobId, storageRoot, jobDir: storageRoot, command: ["true"] })).rejects.toThrow();
+  });
+
+  it("jobdir_top_level_dir_rejected", async () => {
+    const { jobId } = makeJob();
+    await expect(startRenderJob({ jobId, storageRoot, jobDir: path.join(storageRoot, "jobs"), command: ["true"] })).rejects.toThrow(/two/);
+  });
+
+  it("jobdir_two_levels_below_root_accepted", async () => {
+    const { jobId } = makeJob();
+    const jobDir = path.join(storageRoot, "videos", "v1", "attempt-3");
+    mkdirSync(jobDir, { recursive: true });
+    chmodSync(jobDir, 0o777);
+    const r = await (await startRenderJob({ jobId, storageRoot, jobDir, command: ["true"] })).wait();
+    expect(r.exitCode).toBe(0);
+  });
+
+  it("logs_are_size_capped_by_the_daemon", async () => {
+    const job = await startRenderJob(
+      spec({
+        command: [
+          "node",
+          "-e",
+          "const c='x'.repeat(1024*1024);for(let i=0;i<50;i++)process.stdout.write(c);process.stdout.write('TAIL-MARK')",
+        ],
+      }),
+    );
+    const [info] = JSON.parse(await dockerOut("inspect", job.containerId));
+    expect(info.HostConfig.LogConfig.Type).toBe("local");
+    expect(info.HostConfig.LogConfig.Config["max-size"]).toBe("10m");
+    expect(info.HostConfig.LogConfig.Config["max-file"]).toBe("2");
+    const r = await job.wait();
+    expect(r.logs.length).toBeLessThanOrEqual(1024 * 1024);
+    expect(r.logs.endsWith("TAIL-MARK")).toBe(true);
+  }, 60_000);
+});

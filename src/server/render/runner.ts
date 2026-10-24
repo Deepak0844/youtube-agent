@@ -22,6 +22,7 @@ export interface RenderJobSpec {
   limits?: { cpus: number; memoryMb: number; pids: number };
   image?: string;
   tmpfs?: string[]; // extra container paths to mount as tmpfs
+  signal?: AbortSignal; // abort at any time: cancels a start in flight and removes the container
 }
 
 export interface RunningJob {
@@ -51,10 +52,13 @@ async function assertRealDir(p: string, what: string): Promise<void> {
   if (!(await fs.stat(p)).isDirectory()) throw new Error(`${what} must be a directory`);
 }
 
+const RESERVED_TMPFS = ["/proc", "/sys", "/dev", "/tmp"];
+
 function assertTmpfs(t: string): void {
   if (typeof t !== "string" || !path.isAbsolute(t) || t === "/" || /[:,\0\r\n]/.test(t) || path.normalize(t) !== t) {
     throw new Error(`invalid tmpfs path: ${JSON.stringify(t)}`);
   }
+  if (RESERVED_TMPFS.some((r) => t === r || t.startsWith(r + "/"))) throw new Error(`reserved tmpfs path: ${t}`);
 }
 
 export async function buildDockerArgs(spec: RenderJobSpec): Promise<string[]> {
@@ -62,6 +66,13 @@ export async function buildDockerArgs(spec: RenderJobSpec): Promise<string[]> {
   assertMountable(spec.storageRoot, "storageRoot");
   assertMountable(spec.jobDir, "jobDir");
   if (!spec.jobDir.startsWith(spec.storageRoot + path.sep)) throw new Error("jobDir must be inside storageRoot");
+  if (spec.jobDir.slice(spec.storageRoot.length + 1).split(path.sep).length < 2) {
+    throw new Error("jobDir must be at least two levels below storageRoot");
+  }
+  const assetsDir = path.join(spec.storageRoot, "assets");
+  if (spec.jobDir === assetsDir || spec.jobDir.startsWith(assetsDir + path.sep) || assetsDir.startsWith(spec.jobDir + path.sep)) {
+    throw new Error("jobDir must not overlap the shared assets directory");
+  }
   await assertRealDir(spec.storageRoot, "storageRoot");
   await assertRealDir(spec.jobDir, "jobDir");
 
@@ -99,6 +110,9 @@ export async function buildDockerArgs(spec: RenderJobSpec): Promise<string[]> {
     "--memory", `${Math.ceil(limits.memoryMb)}m`,
     "--memory-swap", `${Math.ceil(limits.memoryMb)}m`,
     "--cpus", String(limits.cpus),
+    "--log-driver", "local",
+    "--log-opt", "max-size=10m",
+    "--log-opt", "max-file=2",
     "--label", `${JOB_LABEL}=${spec.jobId}`,
     "-v", `${spec.jobDir}:${spec.jobDir}:rw`,
     ...(hasAssets ? ["-v", `${assets}:${assets}:ro`] : []),
@@ -126,16 +140,27 @@ function collectLogs(containerId: string): Promise<string> {
 
 export async function startRenderJob(spec: RenderJobSpec): Promise<RunningJob> {
   const args = await buildDockerArgs(spec);
-  const { stdout } = await run("docker", args, { timeout: 60_000 });
-  const containerId = stdout.trim();
-  if (!/^[0-9a-f]{12,64}$/.test(containerId)) throw new Error("docker run did not return a container id");
+  const { signal } = spec;
+  signal?.throwIfAborted();
+  let containerId: string;
+  try {
+    const { stdout } = await run("docker", args, { timeout: 60_000, signal });
+    containerId = stdout.trim();
+    if (!/^[0-9a-f]{12,64}$/.test(containerId)) throw new Error("docker run did not return a container id");
+    signal?.throwIfAborted();
+  } catch (err) {
+    // The daemon may still create/start the container after the CLI died: sweep now and once more shortly after.
+    await removeJobContainers(spec.jobId).catch(() => undefined);
+    setTimeout(() => void removeJobContainers(spec.jobId).catch(() => undefined), 1000).unref();
+    throw err;
+  }
 
   let killed: Promise<void> | undefined;
   let waited: Promise<{ exitCode: number; logs: string }> | undefined;
 
   const removeQuietly = () => run("docker", ["rm", "-f", containerId], { timeout: 30_000 }).then(() => undefined, () => undefined);
 
-  return {
+  const job: RunningJob = {
     containerId,
     kill() {
       killed ??= (async () => {
@@ -166,6 +191,8 @@ export async function startRenderJob(spec: RenderJobSpec): Promise<RunningJob> {
       return waited;
     },
   };
+  signal?.addEventListener("abort", () => void job.kill(), { once: true });
+  return job;
 }
 
 // For the reconciler: remove every container (running or not) labelled with this job.
