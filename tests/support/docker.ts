@@ -34,15 +34,36 @@ export async function dockerOk(args: string[], timeoutMs?: number): Promise<stri
   return r.stdout.trim();
 }
 
+/**
+ * OrbStack's own DNS answers host.docker.internal / host.internal; plain Docker (Linux CI) has no such names.
+ * YT_TEST_FORCE_PLAIN_DOCKER=1 makes this report "not OrbStack" so the plain-Docker path can run locally.
+ */
+export async function isOrbStack(): Promise<boolean> {
+  if (process.env.YT_TEST_FORCE_PLAIN_DOCKER === "1") return false;
+  const r = await docker(["info", "--format", "{{.OperatingSystem}} {{.Name}}"]);
+  return r.code === 0 && /orbstack/i.test(r.stdout);
+}
+
+/** On plain Docker, gives containers the host names OrbStack provides, pointing at the host gateway. */
+export const HOST_GATEWAY_ALIASES = ["--add-host", "host.docker.internal:host-gateway", "--add-host", "host.internal:host-gateway"];
+
 export interface NetworkOptions {
   subnet?: string;
   label?: string;
+  /** Default true. Only a positive control may turn it off. */
+  isolateGateway?: boolean;
 }
 
-/** Creates an `--internal` (no default route) bridge network; resolves to its remover. */
+// `--internal` alone removes the default route but still gives the Docker host an address on the bridge (the
+// gateway), so containers can reach anything the host namespace serves on 0.0.0.0/::. Isolated gateway mode
+// (Docker >= 28) leaves the bridge without a host address. The IPv6 option is accepted without --ipv6.
+const ISOLATED_GATEWAY = ["-o", "com.docker.network.bridge.gateway_mode_ipv4=isolated", "-o", "com.docker.network.bridge.gateway_mode_ipv6=isolated"];
+
+/** Creates an `--internal` (no default route, no host address) bridge network; resolves to its remover. */
 export async function createInternalNetwork(name: string, opts: NetworkOptions = {}): Promise<() => Promise<void>> {
   await dockerOk([
     "network", "create", "--internal",
+    ...(opts.isolateGateway === false ? [] : ISOLATED_GATEWAY),
     ...(opts.subnet ? ["--subnet", opts.subnet] : []),
     ...(opts.label ? ["--label", opts.label] : []),
     name,

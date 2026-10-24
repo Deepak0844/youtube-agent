@@ -4,12 +4,15 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { classifyAddress } from "@/server/core/net-policy";
 import { assertDockerUp } from "../support/infra";
 import {
   containerIp,
   createInternalNetwork,
   docker,
   dockerOk,
+  HOST_GATEWAY_ALIASES,
+  isOrbStack,
   removeLabelled,
   runIn,
   startContainer,
@@ -46,6 +49,19 @@ for (const host of process.env.HOSTS.split(",")) {
     c.on("error", () => {});
     c.end("HTTP/1.1 200 OK\\r\\nContent-Length: 6\\r\\nConnection: close\\r\\n\\r\\ncanary");
   }).listen(port, host, () => console.log("READY " + host));
+}`;
+
+// Runs in the Docker host's own network namespace (--network host): the VM on OrbStack, the runner on Linux.
+// One listener on 0.0.0.0, one on "::" (dual-stack); the "::" one is skipped when the host has no IPv6.
+const HOSTNS_CANARY = `
+const net = require("net");
+for (const [host, port] of [["0.0.0.0", Number(process.env.PORT4)], ["::", Number(process.env.PORT6)]]) {
+  net.createServer((c) => {
+    console.log("HIT " + host + " " + c.remoteAddress);
+    c.on("error", () => {});
+    c.end("hostns");
+  }).on("error", (e) => console.log("READY " + host + " unavailable " + e.code))
+    .listen(port, host, () => console.log("READY " + host));
 }`;
 
 const STANDIN = `
@@ -214,6 +230,12 @@ async function internetReachable(): Promise<boolean> {
 const LAN = hostLanAddresses();
 const GATEWAY = defaultGateway();
 const ONLINE = await internetReachable();
+// OrbStack answers host.docker.internal/host.internal itself; plain Docker (Linux CI) gets them via --add-host
+// host-gateway on every container here, so the host.* rows test a real host route on both.
+const ORBSTACK = await isOrbStack();
+const HOST_ALIASES = ORBSTACK ? [] : HOST_GATEWAY_ALIASES;
+const run = (network: string, image: string, command: string[], env: Record<string, string> = {}, extraArgs: string[] = [], timeoutMs?: number) =>
+  runIn(network, image, command, env, { label: LABEL, extraArgs: [...HOST_ALIASES, ...extraArgs], timeoutMs });
 
 // ---------------------------------------------------------------------------------------------
 // Shared state.
@@ -233,7 +255,8 @@ let hostLoopPort = HOST_PORT_PLACEHOLDER;
 const hostHits: string[] = [];
 let loopbackCanary: ChildProcess | undefined;
 const loopbackHits: string[] = [];
-const ports = { canary: port(), standin: port(), loopback: port(), metadata: port() };
+const ports = { canary: port(), standin: port(), loopback: port(), metadata: port(), hostns4: port(), hostns6: port() };
+let hostnsId = "";
 let proxyId = "";
 let prodProxyId = "";
 let badTokenProxyId = "";
@@ -249,7 +272,7 @@ async function proxyLogs(): Promise<ProxyLog[]> {
 }
 
 async function viaProxy(reqs: Array<Record<string, unknown>>, proxy = "egress-proxy:3128"): Promise<Record<string, Result>> {
-  const r = await runIn(FETCHER_NET, NODE_IMAGE, ["node", "-e", PROXY_CLIENT], { REQS: JSON.stringify(reqs), PROXY: proxy }, { label: LABEL });
+  const r = await run(FETCHER_NET, NODE_IMAGE, ["node", "-e", PROXY_CLIENT], { REQS: JSON.stringify(reqs), PROXY: proxy });
   if (r.code !== 0) throw new Error(`proxy client failed: ${r.stderr}`);
   return JSON.parse(r.stdout);
 }
@@ -314,7 +337,11 @@ beforeAll(async () => {
     name: `yt-standin-${RUN}`, image: NODE_IMAGE, label: LABEL, networks: [{ network: STANDIN_NET }],
     env: { PORT: String(ports.standin) }, command: ["node", "-e", STANDIN],
   });
-  await Promise.all([ready(canaryId), ready(standinId)]);
+  hostnsId = await startContainer({
+    name: `yt-hostns-${RUN}`, image: NODE_IMAGE, label: LABEL, networks: [{ network: "host" }],
+    env: { PORT4: String(ports.hostns4), PORT6: String(ports.hostns6) }, command: ["node", "-e", HOSTNS_CANARY],
+  });
+  await Promise.all([ready(canaryId), ready(standinId), ready(hostnsId, 2)]);
   ip.canary = await containerIp(canaryId, FETCHER_NET);
   ip.standin = await containerIp(standinId, STANDIN_NET);
 
@@ -328,18 +355,18 @@ beforeAll(async () => {
 
   // Proxies are started without --user: the image itself must be non-root (asserted below).
   proxyId = await startContainer({
-    name: `egress-proxy-${RUN}`, image: PROXY_IMAGE, label: LABEL, unprivileged: false,
+    name: `egress-proxy-${RUN}`, image: PROXY_IMAGE, label: LABEL, unprivileged: false, extraArgs: HOST_ALIASES,
     networks: [{ network: FETCHER_NET, alias: "egress-proxy" }, { network: "bridge" }, { network: STANDIN_NET }],
     env: { NODE_ENV: "test", PROXY_TEST_TOKEN: TOKEN, RESOLVE_OVERRIDE: override },
   });
   const hookProbe = `onlypublic.test=${ip.standin}`;
   prodProxyId = await startContainer({
-    name: `egress-proxy-prod-${RUN}`, image: PROXY_IMAGE, label: LABEL, unprivileged: false,
+    name: `egress-proxy-prod-${RUN}`, image: PROXY_IMAGE, label: LABEL, unprivileged: false, extraArgs: HOST_ALIASES,
     networks: [{ network: FETCHER_NET, alias: "egress-proxy-prod" }, { network: STANDIN_NET }],
     env: { PROXY_TEST_TOKEN: TOKEN, RESOLVE_OVERRIDE: hookProbe }, // no NODE_ENV: image default (production)
   });
   badTokenProxyId = await startContainer({
-    name: `egress-proxy-badtoken-${RUN}`, image: PROXY_IMAGE, label: LABEL, unprivileged: false,
+    name: `egress-proxy-badtoken-${RUN}`, image: PROXY_IMAGE, label: LABEL, unprivileged: false, extraArgs: HOST_ALIASES,
     networks: [{ network: FETCHER_NET, alias: "egress-proxy-badtoken" }, { network: STANDIN_NET }],
     env: { NODE_ENV: "test", PROXY_TEST_TOKEN: "short", RESOLVE_OVERRIDE: hookProbe },
   });
@@ -389,15 +416,52 @@ describe("client isolation", () => {
       ["1.1.1.1", 80], ["host.docker.internal", hostPort], ["0.250.250.254", hostPort],
       ...LAN.map((a) => [a, hostPort]), [ip.proxyInternal, ADMIN_PORT],
     ];
-    const r = await runIn(FETCHER_NET, NODE_IMAGE, ["node", "-e", DIRECT_CLIENT], { TARGETS: JSON.stringify(targets) }, { label: LABEL });
+    const r = await run(FETCHER_NET, NODE_IMAGE, ["node", "-e", DIRECT_CLIENT], { TARGETS: JSON.stringify(targets) });
     expect(r.code, r.stderr).toBe(0);
     const out = JSON.parse(r.stdout) as Record<string, string>;
     expect(out.fetch).toMatch(/^error /);
     expect(out.dns).toMatch(/^error /);
     for (const [h, p] of targets) expect(out[`${h}:${p}`], `${h}:${p}`).not.toBe("connected");
-    const getent = await runIn(FETCHER_NET, NODE_IMAGE, ["getent", "hosts", "example.com"], {}, { label: LABEL });
+    const getent = await run(FETCHER_NET, NODE_IMAGE, ["getent", "hosts", "example.com"]);
     expect(getent.code).not.toBe(0);
     expect(hostHits).toEqual([]);
+  });
+
+  // A plain `--internal` bridge still gives the Docker host an address on it (the gateway), and anything the
+  // host namespace listens on via 0.0.0.0/:: answers there, past the proxy. The fetcher network must not.
+  it("client_cannot_reach_docker_host_namespace_listeners", async () => {
+    const hostnsAddrs = async () =>
+      [...(await dockerOk(["exec", hostnsId, "ip", "-o", "addr"])).matchAll(/\binet6? ([0-9a-f.:]+)\//g)]
+        .map((m) => m[1] as string)
+        .filter((a) => !a.startsWith("127.") && a !== "::1" && !a.startsWith("fe80:"));
+    const v6 = !(await docker(["logs", hostnsId])).stdout.includes("READY :: unavailable");
+    const hostPorts = [ports.hostns4, ...(v6 ? [ports.hostns6] : [])];
+    const gatewayOf = async (net: string) => {
+      const [cfg] = JSON.parse(await dockerOk(["network", "inspect", net, "--format", "{{json .IPAM.Config}}"])) as Array<{ Subnet: string; Gateway?: string }>;
+      return cfg?.Gateway || (cfg?.Subnet ?? "").replace(/\.0\/\d+$/, ".1"); // isolated mode: no gateway, try .1
+    };
+
+    const addrs = [...new Set([await gatewayOf(FETCHER_NET), ...(await hostnsAddrs())])];
+    expect(addrs.length).toBeGreaterThan(1);
+    const targets = addrs.flatMap((a) => hostPorts.map((p) => [a, p]));
+    const r = await run(FETCHER_NET, NODE_IMAGE, ["node", "-e", DIRECT_CLIENT], { TARGETS: JSON.stringify(targets) });
+    expect(r.code, r.stderr).toBe(0);
+    const out = JSON.parse(r.stdout) as Record<string, string>;
+    for (const [h, p] of targets) expect(out[`${h}:${p}`], `${h}:${p}`).not.toBe("connected");
+    expect(await hitsIn(hostnsId)).toEqual([]);
+
+    // Positive control: the same canary is reachable from a plain (non-isolated) --internal network's gateway.
+    const plainNet = `yt-plain-${RUN}`;
+    const removePlain = await createInternalNetwork(plainNet, { label: LABEL, isolateGateway: false });
+    try {
+      const gw = await gatewayOf(plainNet);
+      const ctl = await run(plainNet, NODE_IMAGE, ["node", "-e", DIRECT_CLIENT], { TARGETS: JSON.stringify(hostPorts.map((p) => [gw, p])) });
+      const live = JSON.parse(ctl.stdout) as Record<string, string>;
+      for (const p of hostPorts) expect(live[`${gw}:${p}`], `control ${gw}:${p}`).toBe("connected");
+      await waitFor(async () => (await hitsIn(hostnsId)).length >= hostPorts.length, "host-namespace canary hits");
+    } finally {
+      await removePlain();
+    }
   });
 
   it("admin_port_is_loopback_only_and_needs_the_token", async () => {
@@ -466,7 +530,7 @@ describe("unreachable-address matrix", () => {
     port: () => number;
     cls?: string; // expected class in "blocked: <class>" when it is environment-independent
     canary?: Canary;
-    hostname?: boolean; // may legitimately be unresolvable on other engines (e.g. Linux CI)
+    hostname?: boolean; // a host.* name: must resolve (OrbStack DNS or --add-host) and be blocked by its class
   }
   const rows: Row[] = [
     { name: "host.internal", host: () => "host.internal", port: () => hostPort, canary: "host", hostname: true },
@@ -497,8 +561,14 @@ describe("unreachable-address matrix", () => {
   let results: Record<string, Result> = {};
   let logs: ProxyLog[] = [];
   let logsBefore = 0;
+  const hostNameClasses = new Map<string, Set<string>>();
 
   beforeAll(async () => {
+    // What each host.* name resolves to inside the proxy: the row must be refused with one of these classes.
+    for (const name of ["host.internal", "host.docker.internal"]) {
+      const out = (await docker(["exec", proxyId, "getent", "ahosts", name])).stdout;
+      hostNameClasses.set(name, new Set(out.split("\n").map((l) => l.split(/\s+/)[0]).filter(Boolean).map((a) => classifyAddress(a as string))));
+    }
     logsBefore = (await proxyLogs()).length;
     results = await viaProxy(rows.flatMap((r) => kinds.map((kind) => ({ id: `${r.name}/${kind}`, kind, host: r.host(), port: r.port() }))));
     logs = (await proxyLogs()).slice(logsBefore);
@@ -512,13 +582,17 @@ describe("unreachable-address matrix", () => {
 
   it.each(rows.flatMap((r) => kinds.map((k) => [`blocked_${r.name}_${k}`, r, k] as const)))("%s", async (_n, row, kind) => {
     const res = results[`${row.name}/${kind}`];
-    const blocked = res?.status === 403 && /^blocked: [a-z]+$/.test(res.body ?? "");
-    const unresolvable = row.hostname === true && res?.status === 502 && /^unresolvable/.test(res.body ?? "");
-    expect(blocked || unresolvable, JSON.stringify(res)).toBe(true);
-    if (row.cls && blocked) expect(res?.body).toBe(`blocked: ${row.cls}`);
+    expect(res?.status, JSON.stringify(res)).toBe(403);
+    expect(res?.body, JSON.stringify(res)).toMatch(/^blocked: [a-z]+$/);
+    if (row.cls) expect(res?.body).toBe(`blocked: ${row.cls}`);
+    if (row.hostname) {
+      const classes = [...(hostNameClasses.get(row.host()) ?? [])];
+      expect(classes.length, `${row.host()} must resolve in the proxy`).toBeGreaterThan(0);
+      expect(classes.map((c) => `blocked: ${c}`)).toContain(res?.body);
+    }
     expect(["canary", "host", "standin ok"]).not.toContain(res?.body);
     const mine = logs.filter((l) => l.kind === (kind === "get" ? "http" : "connect") && l.host === logHost(row.host()) && l.port === row.port());
-    expect(mine.map((l) => l.decision), JSON.stringify(logs)).toEqual([blocked ? "block" : "error"]);
+    expect(mine.map((l) => l.decision), JSON.stringify(logs)).toEqual(["block"]);
   });
 
   it("canaries_saw_zero_connections", async () => {
@@ -557,10 +631,9 @@ describe("dns answers", () => {
 
 describe("chrome through the proxy", () => {
   async function chrome(urls: string[]): Promise<Record<string, { status?: number; error?: string }>> {
-    const r = await runIn(
+    const r = await run(
       FETCHER_NET, RENDER_IMAGE, ["node", "-e", CHROME_CLIENT],
-      { URLS: JSON.stringify(urls), CHROME_PROXY: "http://egress-proxy:3128" },
-      { label: LABEL, extraArgs: ["--shm-size=256m"], timeoutMs: 120_000 },
+      { URLS: JSON.stringify(urls), CHROME_PROXY: "http://egress-proxy:3128" }, ["--shm-size=256m"], 120_000,
     );
     const line = r.stdout.split("\n").find((l) => l.startsWith("RESULT "));
     if (r.code !== 0 || !line) throw new Error(`chrome client failed (${r.code}): ${r.stderr.slice(-2000)}`);
@@ -611,6 +684,8 @@ describe("chrome through the proxy", () => {
 
 // Last: positive controls prove the canaries would have noticed a connection (zero hits above is meaningful).
 describe("canary positive controls", () => {
+  let liveHostRoutes: Record<string, string> = {};
+
   it("canaries_detect_direct_connections", async () => {
     // From the proxy's vantage point (default bridge), bypassing the proxy: which host routes are live?
     const hostRoutes: Array<[string, number]> = [
@@ -618,18 +693,17 @@ describe("canary positive controls", () => {
       ...LAN.map((a): [string, number] => [a, hostPort]),
       [ip.bridgeGateway, hostPort],
     ];
-    const r = await runIn("bridge", NODE_IMAGE, ["node", "-e", DIRECT_CLIENT], { TARGETS: JSON.stringify(hostRoutes) }, { label: LABEL });
+    const r = await run("bridge", NODE_IMAGE, ["node", "-e", DIRECT_CLIENT], { TARGETS: JSON.stringify(hostRoutes) });
     const live = JSON.parse(r.stdout) as Record<string, string>;
     writeFileSync("test-results/egress-controls.json", JSON.stringify({ hostRoutes: live, hostHits }, null, 2));
-    // On OrbStack these must all be live (so "zero hits" in the matrix is meaningful); elsewhere a name may not exist.
-    for (const h of ["host.docker.internal", "host.internal", "0.250.250.254"]) {
-      for (const p of [hostPort, hostLoopPort]) expect(["connected", "ENOTFOUND", "EAI_AGAIN"], `${h}:${p}`).toContain(live[`${h}:${p}`]);
-    }
-    expect(live[`host.docker.internal:${hostLoopPort}`]).toBe("connected");
+    // Both names must be live host routes on every engine (OrbStack DNS, or --add-host host-gateway on plain
+    // Docker), so "zero hits" for the host.* rows in the matrix is meaningful.
+    for (const h of ["host.docker.internal", "host.internal"]) expect(live[`${h}:${hostPort}`], `${h}:${hostPort}`).toBe("connected");
+    liveHostRoutes = live;
     const connected = Object.entries(live).filter(([k, v]) => k.includes(":") && v === "connected").length;
     await waitFor(async () => hostHits.length >= connected, "host canary hits");
 
-    const direct = await runIn(FETCHER_NET, NODE_IMAGE, ["node", "-e", DIRECT_CLIENT], { TARGETS: JSON.stringify([[ip.canary, ports.canary]]) }, { label: LABEL });
+    const direct = await run(FETCHER_NET, NODE_IMAGE, ["node", "-e", DIRECT_CLIENT], { TARGETS: JSON.stringify([[ip.canary, ports.canary]]) });
     expect(JSON.parse(direct.stdout)[`${ip.canary}:${ports.canary}`]).toBe("connected");
     await waitFor(async () => (await hitsIn(canaryId)).length > 0, "internal canary hit");
 
@@ -637,5 +711,14 @@ describe("canary positive controls", () => {
       await dockerOk(["exec", proxyId, "node", "-e", `require("net").connect(${ports.loopback},"${h}").on("connect",function(){this.destroy()})`]);
     }
     await waitFor(async () => loopbackHits.length >= 2, "loopback canary hits");
+  });
+
+  // 0.250.250.254 is OrbStack's host address and OrbStack delivers host traffic as 127.0.0.1, so there even the
+  // loopback-only server is live. Plain Docker's host-gateway reaches the host's real interfaces instead (asserted
+  // above via the host.* names), and 0.250.250.254 is unroutable there: nothing to control.
+  it.skipIf(!ORBSTACK)("orbstack_host_routes_are_live (OrbStack only: skipped on plain Docker, where 0.250.250.254 and 127.0.0.1-only host routes do not exist)", () => {
+    for (const h of ["host.docker.internal", "host.internal", "0.250.250.254"]) {
+      for (const p of [hostPort, hostLoopPort]) expect(liveHostRoutes[`${h}:${p}`], `${h}:${p}`).toBe("connected");
+    }
   });
 });
