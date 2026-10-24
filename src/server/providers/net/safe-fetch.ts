@@ -18,8 +18,9 @@ export class BlockedAddressError extends Error {
   constructor(
     public readonly address: string,
     public readonly reason: AddressClass | "own-service",
+    detail?: string,
   ) {
-    super(`Blocked address ${address} (${reason})`);
+    super(detail ?? `Blocked address ${address} (${reason})`);
     this.name = "BlockedAddressError";
   }
 }
@@ -77,6 +78,8 @@ async function resolveOwnServices(opts: SafeFetchOptions, signal: AbortSignal): 
         } catch (e) {
           if (signal.aborted) throw e;
         }
+        // Fail closed: an own service we cannot resolve cannot be excluded by address.
+        if (addrs.length === 0) throw new BlockedAddressError(host, "own-service", `own service "${host}" did not resolve`);
       }
       const ips = new Set(addrs.map(canonical));
       const loopback = [...ips].some((ip) => ip === "0.0.0.0" || ip === "::" || classifyAddress(ip) === "loopback");
@@ -110,10 +113,11 @@ async function resolveValidated(url: URL, opts: SafeFetchOptions, own: OwnServic
   return addresses;
 }
 
-function pinnedAgent(addresses: string[]): Agent {
+function pinnedAgent(addresses: string[], timeoutMs: number): Agent {
   return new Agent({
     keepAliveTimeout: 1,
     connect: {
+      timeout: timeoutMs,
       // Always answer with the pre-validated address: no second DNS lookup (anti-rebinding).
       // Host header and TLS servername still derive from the original hostname.
       lookup: (_host, options, cb) => {
@@ -131,7 +135,8 @@ function pinnedAgent(addresses: string[]): Agent {
 
 export async function safeFetch(url: string, init: RequestInit | undefined, options: SafeFetchOptions): Promise<Response> {
   const maxRedirects = options.maxRedirects ?? 5;
-  const timeout = AbortSignal.timeout(options.timeoutMs ?? 10_000);
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const timeout = AbortSignal.timeout(timeoutMs);
   const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
   const own = await resolveOwnServices(options, signal);
   let current = new URL(url);
@@ -144,7 +149,7 @@ export async function safeFetch(url: string, init: RequestInit | undefined, opti
       throw new Error(`Unsupported URL scheme ${current.protocol}`);
     }
     const addresses = await resolveValidated(current, options, own, signal);
-    const agent = pinnedAgent(addresses);
+    const agent = pinnedAgent(addresses, timeoutMs);
     let closeNow = true;
     try {
       const res = (await undiciFetch(current, {
@@ -174,7 +179,8 @@ export async function safeFetch(url: string, init: RequestInit | undefined, opti
       }
       current = next;
     } finally {
-      if (closeNow) await agent.close().catch(() => undefined);
+      // Not awaited: close() waits for a pending connect, which must not outlive the call.
+      if (closeNow) void agent.close().catch(() => undefined);
     }
   }
 }

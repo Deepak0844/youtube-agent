@@ -134,6 +134,43 @@ describe("safeFetch", () => {
     expect(err.reason).toBe("own-service");
   });
 
+  it("own_service_lookup_failure_fails_closed", async () => {
+    const err = await safeFetch(`http://127.0.0.1:${ok}/`, undefined, {
+      mode: "typed",
+      ownServices: [{ host: "pg", port: ok }],
+      lookup: async () => {
+        throw Object.assign(new Error("getaddrinfo ENOTFOUND pg"), { code: "ENOTFOUND" });
+      },
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("own-service");
+    expect(err.message).toContain("pg");
+  });
+
+  it("own_service_empty_answer_fails_closed", async () => {
+    const err = await safeFetch(`http://127.0.0.1:${ok}/`, undefined, {
+      mode: "typed",
+      ownServices: [{ host: "pg", port: ok }],
+      lookup: async () => [],
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(BlockedAddressError);
+    expect(err.reason).toBe("own-service");
+  });
+
+  it("own_service_ip_literal_entry_needs_no_lookup", async () => {
+    let looked = 0;
+    const res = await safeFetch(`http://127.0.0.1:${ok}/`, undefined, {
+      mode: "typed",
+      ownServices: [{ host: "10.9.9.9", port: ok }],
+      lookup: async () => {
+        looked++;
+        return ["127.0.0.1"];
+      },
+    });
+    expect(await res.text()).toBe("ok");
+    expect(looked).toBe(0);
+  });
+
   it("typed_refuses_metadata_address", async () => {
     const err = await safeFetch("http://meta.test/", undefined, { mode: "typed", lookup: lookupTo("169.254.169.254") }).catch((e) => e);
     expect(err).toBeInstanceOf(BlockedAddressError);
@@ -241,6 +278,15 @@ describe("safeFetch", () => {
       safeFetch("http://slow.test/", undefined, { mode: "typed", timeoutMs: 300, lookup: () => new Promise<string[]>(() => undefined) }),
     ).rejects.toThrow();
     expect(Date.now() - start).toBeLessThan(1000);
+  });
+
+  it("connect_hang_respects_timeout", async () => {
+    // Non-routable address: connect hangs (or fails fast with ENETUNREACH); either way the call must end in time.
+    const start = Date.now();
+    await expect(
+      safeFetch("http://172.17.0.2:5432/", {}, { mode: "typed", timeoutMs: 500 }),
+    ).rejects.toThrow();
+    expect(Date.now() - start).toBeLessThan(1500);
   });
 
   it("times_out_when_server_never_answers", async () => {
