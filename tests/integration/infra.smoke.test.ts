@@ -33,9 +33,7 @@ describe("test infrastructure", () => {
     process.env.DOCKER_HOST = "unix:///nonexistent/docker.sock";
     const started = Date.now();
     try {
-      await expect(assertDockerUp()).rejects.toThrow(
-        "Docker engine not reachable. Start OrbStack and retry.",
-      );
+      await expect(assertDockerUp()).rejects.toThrow("Docker engine not reachable");
     } finally {
       if (saved === undefined) delete process.env.DOCKER_HOST;
       else process.env.DOCKER_HOST = saved;

@@ -19,12 +19,24 @@ async function pointAtActiveContext(): Promise<void> {
   }
 }
 
+const NOT_REACHABLE = "Docker engine not reachable. Start OrbStack and retry.";
+
+// Some Docker CLIs exit 0 and print an empty or placeholder value when the daemon is unreachable,
+// so success means: a non-empty, version-shaped string (digits and dots, optional suffix).
+export function parseServerVersion(output: string): string {
+  const v = output.trim();
+  if (!/^\d+(\.\d+)+[\w.+~-]*$/.test(v)) throw new Error(NOT_REACHABLE);
+  return v;
+}
+
 export async function assertDockerUp(): Promise<void> {
+  let stdout: string;
   try {
-    await run("docker", ["info", "--format", "{{.ServerVersion}}"], { timeout: 4000 });
+    ({ stdout } = await run("docker", ["info", "--format", "{{.ServerVersion}}"], { timeout: 4000 }));
   } catch {
-    throw new Error("Docker engine not reachable. Start OrbStack and retry.");
+    throw new Error(NOT_REACHABLE);
   }
+  parseServerVersion(stdout);
 }
 
 export interface Infra {
