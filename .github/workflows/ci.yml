@@ -2,7 +2,15 @@ name: ci
 
 on:
   push:
+    branches: [main, develop]
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   # Install steps must not need a registry token; CI never calls paid APIs or YouTube.
@@ -24,6 +32,9 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    env:
+      # CI has no copy of the old shorts repo; the test also skips itself when it is absent.
+      SKIP_OLD_SHORTS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,6 +42,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Build sandbox images
+        run: |
+          npm run image:render
+          npm run image:egress-proxy
       - run: npm run test:integration
 
   e2e:
@@ -56,6 +71,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Every Dockerfile under infra/ must be named Dockerfile.<name>
+        run: |
+          bad=$(find infra -type f -name 'Dockerfile*' ! -name 'Dockerfile.?*')
+          if [ -n "$bad" ]; then
+            echo "These do not match infra/Dockerfile.<name> and would not be built or checked:"
+            echo "$bad"
+            exit 1
+          fi
       - name: Build our images and check for python
         run: |
           shopt -s nullglob
@@ -65,5 +88,5 @@ jobs:
             docker build -f "$f" -t "$tag" .
             images+=("$tag")
           done
-          if [ ${#images[@]} -eq 0 ]; then echo "no images yet"; exit 0; fi
+          if [ ${#images[@]} -eq 0 ]; then echo "no images yet"; exit 1; fi
           bash infra/check-no-python.sh "${images[@]}"
