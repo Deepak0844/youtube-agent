@@ -9,7 +9,7 @@
     "worker": "tsx src/worker/index.ts",
     "dev:all": "concurrently -k -n web,worker \"next dev -H 127.0.0.1\" \"tsx watch src/worker/index.ts\"",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p infra/egress-proxy",
+    "typecheck": "next typegen && tsc --noEmit && tsc --noEmit -p infra/egress-proxy",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
