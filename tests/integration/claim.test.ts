@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
 import {
+  MAX_LEASE_MS,
+  MIN_LEASE_MS,
   claimStage,
   commitStage,
   failStage,
@@ -246,5 +248,74 @@ describe("fenced claim", () => {
 
   it("getStage_returns_null_for_unknown_id", async () => {
     expect(await getStage(db.pool, uuidv7())).toBeNull();
+  });
+});
+
+describe("ttl validation and atomic claim", () => {
+  it("claim_rejects_zero_negative_nan_infinity_fractional_ttl", async () => {
+    const id = await queued();
+    for (const ttlMs of [0, -60_000, Number.NaN, Infinity, -Infinity, 1.5, Number.MAX_SAFE_INTEGER + 2]) {
+      await expect(claimStage(db.pool, { id, inputHash: "h1", workerId: "w", ttlMs }), String(ttlMs)).rejects.toThrow(
+        RangeError,
+      );
+    }
+  });
+
+  it("claim_rejects_ttl_above_24h", async () => {
+    const id = await queued();
+    for (const ttlMs of [MAX_LEASE_MS + 1, Number.MAX_SAFE_INTEGER]) {
+      await expect(claimStage(db.pool, { id, inputHash: "h1", workerId: "w", ttlMs })).rejects.toThrow(RangeError);
+    }
+  });
+
+  it("rejected_ttl_leaves_the_row_untouched", async () => {
+    const id = await queued();
+    const before = await getStage(db.pool, id);
+    await expect(claimStage(db.pool, { id, inputHash: "h1", workerId: "w", ttlMs: 0 })).rejects.toThrow(RangeError);
+    await expect(
+      claimStage(db.pool, { id, inputHash: "h1", workerId: "w", ttlMs: Number.MAX_SAFE_INTEGER }),
+    ).rejects.toThrow(RangeError);
+    expect(await getStage(db.pool, id)).toEqual(before);
+  });
+
+  it("heartbeat_rejects_invalid_ttl", async () => {
+    const id = await queued();
+    const claim = (await claimStage(db.pool, { id, inputHash: "h1", workerId: "w", ttlMs: TTL }))!;
+    const before = await getStage(db.pool, id);
+    for (const ttlMs of [0, -1, Number.NaN, Infinity, 2.5, MAX_LEASE_MS + 1, Number.MAX_SAFE_INTEGER]) {
+      await expect(heartbeat(db.pool, claim, ttlMs), String(ttlMs)).rejects.toThrow(RangeError);
+    }
+    expect(await getStage(db.pool, id)).toEqual(before);
+  });
+
+  it("claim_accepts_the_boundary_values", async () => {
+    for (const ttlMs of [MIN_LEASE_MS, MAX_LEASE_MS]) {
+      const id = await queued();
+      const claim = await claimStage(db.pool, { id, inputHash: "h1", workerId: "w", ttlMs });
+      expect(claim?.fence).toBe(1);
+      expect(Number.isNaN(claim!.leaseUntil.getTime())).toBe(false);
+    }
+  });
+
+  it("claim_that_cannot_be_converted_rolls_back_and_throws", async () => {
+    const id = await queued();
+    await db.pool.query("update stage_runs set fence = 9007199254740991 where id=$1", [id]);
+    await expect(claimStage(db.pool, { id, inputHash: "h1", workerId: "w", ttlMs: TTL })).rejects.toThrow();
+    const after = await db.pool.query("select status, fence::text as fence, lease_owner from stage_runs where id=$1", [id]);
+    expect(after.rows[0]).toEqual({ status: "queued", fence: "9007199254740991", lease_owner: null });
+  });
+
+  it("functions_work_inside_a_caller_transaction_on_a_PoolClient", async () => {
+    const id = await queued();
+    const client = await db.pool.connect();
+    try {
+      await client.query("begin");
+      const claim = await claimStage(client, { id, inputHash: "h1", workerId: "w", ttlMs: TTL });
+      expect(claim?.fence).toBe(1);
+      await client.query("rollback");
+    } finally {
+      client.release();
+    }
+    expect((await getStage(db.pool, id))?.status).toBe("queued");
   });
 });
