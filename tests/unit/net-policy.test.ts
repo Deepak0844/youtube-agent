@@ -43,6 +43,16 @@ const cases: [string, AddressClass][] = [
   ["::a00:1", "reserved"],
   ["2002:7f00:1::", "reserved"],
   ["64:ff9b::7f00:1", "reserved"],
+  // OrbStack, discovered in Task 6: host.docker.internal / host.internal / host.orb.internal answer
+  // 0.250.250.254 + fd07:b51a:cc66:f0::fe (both reach the Mac's 127.0.0.1), gateway.docker.internal
+  // 0.250.250.1, container DNS 0.250.250.200, user networks 192.168.97.0/24 and up.
+  ["0.250.250.254", "reserved"],
+  ["0.250.250.1", "reserved"],
+  ["0.250.250.200", "reserved"],
+  ["fd07:b51a:cc66:f0::fe", "private"],
+  ["fd07:b51a:cc66:f0::1", "private"],
+  ["192.168.215.1", "docker"],
+  ["192.168.97.2", "private"],
 ];
 
 describe("classifyAddress", () => {

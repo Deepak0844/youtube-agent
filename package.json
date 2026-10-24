@@ -9,13 +9,14 @@
     "worker": "tsx src/worker/index.ts",
     "dev:all": "concurrently -k -n web,worker \"next dev -H 127.0.0.1\" \"tsx watch src/worker/index.ts\"",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p infra/egress-proxy",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
     "test:api": "playwright test --project=api",
     "image:render": "docker build -f infra/Dockerfile.render -t ytstudio-render:dev .",
-    "test:ui": "playwright test --project=ui-desktop --project=ui-phone"
+    "test:ui": "playwright test --project=ui-desktop --project=ui-phone",
+    "image:egress-proxy": "docker build -f infra/Dockerfile.egress-proxy -t ytstudio-egress-proxy:dev ."
   },
   "dependencies": {
     "ipaddr.js": "^2.5.0",
@@ -35,6 +36,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "concurrently": "^10.0.6",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "get-port": "^7.2.0",
