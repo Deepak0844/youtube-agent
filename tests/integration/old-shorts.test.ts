@@ -1,12 +1,13 @@
 import { execFile } from "node:child_process";
 import { assertFfprobeAvailable } from "../support/tools";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { cpus, tmpdir, totalmem } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
 import { JOB_LABEL, RENDER_IMAGE, removeJobContainers, startRenderJob } from "@/server/render/runner";
 import { assertDockerUp } from "../support/infra";
+import { removeStorageRoot } from "../support/storage";
 
 // Spike measurement: three published shorts from the old (read-only) project render inside the locked
 // sandbox. Needs the old repo next to this one; CI has none, so it skips. SKIP_OLD_SHORTS=1 skips it too.
@@ -51,7 +52,7 @@ const jobIds: string[] = [];
 
 afterAll(async () => {
   await Promise.all(jobIds.map((id) => removeJobContainers(id).catch(() => undefined)));
-  if (storageRoot) rmSync(storageRoot, { recursive: true, force: true });
+  await removeStorageRoot(storageRoot);
 });
 
 async function runJob(name: string, ids: readonly string[]): Promise<{ jobDir: string; out: JobOut; hostWallMs: number }> {

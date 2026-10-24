@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { removeJobContainers, startRenderJob, type RenderJobSpec } from "@/server/render/runner";
 import { assertDockerUp } from "../support/infra";
+import { removeStorageRoot } from "../support/storage";
 
 const run = promisify(execFile);
 const IMAGE = "ytstudio-render:dev";
@@ -44,8 +45,8 @@ afterEach(async () => {
   await Promise.all(started.splice(0).map((id) => removeJobContainers(id).catch(() => undefined)));
 });
 
-afterAll(() => {
-  if (storageRoot) rmSync(storageRoot, { recursive: true, force: true });
+afterAll(async () => {
+  await removeStorageRoot(storageRoot);
 });
 
 describe("render sandbox", () => {

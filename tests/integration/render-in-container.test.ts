@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -9,6 +9,7 @@ import { assertFfprobeAvailable } from "../support/tools";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { RENDER_IMAGE, removeJobContainers, startRenderJob } from "@/server/render/runner";
 import { assertDockerUp } from "../support/infra";
+import { removeStorageRoot } from "../support/storage";
 
 const run = promisify(execFile);
 const FIXTURE = path.resolve("tests/fixtures/remotion-spike");
@@ -121,7 +122,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await Promise.all(jobIds.map((id) => removeJobContainers(id).catch(() => undefined)));
-  if (storageRoot) rmSync(storageRoot, { recursive: true, force: true });
+  await removeStorageRoot(storageRoot);
 });
 
 describe("render in container", () => {
