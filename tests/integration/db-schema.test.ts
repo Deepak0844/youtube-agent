@@ -96,6 +96,23 @@ describe("schema", () => {
     }
   });
 
+  it("spend_intents_record_scopes_and_budgets_reject_negative_amounts", async () => {
+    const cols = await db.pool.query<{ column_name: string }>(
+      "select column_name from information_schema.columns where table_name='spend_intents'",
+    );
+    expect(cols.rows.map((r) => r.column_name)).toContain("scopes");
+    const stage = await insertStage();
+    await insertIntent(stage, "k-scopes");
+    const { rows } = await db.pool.query("select scopes from spend_intents where call_key='k-scopes'");
+    expect(rows[0].scopes).toEqual([]);
+    await expect(
+      db.pool.query("insert into budgets (scope, cap_micro_usd, reserved_micro_usd) values ('neg', 10, -1)"),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(db.pool.query("insert into budgets (scope, cap_micro_usd) values ('neg2', -1)")).rejects.toMatchObject({
+      code: "23514",
+    });
+  });
+
   it("migrate_destroys_the_client_when_unlock_fails_and_recovers", async () => {
     const released: unknown[] = [];
     const connect = async () => {

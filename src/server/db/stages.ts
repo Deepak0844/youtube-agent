@@ -1,8 +1,8 @@
 import pg from "pg";
 import { uuidv7 } from "@/server/core/ids";
 
-// Fenced stage execution. Every lease/expiry comparison uses the DATABASE clock (now()),
-// never the app clock, so workers on different machines agree. The fence only ever grows
+// Fenced stage execution. Every lease/expiry comparison uses the DATABASE clock (clock_timestamp(), which keeps
+// moving inside a long transaction, unlike now()), never the app clock, so workers on different machines agree. The fence only ever grows
 // (one bump per successful claim); every write by a worker is gated on its fence + owner.
 
 // Any exported function can join a caller's transaction by passing its PoolClient.
@@ -18,7 +18,7 @@ function assertTtl(ttlMs: number): void {
 }
 
 // Runs fn atomically: its own transaction on a Pool, or a savepoint inside the caller's transaction on a client.
-async function atomic<T>(db: Db, fn: (q: pg.ClientBase | pg.PoolClient) => Promise<T>): Promise<T> {
+export async function atomic<T>(db: Db, fn: (q: pg.ClientBase | pg.PoolClient) => Promise<T>): Promise<T> {
   if (db instanceof pg.Pool) {
     const client = await db.connect();
     try {
@@ -72,7 +72,7 @@ export interface StageRow {
 }
 
 // pg returns bigint as string; fail loudly rather than lose precision.
-function toNumber(v: string | number): number {
+export function toNumber(v: string | number): number {
   const n = Number(v);
   if (!Number.isSafeInteger(n)) throw new Error(`bigint out of safe range: ${v}`);
   return n;
@@ -103,7 +103,7 @@ export async function claimStage(
       `update stage_runs
           set status = 'running',
               lease_owner = $3,
-              lease_until = now() + ($4::bigint * interval '1 millisecond'),
+              lease_until = clock_timestamp() + ($4::bigint * interval '1 millisecond'),
               fence = fence + 1,
               updated_at = now()
         where id = $1 and status = 'queued' and input_hash = $2
@@ -132,9 +132,9 @@ export async function heartbeat(db: Db, claim: Claim, ttlMs: number): Promise<bo
   assertTtl(ttlMs);
   const res = await db.query(
     `update stage_runs
-        set lease_until = now() + ($4::bigint * interval '1 millisecond'),
+        set lease_until = clock_timestamp() + ($4::bigint * interval '1 millisecond'),
             updated_at = now()
-      where id = $1 and status = 'running' and fence = $2 and lease_owner = $3 and lease_until > now()`,
+      where id = $1 and status = 'running' and fence = $2 and lease_owner = $3 and lease_until > clock_timestamp()`,
     [claim.stageRunId, claim.fence, claim.workerId, ttlMs],
   );
   return res.rowCount === 1;

@@ -34,6 +34,8 @@ create table spend_intents (
   provider_ref text,
   result jsonb,
   fence bigint,
+  -- budget scopes this intent reserved against (settle/fail release exactly these)
+  scopes text[] not null default '{}',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -42,9 +44,9 @@ create index spend_intents_stage_run_idx on spend_intents (stage_run_id);
 
 create table budgets (
   scope text primary key,
-  cap_micro_usd bigint not null,
-  reserved_micro_usd bigint not null default 0,
-  spent_micro_usd bigint not null default 0
+  cap_micro_usd bigint not null check (cap_micro_usd >= 0),
+  reserved_micro_usd bigint not null default 0 check (reserved_micro_usd >= 0),
+  spent_micro_usd bigint not null default 0 check (spent_micro_usd >= 0)
 );
 
 create table uploads (
