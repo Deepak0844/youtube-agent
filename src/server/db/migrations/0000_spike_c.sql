@@ -60,10 +60,18 @@ create table uploads (
   last_progress_at timestamptz,
   started_at timestamptz,
   finished_at timestamptz,
-  youtube_id text
+  youtube_id text,
+  failure_reason text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 -- "Is there already an active/finished upload for this video?" guard.
 create index uploads_video_status_idx on uploads (video_id, status);
+-- Schema-level no-double-upload: at most one uploading/uploaded row per video.
+create unique index uploads_one_active_per_video on uploads (video_id) where status in ('uploading','uploaded');
+-- Per-channel quota/window queries and stalled-upload sweeps.
+create index uploads_channel_started_idx on uploads (channel_id, started_at);
+create index uploads_status_progress_idx on uploads (status, last_progress_at);
 
 create table upload_log (
   id bigserial primary key,

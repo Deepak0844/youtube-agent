@@ -68,4 +68,54 @@ describe("schema", () => {
     const { rows } = await db.pool.query("select fence, attempt_seq, cancel_requested from stage_runs where id=$1", [id]);
     expect(rows[0]).toEqual({ fence: "0", attempt_seq: 0, cancel_requested: false });
   });
+
+  it("uploads_allow_one_active_row_per_video", async () => {
+    const video = uuidv7();
+    const ins = (status: string, v = video) =>
+      db.pool.query("insert into uploads (id, video_id, status) values ($1,$2,$3)", [uuidv7(), v, status]);
+    await ins("publish_approved");
+    await ins("publish_approved");
+    await ins("upload_failed");
+    await ins("uploading");
+    await expect(ins("uploading")).rejects.toMatchObject({ code: "23505" });
+    await expect(ins("uploaded")).rejects.toMatchObject({ code: "23505" });
+    await ins("uploading", uuidv7());
+    const v2 = uuidv7();
+    await ins("uploaded", v2);
+    await expect(ins("uploaded", v2)).rejects.toMatchObject({ code: "23505" });
+  });
+
+  it("uploads_have_timestamps_failure_reason_and_query_indexes", async () => {
+    const cols = await db.pool.query<{ column_name: string }>(
+      "select column_name from information_schema.columns where table_name='uploads'",
+    );
+    for (const c of ["created_at", "updated_at", "failure_reason"]) expect(cols.rows.map((r) => r.column_name)).toContain(c);
+    const idx = await db.pool.query<{ indexname: string }>("select indexname from pg_indexes where tablename='uploads'");
+    for (const i of ["uploads_channel_started_idx", "uploads_status_progress_idx", "uploads_one_active_per_video"]) {
+      expect(idx.rows.map((r) => r.indexname)).toContain(i);
+    }
+  });
+
+  it("migrate_destroys_the_client_when_unlock_fails_and_recovers", async () => {
+    const released: unknown[] = [];
+    const connect = async () => {
+      const client = await db.pool.connect();
+      const query = client.query.bind(client) as (...a: unknown[]) => Promise<unknown>;
+      (client as unknown as { query: unknown }).query = (text: unknown, ...rest: unknown[]) => {
+        if (typeof text === "string" && text.includes("pg_advisory_unlock")) return Promise.reject(new Error("boom"));
+        return query(text, ...rest);
+      };
+      const release = client.release.bind(client);
+      client.release = ((arg?: boolean | Error) => {
+        released.push(arg);
+        release(arg as boolean);
+      }) as typeof client.release;
+      return client;
+    };
+    await migrate(db.pool, connect);
+    expect(released).toEqual([true]);
+    await migrate(db.pool);
+    const { rows } = await db.pool.query("select name from schema_migrations");
+    expect(rows).toHaveLength(1);
+  });
 });
