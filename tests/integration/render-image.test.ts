@@ -59,6 +59,17 @@ describe("render image", () => {
 
   const lockdown = ["run", "--rm", "--network", "none", "--read-only", "--tmpfs", "/tmp", "--user", "10001:10001"];
 
+  it("font_licences_are_shipped_in_the_image", () => {
+    const r = docker("run", "--rm", IMAGE, "ls", "-1", "/usr/share/doc/vendored-fonts");
+    expect(r.status, r.stderr).toBe(0);
+    const files = r.stdout.split("\n").filter(Boolean).sort();
+    const families = [
+      "Inter", "JetBrainsMono", "NotoSansDevanagari", "NotoSansKannada", "NotoSansMalayalam",
+      "NotoSansTamil", "NotoSansTelugu", "SourceSerif4", "SpaceGrotesk", "Spectral",
+    ];
+    expect(files).toEqual([...families.map((f) => `OFL-${f}.txt`), "README.md"].sort());
+  });
+
   it("image_defaults_give_a_writable_home", () => {
     const r = docker(...lockdown, IMAGE, "sh", "-c", 'test -d "$HOME" && touch "$HOME/x" && echo "$HOME"');
     expect(r.status, r.stderr).toBe(0);

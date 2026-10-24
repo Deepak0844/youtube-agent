@@ -13,6 +13,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY infra/render/fonts/*.ttf /usr/share/fonts/truetype/vendored/
+# Licence notices travel with the redistributed fonts (OFL requires it).
+COPY infra/render/fonts/OFL-*.txt infra/render/fonts/README.md /usr/share/doc/vendored-fonts/
 RUN fc-cache -f
 
 # Remotion + browser live inside the image, not in a per-user cache. The second package line is what the
