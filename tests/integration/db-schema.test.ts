@@ -89,7 +89,7 @@ describe("schema", () => {
     const cols = await db.pool.query<{ column_name: string }>(
       "select column_name from information_schema.columns where table_name='uploads'",
     );
-    for (const c of ["created_at", "updated_at", "failure_reason"]) expect(cols.rows.map((r) => r.column_name)).toContain(c);
+    for (const c of ["created_at", "updated_at", "failure_reason", "attempt"]) expect(cols.rows.map((r) => r.column_name)).toContain(c);
     const idx = await db.pool.query<{ indexname: string }>("select indexname from pg_indexes where tablename='uploads'");
     for (const i of ["uploads_channel_started_idx", "uploads_status_progress_idx", "uploads_one_active_per_video"]) {
       expect(idx.rows.map((r) => r.indexname)).toContain(i);

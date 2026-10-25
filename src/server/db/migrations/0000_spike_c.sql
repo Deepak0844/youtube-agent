@@ -66,6 +66,8 @@ create table uploads (
   finished_at timestamptz,
   youtube_id text,
   failure_reason text,
+  -- attempt token: bumped by every start/manual retry; progress and finish must present the current one
+  attempt integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

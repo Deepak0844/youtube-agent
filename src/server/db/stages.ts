@@ -19,11 +19,15 @@ function assertTtl(ttlMs: number): void {
 }
 
 // Runs fn atomically: its own transaction on a Pool, or a savepoint inside the caller's transaction on a client.
-export async function atomic<T>(db: Db, fn: (q: pg.ClientBase | pg.PoolClient) => Promise<T>): Promise<T> {
+export async function atomic<T>(
+  db: Db,
+  fn: (q: pg.ClientBase | pg.PoolClient) => Promise<T>,
+  opts: { isolation?: "read committed" } = {},
+): Promise<T> {
   if (db instanceof pg.Pool) {
     const client = await db.connect();
     try {
-      await client.query("begin");
+      await client.query(opts.isolation ? `begin isolation level ${opts.isolation}` : "begin");
       try {
         const out = await fn(client);
         await client.query("commit");

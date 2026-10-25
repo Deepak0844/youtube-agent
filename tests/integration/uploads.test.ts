@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Queue } from "bullmq";
 import { createJobQueue } from "@/server/queue/job-queue";
 import * as uploadsModule from "@/server/db/uploads";
 import { finishUpload, manualRetry, markStalled, reportProgress, startUpload, type StartCtx } from "@/server/db/uploads";
-import { handleUploadJob } from "@/server/db/upload-job";
+import { handleUploadJob, runUpload, type UploadJobDeps } from "@/server/db/upload-job";
 import { uuidv7 } from "@/server/core/ids";
 import { withTestDb, type TestDb } from "../support/db";
 import { waitFor } from "./helpers/stage-env";
@@ -23,6 +24,8 @@ afterAll(async () => {
 
 const CAPS = { maxPerDay: 6, minSpacingMs: 0, dailyQuotaUnits: 1_000_000, costUnits: 1 };
 const ctx = (over: Partial<StartCtx> = {}): StartCtx => ({ currentApprovalHash: "appr", currentFileSha: "sha", caps: CAPS, ...over });
+
+const rctx = (over: Partial<StartCtx> = {}) => ({ ...ctx(over), humanConfirmedNotOnYouTube: true as const });
 
 async function newUpload(o: { videoId?: string; channel?: string | null; status?: string; approval?: string; sha?: string; startedAgoMs?: number } = {}): Promise<string> {
   const id = uuidv7();
@@ -46,7 +49,7 @@ async function logs(id: string): Promise<string[]> {
 describe("startUpload", () => {
   it("second_delivery_finds_uploading_and_does_nothing", async () => {
     const id = await newUpload();
-    expect(await startUpload(db.pool, id, ctx())).toEqual({ started: true });
+    expect(await startUpload(db.pool, id, ctx())).toEqual({ started: true, attempt: 1 });
     const before = await row(id);
     expect(await startUpload(db.pool, id, ctx())).toEqual({ started: false, reason: "not_publish_approved" });
     expect(await row(id)).toEqual(before);
@@ -86,7 +89,7 @@ describe("startUpload", () => {
   it("redelivery_after_uploaded_does_nothing", async () => {
     const id = await newUpload();
     await startUpload(db.pool, id, ctx());
-    expect(await finishUpload(db.pool, id, { kind: "uploaded", youtubeId: "yt1" })).toBe(true);
+    expect(await finishUpload(db.pool, id, 1, { kind: "uploaded", youtubeId: "yt1" })).toBe(true);
     expect(await startUpload(db.pool, id, ctx())).toEqual({ started: false, reason: "not_publish_approved" });
     expect(await row(id)).toMatchObject({ status: "uploaded", youtube_id: "yt1" });
   });
@@ -129,7 +132,7 @@ describe("startUpload", () => {
     const video = uuidv7();
     const a = await newUpload({ videoId: video, channel: "c1" });
     const b = await newUpload({ videoId: video, channel: "c2" });
-    expect(await startUpload(db.pool, a, ctx())).toEqual({ started: true });
+    expect(await startUpload(db.pool, a, ctx())).toEqual({ started: true, attempt: 1 });
     expect(await startUpload(db.pool, b, ctx())).toEqual({ started: false, reason: "another_upload_active_for_video" });
     expect((await row(b)).status).toBe("publish_approved");
     // joined to a caller's transaction the savepoint keeps the caller's transaction usable
@@ -154,47 +157,48 @@ describe("startUpload", () => {
 describe("progress and finish", () => {
   it("progress_is_monotonic", async () => {
     const id = await newUpload();
-    expect(await reportProgress(db.pool, id, 10)).toBe(false); // not uploading yet
+    expect(await reportProgress(db.pool, id, 1, 10)).toBe(false); // not uploading yet
     await startUpload(db.pool, id, ctx());
-    expect(await reportProgress(db.pool, id, 500)).toBe(true);
-    expect(await reportProgress(db.pool, id, 400)).toBe(false);
-    expect(await reportProgress(db.pool, id, 500)).toBe(true);
+    expect(await reportProgress(db.pool, id, 1, 500)).toBe(true);
+    expect(await reportProgress(db.pool, id, 1, 400)).toBe(false);
+    expect(await reportProgress(db.pool, id, 1, 500)).toBe(true);
     expect(await row(id)).toMatchObject({ bytes_sent: "500" });
-    await expect(reportProgress(db.pool, id, -1)).rejects.toThrow(RangeError);
-    await expect(reportProgress(db.pool, id, 1.5)).rejects.toThrow(RangeError);
+    await expect(reportProgress(db.pool, id, 1, -1)).rejects.toThrow(RangeError);
+    await expect(reportProgress(db.pool, id, 1, 1.5)).rejects.toThrow(RangeError);
   });
 
   it("finish_only_from_uploading", async () => {
     const id = await newUpload();
-    expect(await finishUpload(db.pool, id, { kind: "uploaded", youtubeId: "x" })).toBe(false);
-    expect(await finishUpload(db.pool, id, { kind: "failed", reason: "x" })).toBe(false);
+    expect(await finishUpload(db.pool, id, 1, { kind: "uploaded", youtubeId: "x" })).toBe(false);
+    expect(await finishUpload(db.pool, id, 1, { kind: "failed", reason: "x" })).toBe(false);
     await startUpload(db.pool, id, ctx());
-    expect(await finishUpload(db.pool, id, { kind: "failed", reason: "boom\u0000\ud800" + "x".repeat(300) })).toBe(true);
+    expect(await finishUpload(db.pool, id, 1, { kind: "failed", reason: "boom\u0000\ud800" + "x".repeat(300) })).toBe(true);
     const r = await row(id);
     expect(r.status).toBe("upload_failed");
     expect([...r.failure_reason]).toHaveLength(200);
     expect(r.failure_reason).not.toContain("\u0000");
-    expect(await finishUpload(db.pool, id, { kind: "uploaded", youtubeId: "late" })).toBe(false);
+    expect(await finishUpload(db.pool, id, 1, { kind: "uploaded", youtubeId: "late" })).toBe(false);
     expect((await row(id)).status).toBe("upload_failed");
   });
 
   it("duplicate_skipped_counts_as_failure", async () => {
     const id = await newUpload();
     await startUpload(db.pool, id, ctx());
-    expect(await finishUpload(db.pool, id, { kind: "duplicate_skipped", youtubeId: "yt9" })).toBe(true);
+    expect(await finishUpload(db.pool, id, 1, { kind: "duplicate_skipped", youtubeId: "yt9" })).toBe(true);
     expect(await row(id)).toMatchObject({ status: "upload_failed", failure_reason: "duplicate_skipped: check YouTube Studio", youtube_id: "yt9" });
   });
 
   it("bigint_columns_convert_safely", async () => {
     const id = await newUpload();
     await startUpload(db.pool, id, ctx());
-    await expect(reportProgress(db.pool, id, Number.MAX_SAFE_INTEGER + 1)).rejects.toThrow(RangeError);
-    expect(await reportProgress(db.pool, id, Number.MAX_SAFE_INTEGER)).toBe(true);
+    await db.pool.query("update uploads set bytes_total = null where id = $1", [id]);
+    await expect(reportProgress(db.pool, id, 1, Number.MAX_SAFE_INTEGER + 1)).rejects.toThrow(RangeError);
+    expect(await reportProgress(db.pool, id, 1, Number.MAX_SAFE_INTEGER)).toBe(true);
     expect((await row(id)).bytes_sent).toBe(String(Number.MAX_SAFE_INTEGER));
     // an out-of-range count already stored cannot be silently truncated into the cap check
     await db.pool.query("update uploads set started_at = clock_timestamp() where id = $1", [id]);
     const other = await newUpload();
-    expect(await startUpload(db.pool, other, ctx())).toEqual({ started: true }); // count (bigint string) converted
+    expect(await startUpload(db.pool, other, ctx())).toEqual({ started: true, attempt: 1 }); // count (bigint string) converted
   });
 });
 
@@ -204,7 +208,7 @@ describe("stall detection", () => {
     await startUpload(db.pool, id, ctx());
     for (let i = 1; i <= 5; i++) {
       await new Promise((r) => setTimeout(r, 120));
-      expect(await reportProgress(db.pool, id, i * 10)).toBe(true);
+      expect(await reportProgress(db.pool, id, 1, i * 10)).toBe(true);
       expect(await markStalled(db.pool, 300)).toEqual([]); // total elapsed > 300ms, but progress is fresh
     }
     expect((await row(id)).status).toBe("uploading");
@@ -241,34 +245,34 @@ describe("manualRetry", () => {
   async function failed(): Promise<string> {
     const id = await newUpload();
     await startUpload(db.pool, id, ctx());
-    await reportProgress(db.pool, id, 700);
-    await finishUpload(db.pool, id, { kind: "failed", reason: "network" });
+    await reportProgress(db.pool, id, 1, 700);
+    await finishUpload(db.pool, id, 1, { kind: "failed", reason: "network" });
     return id;
   }
 
   it("manual_retry_requires_matching_approval", async () => {
     const id = await failed();
-    expect(await manualRetry(db.pool, id, ctx({ currentApprovalHash: "new" }))).toEqual({ started: false, reason: "approval_changed" });
-    expect(await manualRetry(db.pool, id, ctx({ currentFileSha: "new" }))).toEqual({ started: false, reason: "file_changed" });
+    expect(await manualRetry(db.pool, id, rctx({ currentApprovalHash: "new" }))).toEqual({ started: false, reason: "approval_changed" });
+    expect(await manualRetry(db.pool, id, rctx({ currentFileSha: "new" }))).toEqual({ started: false, reason: "file_changed" });
     expect((await row(id)).status).toBe("upload_failed");
-    expect(await manualRetry(db.pool, id, ctx())).toEqual({ started: true });
+    expect(await manualRetry(db.pool, id, rctx())).toEqual({ started: true, attempt: 2 });
     expect(await row(id)).toMatchObject({ status: "uploading", bytes_sent: "0", failure_reason: null, finished_at: null });
     expect(await logs(id)).toEqual(["started", "failed", "manual_retry"]);
   });
 
   it("manual_retry_only_from_upload_failed", async () => {
     const id = await newUpload();
-    expect(await manualRetry(db.pool, id, ctx())).toEqual({ started: false, reason: "not_upload_failed" });
+    expect(await manualRetry(db.pool, id, rctx())).toEqual({ started: false, reason: "not_upload_failed" });
     await startUpload(db.pool, id, ctx());
-    expect(await manualRetry(db.pool, id, ctx())).toEqual({ started: false, reason: "not_upload_failed" });
+    expect(await manualRetry(db.pool, id, rctx())).toEqual({ started: false, reason: "not_upload_failed" });
   });
 
   it("manual_retry_rechecks_caps", async () => {
     const id = await failed();
     await newUpload({ status: "uploaded", startedAgoMs: 10, channel: "chan" });
-    expect(await manualRetry(db.pool, id, ctx({ caps: { ...CAPS, maxPerDay: 1 } }))).toEqual({ started: false, reason: "daily_cap" });
-    expect(await manualRetry(db.pool, id, ctx({ caps: { ...CAPS, minSpacingMs: 3_600_000 } }))).toEqual({ started: false, reason: "spacing" });
-    expect(await manualRetry(db.pool, id, ctx({ caps: { ...CAPS, dailyQuotaUnits: 1, costUnits: 1 } }))).toEqual({ started: false, reason: "quota" });
+    expect(await manualRetry(db.pool, id, rctx({ caps: { ...CAPS, maxPerDay: 1 } }))).toEqual({ started: false, reason: "daily_cap" });
+    expect(await manualRetry(db.pool, id, rctx({ caps: { ...CAPS, minSpacingMs: 3_600_000 } }))).toEqual({ started: false, reason: "spacing" });
+    expect(await manualRetry(db.pool, id, rctx({ caps: { ...CAPS, dailyQuotaUnits: 1, costUnits: 1 } }))).toEqual({ started: false, reason: "quota" });
     expect((await row(id)).status).toBe("upload_failed");
   });
 
@@ -347,6 +351,238 @@ describe("job handling", () => {
     } finally {
       child.kill("SIGKILL");
       await exited;
+    }
+  });
+});
+
+// ---- fix round 1: attempt token, abort, late success, guards -------------------------------------------------
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const deps = (upload: UploadJobDeps["uploader"]["upload"]): UploadJobDeps => ({ startCtx: () => ctx(), uploader: { upload } });
+async function startedStalled(o: { videoId?: string } = {}): Promise<string> {
+  const id = await newUpload(o);
+  await startUpload(db.pool, id, ctx());
+  await sleep(30);
+  expect(await markStalled(db.pool, 10)).toEqual([id]);
+  return id;
+}
+
+describe("attempt token", () => {
+  it("stale_attempt_progress_and_finish_are_rejected_after_retry", async () => {
+    const id = await startedStalled();
+    expect(await manualRetry(db.pool, id, rctx())).toEqual({ started: true, attempt: 2 });
+    expect(await reportProgress(db.pool, id, 1, 50)).toBe(false);
+    expect(await finishUpload(db.pool, id, 1, { kind: "uploaded", youtubeId: "OLD" })).toBe(false);
+    expect(await row(id)).toMatchObject({ status: "uploading", youtube_id: null, bytes_sent: "0", attempt: 2 });
+    expect(await reportProgress(db.pool, id, 2, 50)).toBe(true);
+    expect(await finishUpload(db.pool, id, 2, { kind: "uploaded", youtubeId: "NEW" })).toBe(true);
+    expect(await row(id)).toMatchObject({ status: "uploaded", youtube_id: "NEW" });
+  });
+
+  it("uploader_is_aborted_when_row_is_stalled", async () => {
+    const id = await newUpload();
+    let signal!: AbortSignal;
+    let gate!: () => void;
+    const gated = new Promise<void>((r) => (gate = r));
+    let reported = false;
+    const job = handleUploadJob(db.pool, deps(async (_id, onProgress, sig) => {
+      signal = sig;
+      await onProgress(10);
+      reported = true;
+      await gated;
+      await onProgress(20); // superseded: must throw
+      throw new Error("unreachable: onProgress should have thrown");
+    }), id);
+    await waitFor(() => reported, "first progress");
+    await sleep(30);
+    expect(await markStalled(db.pool, 10)).toEqual([id]);
+    gate();
+    expect(await job).toEqual({ started: true }); // normal stop, not a throw
+    expect(signal.aborted).toBe(true);
+    expect(await row(id)).toMatchObject({ status: "upload_failed", failure_reason: "no progress: check YouTube Studio first", bytes_sent: "10" });
+  });
+
+  it("progress_above_total_is_rejected", async () => {
+    const id = await newUpload(); // bytes_total 1_000_000
+    await startUpload(db.pool, id, ctx());
+    expect(await reportProgress(db.pool, id, 1, 900)).toBe(true);
+    expect(await reportProgress(db.pool, id, 1, 1_000_001)).toBe(false);
+    expect(await row(id)).toMatchObject({ bytes_sent: "900" });
+    expect(await reportProgress(db.pool, id, 1, 1_000_000)).toBe(true);
+  });
+});
+
+describe("late success", () => {
+  it("late_success_after_stall_is_recorded_not_dropped", async () => {
+    const id = await startedStalled();
+    expect(await finishUpload(db.pool, id, 1, { kind: "uploaded", youtubeId: "LATE" })).toBe(true);
+    expect(await row(id)).toMatchObject({ status: "uploaded", youtube_id: "LATE", failure_reason: null });
+    expect((await row(id)).finished_at).not.toBeNull();
+    expect(await logs(id)).toContain("late_success");
+  });
+
+  it("late_success_conflict_with_sibling_keeps_failed_but_stores_youtube_id", async () => {
+    const video = uuidv7();
+    const a = await startedStalled({ videoId: video });
+    const b = await newUpload({ videoId: video, status: "uploading", startedAgoMs: 10, channel: "other" });
+    expect(await finishUpload(db.pool, a, 1, { kind: "uploaded", youtubeId: "LIVE" })).toBe(false);
+    expect(await row(a)).toMatchObject({ status: "upload_failed", youtube_id: "LIVE" });
+    expect((await row(b)).status).toBe("uploading");
+    expect(await logs(a)).toContain("late_success_conflict");
+  });
+
+  it("finish_rejected_is_logged_with_youtube_id", async () => {
+    const id = await newUpload(); // never started
+    expect(await finishUpload(db.pool, id, 1, { kind: "uploaded", youtubeId: "ZZ9" })).toBe(false);
+    expect((await logs(id)).some((e) => e.startsWith("finish_rejected") && e.includes("ZZ9"))).toBe(true);
+    expect(await finishUpload(db.pool, id, 1, { kind: "failed", reason: "x" })).toBe(false);
+    expect((await logs(id)).filter((e) => e.startsWith("finish_rejected"))).toHaveLength(2);
+  });
+});
+
+describe("retry and sibling guards", () => {
+  it("manual_retry_requires_human_confirmation_flag", async () => {
+    const id = await startedStalled();
+    const noFlag = ctx() as unknown as Parameters<typeof manualRetry>[2];
+    expect(await manualRetry(db.pool, id, noFlag)).toEqual({ started: false, reason: "human_confirmation_required" });
+    expect((await row(id)).status).toBe("upload_failed");
+  });
+
+  it("manual_retry_refused_when_youtube_id_known", async () => {
+    const id = await newUpload();
+    await startUpload(db.pool, id, ctx());
+    await finishUpload(db.pool, id, 1, { kind: "duplicate_skipped", youtubeId: "yt-dup" });
+    expect(await manualRetry(db.pool, id, rctx())).toEqual({ started: false, reason: "already_on_youtube" });
+    expect((await row(id)).status).toBe("upload_failed");
+  });
+
+  it("sibling_row_cannot_start_while_other_is_stalled_unresolved", async () => {
+    const video = uuidv7();
+    await startedStalled({ videoId: video });
+    const b = await newUpload({ videoId: video, channel: "c-b" });
+    expect(await startUpload(db.pool, b, ctx())).toEqual({ started: false, reason: "unresolved_sibling_upload" });
+    // a sibling that only has a youtube_id blocks too
+    const v2 = uuidv7();
+    const d = await newUpload({ videoId: v2, status: "upload_failed", channel: "c-d" });
+    await db.pool.query("update uploads set youtube_id = 'known' where id = $1", [d]);
+    const e = await newUpload({ videoId: v2, channel: "c-e" });
+    expect(await startUpload(db.pool, e, ctx())).toEqual({ started: false, reason: "unresolved_sibling_upload" });
+    expect(await manualRetry(db.pool, b, rctx())).toEqual({ started: false, reason: "not_upload_failed" });
+  });
+
+  it("manual_retry_blocked_by_unresolved_sibling", async () => {
+    const video = uuidv7();
+    const a = await startedStalled({ videoId: video });
+    const b = await newUpload({ videoId: video, status: "upload_failed", channel: "c-b", startedAgoMs: 5000 });
+    expect(await manualRetry(db.pool, a, rctx())).toEqual({ started: false, reason: "unresolved_sibling_upload" });
+    expect((await row(b)).status).toBe("upload_failed");
+  });
+});
+
+describe("counting and isolation", () => {
+  it("failed_started_rows_count_toward_spacing_and_daily_cap", async () => {
+    await newUpload({ status: "upload_failed", startedAgoMs: 10 });
+    const id = await newUpload();
+    expect(await startUpload(db.pool, id, ctx({ caps: { ...CAPS, maxPerDay: 1 } }))).toEqual({ started: false, reason: "daily_cap" });
+    expect(await startUpload(db.pool, id, ctx({ caps: { ...CAPS, minSpacingMs: 3_600_000 } }))).toEqual({ started: false, reason: "spacing" });
+    expect(await startUpload(db.pool, id, ctx({ caps: { ...CAPS, dailyQuotaUnits: 1, costUnits: 1 } }))).toEqual({ started: false, reason: "quota" });
+  });
+
+  it("quota_day_is_pacific", async () => {
+    const LA = "'America/Los_Angeles'";
+    const midnight = `(date_trunc('day', clock_timestamp() at time zone ${LA}) at time zone ${LA})`;
+    const old = await newUpload({ status: "uploaded", channel: "chan" });
+    await db.pool.query(`update uploads set started_at = ${midnight} - interval '1 minute' where id = $1`, [old]);
+    const id = await newUpload();
+    // started the previous Pacific day: does not count today
+    expect(await startUpload(db.pool, id, ctx({ caps: { ...CAPS, maxPerDay: 1 } }))).toEqual({ started: true, attempt: 1 });
+    await db.pool.query("update uploads set status = 'upload_failed' where id = $1", [id]);
+    await db.pool.query(`update uploads set started_at = ${midnight} where id = $1`, [id]);
+    const next = await newUpload({ channel: "chan" });
+    // started exactly at Pacific midnight: counts
+    expect(await startUpload(db.pool, next, ctx({ caps: { ...CAPS, maxPerDay: 1 } }))).toEqual({ started: false, reason: "daily_cap" });
+  });
+
+  it("repeatable_read_default_still_serialises_per_channel", async () => {
+    const rr = new pg.Pool({ connectionString: db.pool.options.connectionString, max: 10, options: "-c default_transaction_isolation=repeatable\\ read" });
+    try {
+      expect((await rr.query("show default_transaction_isolation")).rows[0].default_transaction_isolation).toBe("repeatable read");
+      const spaced = ctx({ caps: { ...CAPS, minSpacingMs: 3_600_000 } });
+      for (let round = 0; round < 20; round++) {
+        await db.reset();
+        const a = await newUpload();
+        const b = await newUpload();
+        const rs = await Promise.all([startUpload(rr, a, spaced), startUpload(rr, b, spaced)]);
+        expect(rs.filter((r) => r.started)).toHaveLength(1);
+      }
+    } finally {
+      await rr.end();
+    }
+  });
+
+  it("caller_client_in_repeatable_read_is_refused", async () => {
+    const id = await newUpload();
+    const client = await db.pool.connect();
+    try {
+      await client.query("begin isolation level repeatable read");
+      expect(await startUpload(client, id, ctx())).toEqual({ started: false, reason: "isolation_not_read_committed" });
+      await client.query("rollback");
+      await client.query("begin isolation level read committed");
+      expect(await startUpload(client, id, ctx())).toEqual({ started: true, attempt: 1 });
+      await client.query("commit");
+    } finally {
+      client.release();
+    }
+  });
+});
+
+describe("executor", () => {
+  it("uploader_throw_after_bytes_has_studio_prefix", async () => {
+    const id = await newUpload();
+    await handleUploadJob(db.pool, deps(async (_i, onProgress) => {
+      await onProgress(100);
+      throw new Error("connection reset");
+    }), id);
+    expect((await row(id)).failure_reason).toBe("check YouTube Studio first: connection reset");
+    const long = await newUpload();
+    await handleUploadJob(db.pool, deps(async (_i, onProgress) => {
+      await onProgress(100);
+      throw new Error("e".repeat(500));
+    }), long);
+    const r = (await row(long)).failure_reason as string;
+    expect([...r]).toHaveLength(200);
+    expect(r.startsWith("check YouTube Studio first: ")).toBe(true);
+  });
+
+  it("retried_row_is_actually_run_end_to_end", async () => {
+    const id = await newUpload();
+    await handleUploadJob(db.pool, deps(async () => { throw new Error("early"); }), id);
+    expect(await row(id)).toMatchObject({ status: "upload_failed", failure_reason: "early" });
+    const r = await manualRetry(db.pool, id, rctx());
+    expect(r).toEqual({ started: true, attempt: 2 });
+    await runUpload(db.pool, deps(async (_i, onProgress) => {
+      await onProgress(77);
+      return { kind: "uploaded", youtubeId: "retried-yt" };
+    }), id, 2);
+    expect(await row(id)).toMatchObject({ status: "uploaded", youtube_id: "retried-yt", bytes_sent: "77", attempt: 2 });
+  });
+
+  it("upload_queue_route_end_to_end", async () => {
+    const name = `uploads-route-${process.pid}`; // upload jobs live on their own queue, never beside a stage worker
+    const queue = createJobQueue(db.redisUrl, name);
+    const id = await newUpload();
+    const uploadWorker = queue.startUploadWorker((uploadId) =>
+      handleUploadJob(db.pool, deps(async (_i, onProgress) => {
+        await onProgress(5);
+        return { kind: "uploaded", youtubeId: "via-queue" };
+      }), uploadId).then(() => {}),
+    );
+    try {
+      await queue.enqueueUpload(id);
+      await waitFor(async () => (await row(id)).status === "uploaded", "upload via queue");
+      expect(await row(id)).toMatchObject({ youtube_id: "via-queue", attempt: 1 });
+    } finally {
+      await uploadWorker.close();
+      await queue.close();
     }
   });
 });

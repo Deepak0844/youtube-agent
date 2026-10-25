@@ -1,4 +1,4 @@
-import { Queue, Worker, type JobType, type WorkerOptions } from "bullmq";
+import { Queue, Worker, type Job, type JobType, type WorkerOptions } from "bullmq";
 import { stageJobId } from "@/server/core/job-id";
 import type { StageJob } from "@/server/core/stage-runner";
 
@@ -20,6 +20,11 @@ export interface JobQueue {
   enqueue(stageRunId: string, fence: number, attemptSeq: number, inputHash: string): Promise<string>;
   // One-shot upload job: job id upload.<uploadId> (one per upload row), attempts: 1, bounded removeOnFail.
   enqueueUpload(uploadId: string): Promise<string>;
+  // Worker for upload jobs (own queue name; stage jobs and upload jobs never share a handler).
+  startUploadWorker(
+    handler: (uploadId: string, jobId: string) => Promise<void>,
+    opts?: { concurrency?: number; onError?: (err: Error) => void },
+  ): { close(): Promise<void> };
   startWorker(
     handler: (job: StageJob, jobId: string) => Promise<void>,
     opts?: {
@@ -44,6 +49,21 @@ export function createJobQueue(redisUrl: string, name: string, opts: { keepFaile
   const queue = new Queue(name, { connection });
   const workers = new Set<Worker>();
 
+  function makeWorker(
+    processor: (job: Job) => Promise<void>,
+    opts: { concurrency?: number; onError?: (err: Error) => void; bullmq?: Pick<WorkerOptions, "lockDuration" | "stalledInterval" | "skipLockRenewal"> },
+  ): { close(): Promise<void> } {
+    const worker = new Worker(name, processor, { ...opts.bullmq, connection, concurrency: opts.concurrency ?? 1, maxStalledCount: 0 });
+    worker.on("error", opts.onError ?? ((err: Error) => console.error(`queue ${name} worker error:`, err)));
+    workers.add(worker);
+    return {
+      async close() {
+        workers.delete(worker);
+        await worker.close();
+      },
+    };
+  }
+
   return {
     name,
     async enqueue(stageRunId, fence, attemptSeq, inputHash) {
@@ -58,25 +78,24 @@ export function createJobQueue(redisUrl: string, name: string, opts: { keepFaile
       await queue.add("upload", { uploadId }, { jobId, attempts: 1, removeOnComplete: true, removeOnFail: { count: keepFailed } });
       return jobId;
     },
-    startWorker(handler, opts = {}) {
-      const worker = new Worker(
-        name,
+    startUploadWorker(handler, opts = {}) {
+      return makeWorker(
         async (job) => {
-          if (job.name !== "stage") throw new Error(`unsupported job kind: ${job.name}`); // upload jobs have their own handler
+          if (job.name !== "upload") throw new Error(`unsupported job kind: ${job.name}`);
+          await handler((job.data as { uploadId: string }).uploadId, job.id!);
+        },
+        opts,
+      );
+    },
+    startWorker(handler, opts = {}) {
+      return makeWorker(
+        async (job) => {
+          if (job.name !== "stage") throw new Error(`unsupported job kind: ${job.name}`); // upload jobs have their own worker
           const data = job.data as StageJob;
           await handler({ stageRunId: data.stageRunId, inputHash: data.inputHash }, job.id!);
         },
-        { ...opts.bullmq, connection, concurrency: opts.concurrency ?? 1, maxStalledCount: 0 },
+        opts,
       );
-      const onError = opts.onError ?? ((err: Error) => console.error(`queue ${name} worker error:`, err));
-      worker.on("error", onError);
-      workers.add(worker);
-      return {
-        async close() {
-          workers.delete(worker);
-          await worker.close();
-        },
-      };
     },
     async liveJobIds() {
       return new Set(await queue.getRanges(LIVE, 0, -1));
