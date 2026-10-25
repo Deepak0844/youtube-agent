@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import pg from "pg";
-import { claimStage, heartbeat, insertQueuedStage, type Claim } from "@/server/db/stages";
+import { claimStage, commitStage, heartbeat, insertQueuedStage, type Claim } from "@/server/db/stages";
 import { failIntentKnown, getBudget, markUnknown, reserveIntent, settleIntent } from "@/server/db/spend";
 import { callKey } from "@/server/core/spend";
 import { uuidv7 } from "@/server/core/ids";
@@ -385,5 +385,240 @@ describe("lease clock", () => {
     } finally {
       client.release();
     }
+  });
+});
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const jitter = () => sleep(Math.floor(Math.random() * 6));
+
+// reserved must equal the sum over pending/unknown intents, spent the sum over done intents.
+async function expectConsistent(scope: string): Promise<void> {
+  const { rows } = await db.pool.query<{ reserved: string; spent: string }>(
+    `select coalesce(sum(reserved_micro_usd) filter (where status in ('pending','unknown')), 0) as reserved,
+            coalesce(sum(actual_micro_usd) filter (where status = 'done'), 0) as spent
+       from spend_intents where $1 = any(scopes)`,
+    [scope],
+  );
+  const b = await counts(scope);
+  expect(b).toEqual({ reserved: Number(rows[0]!.reserved), spent: Number(rows[0]!.spent) });
+}
+
+describe("lock order: stage_runs -> spend_intents -> budgets", () => {
+  async function pendingOn(c: Claim, scope: string, toolCallIndex: number, step = 0, amount = 1_000): Promise<string> {
+    const r = await reserve(c, amount, [scope], toolCallIndex, step);
+    if (r.kind !== "new") throw new Error("expected new");
+    return r.intentId;
+  }
+
+  it("no_deadlock_between_reserve_and_stage_then_settle_transactions", async () => {
+    const pool = new pg.Pool({ connectionString: db.pool.options.connectionString, max: 10 });
+    try {
+      const c = await claimed();
+      for (let round = 0; round < 30; round++) {
+        const scope = `lo1-${round}`;
+        await budget(scope, 1_000_000_000);
+        const target = await pendingOn(c, scope, 0, round);
+        const txA = (async () => {
+          const client = await pool.connect();
+          try {
+            await client.query("begin");
+            await client.query("update stage_runs set updated_at = now() where id = $1", [c.stageRunId]);
+            await jitter();
+            if (round % 2 === 0) await settleIntent(client, target, { actualMicroUsd: 400, result: null });
+            else await failIntentKnown(client, target, "x");
+            await jitter();
+            await client.query("commit");
+          } catch (err) {
+            await client.query("rollback").catch(() => {});
+            throw err;
+          } finally {
+            client.release();
+          }
+        })();
+        const res = (async () => {
+          await jitter();
+          return reserveIntent(pool, c, { stepIndex: round, toolCallIndex: 1, reserveMicroUsd: 500, budgetScopes: [scope] });
+        })();
+        const [, r] = await Promise.all([txA, res]); // a deadlock rejects with 40P01
+        expect(r.kind, `round ${round}`).toBe("new");
+        await expectConsistent(scope);
+      }
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("no_deadlock_between_reserve_and_commitStage_then_settle", async () => {
+    const pool = new pg.Pool({ connectionString: db.pool.options.connectionString, max: 10 });
+    try {
+      for (let round = 0; round < 30; round++) {
+        const c = await claimed(`w${round}`);
+        const scope = `lo2-${round}`;
+        await budget(scope, 1_000_000_000);
+        const target = await pendingOn(c, scope, 0);
+        const txA = (async () => {
+          const client = await pool.connect();
+          try {
+            await client.query("begin");
+            expect(await commitStage(client, c, { ok: true })).toBe(true);
+            await jitter();
+            await settleIntent(client, target, { actualMicroUsd: 700, result: { done: 1 } });
+            await jitter();
+            await client.query("commit");
+          } catch (err) {
+            await client.query("rollback").catch(() => {});
+            throw err;
+          } finally {
+            client.release();
+          }
+        })();
+        const res = (async () => {
+          await jitter();
+          return reserveIntent(pool, c, { stepIndex: 0, toolCallIndex: 1, reserveMicroUsd: 500, budgetScopes: [scope] });
+        })();
+        const [, r] = await Promise.all([txA, res]);
+        expect(["new", "refused"], `round ${round}`).toContain(r.kind); // refused(stale_fence) if commit won
+        await expectConsistent(scope);
+      }
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("no_deadlock_when_two_reserves_hit_the_same_call_key_concurrently", async () => {
+    const pool = new pg.Pool({ connectionString: db.pool.options.connectionString, max: 10 });
+    try {
+      const c = await claimed();
+      for (let round = 0; round < 30; round++) {
+        const scope = `lo3-${round}`;
+        await budget(scope, 1_000_000_000);
+        const other = await pendingOn(c, scope, 0, round);
+        const mk = async () => {
+          await jitter();
+          return reserveIntent(pool, c, { stepIndex: round, toolCallIndex: 1, reserveMicroUsd: 500, budgetScopes: [scope] });
+        };
+        const settle = (async () => {
+          await jitter();
+          await settleIntent(pool, other, { actualMicroUsd: 300, result: null });
+        })();
+        const [a, b] = await Promise.all([mk(), mk(), settle]);
+        expect([a.kind, b.kind].sort(), `round ${round}`).toEqual(["existing", "new"]);
+        await expectConsistent(scope);
+      }
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+describe("overlapping transactions on one intent", () => {
+  // Intent X is the one both transactions go for; intent Y keeps a second reservation on the same
+  // budget so a double release cannot hide behind the >= 0 check.
+  async function setup() {
+    await budget("g", 1_000_000);
+    const c = await claimed();
+    const x = await reserve(c, 1_000, ["g"], 0);
+    const y = await reserve(c, 1_000, ["g"], 1);
+    if (x.kind !== "new" || y.kind !== "new") throw new Error("expected new");
+    expect(await counts("g")).toEqual({ reserved: 2_000, spent: 0 });
+    return { x: x.intentId, y: y.intentId };
+  }
+
+  // A runs (uncommitted), B starts while A is open and must block until A commits.
+  async function overlap<A, B>(
+    first: (q: pg.PoolClient) => Promise<A>,
+    second: (q: pg.PoolClient) => Promise<B>,
+  ): Promise<{ a: A; b: PromiseSettledResult<B>; blocked: boolean }> {
+    const ca = await db.pool.connect();
+    const cb = await db.pool.connect();
+    try {
+      await ca.query("begin");
+      await cb.query("begin");
+      const a = await first(ca);
+      let settled = false;
+      const bp = second(cb).finally(() => {
+        settled = true;
+      });
+      bp.catch(() => {});
+      await sleep(300);
+      const blocked = !settled;
+      await ca.query("commit");
+      const b = (await Promise.allSettled([bp]))[0]!;
+      if (b.status === "fulfilled") await cb.query("commit");
+      else await cb.query("rollback");
+      return { a, b, blocked };
+    } finally {
+      ca.release();
+      cb.release();
+    }
+  }
+
+  it("settle_in_overlapping_transactions_never_double_counts", async () => {
+    const { x } = await setup();
+    const args = { actualMicroUsd: 700, result: { ok: 1 }, providerRef: "r" };
+    const out = await overlap(
+      (q) => settleIntent(q, x, args),
+      (q) => settleIntent(q, x, args),
+    );
+    expect(out.blocked).toBe(true);
+    expect(out.b.status).toBe("fulfilled"); // identical values: no-op
+    expect(await counts("g")).toEqual({ reserved: 1_000, spent: 700 });
+    await expectConsistent("g");
+
+    // different values in the overlapping transaction: must throw, never add
+    const { x: x2 } = await (async () => {
+      const c = await claimed("w9");
+      const r = await reserve(c, 1_000, ["g"], 0);
+      if (r.kind !== "new") throw new Error("expected new");
+      return { x: r.intentId };
+    })();
+    const out2 = await overlap(
+      (q) => settleIntent(q, x2, { actualMicroUsd: 100, result: null }),
+      (q) => settleIntent(q, x2, { actualMicroUsd: 200, result: null }),
+    );
+    expect(out2.blocked).toBe(true);
+    expect(out2.b.status).toBe("rejected");
+    expect(await counts("g")).toEqual({ reserved: 1_000, spent: 800 });
+    await expectConsistent("g");
+  });
+
+  it("failIntentKnown_in_overlapping_transactions_never_double_releases", async () => {
+    const { x } = await setup();
+    const out = await overlap(
+      (q) => failIntentKnown(q, x, "a"),
+      (q) => failIntentKnown(q, x, "b"),
+    );
+    expect(out.a).toBe(true);
+    expect(out.blocked).toBe(true);
+    expect(out.b).toEqual({ status: "fulfilled", value: false });
+    expect(await counts("g")).toEqual({ reserved: 1_000, spent: 0 });
+    await expectConsistent("g");
+  });
+
+  it("settle_racing_failIntentKnown_has_exactly_one_winner", async () => {
+    // settle wins, fail loses
+    let { x } = await setup();
+    const out = await overlap(
+      (q) => settleIntent(q, x, { actualMicroUsd: 700, result: null }),
+      (q) => failIntentKnown(q, x, "late"),
+    );
+    expect(out.blocked).toBe(true);
+    expect(out.b).toEqual({ status: "fulfilled", value: false });
+    expect(await counts("g")).toEqual({ reserved: 1_000, spent: 700 });
+    expect((await intentRow(x)).status).toBe("done");
+    await expectConsistent("g");
+
+    await db.reset();
+    // fail wins, settle loses (throws)
+    ({ x } = await setup());
+    const out2 = await overlap(
+      (q) => failIntentKnown(q, x, "first"),
+      (q) => settleIntent(q, x, { actualMicroUsd: 700, result: null }),
+    );
+    expect(out2.blocked).toBe(true);
+    expect(out2.b.status).toBe("rejected");
+    expect(await counts("g")).toEqual({ reserved: 1_000, spent: 0 });
+    expect((await intentRow(x)).status).toBe("failed_known");
+    await expectConsistent("g");
   });
 });

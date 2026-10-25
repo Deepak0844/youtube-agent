@@ -4,9 +4,15 @@ import { callKey } from "@/server/core/spend";
 import { atomic, toNumber, type Claim, type Db } from "./stages";
 
 // Spend intents + serialized budgets. Money is integer micro-USD (bigint in SQL, safe integer in TS).
-// Lock order is always: budget rows in sorted scope order, then (for reserve) the stage row / (for settle)
-// the intent row is locked FIRST. Reserve inserts a brand-new intent row nobody else can hold, so the
-// two orders cannot form a cycle.
+//
+// GLOBAL LOCK ORDER (every transaction that touches these tables, including callers that compose several
+// calls in one transaction, MUST acquire row locks in this order and never go back up):
+//     stage_runs row  ->  spend_intents row  ->  budgets rows (sorted by scope)
+// - reserveIntent: stage row (FOR SHARE) -> inserts its own brand-new intent row -> budgets.
+// - settleIntent / failIntentKnown / markUnknown: intent row (FOR UPDATE) -> budgets. They never touch the
+//   stage row, so a caller combining e.g. commitStage/update stage_runs THEN settle follows the order too.
+// A reserve whose insert conflicts with another transaction's uncommitted intent waits on it while holding
+// only a shared stage lock; the other transaction needs only budgets (below it in the order), so no cycle.
 
 export type IntentStatus = "pending" | "done" | "failed_known" | "unknown";
 
@@ -75,10 +81,7 @@ export async function reserveIntent(
   const amount = BigInt(args.reserveMicroUsd);
 
   return atomic(db, async (q): Promise<ReserveResult> => {
-    // 1. Serialize on the budgets (sorted order => no deadlocks).
-    const budgets = await lockBudgets(q, scopes);
-
-    // 2. The claim must still be valid on the DB clock. FOR SHARE keeps the stage row from being
+    // 1. The claim must still be valid on the DB clock. FOR SHARE keeps the stage row from being
     //    requeued/refenced until this transaction ends, so the reservation cannot slip past a takeover.
     const { rows: live } = await q.query(
       `select 1 from stage_runs
@@ -89,17 +92,8 @@ export async function reserveIntent(
     );
     if (live.length === 0) return { kind: "refused", reason: "stale_fence" };
 
-    // 3. Replay of the same call: report what is there, reserve nothing.
-    const already = await readExisting(q, key);
-    if (already) return already;
-
-    // 4. Cap check (fail closed on a missing budget row).
-    for (const scope of scopes) {
-      const b = budgets.get(scope);
-      if (!b || b.reserved + b.spent + amount > b.cap) return { kind: "refused", reason: "cap" };
-    }
-
-    // 5. Insert; reserve only if WE inserted.
+    // 2. Insert first (intent row is below the stage row in the lock order). A conflict means the call
+    //    was already made (or is being made by a concurrent transaction: we wait for it): report it, reserve nothing.
     const intentId = uuidv7();
     const ins = await q.query(
       `insert into spend_intents
@@ -110,10 +104,22 @@ export async function reserveIntent(
       [intentId, claim.stageRunId, args.stepIndex, args.toolCallIndex, key, args.reserveMicroUsd, claim.fence, scopes],
     );
     if (ins.rowCount === 0) {
-      const raced = await readExisting(q, key);
-      if (!raced) throw new Error("spend intent vanished after a call_key conflict");
-      return raced;
+      const existing = await readExisting(q, key);
+      if (!existing) throw new Error("spend intent vanished after a call_key conflict");
+      return existing;
     }
+
+    // 3. Serialize on the budgets (sorted order), check the cap (fail closed on a missing row).
+    const budgets = await lockBudgets(q, scopes);
+    for (const scope of scopes) {
+      const b = budgets.get(scope);
+      if (!b || b.reserved + b.spent + amount > b.cap) {
+        await q.query("delete from spend_intents where id = $1", [intentId]); // our own uncommitted row
+        return { kind: "refused", reason: "cap" };
+      }
+    }
+
+    // 4. Reserve (we inserted, so we reserve).
     const upd = await q.query(
       "update budgets set reserved_micro_usd = reserved_micro_usd + $2 where scope = any($1::text[])",
       [scopes, args.reserveMicroUsd],
