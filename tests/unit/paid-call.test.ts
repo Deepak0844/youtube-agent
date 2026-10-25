@@ -26,8 +26,9 @@ interface Intent {
 }
 
 // In-memory ports mirroring the db semantics closely enough for orchestration tests.
-function fakePorts(opts: { intent?: Intent; refuse?: "cap" | "stale_fence"; settleThrows?: boolean } = {}) {
+function fakePorts(opts: { intent?: Intent; refuse?: "cap" | "stale_fence"; settleThrows?: boolean; failKnownThrows?: boolean } = {}) {
   const log: string[] = [];
+  const warnings: Array<{ event: string; detail: Record<string, unknown> }> = [];
   let intent = opts.intent;
   const ports: PaidCallPorts = {
     async reserve(_c, args): Promise<ReserveOutcome> {
@@ -52,6 +53,7 @@ function fakePorts(opts: { intent?: Intent; refuse?: "cap" | "stale_fence"; sett
     },
     async failKnown(_id, reason) {
       log.push("failKnown");
+      if (opts.failKnownThrows) throw new Error("db down during release");
       intent = { ...intent!, status: "failed_known", result: { error: reason } };
     },
     async markUnknown() {
@@ -61,8 +63,11 @@ function fakePorts(opts: { intent?: Intent; refuse?: "cap" | "stale_fence"; sett
     async markStageNeedsDecision() {
       log.push("needsDecision");
     },
+    warn(event, detail) {
+      warnings.push({ event, detail });
+    },
   };
-  return { ports, log, intent: () => intent };
+  return { ports, log, warnings, intent: () => intent };
 }
 
 function provider(behaviour: () => Promise<{ result: unknown; actualMicroUsd: number }>) {
@@ -142,6 +147,38 @@ describe("runPaidCall", () => {
     await expect(runPaidCall(f.ports, ctx(), p.call)).rejects.toBeInstanceOf(KnownFailure);
     expect(f.log).toEqual(["reserve", "failKnown"]);
     expect(f.intent()).toMatchObject({ status: "failed_known", result: { error: "quota exceeded" } });
+  });
+
+  it("known_failure_whose_release_throws_rethrows_the_original_and_warns", async () => {
+    const f = fakePorts({ failKnownThrows: true });
+    const original = new KnownFailure("quota exceeded");
+    const p = provider(async () => {
+      throw original;
+    });
+    const err: unknown = await runPaidCall(f.ports, ctx(), p.call).catch((e: unknown) => e);
+    expect(err).toBe(original);
+    expect(f.log).toEqual(["reserve", "failKnown"]);
+    expect(f.warnings).toEqual([
+      { event: "paid_call.release_failed", detail: { callKey: KEY, intentId: "i1", error: "db down during release" } },
+    ]);
+  });
+
+  it("known_failure_with_throwing_message_getter_still_releases_and_rethrows_the_original", async () => {
+    const f = fakePorts();
+    const original = new KnownFailure("x");
+    Object.defineProperty(original, "message", {
+      get() {
+        throw new Error("hostile getter");
+      },
+    });
+    const p = provider(async () => {
+      throw original;
+    });
+    const err: unknown = await runPaidCall(f.ports, ctx(), p.call).catch((e: unknown) => e);
+    expect(err).toBe(original);
+    expect(f.log).toEqual(["reserve", "failKnown"]);
+    expect(f.intent()).toMatchObject({ status: "failed_known", result: { error: "unknown" } });
+    expect(f.warnings).toEqual([]);
   });
 
   it("existing_failed_known_rethrows_without_calling", async () => {

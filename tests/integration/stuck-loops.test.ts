@@ -4,7 +4,7 @@ import { createJobQueue, type JobQueue } from "@/server/queue/job-queue";
 import { reconcile } from "@/server/db/reconciler";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { claimStage, getStage, insertQueuedStage, markStageNeedsDecision } from "@/server/db/stages";
-import { getBudget, reserveIntent } from "@/server/db/spend";
+import { failIntentKnown, getBudget, reserveIntent } from "@/server/db/spend";
 import { stageJobId } from "@/server/core/job-id";
 import { callKey } from "@/server/core/spend";
 import { uuidv7 } from "@/server/core/ids";
@@ -23,6 +23,7 @@ let inspect: Queue;
 let queueName: string;
 let closers: Array<() => Promise<void>> = [];
 let queueN = 0;
+const warnings: Array<{ event: string; detail: Record<string, unknown> }> = [];
 
 beforeAll(async () => {
   db = await withTestDb();
@@ -35,6 +36,7 @@ beforeEach(async () => {
   await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('g', 100000000)");
   queueName = `stuck-${process.pid}-${queueN++}`;
   closers = [];
+  warnings.length = 0;
   queue = createJobQueue(db.redisUrl, queueName, { keepFailed: 3 });
   inspect = new Queue(queueName, { connection: { url: db.redisUrl } });
   closers.push(() => queue.close(), () => inspect.close());
@@ -57,7 +59,7 @@ function startRunner(d: StageRunnerDeps, seen: Delivery[]): void {
   const w = queue.startWorker(
     async (job) => {
       try {
-        seen.push({ outcome: await runStage(db.pool, d, job) });
+        seen.push({ outcome: await runStage(db.pool, d, job, { warn: (event, detail) => warnings.push({ event, detail }) }) });
       } catch (err) {
         seen.push({ error: String(err) });
         throw err;
@@ -97,10 +99,11 @@ describe("no stage loops forever", () => {
     expect(await getBudget(db.pool, "g")).toMatchObject({ reservedMicroUsd: 0, spentMicroUsd: 0 });
   });
 
-  async function runKnownFailure(reason: string): Promise<string> {
+  async function runKnownFailure(reason: string | KnownFailure): Promise<string> {
     const id = await newStage();
     const seen: Delivery[] = [];
-    startRunner(deps({ provider: { call: async (key) => (await provider.call(key), Promise.reject(new KnownFailure(reason))) } }), seen);
+    const failure = typeof reason === "string" ? new KnownFailure(reason) : reason;
+    startRunner(deps({ provider: { call: async (key) => (await provider.call(key), Promise.reject(failure)) } }), seen);
     await queue.enqueue(id, 0, 0, H);
     await waitFor(() => seen.length === 1, "delivery handled");
     expect(seen[0]?.outcome?.kind).toBe("known_failure");
@@ -122,15 +125,60 @@ describe("no stage loops forever", () => {
     expect(await getBudget(db.pool, "g")).toMatchObject({ reservedMicroUsd: 0, spentMicroUsd: 0 });
   });
 
-  it("known_failure_with_hostile_reason_still_fails_the_stage_with_a_clean_reason", async () => {
-    const id = await runKnownFailure(`bad\u0000input \uD800 ${"x".repeat(5000)}`);
+  // Hostile KnownFailure reasons: the reservation must still be released and the stage failed with a clean reason.
+  async function expectReleased(id: string, stageReasonPrefix: string): Promise<void> {
+    const { rows } = await db.pool.query("select status, result from spend_intents where stage_run_id = $1", [id]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("failed_known");
+    expect(await getBudget(db.pool, "g")).toMatchObject({ reservedMicroUsd: 0, spentMicroUsd: 0 });
     const stored = ((await getStage(db.pool, id))?.result as { error: string }).error;
-    expect(stored.startsWith("known_failure: badinput \uFFFD xxx")).toBe(true);
-    expect([...stored].length).toBe("known_failure: ".length + 200);
-    // Ledgered Task 4 minor (not fixed here): failIntentKnown stores the raw reason, Postgres rejects the NUL/lone
-    // surrogate, the wrapper swallows that, so the intent stays pending and its reservation stays held.
-    const { rows } = await db.pool.query("select status from spend_intents where stage_run_id = $1", [id]);
-    expect(rows).toEqual([{ status: "pending" }]);
+    expect(stored.startsWith(stageReasonPrefix)).toBe(true);
+    expect([...stored].length).toBeLessThanOrEqual("known_failure: ".length + 200);
+    expect(warnings).toEqual([]);
+  }
+
+  it("known_failure_with_nul_reason_releases_the_reservation", async () => {
+    const id = await runKnownFailure(`bad\u0000input ${"x".repeat(5000)}`);
+    await expectReleased(id, "known_failure: badinput xxx");
+    const { rows } = await db.pool.query("select result from spend_intents where stage_run_id = $1", [id]);
+    expect((rows[0].result as { error: string }).error).toMatch(/^badinput x+$/);
+    expect([...(rows[0].result as { error: string }).error].length).toBe(200);
+  });
+
+  it("known_failure_with_lone_surrogate_reason_releases_the_reservation", async () => {
+    const id = await runKnownFailure("bad \uD800 input \uDC00 end");
+    await expectReleased(id, "known_failure: bad \uFFFD input \uFFFD end");
+    const { rows } = await db.pool.query("select result from spend_intents where stage_run_id = $1", [id]);
+    expect(rows[0].result).toEqual({ error: "bad \uFFFD input \uFFFD end" });
+  });
+
+  it("failIntentKnown_sanitises_a_hostile_reason_itself", async () => {
+    // defence in depth: a direct caller (not the wrapper) passing provider text must not make the release fail
+    const id = await newStage();
+    const c = (await claimStage(db.pool, { id, inputHash: H, workerId: "w", ttlMs: 60_000 }))!;
+    for (const [i, reason] of [`a\u0000b ${"y".repeat(5000)}`, "lone \uDBFF here"].entries()) {
+      const r = await reserveIntent(db.pool, c, { stepIndex: i, toolCallIndex: 0, reserveMicroUsd: 1000, budgetScopes: ["g"] });
+      expect(r.kind).toBe("new");
+      expect(await failIntentKnown(db.pool, (r as { intentId: string }).intentId, reason)).toBe(true);
+    }
+    const { rows } = await db.pool.query("select status, result from spend_intents where stage_run_id = $1 order by step_index", [id]);
+    expect(rows.map((r) => r.status)).toEqual(["failed_known", "failed_known"]);
+    expect([...(rows[0].result as { error: string }).error].length).toBe(200);
+    expect(rows[1].result).toEqual({ error: "lone \uFFFD here" });
+    expect(await getBudget(db.pool, "g")).toMatchObject({ reservedMicroUsd: 0 });
+  });
+
+  it("known_failure_with_throwing_reason_getter_releases_the_reservation", async () => {
+    const err = new KnownFailure("x");
+    Object.defineProperty(err, "message", {
+      get() {
+        throw new Error("hostile getter");
+      },
+    });
+    const id = await runKnownFailure(err);
+    await expectReleased(id, "known_failure: unknown");
+    const { rows } = await db.pool.query("select result from spend_intents where stage_run_id = $1", [id]);
+    expect(rows[0].result).toEqual({ error: "unknown" });
   });
 
   it("failed_stage_job_does_not_accumulate_over_many_laps", async () => {

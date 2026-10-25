@@ -7,7 +7,9 @@ import { callKey } from "./spend";
 //   reserve -> refused "stale_fence"         : throw LeaseLostError; provider NOT called.
 //   reserve -> new                           : call provider with idempotencyKey = call key.
 //       provider ok                          : settle(actual, result, providerRef), return result.
-//       provider throws KnownFailure         : failKnown (reservation released), rethrow.
+//       provider throws KnownFailure         : failKnown(safeReason(err)) (reservation released), rethrow the ORIGINAL
+//                                              error. If the release itself throws, ports.warn("paid_call.release_failed")
+//                                              records it (never silent) and the original is still rethrown.
 //       provider throws anything else / the
 //         process dies                       : intent stays pending (outcome unknown), rethrow. The stage is NOT
 //                                              marked needs_decision here; the next attempt or the reconciler does.
@@ -186,6 +188,8 @@ export interface PaidCallPorts {
   failKnown(intentId: string, reason: string): Promise<void>;
   markUnknown(intentId: string): Promise<void>;
   markStageNeedsDecision(claim: ClaimLike, reason: string): Promise<void>;
+  // Structured, non-fatal problems the caller must be able to see (e.g. a reservation that could not be released).
+  warn(event: string, detail: Record<string, unknown>): void;
 }
 
 export interface PaidCallCtx {
@@ -217,8 +221,18 @@ export async function runPaidCall<T>(
       out = await call(key);
     } catch (err) {
       if (err instanceof KnownFailure) {
-        // If releasing fails the intent just stays pending (safe: never double-pays); the original error wins.
-        await ports.failKnown(intentId, err.message).catch(() => {});
+        // safeReason never throws (hostile message getters, NUL, lone surrogates). If the release fails the intent
+        // stays pending (safe: never double-pays, the next attempt parks the stage), it is reported, and the
+        // original error still wins.
+        try {
+          await ports.failKnown(intentId, safeReason(err));
+        } catch (releaseErr) {
+          try {
+            ports.warn("paid_call.release_failed", { callKey: key, intentId, error: safeReason(releaseErr) });
+          } catch {
+            // a throwing logger must not replace the original error
+          }
+        }
       }
       throw err;
     }

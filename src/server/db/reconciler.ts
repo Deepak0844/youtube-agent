@@ -32,6 +32,9 @@ import { toNumber } from "./stages";
 // marked it unknown) — see the Task 5 report.
 
 export const DEFAULT_GRACE_MS = 5_000;
+// Cap semantics: the stage is failed when it WOULD be retried with attempt_seq >= maxAttempts. attempt_seq starts at 0
+// and counts reconciler re-enqueues/requeues, so maxAttempts allows 1 + maxAttempts deliveries in total
+// (default 5 => at most 6 deliveries: the original plus 5 retries). maxAttempts 0 => the original delivery only.
 export const DEFAULT_MAX_ATTEMPTS = 5;
 
 const tooMany = (attempts: number) => JSON.stringify({ reason: "too_many_attempts", attempts });

@@ -1,6 +1,6 @@
 import type pg from "pg";
 import { uuidv7 } from "@/server/core/ids";
-import { cleanProviderRef, toStorable } from "@/server/core/paid-call";
+import { cleanProviderRef, safeReason, toStorable } from "@/server/core/paid-call";
 import { callKey } from "@/server/core/spend";
 import { atomic, toNumber, type Claim, type Db } from "./stages";
 
@@ -218,14 +218,17 @@ export async function settleIntent(
 }
 
 // Provider said it failed and nothing was charged: pending -> failed_known, reservation released.
+// The reason is sanitised (safeReason: no NUL, no lone surrogates, <= 200 code points, "unknown" on any throw) so the
+// jsonb write can never fail because of provider text and leave the reservation held.
 export async function failIntentKnown(db: Db, intentId: string, reason: string): Promise<boolean> {
+  const clean = safeReason(reason);
   return atomic(db, async (q) => {
     const row = await lockIntent(q, intentId, "null");
     if (row.status !== "pending") return false;
     await moveBudgets(q, row, 0);
     await q.query(
       "update spend_intents set status = 'failed_known', result = $2::jsonb, updated_at = now() where id = $1",
-      [intentId, JSON.stringify({ error: reason })],
+      [intentId, JSON.stringify({ error: clean })],
     );
     return true;
   });
