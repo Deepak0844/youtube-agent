@@ -1,5 +1,6 @@
 import pg from "pg";
 import { uuidv7 } from "@/server/core/ids";
+import { stageJobId } from "@/server/core/job-id";
 
 // Fenced stage execution. Every lease/expiry comparison uses the DATABASE clock (clock_timestamp(), which keeps
 // moving inside a long transaction, unlike now()), never the app clock, so workers on different machines agree. The fence only ever grows
@@ -51,7 +52,7 @@ export interface Claim {
   fence: number;
   workerId: string;
   leaseUntil: Date;
-  jobId: string; // informational: stage:<id>:<fence>:<attempt_seq>
+  jobId: string; // informational: stageJobId(id, fence, attempt_seq) = stage.<id>.<fence>.<attempt_seq>
 }
 
 export interface StageRow {
@@ -121,7 +122,7 @@ export async function claimStage(
       fence,
       workerId: args.workerId,
       leaseUntil: row.lease_until,
-      jobId: `stage:${args.id}:${fence}:${row.attempt_seq}`,
+      jobId: stageJobId(args.id, fence, row.attempt_seq),
     };
   });
 }

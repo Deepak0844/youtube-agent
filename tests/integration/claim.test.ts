@@ -12,6 +12,7 @@ import {
   requestCancel,
 } from "@/server/db/stages";
 import { uuidv7 } from "@/server/core/ids";
+import { stageJobId } from "@/server/core/job-id";
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;
@@ -31,7 +32,10 @@ async function queued(inputHash = "h1"): Promise<string> {
   return insertQueuedStage(db.pool, { videoId: uuidv7(), name: "script", inputHash });
 }
 
-// Simulates what the reconciler does to a stage whose lease expired: back to queued, owner cleared.
+// TEST-ONLY SHORTCUT, NOT the reconciler's semantics: this requeue is UNCONDITIONAL (it would overwrite a
+// just-committed row). The real reconciler (src/server/db/reconciler.ts) requeues only
+// `where status='running' and lease_until < clock_timestamp()` after locking the row and checking intents.
+// Here it just forces a re-claimable state so the fence/attempt tests can run without waiting for expiry.
 async function requeue(id: string): Promise<void> {
   await db.pool.query(
     "update stage_runs set status='queued', lease_owner=null, lease_until=null, attempt_seq=attempt_seq+1 where id=$1",
@@ -100,11 +104,11 @@ describe("fenced claim", () => {
     const id = await queued();
     const c1 = await claimStage(db.pool, { id, inputHash: "h1", workerId: "a", ttlMs: TTL });
     expect(c1?.fence).toBe(1);
-    expect(c1?.jobId).toBe(`stage:${id}:1:0`);
+    expect(c1?.jobId).toBe(stageJobId(id, 1, 0));
     await requeue(id);
     const c2 = await claimStage(db.pool, { id, inputHash: "h1", workerId: "b", ttlMs: TTL });
     expect(c2?.fence).toBe(2);
-    expect(c2?.jobId).toBe(`stage:${id}:2:1`);
+    expect(c2?.jobId).toBe(stageJobId(id, 2, 1));
     await requeue(id);
     const c3 = await claimStage(db.pool, { id, inputHash: "h1", workerId: "c", ttlMs: TTL });
     expect(c3?.fence).toBe(3);
