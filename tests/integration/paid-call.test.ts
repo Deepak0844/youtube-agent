@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { claimStage, commitStage, getStage, insertQueuedStage, markStageNeedsDecision, type Claim } from "@/server/db/stages";
-import { getBudget, reopenForRetry, reserveIntent, runTotalMicroUsd } from "@/server/db/spend";
+import { getBudget } from "@/server/db/spend";
 import { createPgPaidCallPorts } from "@/server/db/paid-call-adapter";
 import {
   BudgetRefusedError,
@@ -219,36 +219,17 @@ describe("runPaidCall against Postgres", () => {
     expect(provider.totalCalls()).toBe(0);
   });
 
-  it("cheap_text_retries_once_reusing_the_reservation_then_needs_decision", async () => {
-    const id = await newStage();
-    const key = callKey(id, 0, 0);
-    const p = createFakeProvider({ pool: db.pool, script: { [key]: [throwsUnknown(), throwsUnknown(), ok(3, { text: "x" })] } });
-    const cheap = (c: Claim) => ctx(c, { kind: "cheap_text", reserveMicroUsd: 1000 });
-    const c1 = await claim(id, "w1");
-    await expect(runPaidCall(ports, cheap(c1), callWith(p))).rejects.toThrow("socket hang up");
-    await requeueNow(id);
-    const c2 = await claim(id, "w2");
-    await expect(runPaidCall(ports, cheap(c2), callWith(p))).rejects.toThrow("socket hang up"); // the one retry, fails again
-    expect(await budget()).toEqual({ reserved: 1000, spent: 0 }); // still ONE reservation
-    expect((await intentOf(key)).attempts).toBe(2);
-    await requeueNow(id);
-    const c3 = await claim(id, "w3");
-    await expect(runPaidCall(ports, cheap(c3), callWith(p))).rejects.toBeInstanceOf(NeedsDecisionError);
-    expect(await p.dbCalls(key)).toBe(2); // never a third attempt
-  });
-
-  it("cheap_text_over_run_budget_does_not_retry", async () => {
+  it("cheap_text_pending_goes_to_needs_decision_like_paid", async () => {
     const id = await newStage();
     const key = callKey(id, 0, 0);
     const p = createFakeProvider({ pool: db.pool, script: { [key]: throwsUnknown() } });
     const c1 = await claim(id, "w1");
-    await expect(runPaidCall(ports, ctx(c1, { kind: "cheap_text" }), callWith(p))).rejects.toThrow();
+    await expect(runPaidCall(ports, ctx(c1, { kind: "cheap_text" }), callWith(p))).rejects.toThrow("socket hang up");
     await requeueNow(id);
     const c2 = await claim(id, "w2");
-    await expect(
-      runPaidCall(ports, ctx(c2, { kind: "cheap_text", runBudgetMicroUsd: 1500 }), callWith(p)),
-    ).rejects.toBeInstanceOf(NeedsDecisionError); // runTotal 1000 + 1000 > 1500
+    await expect(runPaidCall(ports, ctx(c2, { kind: "cheap_text" }), callWith(p))).rejects.toBeInstanceOf(NeedsDecisionError);
     expect(await p.dbCalls(key)).toBe(1);
+    expect(await budget()).toEqual({ reserved: 1000, spent: 0 });
   });
 
   it("needs_decision_stage_status_is_set_only_for_the_current_fence", async () => {
@@ -264,15 +245,81 @@ describe("runPaidCall against Postgres", () => {
     expect(await markStageNeedsDecision(db.pool, c2, "again")).toBe(false); // no longer running
   });
 
-  it("reopen_for_retry_is_single_shot_and_run_total_counts_held_and_spent", async () => {
-    const id = await newStage();
-    const c = await claim(id, "w1");
-    const r = await reserveIntent(db.pool, c, { stepIndex: 0, toolCallIndex: 0, reserveMicroUsd: 500, budgetScopes: ["g"] });
-    if (r.kind !== "new") throw new Error("expected new");
-    expect(await runTotalMicroUsd(db.pool, id)).toBe(500);
-    const both = await Promise.all([reopenForRetry(db.pool, r.intentId), reopenForRetry(db.pool, r.intentId)]);
-    expect(both.filter(Boolean)).toHaveLength(1); // racing reopens: exactly one wins
-    expect(await reopenForRetry(db.pool, r.intentId)).toBe(false);
-    expect((await intentOf(callKey(id, 0, 0))).attempts).toBe(2);
+  // Settle must never reject what the provider returned: the money is already spent.
+  describe("settle survives hostile provider output", () => {
+    async function settled(result: unknown, actualMicroUsd = 7) {
+      const id = await newStage();
+      const key = callKey(id, 0, 0);
+      const c = await claim(id, "w1");
+      const out = await runPaidCall(ports, ctx(c), async () => ({ result, actualMicroUsd, providerRef: "r" }));
+      const row = await intentOf(key);
+      expect(row.status).toBe("done");
+      return { out, row, key, id, c };
+    }
+
+    it("settle_survives_nul_char_in_result", async () => {
+      const { row } = await settled({ text: "a\u0000b", "k\u0000": 1 });
+      expect(row.result).toEqual({ text: "ab", k: 1 });
+      expect(await budget()).toEqual({ reserved: 0, spent: 7 });
+    });
+
+    it("settle_survives_lone_surrogate", async () => {
+      const { row } = await settled({ text: "x\ud800y\udc00z" });
+      expect(row.result).toEqual({ text: "x\uFFFDy\uFFFDz" });
+      expect(await budget()).toEqual({ reserved: 0, spent: 7 });
+    });
+
+    it("settle_survives_bigint_in_result", async () => {
+      const { row } = await settled({ n: 12345678901234567890n, u: undefined, a: [undefined] });
+      expect(row.result).toEqual({ n: "12345678901234567890", u: null, a: [null] });
+      expect(await budget()).toEqual({ reserved: 0, spent: 7 });
+    });
+
+    it("settle_survives_circular_result", async () => {
+      const a: Record<string, unknown> = { name: "loop" };
+      a.self = a;
+      const { row } = await settled(a);
+      expect(row.result).toMatchObject({ unserializable: true });
+      expect(await budget()).toEqual({ reserved: 0, spent: 7 });
+    });
+
+    it("settle_survives_huge_result", async () => {
+      const { row } = await settled({ blob: "x".repeat(2 * 1024 * 1024) });
+      expect(row.result).toMatchObject({ truncated: true });
+      expect(row.result.bytes).toBeGreaterThan(1024 * 1024);
+      expect(await budget()).toEqual({ reserved: 0, spent: 7 });
+    });
+
+    for (const [name, bad] of [
+      ["nan_actual_is_recorded_as_reserved_with_flag", Number.NaN],
+      ["fractional_actual_is_recorded_as_reserved_with_flag", 1.5],
+      ["negative_actual_is_recorded_as_reserved_with_flag", -3],
+      ["infinite_actual_is_recorded_as_reserved_with_flag", Number.POSITIVE_INFINITY],
+    ] as const) {
+      it(name, async () => {
+        const { row } = await settled({ text: "ok" }, bad);
+        expect(Number(row.actual_micro_usd)).toBe(1000); // the reservation (worst case)
+        expect(row.actual_invalid).toBe(true);
+        expect(await budget()).toEqual({ reserved: 0, spent: 1000 });
+      });
+    }
+
+    it("valid_overrun_is_recorded_not_clamped", async () => {
+      const { row } = await settled({ text: "ok" }, 5000);
+      expect(Number(row.actual_micro_usd)).toBe(5000);
+      expect(row.actual_invalid).toBe(false);
+      expect(await budget()).toEqual({ reserved: 0, spent: 5000 });
+    });
+
+    it("first_attempt_returns_original_result_replay_returns_sanitised", async () => {
+      const original = { text: "a\u0000b", n: 5n };
+      const { out, id } = await settled(original);
+      expect(out).toBe(original);
+      await requeueNow(id);
+      const c2 = await claim(id, "w2");
+      const replay = await runPaidCall(ports, ctx(c2), callWith(provider));
+      expect(replay).toEqual({ text: "ab", n: "5" });
+      expect(provider.totalCalls()).toBe(0);
+    });
   });
 });

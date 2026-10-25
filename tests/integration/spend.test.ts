@@ -82,7 +82,7 @@ describe("reserveIntent", () => {
     if (r.kind !== "new") throw new Error("expected new");
     await settleIntent(db.pool, r.intentId, { actualMicroUsd: 60, result: { text: "hi" }, providerRef: "p1" });
     const again = await reserve(c, 100, ["g"]);
-    expect(again).toEqual({ kind: "existing", status: "done", result: { text: "hi" }, intentId: r.intentId, reservedMicroUsd: 100, attempts: 1 });
+    expect(again).toEqual({ kind: "existing", status: "done", result: { text: "hi" }, intentId: r.intentId, reservedMicroUsd: 100 });
     expect(await counts("g")).toEqual({ reserved: 0, spent: 60 });
   });
 
@@ -312,16 +312,20 @@ describe("settle / fail / unknown", () => {
     expect(await counts("g")).toEqual({ reserved: 0, spent: 400 });
   });
 
-  it("settle_rejects_unknown_intent_failed_intent_and_bad_amounts", async () => {
+  it("settle_rejects_unknown_intent_and_failed_intent_but_records_bad_amounts_as_reserved", async () => {
     await expect(settleIntent(db.pool, uuidv7(), { actualMicroUsd: 1, result: null })).rejects.toThrow();
     const { intentId } = await pendingIntent(1_000);
+    // An unusable actual never throws (money is already spent): recorded as the reservation, flagged.
+    await settleIntent(db.pool, intentId, { actualMicroUsd: NaN, result: null });
+    expect(await counts("g")).toEqual({ reserved: 0, spent: 1_000 });
+    expect((await intentRow(intentId)).actual_invalid).toBe(true);
     for (const amt of [-1, 0.5, NaN, 2 ** 53]) {
-      await expect(settleIntent(db.pool, intentId, { actualMicroUsd: amt, result: null })).rejects.toThrow(RangeError);
+      await settleIntent(db.pool, intentId, { actualMicroUsd: amt, result: null }); // idempotent: same recorded values
     }
-    expect(await counts("g")).toEqual({ reserved: 1_000, spent: 0 });
-    await failIntentKnown(db.pool, intentId, "provider rejected");
-    await expect(settleIntent(db.pool, intentId, { actualMicroUsd: 5, result: null })).rejects.toThrow();
-    expect(await counts("g")).toEqual({ reserved: 0, spent: 0 });
+    expect(await counts("g")).toEqual({ reserved: 0, spent: 1_000 });
+    const failed = await pendingIntent(1_000);
+    await failIntentKnown(db.pool, failed.intentId, "provider rejected");
+    await expect(settleIntent(db.pool, failed.intentId, { actualMicroUsd: 5, result: null })).rejects.toThrow();
   });
 
   it("overrun_is_recorded_not_clamped", async () => {

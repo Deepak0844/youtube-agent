@@ -20,11 +20,10 @@ interface Intent {
   status: IntentStatusLike;
   result?: unknown;
   reserved: number;
-  attempts: number;
 }
 
 // In-memory ports mirroring the db semantics closely enough for orchestration tests.
-function fakePorts(opts: { intent?: Intent; refuse?: "cap" | "stale_fence"; runTotal?: number; settleThrows?: boolean } = {}) {
+function fakePorts(opts: { intent?: Intent; refuse?: "cap" | "stale_fence"; settleThrows?: boolean } = {}) {
   const log: string[] = [];
   let intent = opts.intent;
   const ports: PaidCallPorts = {
@@ -32,7 +31,7 @@ function fakePorts(opts: { intent?: Intent; refuse?: "cap" | "stale_fence"; runT
       log.push("reserve");
       if (opts.refuse) return { kind: "refused", reason: opts.refuse };
       if (!intent) {
-        intent = { status: "pending", reserved: args.reserveMicroUsd, attempts: 1 };
+        intent = { status: "pending", reserved: args.reserveMicroUsd };
         return { kind: "new", intentId: "i1" };
       }
       return {
@@ -40,7 +39,6 @@ function fakePorts(opts: { intent?: Intent; refuse?: "cap" | "stale_fence"; runT
         status: intent.status,
         intentId: "i1",
         reservedMicroUsd: intent.reserved,
-        attempts: intent.attempts,
         ...(intent.result === undefined ? {} : { result: intent.result }),
       };
     },
@@ -59,15 +57,6 @@ function fakePorts(opts: { intent?: Intent; refuse?: "cap" | "stale_fence"; runT
     },
     async markStageNeedsDecision() {
       log.push("needsDecision");
-    },
-    async reopenForRetry() {
-      log.push("reopen");
-      if (!intent || (intent.status !== "pending" && intent.status !== "unknown") || intent.attempts >= 2) return false;
-      intent = { ...intent, status: "pending", attempts: intent.attempts + 1 };
-      return true;
-    },
-    async runTotalMicroUsd() {
-      return opts.runTotal ?? 0;
     },
   };
   return { ports, log, intent: () => intent };
@@ -105,7 +94,7 @@ describe("runPaidCall", () => {
   });
 
   it("done_intent_returns_stored_result_without_calling", async () => {
-    const f = fakePorts({ intent: { status: "done", result: { text: "stored" }, reserved: 100, attempts: 1 } });
+    const f = fakePorts({ intent: { status: "done", result: { text: "stored" }, reserved: 100 } });
     const p = okProvider();
     expect(await runPaidCall(f.ports, ctx(), p.call)).toEqual({ text: "stored" });
     expect(p.keys).toEqual([]);
@@ -114,7 +103,7 @@ describe("runPaidCall", () => {
 
   it("pending_intent_goes_to_needs_decision_and_never_calls", async () => {
     for (const status of ["pending", "unknown"] as const) {
-      const f = fakePorts({ intent: { status, reserved: 123, attempts: 1 } });
+      const f = fakePorts({ intent: { status, reserved: 123 } });
       const p = okProvider();
       const err = await runPaidCall(f.ports, ctx(), p.call).catch((e) => e);
       expect(err).toBeInstanceOf(NeedsDecisionError);
@@ -124,53 +113,22 @@ describe("runPaidCall", () => {
     }
   });
 
-  it("paid_never_retries_even_with_huge_run_budget", async () => {
-    const f = fakePorts({ intent: { status: "unknown", reserved: 1, attempts: 1 } });
-    const p = okProvider();
-    await expect(runPaidCall(f.ports, ctx({ reserveMicroUsd: 1, runBudgetMicroUsd: 1e12 }), p.call)).rejects.toBeInstanceOf(
-      NeedsDecisionError,
-    );
-    expect(p.keys).toEqual([]);
-    expect(f.log).not.toContain("reopen");
+  it("cheap_text_pending_goes_to_needs_decision_like_paid", async () => {
+    for (const status of ["pending", "unknown"] as const) {
+      const f = fakePorts({ intent: { status, reserved: 100 } });
+      const p = okProvider();
+      await expect(runPaidCall(f.ports, ctx({ kind: "cheap_text" }), p.call)).rejects.toBeInstanceOf(NeedsDecisionError);
+      expect(p.keys).toEqual([]);
+      expect(f.log).toEqual(["reserve", "markUnknown", "needsDecision"]);
+    }
   });
 
-  it("cheap_text_may_retry_once_within_run_budget", async () => {
-    const f = fakePorts({ intent: { status: "unknown", reserved: 100, attempts: 1 }, runTotal: 100 });
-    const p = okProvider();
-    expect(await runPaidCall(f.ports, ctx({ kind: "cheap_text", runBudgetMicroUsd: 1000 }), p.call)).toEqual({ text: "hi" });
-    expect(p.keys).toEqual([KEY]);
-    expect(f.log).toEqual(["reserve", "reopen", "settle"]); // no second reservation, no needs_decision
-    expect(f.intent()).toMatchObject({ status: "done", attempts: 2 });
-  });
-
-  it("cheap_text_over_run_budget_goes_to_needs_decision", async () => {
-    const f = fakePorts({ intent: { status: "pending", reserved: 100, attempts: 1 }, runTotal: 950 });
-    const p = okProvider();
-    await expect(
-      runPaidCall(f.ports, ctx({ kind: "cheap_text", reserveMicroUsd: 100, runBudgetMicroUsd: 1000 }), p.call),
-    ).rejects.toBeInstanceOf(NeedsDecisionError);
-    expect(p.keys).toEqual([]);
-    expect(f.log).not.toContain("reopen");
-  });
-
-  it("cheap_text_exactly_at_run_budget_is_allowed_and_default_is_50000", async () => {
-    const f = fakePorts({ intent: { status: "pending", reserved: 100, attempts: 1 }, runTotal: 49_900 });
-    const p = okProvider();
-    await runPaidCall(f.ports, ctx({ kind: "cheap_text", reserveMicroUsd: 100 }), p.call);
-    expect(p.keys).toHaveLength(1);
-    const g = fakePorts({ intent: { status: "pending", reserved: 100, attempts: 1 }, runTotal: 49_901 });
-    await expect(runPaidCall(g.ports, ctx({ kind: "cheap_text", reserveMicroUsd: 100 }), okProvider().call)).rejects.toBeInstanceOf(
-      NeedsDecisionError,
-    );
-  });
-
-  it("cheap_text_second_retry_is_refused", async () => {
-    const f = fakePorts({ intent: { status: "unknown", reserved: 100, attempts: 2 }, runTotal: 100 });
-    const p = okProvider();
-    await expect(runPaidCall(f.ports, ctx({ kind: "cheap_text", runBudgetMicroUsd: 1e9 }), p.call)).rejects.toBeInstanceOf(
-      NeedsDecisionError,
-    );
-    expect(p.keys).toEqual([]);
+  it("original_result_is_returned_to_the_caller_but_settle_gets_the_sanitised_one", async () => {
+    const f = fakePorts();
+    const original = { text: "a\u0000b", big: 5n };
+    const out = await runPaidCall(f.ports, ctx(), async () => ({ result: original, actualMicroUsd: 1 }));
+    expect(out).toBe(original);
+    expect(f.intent()?.result).toEqual({ text: "ab", big: "5" });
   });
 
   it("known_failure_releases_reservation_and_rethrows", async () => {
@@ -184,7 +142,7 @@ describe("runPaidCall", () => {
   });
 
   it("existing_failed_known_rethrows_without_calling", async () => {
-    const f = fakePorts({ intent: { status: "failed_known", result: { error: "quota exceeded" }, reserved: 100, attempts: 1 } });
+    const f = fakePorts({ intent: { status: "failed_known", result: { error: "quota exceeded" }, reserved: 100 } });
     const p = okProvider();
     const err: unknown = await runPaidCall(f.ports, ctx(), p.call).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(KnownFailureError);

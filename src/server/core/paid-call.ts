@@ -14,19 +14,68 @@ import { callKey } from "./spend";
 //   reserve -> existing done                 : return the stored result; provider NOT called.
 //   reserve -> existing failed_known         : TERMINAL for this key: throw KnownFailureError (stored reason);
 //                                              provider NOT called. Retrying means a new step/tool index.
-//   reserve -> existing pending | unknown    :
-//       kind "paid"                          : markUnknown + markStageNeedsDecision + throw NeedsDecisionError
-//                                              (maxCostMicroUsd = the reservation); provider NOT called. NEVER retried.
-//       kind "cheap_text"                    : retry ONCE (attempts < 2, enforced atomically by reopenForRetry) only if
-//                                              runTotal + reserveMicroUsd <= runBudgetMicroUsd (default 50_000 = $0.05);
-//                                              the retry reuses the existing reservation (no second reserve) and the same
-//                                              idempotency key. Otherwise the needs_decision path above.
+//   reserve -> existing pending | unknown    : markUnknown + markStageNeedsDecision + throw NeedsDecisionError
+//                                              (maxCostMicroUsd = the reservation); provider NOT called. NEVER retried,
+//                                              whatever `kind` is. `kind` ("paid" | "cheap_text") has NO effect yet.
+//                                              A bounded cheap_text retry is DEFERRED to Phase 2: it cannot be made safe
+//                                              without a provider-side idempotency lookup and an enforced call timeout
+//                                              (a retry while the first call is still in flight calls the provider twice
+//                                              and loses the first call's spend; a successful retry hides the first
+//                                              attempt's possible charge).
 // After the provider returns, settle runs EVEN IF the lease was lost meanwhile (money is money); the caller's later
 // commitStage is then rejected by the fence. If settle itself throws (DB down) the intent stays pending, so the next
-// attempt goes to needs_decision (paid) rather than paying twice. DB writes are separate statements: reserve, provider,
+// attempt goes to needs_decision rather than paying twice. settle never rejects what the provider returned: the result
+// is made JSON-safe first (toStorable) and an unusable actual cost is recorded as the reservation (see settleIntent);
+// the caller still receives the provider's ORIGINAL result on the first attempt. DB writes are separate statements: reserve, provider,
 // settle; no transaction is ever held open across the provider call.
 
-export const DEFAULT_RUN_BUDGET_MICRO_USD = 50_000;
+export const MAX_STORED_RESULT_BYTES = 1024 * 1024;
+
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+const cleanString = (v: string): string => v.replace(/\u0000/g, "").replace(LONE_SURROGATE, "\uFFFD");
+
+function walk(v: unknown, ancestors: Set<object>): unknown {
+  switch (typeof v) {
+    case "string":
+      return cleanString(v);
+    case "bigint":
+      return v.toString();
+    case "undefined":
+    case "function":
+    case "symbol":
+      return null;
+    case "object": {
+      if (v === null) return null;
+      if (ancestors.has(v)) throw new TypeError("circular structure");
+      ancestors.add(v);
+      try {
+        const toJSON = (v as { toJSON?: unknown }).toJSON;
+        if (typeof toJSON === "function") return walk(toJSON.call(v), ancestors);
+        if (Array.isArray(v)) return v.map((x) => walk(x, ancestors));
+        const out: Record<string, unknown> = {};
+        for (const [k, x] of Object.entries(v)) out[cleanString(k)] = walk(x, ancestors);
+        return out;
+      } finally {
+        ancestors.delete(v);
+      }
+    }
+    default:
+      return v; // number, boolean (NaN/Infinity serialise as null)
+  }
+}
+
+// Makes a provider result safe to store as jsonb: never throws.
+export function toStorable(value: unknown): unknown {
+  try {
+    const clean = walk(value, new Set());
+    const json = JSON.stringify(clean ?? null);
+    const bytes = new TextEncoder().encode(json).length;
+    if (bytes > MAX_STORED_RESULT_BYTES) return { truncated: true, bytes };
+    return JSON.parse(json);
+  } catch (err) {
+    return { unserializable: true, reason: String(err instanceof Error ? err.message : err).slice(0, 200) };
+  }
+}
 
 // Thrown by a provider adapter to declare "the call failed and we were NOT charged".
 export class KnownFailure extends Error {
@@ -84,7 +133,6 @@ export type ReserveOutcome =
       result?: unknown;
       intentId: string;
       reservedMicroUsd: number;
-      attempts: number;
     }
   | { kind: "refused"; reason: "cap" | "stale_fence" };
 
@@ -97,8 +145,6 @@ export interface PaidCallPorts {
   failKnown(intentId: string, reason: string): Promise<void>;
   markUnknown(intentId: string): Promise<void>;
   markStageNeedsDecision(claim: ClaimLike, reason: string): Promise<void>;
-  reopenForRetry(intentId: string): Promise<boolean>;
-  runTotalMicroUsd(stageRunId: string): Promise<number>;
 }
 
 export interface PaidCallCtx {
@@ -107,8 +153,8 @@ export interface PaidCallCtx {
   toolCallIndex: number;
   reserveMicroUsd: number;
   budgetScopes: string[];
+  // No effect yet (Phase 2 will use it for a bounded cheap_text retry).
   kind: "paid" | "cheap_text";
-  runBudgetMicroUsd?: number;
 }
 
 export interface PaidCallOutput<T> {
@@ -136,9 +182,9 @@ export async function runPaidCall<T>(
       throw err;
     }
     await ports.settle(intentId, {
-      actualMicroUsd: out.actualMicroUsd,
-      result: out.result,
-      ...(out.providerRef === undefined ? {} : { providerRef: out.providerRef }),
+      actualMicroUsd: out.actualMicroUsd, // invalid values are handled (recorded as the reservation) by the db
+      result: toStorable(out.result),
+      ...(typeof out.providerRef === "string" ? { providerRef: cleanString(out.providerRef) } : {}),
     });
     return out.result;
   }
@@ -161,14 +207,7 @@ export async function runPaidCall<T>(
     throw new KnownFailureError(typeof stored?.error === "string" ? stored.error : "known failure");
   }
 
-  // pending | unknown: the outcome of an earlier attempt is not known.
-  if (ctx.kind === "cheap_text") {
-    const runTotal = await ports.runTotalMicroUsd(ctx.claim.stageRunId);
-    const budget = ctx.runBudgetMicroUsd ?? DEFAULT_RUN_BUDGET_MICRO_USD;
-    if (runTotal + ctx.reserveMicroUsd <= budget && (await ports.reopenForRetry(r.intentId))) {
-      return execute(r.intentId);
-    }
-  }
+  // pending | unknown: the outcome of an earlier attempt is not known. Never call again, whatever the kind.
   await ports.markUnknown(r.intentId);
   await ports.markStageNeedsDecision(ctx.claim, `unknown outcome for paid call ${key}`);
   throw new NeedsDecisionError(ctx.claim.stageRunId, key, r.reservedMicroUsd);

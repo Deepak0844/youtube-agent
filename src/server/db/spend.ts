@@ -24,7 +24,6 @@ export type ReserveResult =
       result?: unknown;
       intentId: string;
       reservedMicroUsd: number;
-      attempts: number;
     }
   | { kind: "refused"; reason: "cap" | "stale_fence" };
 
@@ -69,8 +68,7 @@ async function readExisting(q: Q, key: string): Promise<ReserveResult | null> {
     status: IntentStatus;
     result: unknown;
     reserved: string;
-    attempts: number;
-  }>("select id, status, result, reserved_micro_usd as reserved, attempts from spend_intents where call_key = $1", [key]);
+  }>("select id, status, result, reserved_micro_usd as reserved from spend_intents where call_key = $1", [key]);
   const r = rows[0];
   if (!r) return null;
   const base = {
@@ -78,7 +76,6 @@ async function readExisting(q: Q, key: string): Promise<ReserveResult | null> {
     status: r.status,
     intentId: r.id,
     reservedMicroUsd: toNumber(r.reserved),
-    attempts: r.attempts,
   };
   return r.result === null ? base : { ...base, result: r.result };
 }
@@ -187,30 +184,34 @@ export async function settleIntent(
   intentId: string,
   args: { actualMicroUsd: number; result: unknown; providerRef?: string },
 ): Promise<{ overrun: boolean }> {
-  assertMicro("actualMicroUsd", args.actualMicroUsd);
+  // An unusable actual (NaN, Infinity, negative, fractional, unsafe) must never make settle throw: the provider
+  // already charged us. It is recorded as the reservation (worst case) with actual_invalid = true.
+  const actualValid = Number.isSafeInteger(args.actualMicroUsd) && args.actualMicroUsd >= 0;
   const resultJson = JSON.stringify(args.result ?? null);
   const ref = args.providerRef ?? null;
 
   return atomic(db, async (q) => {
     const row = await lockIntent(q, intentId, resultJson);
     const reserved = toNumber(row.reserved);
+    const actual = actualValid ? args.actualMicroUsd : reserved;
     if (row.status === "done") {
-      if (row.actual === null || toNumber(row.actual) !== args.actualMicroUsd || !row.same_result || row.provider_ref !== ref) {
+      if (row.actual === null || toNumber(row.actual) !== actual || !row.same_result || row.provider_ref !== ref) {
         throw new Error(`spend intent ${intentId} already settled with different values`);
       }
-      return { overrun: args.actualMicroUsd > reserved };
+      return { overrun: actual > reserved };
     }
     if (row.status !== "pending" && row.status !== "unknown") {
       throw new Error(`spend intent ${intentId} is ${row.status}; it cannot be settled`);
     }
-    await moveBudgets(q, row, args.actualMicroUsd);
+    await moveBudgets(q, row, actual);
     await q.query(
       `update spend_intents
-          set status = 'done', actual_micro_usd = $2, result = $3::jsonb, provider_ref = $4, updated_at = now()
+          set status = 'done', actual_micro_usd = $2, result = $3::jsonb, provider_ref = $4,
+              actual_invalid = $5, updated_at = now()
         where id = $1`,
-      [intentId, args.actualMicroUsd, resultJson, ref],
+      [intentId, actual, resultJson, ref, !actualValid],
     );
-    return { overrun: args.actualMicroUsd > reserved };
+    return { overrun: actual > reserved };
   });
 }
 
@@ -236,29 +237,6 @@ export async function markUnknown(db: Db, intentId: string): Promise<boolean> {
     await q.query("update spend_intents set status = 'unknown', updated_at = now() where id = $1", [intentId]);
     return true;
   });
-}
-
-// cheap_text retry: pending/unknown -> pending, once only (attempts < 2). The reservation is NOT touched
-// (the intent already holds it). Single conditional UPDATE, so two racing workers cannot both reopen.
-export async function reopenForRetry(db: Db, intentId: string): Promise<boolean> {
-  const res = await db.query(
-    `update spend_intents set status = 'pending', attempts = attempts + 1, updated_at = now()
-      where id = $1 and status in ('pending','unknown') and attempts < 2`,
-    [intentId],
-  );
-  return res.rowCount === 1;
-}
-
-// Sum of what this stage has spent or still holds: actual for done, reserved for pending/unknown.
-export async function runTotalMicroUsd(db: Db, stageRunId: string): Promise<number> {
-  const { rows } = await db.query<{ total: string }>(
-    `select coalesce(sum(case when status = 'done' then coalesce(actual_micro_usd, 0)
-                              when status in ('pending','unknown') then reserved_micro_usd
-                              else 0 end), 0) as total
-       from spend_intents where stage_run_id = $1`,
-    [stageRunId],
-  );
-  return toNumber(rows[0]!.total);
 }
 
 export async function getBudget(db: Db, scope: string): Promise<Budget | null> {
