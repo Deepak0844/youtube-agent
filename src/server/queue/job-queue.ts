@@ -18,6 +18,8 @@ import type { StageJob } from "@/server/core/stage-runner";
 export interface JobQueue {
   readonly name: string;
   enqueue(stageRunId: string, fence: number, attemptSeq: number, inputHash: string): Promise<string>;
+  // One-shot upload job: job id upload.<uploadId> (one per upload row), attempts: 1, bounded removeOnFail.
+  enqueueUpload(uploadId: string): Promise<string>;
   startWorker(
     handler: (job: StageJob, jobId: string) => Promise<void>,
     opts?: {
@@ -50,10 +52,17 @@ export function createJobQueue(redisUrl: string, name: string, opts: { keepFaile
       await queue.add("stage", data, { jobId, attempts: 1, removeOnComplete: true, removeOnFail: { count: keepFailed } });
       return jobId;
     },
+    async enqueueUpload(uploadId) {
+      if (!/^[0-9a-f-]{36}$/i.test(uploadId)) throw new RangeError(`invalid upload id: ${uploadId}`);
+      const jobId = `upload.${uploadId}`;
+      await queue.add("upload", { uploadId }, { jobId, attempts: 1, removeOnComplete: true, removeOnFail: { count: keepFailed } });
+      return jobId;
+    },
     startWorker(handler, opts = {}) {
       const worker = new Worker(
         name,
         async (job) => {
+          if (job.name !== "stage") throw new Error(`unsupported job kind: ${job.name}`); // upload jobs have their own handler
           const data = job.data as StageJob;
           await handler({ stageRunId: data.stageRunId, inputHash: data.inputHash }, job.id!);
         },

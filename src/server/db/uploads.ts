@@ -1,0 +1,181 @@
+import pg from "pg";
+import { checkUploadPreconditions, assertUploadCaps, type UploadCaps } from "@/server/core/upload-rules";
+import { safeReason } from "@/server/core/paid-call";
+import { atomic, toNumber, type Db } from "./stages";
+
+// One-shot YouTube upload transition. A public upload cannot be undone, so Postgres decides, once:
+//   publish_approved -> uploading -> uploaded | upload_failed        (startUpload / reportProgress / finishUpload)
+//   uploading -> upload_failed when progress stalls                  (markStalled; NEVER requeues)
+//   upload_failed -> uploading ONLY by a human                       (manualRetry; there is no automatic retry path)
+// Every transition is a conditional UPDATE guarded by the current status, and the partial unique index
+// uploads_one_active_per_video (one uploading/uploaded row per video) is the last line of defence.
+// All times come from the DATABASE clock. Quota simplification: the schema has no per-upload cost column, so quota
+// used today = (uploads started today on the channel) x caps.costUnits.
+
+export type StartCtx = { currentApprovalHash: string; currentFileSha: string; caps: UploadCaps };
+export type StartResult = { started: true } | { started: false; reason: string };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function assertId(id: string): void {
+  if (typeof id !== "string" || !UUID.test(id)) throw new RangeError(`invalid upload id: ${String(id)}`);
+}
+function assertCtx(ctx: StartCtx): void {
+  if (typeof ctx.currentApprovalHash !== "string" || ctx.currentApprovalHash === "") throw new RangeError("currentApprovalHash required");
+  if (typeof ctx.currentFileSha !== "string" || ctx.currentFileSha === "") throw new RangeError("currentFileSha required");
+  assertUploadCaps(ctx.caps);
+}
+
+interface LockedRow {
+  status: string;
+  video_id: string;
+  approval_hash: string | null;
+  file_sha: string | null;
+  channel_id: string | null;
+}
+
+// Shared guarded transition `from` -> uploading, used by BOTH startUpload (publish_approved) and manualRetry
+// (upload_failed): same lock order, same precondition evaluation, same conditional UPDATE.
+async function guardedStart(db: Db, uploadId: string, ctx: StartCtx, from: "publish_approved" | "upload_failed"): Promise<StartResult> {
+  assertId(uploadId);
+  assertCtx(ctx);
+  try {
+    return await atomic(db, async (q) => {
+      // 1. lock the row; whatever a redelivery or a concurrent starter sees is decided here
+      const { rows } = await q.query<LockedRow>(
+        "select status, video_id, approval_hash, file_sha, channel_id from uploads where id = $1 for update",
+        [uploadId],
+      );
+      const row = rows[0];
+      if (!row) return { started: false, reason: "not_found" } as const;
+      if (row.status !== from) return { started: false, reason: from === "publish_approved" ? "not_publish_approved" : "not_upload_failed" } as const;
+      if (row.approval_hash === null) return { started: false, reason: "approval_changed" } as const;
+      if (row.file_sha === null) return { started: false, reason: "file_changed" } as const;
+      if (row.channel_id === null) return { started: false, reason: "no_channel" } as const;
+
+      // 2. serialise every start on this channel so caps/spacing/quota cannot be raced by a sibling video
+      await q.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [row.channel_id]);
+      const { rows: stat } = await q.query<{ n: string; last: Date | null; now: Date }>(
+        `select count(*) filter (where started_at >= date_trunc('day', clock_timestamp())) as n,
+                max(started_at) as last,
+                clock_timestamp() as now
+           from uploads
+          where channel_id = $1 and status in ('uploading','uploaded') and id <> $2`,
+        [row.channel_id, uploadId],
+      );
+      const s = stat[0]!;
+      const uploadsToday = toNumber(s.n);
+      const verdict = checkUploadPreconditions({
+        approvalHash: row.approval_hash,
+        currentApprovalHash: ctx.currentApprovalHash,
+        fileSha: row.file_sha,
+        currentFileSha: ctx.currentFileSha,
+        caps: ctx.caps,
+        uploadsToday,
+        lastUploadAt: s.last,
+        quotaUsedToday: uploadsToday * ctx.caps.costUnits,
+        now: s.now,
+      });
+      if (!verdict.ok) return { started: false, reason: verdict.reason } as const;
+
+      // 3. the conditional transition
+      const res = await q.query(
+        `update uploads
+            set status = 'uploading', started_at = clock_timestamp(), last_progress_at = clock_timestamp(),
+                bytes_sent = 0, finished_at = null, failure_reason = null, updated_at = clock_timestamp()
+          where id = $1 and status = $2`,
+        [uploadId, from],
+      );
+      if (res.rowCount !== 1) return { started: false, reason: from === "publish_approved" ? "not_publish_approved" : "not_upload_failed" } as const;
+      await q.query("insert into upload_log (upload_id, event) values ($1, $2)", [
+        uploadId,
+        from === "publish_approved" ? "started" : "manual_retry",
+      ]);
+      return { started: true } as const;
+    });
+  } catch (err) {
+    // another uploading/uploaded row for this video: the partial unique index refused
+    if ((err as { code?: string }).code === "23505") return { started: false, reason: "another_upload_active_for_video" };
+    throw err;
+  }
+}
+
+export function startUpload(db: Db, uploadId: string, ctx: StartCtx): Promise<StartResult> {
+  return guardedStart(db, uploadId, ctx, "publish_approved");
+}
+
+// The ONLY function that moves upload_failed -> uploading. Human-initiated; re-checks everything startUpload does.
+export async function manualRetry(db: Db, uploadId: string, ctx: StartCtx): Promise<{ started: boolean; reason?: string }> {
+  const r = await guardedStart(db, uploadId, ctx, "upload_failed");
+  return r.started ? { started: true } : { started: false, reason: r.reason };
+}
+
+// Monotonic: a lower value than already recorded is ignored (false). Only while `uploading`.
+export async function reportProgress(db: Db, uploadId: string, bytesSent: number): Promise<boolean> {
+  assertId(uploadId);
+  if (!Number.isSafeInteger(bytesSent) || bytesSent < 0) throw new RangeError(`bytesSent must be a non-negative safe integer, got ${bytesSent}`);
+  const res = await db.query(
+    `update uploads set bytes_sent = $2::bigint, last_progress_at = clock_timestamp(), updated_at = clock_timestamp()
+      where id = $1 and status = 'uploading' and bytes_sent <= $2::bigint`,
+    [uploadId, String(bytesSent)],
+  );
+  return res.rowCount === 1;
+}
+
+export type UploadOutcome =
+  | { kind: "uploaded"; youtubeId: string }
+  | { kind: "duplicate_skipped"; youtubeId?: string }
+  | { kind: "failed"; reason: string };
+
+export const DUPLICATE_SKIPPED_REASON = "duplicate_skipped: check YouTube Studio";
+export const STALLED_REASON = "no progress: check YouTube Studio first";
+
+// Only from `uploading`. "duplicate skipped" is a FAILURE: we cannot tell which video YouTube kept.
+export async function finishUpload(db: Db, uploadId: string, outcome: UploadOutcome): Promise<boolean> {
+  assertId(uploadId);
+  if (outcome.kind === "uploaded" && (typeof outcome.youtubeId !== "string" || outcome.youtubeId === "")) {
+    throw new RangeError("youtubeId required");
+  }
+  return atomic(db, async (q) => {
+    let res: pg.QueryResult;
+    let event: string;
+    if (outcome.kind === "uploaded") {
+      res = await q.query(
+        `update uploads set status = 'uploaded', youtube_id = $2, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+          where id = $1 and status = 'uploading'`,
+        [uploadId, safeReason(outcome.youtubeId)],
+      );
+      event = "uploaded";
+    } else {
+      const reason = outcome.kind === "duplicate_skipped" ? DUPLICATE_SKIPPED_REASON : safeReason(outcome.reason);
+      const yt = outcome.kind === "duplicate_skipped" && outcome.youtubeId ? safeReason(outcome.youtubeId) : null;
+      res = await q.query(
+        `update uploads set status = 'upload_failed', failure_reason = $2, youtube_id = coalesce($3, youtube_id),
+                finished_at = clock_timestamp(), updated_at = clock_timestamp()
+          where id = $1 and status = 'uploading'`,
+        [uploadId, reason, yt],
+      );
+      event = outcome.kind;
+    }
+    if (res.rowCount !== 1) return false;
+    await q.query("insert into upload_log (upload_id, event) values ($1, $2)", [uploadId, event]);
+    return true;
+  });
+}
+
+// `uploading` rows with no progress for noProgressMs (DB clock) become upload_failed. Never requeues or retries:
+// the upload may have reached YouTube, so a human checks Studio first.
+export async function markStalled(db: Db, noProgressMs: number): Promise<string[]> {
+  if (!Number.isSafeInteger(noProgressMs) || noProgressMs < 1) throw new RangeError(`noProgressMs must be a positive safe integer, got ${noProgressMs}`);
+  return atomic(db, async (q) => {
+    const { rows } = await q.query<{ id: string }>(
+      `update uploads
+          set status = 'upload_failed', failure_reason = $2, finished_at = clock_timestamp(), updated_at = clock_timestamp()
+        where status = 'uploading'
+          and coalesce(last_progress_at, started_at) < clock_timestamp() - make_interval(secs => $1::double precision / 1000.0)
+    returning id`,
+      [noProgressMs, STALLED_REASON],
+    );
+    for (const r of rows) await q.query("insert into upload_log (upload_id, event) values ($1, 'stalled')", [r.id]);
+    return rows.map((r) => r.id);
+  });
+}
