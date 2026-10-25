@@ -1,6 +1,6 @@
 import type pg from "pg";
 import { safeReason } from "@/server/core/paid-call";
-import { finishUpload, reportProgress, startUpload, type StartCtx, type UploadOutcome } from "./uploads";
+import { finishUpload, reportProgress, startUpload, STUDIO_FIRST_PREFIX, type InternalOutcome, type StartCtx, type UploadOutcome } from "./uploads";
 
 export interface UploadJobDeps {
   // Current approval hash / file sha / caps, read fresh at job time (never from the job payload).
@@ -32,9 +32,9 @@ export async function handleUploadJob(pool: pg.Pool, deps: UploadJobDeps, upload
 // attempt token, so a stale executor cannot write; a rejected progress report aborts the uploader.
 export async function runUpload(pool: pg.Pool, deps: UploadJobDeps, uploadId: string, attempt: number): Promise<void> {
   const ac = new AbortController();
-  let outcome: UploadOutcome;
+  let outcome: InternalOutcome;
   try {
-    outcome = await deps.uploader.upload(
+    const returned = await deps.uploader.upload(
       uploadId,
       async (bytes) => {
         if (!(await reportProgress(pool, uploadId, attempt, bytes))) {
@@ -44,6 +44,8 @@ export async function runUpload(pool: pg.Pool, deps: UploadJobDeps, uploadId: st
       },
       ac.signal,
     );
+    // an uploader may only return the three public outcomes; anything else (incl. internal kinds) is a failure
+    outcome = isPublicOutcome(returned) ? returned : { kind: "failed", reason: "uploader returned an invalid outcome" };
   } catch (err) {
     if (err instanceof UploadSupersededError || ac.signal.aborted) return; // normal stop: the row is no longer ours
     const { rows } = await pool.query<{ bytes_sent: string }>(
@@ -52,7 +54,14 @@ export async function runUpload(pool: pg.Pool, deps: UploadJobDeps, uploadId: st
     );
     const sent = rows[0] !== undefined && Number(rows[0].bytes_sent) > 0;
     // bytes already went out: the video may be live, so a human checks Studio first
-    outcome = { kind: "failed", reason: sent ? safeReason(`check YouTube Studio first: ${safeReason(err)}`) : safeReason(err) };
+    outcome = sent
+      ? { kind: "failed_after_bytes", reason: safeReason(`${STUDIO_FIRST_PREFIX}${safeReason(err)}`) }
+      : { kind: "failed", reason: safeReason(err) };
   }
   await finishUpload(pool, uploadId, attempt, outcome);
+}
+
+function isPublicOutcome(o: unknown): o is UploadOutcome {
+  const k = (o as { kind?: unknown } | null)?.kind;
+  return k === "uploaded" || k === "duplicate_skipped" || k === "failed";
 }

@@ -14,19 +14,24 @@ import { atomic, toNumber, type Db } from "./stages";
 // EVERY row with started_at set counts (including upload_failed): a failed row may be live on YouTube and YouTube
 // charges quota for failed inserts. "Today" is the America/Los_Angeles calendar day, because YouTube quota resets
 // at midnight Pacific.
+// LOCK ORDER (always): the video's rows by id (row + siblings, FOR UPDATE) -> the channel advisory lock -> counts ->
+// conditional UPDATE. Locking the siblings makes a start wait for a concurrent markStalled/finish of a sibling and
+// then see its committed state (READ COMMITTED); nothing else may take these locks in another order.
 // ATTEMPT TOKEN: every start/manual retry bumps uploads.attempt; progress and finish must present the current
 // attempt while `uploading`, so a leftover uploader from a stalled attempt can never touch a newer one.
 
 export type StartCtx = { currentApprovalHash: string; currentFileSha: string; caps: UploadCaps };
-export type RetryCtx = StartCtx & { humanConfirmedNotOnYouTube: true };
+// ignoreLoggedYoutubeId: a human cleared a youtube id that exists only in upload_log (a rejected stale attempt).
+export type RetryCtx = StartCtx & { humanConfirmedNotOnYouTube: true; ignoreLoggedYoutubeId?: true };
 export type StartResult = { started: true; attempt: number } | { started: false; reason: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function assertId(id: string): void {
   if (typeof id !== "string" || !UUID.test(id)) throw new RangeError(`invalid upload id: ${String(id)}`);
 }
+const INT4_MAX = 2147483647; // uploads.attempt is int4
 function assertAttempt(attempt: number): void {
-  if (!Number.isSafeInteger(attempt) || attempt < 0) throw new RangeError(`attempt must be a non-negative safe integer, got ${attempt}`);
+  if (!Number.isSafeInteger(attempt) || attempt < 0 || attempt > INT4_MAX) throw new RangeError(`attempt must be an integer in [0, ${INT4_MAX}], got ${attempt}`);
 }
 function assertCtx(ctx: StartCtx): void {
   if (typeof ctx.currentApprovalHash !== "string" || ctx.currentApprovalHash === "") throw new RangeError("currentApprovalHash required");
@@ -35,13 +40,18 @@ function assertCtx(ctx: StartCtx): void {
 }
 
 interface LockedRow {
+  id: string;
   status: string;
+  started_at: Date | null;
   video_id: string;
   approval_hash: string | null;
   file_sha: string | null;
   channel_id: string | null;
   youtube_id: string | null;
 }
+
+// A log event that carries a youtube id in the parseable token form `youtube_id=<id>`.
+const LOGGED_YT_ID = "'^(finish_rejected|late_success_conflict|late_success)[: ].*youtube_id=[^ ]'";
 
 const PACIFIC_DAY_START = "(date_trunc('day', clock_timestamp() at time zone 'America/Los_Angeles') at time zone 'America/Los_Angeles')";
 
@@ -52,7 +62,12 @@ const PACIFIC_DAY_START = "(date_trunc('day', clock_timestamp() at time zone 'Am
 // Shared guarded transition `from` -> uploading, used by BOTH startUpload (publish_approved) and manualRetry
 // (upload_failed): same lock order, same precondition evaluation, same conditional UPDATE. Runs at READ COMMITTED:
 // the advisory lock only serialises channel starts if the counts read AFTER the lock see the previous holder's commit.
-async function guardedStart(db: Db, uploadId: string, ctx: StartCtx, from: "publish_approved" | "upload_failed"): Promise<StartResult> {
+async function guardedStart(
+  db: Db,
+  uploadId: string,
+  ctx: StartCtx & { ignoreLoggedYoutubeId?: true },
+  from: "publish_approved" | "upload_failed",
+): Promise<StartResult> {
   assertId(uploadId);
   assertCtx(ctx);
   const wrongStatus = from === "publish_approved" ? "not_publish_approved" : "not_upload_failed";
@@ -63,28 +78,32 @@ async function guardedStart(db: Db, uploadId: string, ctx: StartCtx, from: "publ
         const iso = await q.query<{ iso: string }>("select current_setting('transaction_isolation') as iso");
         if (iso.rows[0]!.iso !== "read committed") return { started: false, reason: "isolation_not_read_committed" } as const;
 
-        // 1. lock the row; whatever a redelivery or a concurrent starter sees is decided here
-        const { rows } = await q.query<LockedRow>(
-          "select status, video_id, approval_hash, file_sha, channel_id, youtube_id from uploads where id = $1 for update",
-          [uploadId],
+        // 1. lock the row AND its siblings (same video) in id order; whatever a redelivery, a concurrent starter or a
+        //    concurrent markStalled/finish did is decided here (we wait for it and see the committed state)
+        const vid = await q.query<{ video_id: string }>("select video_id from uploads where id = $1", [uploadId]);
+        if (vid.rowCount === 0) return { started: false, reason: "not_found" } as const;
+        const { rows: locked } = await q.query<LockedRow>(
+          `select id, status, started_at, video_id, approval_hash, file_sha, channel_id, youtube_id
+             from uploads where video_id = $1 order by id for update`,
+          [vid.rows[0]!.video_id],
         );
-        const row = rows[0];
+        const row = locked.find((r) => r.id === uploadId);
         if (!row) return { started: false, reason: "not_found" } as const;
+        const siblings = locked.filter((r) => r.id !== uploadId);
         if (row.status !== from) return { started: false, reason: wrongStatus } as const;
         if (row.approval_hash === null) return { started: false, reason: "approval_changed" } as const;
         if (row.file_sha === null) return { started: false, reason: "file_changed" } as const;
         if (row.channel_id === null) return { started: false, reason: "no_channel" } as const;
         if (from === "upload_failed" && row.youtube_id !== null) return { started: false, reason: "already_on_youtube" } as const;
 
-        // another row of this video that failed after starting (may be live) or already has a video id: a human resolves it
-        const sib = await q.query(
-          `select 1 from uploads
-            where video_id = $1 and id <> $2
-              and ((status = 'upload_failed' and started_at is not null) or youtube_id is not null)
-            limit 1`,
-          [row.video_id, uploadId],
-        );
-        if (sib.rowCount !== 0) return { started: false, reason: "unresolved_sibling_upload" } as const;
+        // a sibling that failed after starting (may be live) or already has a video id: a human resolves it
+        if (siblings.some((r) => (r.status === "upload_failed" && r.started_at !== null) || r.youtube_id !== null)) {
+          return { started: false, reason: "unresolved_sibling_upload" } as const;
+        }
+        // a video id known only from the log (a rejected stale attempt) also blocks; a human may clear their OWN row's
+        const ids = ctx.ignoreLoggedYoutubeId === true ? siblings.map((r) => r.id) : locked.map((r) => r.id);
+        const logged = await q.query(`select 1 from upload_log where upload_id = any($1::uuid[]) and event ~ ${LOGGED_YT_ID} limit 1`, [ids]);
+        if (logged.rowCount !== 0) return { started: false, reason: "youtube_id_known_in_log" } as const;
 
         // 2. serialise every start on this channel so caps/spacing/quota cannot be raced by a sibling video
         await q.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [row.channel_id]);
@@ -149,7 +168,8 @@ export async function manualRetry(db: Db, uploadId: string, ctx: RetryCtx): Prom
   if ((ctx as { humanConfirmedNotOnYouTube?: unknown }).humanConfirmedNotOnYouTube !== true) {
     return { started: false, reason: "human_confirmation_required" };
   }
-  return guardedStart(db, uploadId, ctx, "upload_failed");
+  const ignore = (ctx as { ignoreLoggedYoutubeId?: unknown }).ignoreLoggedYoutubeId === true;
+  return guardedStart(db, uploadId, { ...ctx, ...(ignore ? { ignoreLoggedYoutubeId: true as const } : { ignoreLoggedYoutubeId: undefined }) }, "upload_failed");
 }
 
 // Monotonic and bounded: a lower value than recorded, a value above bytes_total, or a stale attempt is ignored (false).
@@ -170,20 +190,29 @@ export type UploadOutcome =
   | { kind: "uploaded"; youtubeId: string }
   | { kind: "duplicate_skipped"; youtubeId?: string }
   | { kind: "failed"; reason: string };
+// Produced only by runUpload when the uploader threw after bytes were sent; never accepted from an uploader.
+export type InternalOutcome = UploadOutcome | { kind: "failed_after_bytes"; reason: string };
 
 export const DUPLICATE_SKIPPED_REASON = "duplicate_skipped: check YouTube Studio";
 export const STALLED_REASON = "no progress: check YouTube Studio first";
+export const STUDIO_FIRST_PREFIX = "check YouTube Studio first: ";
+// Failure reasons that make a stalled/failed attempt eligible for a late success. Reserved: matched EXACTLY, and an
+// uploader-supplied reason can never produce them (it gets a neutral prefix).
+const isLateSuccessReason = (r: string | null): boolean => r !== null && (r === STALLED_REASON || r.startsWith(STUDIO_FIRST_PREFIX));
+const isReservedReason = (r: string): boolean => r === STALLED_REASON || r.startsWith("check YouTube Studio first");
 
 // Only from `uploading` with the current attempt. "duplicate skipped" is a FAILURE: we cannot tell which video
 // YouTube kept. A successful upload that arrives after its row was stalled (same attempt) is recorded, not dropped.
 // Every false return logs finish_rejected (with the youtube id when given): a live video's id is never lost.
-export async function finishUpload(db: Db, uploadId: string, attempt: number, outcome: UploadOutcome): Promise<boolean> {
+export async function finishUpload(db: Db, uploadId: string, attempt: number, outcome: InternalOutcome): Promise<boolean> {
   assertId(uploadId);
   assertAttempt(attempt);
   if (outcome.kind === "uploaded" && (typeof outcome.youtubeId !== "string" || outcome.youtubeId === "")) {
     throw new RangeError("youtubeId required");
   }
   return atomic(db, async (q) => {
+    const iso = await q.query<{ iso: string }>("select current_setting('transaction_isolation') as iso");
+    if (iso.rows[0]!.iso !== "read committed") throw new Error("finishUpload requires a READ COMMITTED transaction");
     const log = (event: string) => q.query("insert into upload_log (upload_id, event) values ($1, $2)", [uploadId, event]);
     let res: pg.QueryResult;
     let event: string;
@@ -195,7 +224,14 @@ export async function finishUpload(db: Db, uploadId: string, attempt: number, ou
       );
       event = "uploaded";
     } else {
-      const reason = outcome.kind === "duplicate_skipped" ? DUPLICATE_SKIPPED_REASON : safeReason(outcome.reason);
+      const reason =
+        outcome.kind === "duplicate_skipped"
+          ? DUPLICATE_SKIPPED_REASON
+          : outcome.kind === "failed_after_bytes"
+            ? safeReason(outcome.reason)
+            : isReservedReason(outcome.reason)
+              ? safeReason(`uploader said: ${outcome.reason}`)
+              : safeReason(outcome.reason);
       const yt = outcome.kind === "duplicate_skipped" && outcome.youtubeId ? safeReason(outcome.youtubeId) : null;
       res = await q.query(
         `update uploads set status = 'upload_failed', failure_reason = $3, youtube_id = coalesce($4, youtube_id),
@@ -213,35 +249,38 @@ export async function finishUpload(db: Db, uploadId: string, attempt: number, ou
     // Not the live attempt. A late success of a stalled attempt is the one case we can still honour.
     if (outcome.kind === "uploaded") {
       const youtubeId = safeReason(outcome.youtubeId);
-      const { rows } = await q.query<{ status: string; failure_reason: string | null; attempt: number }>(
-        "select status, failure_reason, attempt from uploads where id = $1 for update",
+      const { rows } = await q.query<{ status: string; failure_reason: string | null; attempt: number; youtube_id: string | null }>(
+        "select status, failure_reason, attempt, youtube_id from uploads where id = $1 for update",
         [uploadId],
       );
       const r = rows[0];
-      if (r && r.status === "upload_failed" && r.attempt === attempt && r.failure_reason !== null && r.failure_reason.includes("check YouTube Studio first")) {
+      if (r && r.status === "upload_failed" && r.attempt === attempt && r.youtube_id === null && isLateSuccessReason(r.failure_reason)) {
         await q.query("savepoint late_success");
         try {
-          await q.query(
+          const late = await q.query(
             `update uploads set status = 'uploaded', youtube_id = $2, failure_reason = null, finished_at = clock_timestamp(), updated_at = clock_timestamp()
-              where id = $1 and status = 'upload_failed' and attempt = $3`,
+              where id = $1 and status = 'upload_failed' and attempt = $3 and youtube_id is null`,
             [uploadId, youtubeId, attempt],
           );
+          if (late.rowCount === 1) {
+            await q.query("release savepoint late_success");
+            await log(`late_success youtube_id=${youtubeId}`);
+            return true;
+          }
           await q.query("release savepoint late_success");
-          await log("late_success");
-          return true;
         } catch (err) {
           await q.query("rollback to savepoint late_success");
           if ((err as { code?: string }).code !== "23505") throw err;
           // a sibling row went active: keep upload_failed but never lose the video id
-          await q.query("update uploads set youtube_id = $2, updated_at = clock_timestamp() where id = $1", [uploadId, youtubeId]);
-          await log("late_success_conflict");
+          await q.query("update uploads set youtube_id = $2, updated_at = clock_timestamp() where id = $1 and youtube_id is null", [uploadId, youtubeId]);
+          await log(`late_success_conflict youtube_id=${youtubeId}`);
         }
       }
     }
     const yt = outcome.kind === "uploaded" ? outcome.youtubeId : outcome.kind === "duplicate_skipped" ? outcome.youtubeId : undefined;
     await log(yt ? `finish_rejected: kind=${outcome.kind} attempt=${attempt} youtube_id=${safeReason(yt)}` : `finish_rejected: kind=${outcome.kind} attempt=${attempt}`);
     return false;
-  });
+  }, { isolation: "read committed" });
 }
 
 // `uploading` rows with no progress for noProgressMs (DB clock) become upload_failed. Never requeues or retries:
