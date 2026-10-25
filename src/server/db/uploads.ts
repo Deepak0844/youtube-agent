@@ -51,7 +51,12 @@ interface LockedRow {
 }
 
 // A log event that carries a youtube id in the parseable token form `youtube_id=<id>`.
-const LOGGED_YT_ID = "'^(finish_rejected|late_success_conflict|late_success)[: ].*youtube_id=[^ ]'";
+const LOGGED_YT_ID = "'^(finish_rejected|late_success_conflict|late_success)[: ].*youtube_id=[^[:space:]]'";
+// Token form of an id for the log: trimmed and percent-encoded (never contains a space); null when blank.
+const ytToken = (id: string): string | null => {
+  const t = safeReason(id).trim();
+  return t === "" ? null : `youtube_id=${encodeURIComponent(t)}`;
+};
 
 const PACIFIC_DAY_START = "(date_trunc('day', clock_timestamp() at time zone 'America/Los_Angeles') at time zone 'America/Los_Angeles')";
 
@@ -158,7 +163,11 @@ async function guardedStart(
 }
 
 export function startUpload(db: Db, uploadId: string, ctx: StartCtx): Promise<StartResult> {
-  return guardedStart(db, uploadId, ctx, "publish_approved");
+  // override flags belong to manualRetry only: strip them even if a caller passes them at runtime
+  const clean: Record<string, unknown> = { ...ctx };
+  delete clean.ignoreLoggedYoutubeId;
+  delete clean.humanConfirmedNotOnYouTube;
+  return guardedStart(db, uploadId, clean as StartCtx, "publish_approved");
 }
 
 // The ONLY function that moves upload_failed -> uploading. Human-initiated: the caller must state that a human
@@ -199,7 +208,15 @@ export const STUDIO_FIRST_PREFIX = "check YouTube Studio first: ";
 // Failure reasons that make a stalled/failed attempt eligible for a late success. Reserved: matched EXACTLY, and an
 // uploader-supplied reason can never produce them (it gets a neutral prefix).
 const isLateSuccessReason = (r: string | null): boolean => r !== null && (r === STALLED_REASON || r.startsWith(STUDIO_FIRST_PREFIX));
-const isReservedReason = (r: string): boolean => r === STALLED_REASON || r.startsWith("check YouTube Studio first");
+const isReservedReason = (r: unknown): boolean => {
+  const c = safeReason(String(r));
+  return c === STALLED_REASON || c.startsWith("check YouTube Studio first");
+};
+
+const withToken = (prefix: string, id: string | undefined): string => {
+  const tok = id === undefined ? null : ytToken(id);
+  return tok ? `${prefix} ${tok}` : prefix;
+};
 
 // Only from `uploading` with the current attempt. "duplicate skipped" is a FAILURE: we cannot tell which video
 // YouTube kept. A successful upload that arrives after its row was stalled (same attempt) is recorded, not dropped.
@@ -230,8 +247,8 @@ export async function finishUpload(db: Db, uploadId: string, attempt: number, ou
           : outcome.kind === "failed_after_bytes"
             ? safeReason(outcome.reason)
             : isReservedReason(outcome.reason)
-              ? safeReason(`uploader said: ${outcome.reason}`)
-              : safeReason(outcome.reason);
+              ? safeReason(`uploader said: ${safeReason(String(outcome.reason))}`)
+              : safeReason(String(outcome.reason));
       const yt = outcome.kind === "duplicate_skipped" && outcome.youtubeId ? safeReason(outcome.youtubeId) : null;
       res = await q.query(
         `update uploads set status = 'upload_failed', failure_reason = $3, youtube_id = coalesce($4, youtube_id),
@@ -264,7 +281,7 @@ export async function finishUpload(db: Db, uploadId: string, attempt: number, ou
           );
           if (late.rowCount === 1) {
             await q.query("release savepoint late_success");
-            await log(`late_success youtube_id=${youtubeId}`);
+            await log(withToken("late_success", youtubeId));
             return true;
           }
           await q.query("release savepoint late_success");
@@ -273,12 +290,12 @@ export async function finishUpload(db: Db, uploadId: string, attempt: number, ou
           if ((err as { code?: string }).code !== "23505") throw err;
           // a sibling row went active: keep upload_failed but never lose the video id
           await q.query("update uploads set youtube_id = $2, updated_at = clock_timestamp() where id = $1 and youtube_id is null", [uploadId, youtubeId]);
-          await log(`late_success_conflict youtube_id=${youtubeId}`);
+          await log(withToken("late_success_conflict", youtubeId));
         }
       }
     }
     const yt = outcome.kind === "uploaded" ? outcome.youtubeId : outcome.kind === "duplicate_skipped" ? outcome.youtubeId : undefined;
-    await log(yt ? `finish_rejected: kind=${outcome.kind} attempt=${attempt} youtube_id=${safeReason(yt)}` : `finish_rejected: kind=${outcome.kind} attempt=${attempt}`);
+    await log(withToken(`finish_rejected: kind=${outcome.kind} attempt=${attempt}`, yt));
     return false;
   }, { isolation: "read committed" });
 }

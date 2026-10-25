@@ -10,6 +10,20 @@ export interface UploadJobDeps {
     // the uploader must stop.
     upload(uploadId: string, onProgress: (bytesSent: number) => Promise<void>, signal: AbortSignal): Promise<UploadOutcome>;
   };
+  // One JSON line per call; defaults to console.error. Used when recording the outcome fails twice.
+  warn?(line: string): void;
+  // Wait before the single retry of a failed DB call (default 200 ms).
+  retryDelayMs?: number;
+}
+
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+async function retryOnce<T>(deps: UploadJobDeps, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch {
+    await wait(deps.retryDelayMs ?? 200);
+    return fn();
+  }
 }
 
 export class UploadSupersededError extends Error {
@@ -48,17 +62,29 @@ export async function runUpload(pool: pg.Pool, deps: UploadJobDeps, uploadId: st
     outcome = isPublicOutcome(returned) ? returned : { kind: "failed", reason: "uploader returned an invalid outcome" };
   } catch (err) {
     if (err instanceof UploadSupersededError || ac.signal.aborted) return; // normal stop: the row is no longer ours
-    const { rows } = await pool.query<{ bytes_sent: string }>(
-      "select bytes_sent from uploads where id = $1 and attempt = $2 and status = 'uploading'",
-      [uploadId, attempt],
-    );
-    const sent = rows[0] !== undefined && Number(rows[0].bytes_sent) > 0;
+    let sent: boolean;
+    try {
+      const { rows } = await retryOnce(deps, () =>
+        pool.query<{ bytes_sent: string }>("select bytes_sent from uploads where id = $1 and attempt = $2 and status = 'uploading'", [uploadId, attempt]),
+      );
+      sent = rows[0] !== undefined && Number(rows[0].bytes_sent) > 0;
+    } catch {
+      sent = true; // cannot tell: assume bytes went out, so a human checks Studio first
+    }
     // bytes already went out: the video may be live, so a human checks Studio first
     outcome = sent
       ? { kind: "failed_after_bytes", reason: safeReason(`${STUDIO_FIRST_PREFIX}${safeReason(err)}`) }
       : { kind: "failed", reason: safeReason(err) };
   }
-  await finishUpload(pool, uploadId, attempt, outcome);
+  try {
+    await retryOnce(deps, () => finishUpload(pool, uploadId, attempt, outcome));
+  } catch (err) {
+    // the DB is down: never lose the id of a video that may be live
+    const youtubeId = (outcome.kind === "uploaded" || outcome.kind === "duplicate_skipped") && outcome.youtubeId ? safeReason(outcome.youtubeId) : null;
+    const line = JSON.stringify({ event: "upload_job.finish_failed", uploadId, attempt, youtubeId, outcome: outcome.kind, error: safeReason(err) });
+    (deps.warn ?? ((l: string) => console.error(l)))(line);
+    throw err;
+  }
 }
 
 function isPublicOutcome(o: unknown): o is UploadOutcome {

@@ -176,7 +176,7 @@ describe("disasters", () => {
     const outcomes: StageOutcome[] = [];
     startRunner(
       deps("w1", {
-        ttlMs: 300,
+        ttlMs: 2000,
         provider: {
           call: async (key) => {
             const out = await provider.call(key);

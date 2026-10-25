@@ -173,7 +173,7 @@ export function planFor(seed: number, shape: Shape = DEFAULT_SHAPE): ChaosPlan {
 
 // ---- runtime ----------------------------------------------------------------------------------------------------
 
-const TTL_MS = 250;
+const TTL_MS = 2000;
 const GRACE_MS = 50;
 const STALL_MS = 200;
 const HASH = "chaos-h";

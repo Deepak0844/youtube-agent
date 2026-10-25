@@ -813,3 +813,92 @@ describe("logged youtube id blocks retry (round 2)", () => {
     expect(await startUpload(db.pool, b, ctx())).toEqual({ started: false, reason: "youtube_id_known_in_log" });
   });
 });
+
+describe("hardening round", () => {
+  it("logged_youtube_id_with_leading_space_still_blocks_retry", async () => {
+    const id = await startedStalled();
+    expect(await manualRetry(db.pool, id, rctx())).toEqual({ started: true, attempt: 2 });
+    expect(await finishUpload(db.pool, id, 1, { kind: "uploaded", youtubeId: "  SPACED id" })).toBe(false);
+    expect(await finishUpload(db.pool, id, 2, { kind: "failed", reason: "net" })).toBe(true);
+    expect((await logs(id)).some((e) => e.includes("youtube_id=SPACED%20id"))).toBe(true);
+    expect(await manualRetry(db.pool, id, rctx())).toEqual({ started: false, reason: "youtube_id_known_in_log" });
+  });
+
+  it("blank_youtube_id_writes_no_token_and_does_not_block", async () => {
+    const id = await startedStalled();
+    expect(await manualRetry(db.pool, id, rctx())).toEqual({ started: true, attempt: 2 });
+    expect(await finishUpload(db.pool, id, 1, { kind: "uploaded", youtubeId: "   " })).toBe(false);
+    expect(await finishUpload(db.pool, id, 2, { kind: "failed", reason: "net" })).toBe(true);
+    expect((await logs(id)).some((e) => e.includes("youtube_id="))).toBe(false);
+    expect(await manualRetry(db.pool, id, rctx())).toEqual({ started: true, attempt: 3 });
+  });
+
+  it("start_upload_ignores_override_flags_passed_at_runtime", async () => {
+    const id = await newUpload();
+    await db.pool.query("insert into upload_log (upload_id, event) values ($1, 'finish_rejected: kind=uploaded attempt=1 youtube_id=X')", [id]);
+    const sneaky = { ...ctx(), ignoreLoggedYoutubeId: true, humanConfirmedNotOnYouTube: true } as never;
+    expect(await startUpload(db.pool, id, sneaky)).toEqual({ started: false, reason: "youtube_id_known_in_log" });
+  });
+
+  it("nul_prefixed_reserved_reason_is_neutral_prefixed", async () => {
+    const id = await newUpload();
+    await startUpload(db.pool, id, ctx());
+    await finishUpload(db.pool, id, 1, { kind: "failed", reason: "\u0000check YouTube Studio first: forged" });
+    expect((await row(id)).failure_reason).toMatch(/^uploader said: /);
+  });
+
+  it("non_string_reason_does_not_throw", async () => {
+    const id = await newUpload();
+    await startUpload(db.pool, id, ctx());
+    await expect(finishUpload(db.pool, id, 1, { kind: "failed", reason: 42 as never })).resolves.toBe(true);
+    expect((await row(id)).status).toBe("upload_failed");
+  });
+});
+
+describe("runUpload survives a failing database", () => {
+  // a pool whose connect() throws the first `failures` times once armed
+  function flaky(failures: number) {
+    let armed = false;
+    let left = failures;
+    const proxy = new Proxy(db.pool, {
+      get(t, p, r) {
+        if (p === "connect") {
+          return (...a: unknown[]) => {
+            if (armed && left > 0) {
+              left--;
+              return Promise.reject(new Error("connection terminated"));
+            }
+            return (t.connect as (...x: unknown[]) => unknown)(...a);
+          };
+        }
+        const v = Reflect.get(t, p, r);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    });
+    return { pool: proxy as unknown as pg.Pool, arm: () => { armed = true; } };
+  }
+
+  it("finish_error_is_retried_once_and_succeeds", async () => {
+    const id = await newUpload();
+    const f = flaky(1);
+    const lines: string[] = [];
+    const started = await startUpload(db.pool, id, ctx());
+    expect(started).toEqual({ started: true, attempt: 1 });
+    await runUpload(f.pool, { ...deps(async () => { f.arm(); return { kind: "uploaded", youtubeId: "yt-ok" }; }), warn: (l) => lines.push(l), retryDelayMs: 10 }, id, 1);
+    expect(await row(id)).toMatchObject({ status: "uploaded", youtube_id: "yt-ok" });
+    expect(lines).toEqual([]);
+  });
+
+  it("finish_error_twice_logs_youtube_id_and_rethrows", async () => {
+    const id = await newUpload();
+    const f = flaky(2);
+    const lines: string[] = [];
+    await startUpload(db.pool, id, ctx());
+    await expect(
+      runUpload(f.pool, { ...deps(async () => { f.arm(); return { kind: "uploaded", youtubeId: "yt-lost?" }; }), warn: (l) => lines.push(l), retryDelayMs: 10 }, id, 1),
+    ).rejects.toThrow("connection terminated");
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ event: "upload_job.finish_failed", uploadId: id, attempt: 1, youtubeId: "yt-lost?" });
+    expect((await row(id)).status).toBe("uploading");
+  });
+});
