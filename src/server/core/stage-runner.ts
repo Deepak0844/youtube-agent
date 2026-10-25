@@ -1,8 +1,10 @@
 import {
   BudgetRefusedError,
+  KnownFailure,
   LeaseLostError,
   NeedsDecisionError,
   runPaidCall,
+  safeReason,
   type ClaimLike,
   type PaidCallOutput,
   type PaidCallPorts,
@@ -16,7 +18,12 @@ import {
 // - A null claim (already claimed, already finished, wrong hash, needs_decision) is a normal no-op.
 // - A heartbeat runs every ttl/3 while the attempt runs; once it fails the lease is treated as lost: no further step
 //   starts (reserve would refuse anyway, the DB re-checks the lease) and the timer stops.
-// - NeedsDecision / LeaseLost / BudgetRefused stop the attempt WITHOUT commit (NeedsDecision already parked the stage).
+// - NeedsDecision / LeaseLost stop the attempt WITHOUT commit (NeedsDecision already parked the stage).
+// - Deterministic outcomes are TERMINAL, through fenced ports, so the reconciler never loops on them:
+//     BudgetRefused -> needs_decision "budget_refused: <call key>" (a human can raise the cap);
+//     KnownFailure (incl. a replayed KnownFailureError) -> failed "known_failure: <cleaned reason>".
+// - Anything else is rethrown (the BullMQ job fails). An unknown provider error leaves its intent pending, so the
+//   reconciler parks the stage; an error before any intent is bounded by the reconciler's maxAttempts.
 // - Settle (inside runPaidCall) and commit are separate transactions, settle first; nothing is paid after commit.
 
 export interface StageJob {
@@ -60,6 +67,9 @@ export interface StageRunnerPorts {
   heartbeat(claim: StageClaim, ttlMs: number): Promise<boolean>;
   getStage(id: string): Promise<StageLike | null>;
   commit(claim: StageClaim, result: unknown): Promise<boolean>;
+  // Both fenced on claim (fence + owner + running); false = the stage has moved on.
+  markNeedsDecision(claim: StageClaim, reason: string): Promise<boolean>;
+  fail(claim: StageClaim, reason: string): Promise<boolean>;
 }
 
 export type StageOutcome =
@@ -68,7 +78,8 @@ export type StageOutcome =
   | { kind: "commit_rejected"; claim: StageClaim }
   | { kind: "needs_decision"; claim: StageClaim }
   | { kind: "lease_lost"; claim: StageClaim }
-  | { kind: "budget_refused"; claim: StageClaim };
+  | { kind: "budget_refused"; claim: StageClaim }
+  | { kind: "known_failure"; claim: StageClaim };
 
 export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDeps, job: StageJob): Promise<StageOutcome> {
   const claim = await ports.claim({ id: job.stageRunId, inputHash: job.inputHash, workerId: deps.workerId, ttlMs: deps.ttlMs });
@@ -102,7 +113,14 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
   } catch (err) {
     if (err instanceof NeedsDecisionError) return { kind: "needs_decision", claim };
     if (err instanceof LeaseLostError) return { kind: "lease_lost", claim };
-    if (err instanceof BudgetRefusedError) return { kind: "budget_refused", claim };
+    if (err instanceof BudgetRefusedError) {
+      await ports.markNeedsDecision(claim, `budget_refused: ${err.callKey}`);
+      return { kind: "budget_refused", claim };
+    }
+    if (err instanceof KnownFailure) {
+      await ports.fail(claim, `known_failure: ${safeReason(err)}`);
+      return { kind: "known_failure", claim };
+    }
     throw err;
   } finally {
     clearInterval(timer);

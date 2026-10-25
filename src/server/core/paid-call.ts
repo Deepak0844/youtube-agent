@@ -95,7 +95,8 @@ export function cleanProviderRef(v: string): string {
 
 export const UNSERIALIZABLE_UNKNOWN = { unserializable: true, reason: "unknown" } as const;
 
-function safeReason(err: unknown): string {
+// A short reason that any DB write accepts: no NUL, no lone surrogates, at most 200 code points. Never throws.
+export function safeReason(err: unknown): string {
   try {
     const msg = err instanceof Error ? err.message : String(err);
     return cutCodePoints(cleanString(String(msg)), 200);

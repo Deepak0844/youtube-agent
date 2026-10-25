@@ -1,4 +1,4 @@
-import { Queue, Worker, type JobType } from "bullmq";
+import { Queue, Worker, type JobType, type WorkerOptions } from "bullmq";
 import { stageJobId } from "@/server/core/job-id";
 import type { StageJob } from "@/server/core/stage-runner";
 
@@ -7,17 +7,25 @@ import type { StageJob } from "@/server/core/stage-runner";
 // re-enqueues queued rows that have no live job.
 //
 // - Job id = stageJobId(stageRunId, fence, attemptSeq) = stage.<id>.<fence>.<attempt>: unique per attempt, because
-//   BullMQ silently ignores add() for an id it already holds (failed jobs are kept: removeOnFail: false).
+//   BullMQ silently ignores add() for an id it already holds (failed jobs are kept, bounded to the newest keepFailed).
 // - Payload { stageRunId, inputHash }: the row's input_hash AT ENQUEUE TIME; the claim uses it, so a job queued for
 //   an older input never runs.
-// - attempts: 1 (no BullMQ retries: retrying is the reconciler's decision, made against Postgres).
+// - The reconciler is the ONLY retry authority, decided against Postgres: attempts: 1 (no BullMQ retries) and
+//   maxStalledCount: 0. In BullMQ 6.4.2 a job whose lock expired is moved back to wait flagged with a deferred
+//   failure (moveStalledJobsToWait-9.lua) and the next worker to fetch it fails it WITHOUT running the processor
+//   (Worker.getUnrecoverableErrorMessage); a still-queued row is then re-enqueued by the reconciler under a new id.
 
 export interface JobQueue {
   readonly name: string;
   enqueue(stageRunId: string, fence: number, attemptSeq: number, inputHash: string): Promise<string>;
   startWorker(
     handler: (job: StageJob, jobId: string) => Promise<void>,
-    opts?: { concurrency?: number; onError?: (err: Error) => void },
+    opts?: {
+      concurrency?: number;
+      onError?: (err: Error) => void;
+      // Test knobs only (lock/stall timing). maxStalledCount is always forced to 0.
+      bullmq?: Pick<WorkerOptions, "lockDuration" | "stalledInterval" | "skipLockRenewal">;
+    },
   ): { close(): Promise<void> };
   // Ids of jobs that may still be delivered or are being processed (not completed/failed). One atomic Redis script.
   liveJobIds(): Promise<Set<string>>;
@@ -26,7 +34,10 @@ export interface JobQueue {
 
 const LIVE: JobType[] = ["waiting", "active", "delayed", "prioritized", "waiting-children"];
 
-export function createJobQueue(redisUrl: string, name: string): JobQueue {
+export const DEFAULT_KEEP_FAILED = 1000;
+
+export function createJobQueue(redisUrl: string, name: string, opts: { keepFailed?: number } = {}): JobQueue {
+  const keepFailed = opts.keepFailed ?? DEFAULT_KEEP_FAILED;
   const connection = { url: redisUrl, maxRetriesPerRequest: null };
   const queue = new Queue(name, { connection });
   const workers = new Set<Worker>();
@@ -36,7 +47,7 @@ export function createJobQueue(redisUrl: string, name: string): JobQueue {
     async enqueue(stageRunId, fence, attemptSeq, inputHash) {
       const jobId = stageJobId(stageRunId, fence, attemptSeq);
       const data: StageJob = { stageRunId, inputHash };
-      await queue.add("stage", data, { jobId, attempts: 1, removeOnComplete: true, removeOnFail: false });
+      await queue.add("stage", data, { jobId, attempts: 1, removeOnComplete: true, removeOnFail: { count: keepFailed } });
       return jobId;
     },
     startWorker(handler, opts = {}) {
@@ -46,7 +57,7 @@ export function createJobQueue(redisUrl: string, name: string): JobQueue {
           const data = job.data as StageJob;
           await handler({ stageRunId: data.stageRunId, inputHash: data.inputHash }, job.id!);
         },
-        { connection, concurrency: opts.concurrency ?? 1 },
+        { ...opts.bullmq, connection, concurrency: opts.concurrency ?? 1, maxStalledCount: 0 },
       );
       const onError = opts.onError ?? ((err: Error) => console.error(`queue ${name} worker error:`, err));
       worker.on("error", onError);

@@ -20,6 +20,11 @@ import { toNumber } from "./stages";
 //    live in Redis -> one conditional UPDATE bumps attempt_seq (only if fence/attempt_seq are still what we saw, so
 //    two concurrent reconcilers bump once), then enqueue with the row's current input_hash, after the commit.
 //    The grace window keeps us off rows a creator is about to enqueue; a double enqueue anyway is safe (fenced claim).
+// Attempt cap (maxAttempts, default 5): where A would requeue or B would re-enqueue a row whose
+// attempt_seq >= maxAttempts, the SAME conditional statement (same locks, same WHERE) instead sets
+// status='failed', result {"reason":"too_many_attempts","attempts":attempt_seq}. attempt_seq counts re-enqueues, so a
+// stage gets at most 1 + maxAttempts deliveries. It bounds errors that leave no open intent (a throwing stepsFor,
+// bugs); an open intent always wins (needs_decision), and needs_decision rows are never touched.
 // An enqueue failure is recorded in enqueueFailed: the row stays queued with a fresh updated_at and the next
 // reconcile after the grace window re-enqueues it.
 // needs_decision (and succeeded/failed/cancelled) rows are never selected, so never touched.
@@ -27,11 +32,15 @@ import { toNumber } from "./stages";
 // marked it unknown) — see the Task 5 report.
 
 export const DEFAULT_GRACE_MS = 5_000;
+export const DEFAULT_MAX_ATTEMPTS = 5;
+
+const tooMany = (attempts: number) => JSON.stringify({ reason: "too_many_attempts", attempts });
 
 export interface ReconcileResult {
   requeued: string[];
   reenqueued: string[];
   needsDecision: string[];
+  failed: string[];
   enqueueFailed: string[];
 }
 
@@ -40,9 +49,10 @@ type Enqueuer = Pick<JobQueue, "enqueue" | "liveJobIds">;
 type Decision =
   | { kind: "skip" }
   | { kind: "needs_decision" }
+  | { kind: "failed" }
   | { kind: "requeued"; fence: number; attemptSeq: number; inputHash: string };
 
-async function decideExpired(pool: pg.Pool, id: string): Promise<Decision> {
+async function decideExpired(pool: pg.Pool, id: string, maxAttempts: number): Promise<Decision> {
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -76,6 +86,14 @@ async function decideExpired(pool: pg.Pool, id: string): Promise<Decision> {
           [id, JSON.stringify({ needsDecision: "reconciler: lease expired with a paid call of unknown outcome" })],
         );
         decision = parked.rowCount === 1 ? { kind: "needs_decision" } : { kind: "skip" };
+      } else if (stage.attempt_seq >= maxAttempts) {
+        const failed = await client.query(
+          `update stage_runs set status = 'failed', result = $2::jsonb, updated_at = clock_timestamp()
+            where id = $1 and status = 'running' and lease_until < clock_timestamp()
+              and fence = $3 and attempt_seq = $4`,
+          [id, tooMany(stage.attempt_seq), toNumber(stage.fence), stage.attempt_seq],
+        );
+        decision = failed.rowCount === 1 ? { kind: "failed" } : { kind: "skip" };
       } else {
         const fence = toNumber(stage.fence);
         const attemptSeq = stage.attempt_seq + 1;
@@ -105,11 +123,13 @@ async function decideExpired(pool: pg.Pool, id: string): Promise<Decision> {
 export async function reconcile(
   pool: pg.Pool,
   queue: Enqueuer,
-  opts: { graceMs?: number } = {},
+  opts: { graceMs?: number; maxAttempts?: number } = {},
 ): Promise<ReconcileResult> {
   const graceMs = opts.graceMs ?? DEFAULT_GRACE_MS;
+  const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 0) throw new RangeError(`maxAttempts must be a non-negative integer, got ${maxAttempts}`);
   if (!Number.isSafeInteger(graceMs) || graceMs < 0) throw new RangeError(`graceMs must be a non-negative integer, got ${graceMs}`);
-  const out: ReconcileResult = { requeued: [], reenqueued: [], needsDecision: [], enqueueFailed: [] };
+  const out: ReconcileResult = { requeued: [], reenqueued: [], needsDecision: [], failed: [], enqueueFailed: [] };
 
   const enqueue = async (id: string, fence: number, attemptSeq: number, inputHash: string): Promise<boolean> => {
     try {
@@ -126,8 +146,9 @@ export async function reconcile(
     "select id from stage_runs where status = 'running' and lease_until < clock_timestamp() order by id",
   );
   for (const { id } of expired.rows) {
-    const d = await decideExpired(pool, id);
+    const d = await decideExpired(pool, id, maxAttempts);
     if (d.kind === "needs_decision") out.needsDecision.push(id);
+    if (d.kind === "failed") out.failed.push(id);
     if (d.kind === "requeued") {
       out.requeued.push(id); // committed; the enqueue comes strictly after
       await enqueue(id, d.fence, d.attemptSeq, d.inputHash);
@@ -147,6 +168,16 @@ export async function reconcile(
   for (const r of queued.rows) {
     const fence = toNumber(r.fence);
     if (live.has(stageJobId(r.id, fence, r.attempt_seq))) continue;
+    if (r.attempt_seq >= maxAttempts) {
+      const failed = await pool.query(
+        `update stage_runs set status = 'failed', result = $2::jsonb, updated_at = clock_timestamp()
+          where id = $1 and status = 'queued' and fence = $3 and attempt_seq = $4
+            and updated_at < clock_timestamp() - ($5::bigint * interval '1 millisecond')`,
+        [r.id, tooMany(r.attempt_seq), fence, r.attempt_seq, graceMs],
+      );
+      if (failed.rowCount === 1) out.failed.push(r.id);
+      continue;
+    }
     const attemptSeq = r.attempt_seq + 1;
     const bumped = await pool.query<{ input_hash: string }>(
       `update stage_runs
