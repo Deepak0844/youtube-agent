@@ -45,6 +45,10 @@ interface LockedRow {
 
 const PACIFIC_DAY_START = "(date_trunc('day', clock_timestamp() at time zone 'America/Los_Angeles') at time zone 'America/Los_Angeles')";
 
+// Caps: daily cap and spacing look at OTHER rows only; a retry is the same upload (and a human confirmed it), so the
+// row being started/retried never blocks itself. Quota counts EVERY attempt, the row's own earlier attempts
+// included, because YouTube charges quota per insert attempt: quotaUsedToday = sum(attempt) over today's started
+// rows x costUnits.
 // Shared guarded transition `from` -> uploading, used by BOTH startUpload (publish_approved) and manualRetry
 // (upload_failed): same lock order, same precondition evaluation, same conditional UPDATE. Runs at READ COMMITTED:
 // the advisory lock only serialises channel starts if the counts read AFTER the lock see the previous holder's commit.
@@ -84,13 +88,14 @@ async function guardedStart(db: Db, uploadId: string, ctx: StartCtx, from: "publ
 
         // 2. serialise every start on this channel so caps/spacing/quota cannot be raced by a sibling video
         await q.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [row.channel_id]);
-        const { rows: stat } = await q.query<{ n: string; last: Date | null; now: Date }>(
-          `select count(*) filter (where started_at >= ${PACIFIC_DAY_START}) as n,
-                  max(started_at) as last,
+        const { rows: stat } = await q.query<{ n: string; last: Date | null; attempts: string; now: Date }>(
+          `select count(*) filter (where started_at >= ${PACIFIC_DAY_START} and id <> $2) as n,
+                  max(started_at) filter (where id <> $2) as last,
+                  coalesce(sum(greatest(attempt, 1)) filter (where started_at >= ${PACIFIC_DAY_START}), 0) as attempts,
                   clock_timestamp() as now
              from uploads
             where channel_id = $1 and started_at is not null`,
-          [row.channel_id],
+          [row.channel_id, uploadId],
         );
         const s = stat[0]!;
         const uploadsToday = toNumber(s.n);
@@ -102,7 +107,7 @@ async function guardedStart(db: Db, uploadId: string, ctx: StartCtx, from: "publ
           caps: ctx.caps,
           uploadsToday,
           lastUploadAt: s.last,
-          quotaUsedToday: uploadsToday * ctx.caps.costUnits,
+          quotaUsedToday: toNumber(s.attempts) * ctx.caps.costUnits,
           now: s.now,
         });
         if (!verdict.ok) return { started: false, reason: verdict.reason } as const;

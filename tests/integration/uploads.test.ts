@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Queue } from "bullmq";
-import { createJobQueue } from "@/server/queue/job-queue";
+import { createJobQueue, type StageQueue, type UploadQueue } from "@/server/queue/job-queue";
 import * as uploadsModule from "@/server/db/uploads";
 import { finishUpload, manualRetry, markStalled, reportProgress, startUpload, type StartCtx } from "@/server/db/uploads";
 import { handleUploadJob, runUpload, type UploadJobDeps } from "@/server/db/upload-job";
@@ -286,9 +286,9 @@ describe("manualRetry", () => {
 
 describe("job handling", () => {
   it("queue_option_attempts_is_one", async () => {
-    const name = `uploads-${process.pid}`;
-    const queue = createJobQueue(db.redisUrl, name, { keepFailed: 7 });
-    const inspect = new Queue(name, { connection: { url: db.redisUrl } });
+    const name = `uq-${process.pid}`;
+    const queue = createJobQueue(db.redisUrl, "uploads", name, { keepFailed: 7 });
+    const inspect = new Queue(`uploads-${name}`, { connection: { url: db.redisUrl } });
     try {
       const id = uuidv7();
       const jobId = await queue.enqueueUpload(id);
@@ -567,10 +567,10 @@ describe("executor", () => {
   });
 
   it("upload_queue_route_end_to_end", async () => {
-    const name = `uploads-route-${process.pid}`; // upload jobs live on their own queue, never beside a stage worker
-    const queue = createJobQueue(db.redisUrl, name);
+    const name = `route-${process.pid}`; // upload jobs live on their own queue, never beside a stage worker
+    const queue = createJobQueue(db.redisUrl, "uploads", name);
     const id = await newUpload();
-    const uploadWorker = queue.startUploadWorker((uploadId) =>
+    const uploadWorker = queue.startWorker((uploadId) =>
       handleUploadJob(db.pool, deps(async (_i, onProgress) => {
         await onProgress(5);
         return { kind: "uploaded", youtubeId: "via-queue" };
@@ -583,6 +583,92 @@ describe("executor", () => {
     } finally {
       await uploadWorker.close();
       await queue.close();
+    }
+  });
+});
+
+describe("retry caps (round 1b)", () => {
+  async function failedOnce(): Promise<string> {
+    const id = await newUpload();
+    await startUpload(db.pool, id, ctx());
+    await finishUpload(db.pool, id, 1, { kind: "failed", reason: "net" });
+    return id;
+  }
+  const tight = { ...CAPS, maxPerDay: 1, minSpacingMs: 3_600_000 };
+
+  it("manual_retry_is_not_blocked_by_its_own_earlier_start", async () => {
+    const id = await failedOnce();
+    expect(await manualRetry(db.pool, id, rctx({ caps: tight }))).toEqual({ started: true, attempt: 2 });
+  });
+
+  it("manual_retry_still_counts_its_earlier_attempts_toward_quota", async () => {
+    const id = await failedOnce();
+    const q2 = { ...CAPS, dailyQuotaUnits: 2, costUnits: 1 };
+    expect(await manualRetry(db.pool, id, rctx({ caps: q2 }))).toEqual({ started: true, attempt: 2 }); // 1 used + 1 <= 2
+    await finishUpload(db.pool, id, 2, { kind: "failed", reason: "net" });
+    expect(await manualRetry(db.pool, id, rctx({ caps: q2 }))).toEqual({ started: false, reason: "quota" }); // 2 used + 1 > 2
+  });
+
+  it("retry_is_still_blocked_by_other_rows_spacing_and_cap", async () => {
+    const id = await failedOnce();
+    await newUpload({ status: "uploaded", startedAgoMs: 10, channel: "chan" });
+    expect(await manualRetry(db.pool, id, rctx({ caps: { ...CAPS, maxPerDay: 1 } }))).toEqual({ started: false, reason: "daily_cap" });
+    expect(await manualRetry(db.pool, id, rctx({ caps: { ...CAPS, minSpacingMs: 3_600_000 } }))).toEqual({ started: false, reason: "spacing" });
+  });
+});
+
+describe("queue kinds (round 1b)", () => {
+  it("queue_kind_and_suffix_validation", async () => {
+    expect(() => createJobQueue(db.redisUrl, "other" as never)).toThrow(RangeError);
+    for (const bad of ["", "UPPER", "has space", "a.b", "a:b", "x".repeat(41)]) {
+      expect(() => createJobQueue(db.redisUrl, "stages", bad)).toThrow(RangeError);
+    }
+    const q = createJobQueue(db.redisUrl, "uploads", "ok-1");
+    const bare = createJobQueue(db.redisUrl, "stages");
+    expect([q.name, bare.name]).toEqual(["uploads-ok-1", "stages"]);
+    await q.close();
+    await bare.close();
+  });
+
+  it("stage_enqueue_on_uploads_queue_throws", async () => {
+    const q = createJobQueue(db.redisUrl, "uploads", `k1-${process.pid}`);
+    try {
+      expect(() => (q as unknown as StageQueue).enqueue(uuidv7(), 0, 0, "h")).toThrow(/not available on a 'uploads' queue/);
+    } finally {
+      await q.close();
+    }
+  });
+
+  it("upload_enqueue_on_stages_queue_throws", async () => {
+    const q = createJobQueue(db.redisUrl, "stages", `k2-${process.pid}`);
+    try {
+      expect(() => (q as unknown as UploadQueue).enqueueUpload(uuidv7())).toThrow(/not available on a 'stages' queue/);
+    } finally {
+      await q.close();
+    }
+  });
+
+  it("stage_worker_never_sees_upload_jobs", async () => {
+    const sq = createJobQueue(db.redisUrl, "stages", `k3-${process.pid}`);
+    const uq = createJobQueue(db.redisUrl, "uploads", `k3-${process.pid}`);
+    const stageSeen: string[] = [];
+    const uploadSeen: string[] = [];
+    const w1 = sq.startWorker(async (job) => void stageSeen.push(job.stageRunId), { onError: () => {} });
+    const w2 = uq.startWorker(async (uploadId) => void uploadSeen.push(uploadId), { onError: () => {} });
+    try {
+      const stageId = uuidv7();
+      const uploadId = uuidv7();
+      await sq.enqueue(stageId, 0, 0, "h");
+      await uq.enqueueUpload(uploadId);
+      await waitFor(() => stageSeen.length === 1 && uploadSeen.length === 1, "both jobs delivered");
+      await sleep(200);
+      expect(stageSeen).toEqual([stageId]);
+      expect(uploadSeen).toEqual([uploadId]);
+    } finally {
+      await w1.close();
+      await w2.close();
+      await sq.close();
+      await uq.close();
     }
   });
 });

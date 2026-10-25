@@ -29,7 +29,7 @@ beforeEach(async () => {
   await provider.init();
   await db.pool.query("truncate fake_provider_calls");
   await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('g', 100000000)");
-  queue = createJobQueue(db.redisUrl, `disasters-${process.pid}-${queueN++}`);
+  queue = createJobQueue(db.redisUrl, "stages", `disasters-${process.pid}-${queueN++}`);
   closers = [() => queue.close()];
   workerErrors.length = 0;
 });

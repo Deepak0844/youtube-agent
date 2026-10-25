@@ -34,10 +34,11 @@ beforeEach(async () => {
   await provider.init();
   await db.pool.query("truncate fake_provider_calls");
   await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('g', 100000000)");
-  queueName = `stuck-${process.pid}-${queueN++}`;
+  const suffix = `stuck-${process.pid}-${queueN++}`;
+  queueName = `stages-${suffix}`;
   closers = [];
   warnings.length = 0;
-  queue = createJobQueue(db.redisUrl, queueName, { keepFailed: 3 });
+  queue = createJobQueue(db.redisUrl, "stages", suffix, { keepFailed: 3 });
   inspect = new Queue(queueName, { connection: { url: db.redisUrl } });
   closers.push(() => queue.close(), () => inspect.close());
 });

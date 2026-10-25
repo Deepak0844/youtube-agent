@@ -15,16 +15,14 @@ import type { StageJob } from "@/server/core/stage-runner";
 //   failure (moveStalledJobsToWait-9.lua) and the next worker to fetch it fails it WITHOUT running the processor
 //   (Worker.getUnrecoverableErrorMessage); a still-queued row is then re-enqueued by the reconciler under a new id.
 
-export interface JobQueue {
+export type QueueKind = "stages" | "uploads";
+
+// Stage jobs and upload jobs never share a queue (BullMQ workers take any job on their queue): the kind fixes the
+// real queue name (`stages` / `uploads`, plus `-<suffix>` in tests), the handler type and the enqueue method.
+export interface StageQueue {
+  readonly kind: "stages";
   readonly name: string;
   enqueue(stageRunId: string, fence: number, attemptSeq: number, inputHash: string): Promise<string>;
-  // One-shot upload job: job id upload.<uploadId> (one per upload row), attempts: 1, bounded removeOnFail.
-  enqueueUpload(uploadId: string): Promise<string>;
-  // Worker for upload jobs (own queue name; stage jobs and upload jobs never share a handler).
-  startUploadWorker(
-    handler: (uploadId: string, jobId: string) => Promise<void>,
-    opts?: { concurrency?: number; onError?: (err: Error) => void },
-  ): { close(): Promise<void> };
   startWorker(
     handler: (job: StageJob, jobId: string) => Promise<void>,
     opts?: {
@@ -38,16 +36,39 @@ export interface JobQueue {
   liveJobIds(): Promise<Set<string>>;
   close(): Promise<void>;
 }
+export type JobQueue = StageQueue;
+
+export interface UploadQueue {
+  readonly kind: "uploads";
+  readonly name: string;
+  // One-shot upload job: job id upload.<uploadId> (one per upload row), attempts: 1, bounded removeOnFail.
+  enqueueUpload(uploadId: string): Promise<string>;
+  startWorker(
+    handler: (uploadId: string, jobId: string) => Promise<void>,
+    opts?: { concurrency?: number; onError?: (err: Error) => void },
+  ): { close(): Promise<void> };
+  close(): Promise<void>;
+}
 
 const LIVE: JobType[] = ["waiting", "active", "delayed", "prioritized", "waiting-children"];
 
 export const DEFAULT_KEEP_FAILED = 1000;
 
-export function createJobQueue(redisUrl: string, name: string, opts: { keepFailed?: number } = {}): JobQueue {
+const SUFFIX = /^[a-z0-9-]{1,40}$/;
+
+export function createJobQueue(redisUrl: string, kind: "stages", suffix?: string, opts?: { keepFailed?: number }): StageQueue;
+export function createJobQueue(redisUrl: string, kind: "uploads", suffix?: string, opts?: { keepFailed?: number }): UploadQueue;
+export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: string, opts: { keepFailed?: number } = {}): StageQueue | UploadQueue {
+  if (kind !== "stages" && kind !== "uploads") throw new RangeError(`unknown queue kind: ${String(kind)}`);
+  if (suffix !== undefined && !SUFFIX.test(suffix)) throw new RangeError(`invalid queue suffix: ${String(suffix)}`);
+  const name = suffix === undefined ? kind : `${kind}-${suffix}`;
   const keepFailed = opts.keepFailed ?? DEFAULT_KEEP_FAILED;
   const connection = { url: redisUrl, maxRetriesPerRequest: null };
   const queue = new Queue(name, { connection });
   const workers = new Set<Worker>();
+  const wrong = (what: string): never => {
+    throw new Error(`${what} is not available on a '${kind}' queue (${name})`);
+  };
 
   function makeWorker(
     processor: (job: Job) => Promise<void>,
@@ -64,46 +85,56 @@ export function createJobQueue(redisUrl: string, name: string, opts: { keepFaile
     };
   }
 
-  return {
+  const close = async () => {
+    await Promise.all([...workers].map((w) => w.close()));
+    workers.clear();
+    await queue.close();
+  };
+
+  if (kind === "stages") {
+    const q: StageQueue & { enqueueUpload?: unknown } = {
+      kind,
+      name,
+      async enqueue(stageRunId, fence, attemptSeq, inputHash) {
+        const jobId = stageJobId(stageRunId, fence, attemptSeq);
+        const data: StageJob = { stageRunId, inputHash };
+        await queue.add("stage", data, { jobId, attempts: 1, removeOnComplete: true, removeOnFail: { count: keepFailed } });
+        return jobId;
+      },
+      startWorker(handler, opts = {}) {
+        return makeWorker(async (job) => {
+          if (job.name !== "stage") throw new Error(`unsupported job kind: ${job.name}`);
+          const data = job.data as StageJob;
+          await handler({ stageRunId: data.stageRunId, inputHash: data.inputHash }, job.id!);
+        }, opts);
+      },
+      async liveJobIds() {
+        return new Set(await queue.getRanges(LIVE, 0, -1));
+      },
+      close,
+    };
+    q.enqueueUpload = () => wrong("enqueueUpload");
+    return q;
+  }
+
+  const u: UploadQueue & { enqueue?: unknown; liveJobIds?: unknown } = {
+    kind,
     name,
-    async enqueue(stageRunId, fence, attemptSeq, inputHash) {
-      const jobId = stageJobId(stageRunId, fence, attemptSeq);
-      const data: StageJob = { stageRunId, inputHash };
-      await queue.add("stage", data, { jobId, attempts: 1, removeOnComplete: true, removeOnFail: { count: keepFailed } });
-      return jobId;
-    },
     async enqueueUpload(uploadId) {
       if (!/^[0-9a-f-]{36}$/i.test(uploadId)) throw new RangeError(`invalid upload id: ${uploadId}`);
       const jobId = `upload.${uploadId}`;
       await queue.add("upload", { uploadId }, { jobId, attempts: 1, removeOnComplete: true, removeOnFail: { count: keepFailed } });
       return jobId;
     },
-    startUploadWorker(handler, opts = {}) {
-      return makeWorker(
-        async (job) => {
-          if (job.name !== "upload") throw new Error(`unsupported job kind: ${job.name}`);
-          await handler((job.data as { uploadId: string }).uploadId, job.id!);
-        },
-        opts,
-      );
-    },
     startWorker(handler, opts = {}) {
-      return makeWorker(
-        async (job) => {
-          if (job.name !== "stage") throw new Error(`unsupported job kind: ${job.name}`); // upload jobs have their own worker
-          const data = job.data as StageJob;
-          await handler({ stageRunId: data.stageRunId, inputHash: data.inputHash }, job.id!);
-        },
-        opts,
-      );
+      return makeWorker(async (job) => {
+        if (job.name !== "upload") throw new Error(`unsupported job kind: ${job.name}`);
+        await handler((job.data as { uploadId: string }).uploadId, job.id!);
+      }, opts);
     },
-    async liveJobIds() {
-      return new Set(await queue.getRanges(LIVE, 0, -1));
-    },
-    async close() {
-      await Promise.all([...workers].map((w) => w.close()));
-      workers.clear();
-      await queue.close();
-    },
+    close,
   };
+  u.enqueue = () => wrong("enqueue");
+  u.liveJobIds = () => wrong("liveJobIds");
+  return u;
 }

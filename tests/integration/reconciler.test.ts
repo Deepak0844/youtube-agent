@@ -30,8 +30,9 @@ beforeEach(async () => {
   await provider.init();
   await db.pool.query("truncate fake_provider_calls");
   await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('g', 100000000)");
-  queueName = `reconciler-${process.pid}-${queueN++}`;
-  queue = createJobQueue(db.redisUrl, queueName);
+  const suffix = `reconciler-${process.pid}-${queueN++}`;
+  queueName = `stages-${suffix}`;
+  queue = createJobQueue(db.redisUrl, "stages", suffix);
   closers = [() => queue.close()];
 });
 afterEach(async () => {
