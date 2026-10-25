@@ -558,9 +558,11 @@ describe("unreachable-address matrix", () => {
     { name: "other_client_container", host: () => ip.canary, port: () => ports.canary, canary: "internal" },
   ];
   const kinds = ["get", "connect"] as const;
-  let results: Record<string, Result> = {};
-  let logs: ProxyLog[] = [];
-  let logsBefore = 0;
+  const results: Record<string, Result> = {};
+  const logs: ProxyLog[] = [];
+  // Proxy log entries each row's own requests produced. Rows can share host:port (plain Linux Docker: the LAN IP
+  // and the bridge gateway are both 172.17.0.1), so a row is only ever matched against its own slice.
+  const rowLogs = new Map<string, ProxyLog[]>();
   const hostNameClasses = new Map<string, Set<string>>();
 
   beforeAll(async () => {
@@ -569,14 +571,19 @@ describe("unreachable-address matrix", () => {
       const out = (await docker(["exec", proxyId, "getent", "ahosts", name])).stdout;
       hostNameClasses.set(name, new Set(out.split("\n").map((l) => l.split(/\s+/)[0]).filter(Boolean).map((a) => classifyAddress(a as string))));
     }
-    logsBefore = (await proxyLogs()).length;
-    results = await viaProxy(rows.flatMap((r) => kinds.map((kind) => ({ id: `${r.name}/${kind}`, kind, host: r.host(), port: r.port() }))));
-    logs = (await proxyLogs()).slice(logsBefore);
+    // One row at a time: the log length before and after its requests is the row's own slice.
+    for (const r of rows) {
+      const before = (await proxyLogs()).length;
+      Object.assign(results, await viaProxy(kinds.map((kind) => ({ id: `${r.name}/${kind}`, kind, host: r.host(), port: r.port() }))));
+      const mine = (await proxyLogs()).slice(before);
+      rowLogs.set(r.name, mine);
+      logs.push(...mine);
+    }
     // Evidence for review: every row's target, the proxy's answer and its own log entry.
     mkdirSync("test-results", { recursive: true });
     const evidence = rows.flatMap((r) => kinds.map((k) => ({ row: r.name, kind: k, target: `${r.host()}:${r.port()}`, answer: results[`${r.name}/${k}`] })));
     writeFileSync("test-results/egress-matrix.json", JSON.stringify({ evidence, logs }, null, 2));
-  }, 120_000);
+  }, 300_000);
 
   const logHost = (h: string) => new URL(`http://${h}`).hostname.replace(/^\[|\]$/g, "");
 
@@ -591,8 +598,8 @@ describe("unreachable-address matrix", () => {
       expect(classes.map((c) => `blocked: ${c}`)).toContain(res?.body);
     }
     expect(["canary", "host", "standin ok"]).not.toContain(res?.body);
-    const mine = logs.filter((l) => l.kind === (kind === "get" ? "http" : "connect") && l.host === logHost(row.host()) && l.port === row.port());
-    expect(mine.map((l) => l.decision), JSON.stringify(logs)).toEqual(["block"]);
+    const mine = (rowLogs.get(row.name) ?? []).filter((l) => l.kind === (kind === "get" ? "http" : "connect") && l.host === logHost(row.host()) && l.port === row.port());
+    expect(mine.map((l) => l.decision), JSON.stringify(rowLogs.get(row.name))).toEqual(["block"]);
   });
 
   it("canaries_saw_zero_connections", async () => {
@@ -603,6 +610,7 @@ describe("unreachable-address matrix", () => {
 
   it("proxy_never_looped_or_allowed_anything", () => {
     // One log line per request sent: a request that reached the proxy itself would add a line.
+    for (const r of rows) expect(rowLogs.get(r.name), r.name).toHaveLength(kinds.length);
     expect(logs).toHaveLength(rows.length * kinds.length);
     expect(logs.filter((l) => l.decision === "allow")).toEqual([]);
   });

@@ -19,8 +19,11 @@
     "image:egress-proxy": "docker build -f infra/Dockerfile.egress-proxy -t ytstudio-egress-proxy:dev ."
   },
   "dependencies": {
+    "bullmq": "^6.4.2",
+    "ioredis": "^6.0.0",
     "ipaddr.js": "^2.5.0",
     "next": "16.4.3",
+    "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "undici": "^8.12.3"
@@ -40,8 +43,6 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "get-port": "^7.2.0",
-    "ioredis": "^6.0.0",
-    "pg": "^8.23.1",
     "pngjs": "^7.0.0",
     "tailwindcss": "^4",
     "testcontainers": "^12.2.1",
