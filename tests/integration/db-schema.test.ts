@@ -100,11 +100,13 @@ describe("schema", () => {
     const cols = await db.pool.query<{ column_name: string }>(
       "select column_name from information_schema.columns where table_name='spend_intents'",
     );
-    expect(cols.rows.map((r) => r.column_name)).toContain("scopes");
+    expect(cols.rows.map((r) => r.column_name)).toEqual(expect.arrayContaining(["scopes", "attempts"]));
     const stage = await insertStage();
     await insertIntent(stage, "k-scopes");
     const { rows } = await db.pool.query("select scopes from spend_intents where call_key='k-scopes'");
     expect(rows[0].scopes).toEqual([]);
+    const att = await db.pool.query("select attempts from spend_intents where call_key='k-scopes'");
+    expect(att.rows[0].attempts).toBe(1);
     await expect(
       db.pool.query("insert into budgets (scope, cap_micro_usd, reserved_micro_usd) values ('neg', 10, -1)"),
     ).rejects.toMatchObject({ code: "23514" });

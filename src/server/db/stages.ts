@@ -161,6 +161,18 @@ export async function failStage(db: Db, claim: Claim, reason: string): Promise<b
   return res.rowCount === 1;
 }
 
+// Parks the stage for a human/reconciler decision. Gated on fence + owner exactly like commitStage: a stale
+// worker must not flip a stage that has moved on.
+export async function markStageNeedsDecision(db: Db, claim: Claim, reason: string): Promise<boolean> {
+  const res = await db.query(
+    `update stage_runs
+        set status = 'needs_decision', result = $4::jsonb, updated_at = now()
+      where id = $1 and status = 'running' and fence = $2 and lease_owner = $3`,
+    [claim.stageRunId, claim.fence, claim.workerId, JSON.stringify({ needsDecision: reason })],
+  );
+  return res.rowCount === 1;
+}
+
 // Sets the flag only; it is the running worker (or reconciler) that acts on it.
 export async function requestCancel(db: Db, stageRunId: string): Promise<void> {
   await db.query("update stage_runs set cancel_requested = true, updated_at = now() where id = $1", [

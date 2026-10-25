@@ -34,6 +34,8 @@ create table spend_intents (
   provider_ref text,
   result jsonb,
   fence bigint,
+  -- provider attempts made under this reservation (cheap_text may reopen once: attempts < 2)
+  attempts integer not null default 1,
   -- budget scopes this intent reserved against (settle/fail release exactly these)
   scopes text[] not null default '{}',
   created_at timestamptz not null default now(),

@@ -82,7 +82,7 @@ describe("reserveIntent", () => {
     if (r.kind !== "new") throw new Error("expected new");
     await settleIntent(db.pool, r.intentId, { actualMicroUsd: 60, result: { text: "hi" }, providerRef: "p1" });
     const again = await reserve(c, 100, ["g"]);
-    expect(again).toEqual({ kind: "existing", status: "done", result: { text: "hi" }, intentId: r.intentId });
+    expect(again).toEqual({ kind: "existing", status: "done", result: { text: "hi" }, intentId: r.intentId, reservedMicroUsd: 100, attempts: 1 });
     expect(await counts("g")).toEqual({ reserved: 0, spent: 60 });
   });
 
