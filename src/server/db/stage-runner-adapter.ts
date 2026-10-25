@@ -1,12 +1,20 @@
+import type { PaidCallPorts } from "@/server/core/paid-call";
 import { runStageWith, type StageJob, type StageOutcome, type StageRunnerDeps } from "@/server/core/stage-runner";
 import { createPgPaidCallPorts, type Warn } from "./paid-call-adapter";
 import { claimStage, commitStage, failStage, getStage, heartbeat, markStageNeedsDecision, type Claim, type Db } from "./stages";
 
 // Postgres wiring for the worker body. Every port is its own statement/transaction (never settle+commit together).
-export function runStage(db: Db, deps: StageRunnerDeps, job: StageJob, opts: { warn?: Warn } = {}): Promise<StageOutcome> {
+// opts.paid: test seam to wrap the pg paid-call ports (e.g. simulate a failing reservation release).
+export function runStage(
+  db: Db,
+  deps: StageRunnerDeps,
+  job: StageJob,
+  opts: { warn?: Warn; paid?: (base: PaidCallPorts) => PaidCallPorts } = {},
+): Promise<StageOutcome> {
+  const base = createPgPaidCallPorts(db, { warn: opts.warn });
   return runStageWith(
     {
-      paid: createPgPaidCallPorts(db, opts),
+      paid: opts.paid ? opts.paid(base) : base,
       claim: (args) => claimStage(db, args),
       heartbeat: (claim, ttlMs) => heartbeat(db, claim as Claim, ttlMs),
       getStage: async (id) => {

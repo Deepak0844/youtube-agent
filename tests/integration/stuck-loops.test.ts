@@ -181,6 +181,42 @@ describe("no stage loops forever", () => {
     expect(rows[0].result).toEqual({ error: "unknown" });
   });
 
+  it("known_failure_with_failed_release_is_parked_not_failed", async () => {
+    // The release of the reservation fails (DB blip): the stage must NOT become terminal 'failed' with a held
+    // reservation nobody looks at. It stays running; the reconciler parks it for a human.
+    const id = await newStage();
+    const failure = new KnownFailure("quota exceeded");
+    const outcome = await runStage(
+      db.pool,
+      deps({ provider: { call: async (key) => (await provider.call(key), Promise.reject(failure)) } }),
+      { stageRunId: id, inputHash: H },
+      {
+        warn: (event, detail) => warnings.push({ event, detail }),
+        paid: (base) => ({
+          ...base,
+          failKnown: async () => {
+            throw new Error("db down during release");
+          },
+        }),
+      },
+    );
+    expect(outcome.kind).toBe("known_failure_release_failed");
+    expect(warnings).toEqual([
+      { event: "paid_call.release_failed", detail: { callKey: callKey(id, 0, 0), intentId: expect.any(String), error: "db down during release" } },
+    ]);
+    expect((await getStage(db.pool, id))?.status).toBe("running");
+    const intent = async () => (await db.pool.query("select status from spend_intents where stage_run_id = $1", [id])).rows;
+    expect(await intent()).toEqual([{ status: "pending" }]);
+
+    await expireLease(id);
+    expect(await reconcile(db.pool, queue, { graceMs: 0 })).toMatchObject({ ...NONE, needsDecision: [id] });
+    expect((await getStage(db.pool, id))?.status).toBe("needs_decision");
+    expect(await intent()).toEqual([{ status: "unknown" }]);
+    expect(await getBudget(db.pool, "g")).toMatchObject({ reservedMicroUsd: 1000, spentMicroUsd: 0 });
+    expect(await provider.dbCalls(callKey(id, 0, 0))).toBe(1);
+    expect((await queue.liveJobIds()).size).toBe(0);
+  });
+
   it("failed_stage_job_does_not_accumulate_over_many_laps", async () => {
     const id = await newStage();
     const seen: Delivery[] = [];

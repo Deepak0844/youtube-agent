@@ -21,7 +21,10 @@ import {
 // - NeedsDecision / LeaseLost stop the attempt WITHOUT commit (NeedsDecision already parked the stage).
 // - Deterministic outcomes are TERMINAL, through fenced ports, so the reconciler never loops on them:
 //     BudgetRefused -> needs_decision "budget_refused: <call key>" (a human can raise the cap);
-//     KnownFailure (incl. a replayed KnownFailureError) -> failed "known_failure: <cleaned reason>".
+//     KnownFailure (incl. a replayed KnownFailureError) -> failed "known_failure: <cleaned reason>",
+//       UNLESS releasing its reservation failed (failKnown threw; the wrapper already warned): then the stage is left
+//       running with the intent pending + reservation held, and the reconciler parks it as needs_decision after the
+//       lease expires (outcome known_failure_release_failed). A terminal 'failed' would hide the held money.
 // - Anything else is rethrown (the BullMQ job fails). An unknown provider error leaves its intent pending, so the
 //   reconciler parks the stage; an error before any intent is bounded by the reconciler's maxAttempts.
 // - Settle (inside runPaidCall) and commit are separate transactions, settle first; nothing is paid after commit.
@@ -79,13 +82,27 @@ export type StageOutcome =
   | { kind: "needs_decision"; claim: StageClaim }
   | { kind: "lease_lost"; claim: StageClaim }
   | { kind: "budget_refused"; claim: StageClaim }
-  | { kind: "known_failure"; claim: StageClaim };
+  | { kind: "known_failure"; claim: StageClaim }
+  | { kind: "known_failure_release_failed"; claim: StageClaim };
 
 export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDeps, job: StageJob): Promise<StageOutcome> {
   const claim = await ports.claim({ id: job.stageRunId, inputHash: job.inputHash, workerId: deps.workerId, ttlMs: deps.ttlMs });
   if (!claim) return { kind: "noop" };
 
   let leaseLost = false;
+  let releaseFailed = false;
+  // Observe (never hide) a failed reservation release; the wrapper still warns and rethrows the original error.
+  const paid: PaidCallPorts = {
+    ...ports.paid,
+    failKnown: async (intentId, reason) => {
+      try {
+        await ports.paid.failKnown(intentId, reason);
+      } catch (err) {
+        releaseFailed = true;
+        throw err;
+      }
+    },
+  };
   const timer = setInterval(() => {
     ports.heartbeat(claim, deps.ttlMs).then(
       (alive) => {
@@ -105,7 +122,7 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
     for (const step of deps.stepsFor(stage)) {
       if (leaseLost) return { kind: "lease_lost", claim };
       results.push(
-        await runPaidCall(ports.paid, { claim, ...step }, (key) => deps.provider.call(key, step)),
+        await runPaidCall(paid, { claim, ...step }, (key) => deps.provider.call(key, step)),
       );
     }
     const committed = await ports.commit(claim, { steps: results });
@@ -118,6 +135,7 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
       return { kind: "budget_refused", claim };
     }
     if (err instanceof KnownFailure) {
+      if (releaseFailed) return { kind: "known_failure_release_failed", claim };
       await ports.fail(claim, `known_failure: ${safeReason(err)}`);
       return { kind: "known_failure", claim };
     }
