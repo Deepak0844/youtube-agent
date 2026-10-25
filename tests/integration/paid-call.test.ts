@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { claimStage, commitStage, getStage, insertQueuedStage, markStageNeedsDecision, type Claim } from "@/server/db/stages";
-import { getBudget } from "@/server/db/spend";
+import { getBudget, settleIntent, reserveIntent } from "@/server/db/spend";
 import { createPgPaidCallPorts } from "@/server/db/paid-call-adapter";
 import {
   BudgetRefusedError,
@@ -320,6 +320,94 @@ describe("runPaidCall against Postgres", () => {
       const replay = await runPaidCall(ports, ctx(c2), callWith(provider));
       expect(replay).toEqual({ text: "ab", n: "5" });
       expect(provider.totalCalls()).toBe(0);
+    });
+  });
+
+  // The provider was called and money spent: nothing it returns may stop settle from running.
+  describe("settle last resort", () => {
+    async function settledRaw(returned: unknown) {
+      const id = await newStage();
+      const key = callKey(id, 0, 0);
+      const c = await claim(id, "w1");
+      let calls = 0;
+      const out = await runPaidCall(ports, ctx(c), async () => {
+        calls++;
+        return returned as never;
+      });
+      const row = await intentOf(key);
+      expect(calls).toBe(1);
+      expect(row.status).toBe("done");
+      return { out, row };
+    }
+    const throwingGetter = (v: unknown) => ({
+      get x(): never {
+        throw v;
+      },
+    });
+    async function expectFallbackReason(thrown: unknown, reason: string) {
+      const { row } = await settledRaw({ result: throwingGetter(thrown), actualMicroUsd: 7 });
+      expect(row.result).toEqual({ unserializable: true, reason });
+      expect(await budget()).toEqual({ reserved: 0, spent: 7 });
+    }
+
+    it("fallback_reason_with_nul_is_cleaned", () => expectFallbackReason(new Error("bad\u0000byte"), "badbyte"));
+    it("fallback_reason_with_lone_surrogate_is_cleaned", () => expectFallbackReason(new Error("x\ud800"), "x\uFFFD"));
+    it("fallback_reason_cut_by_code_point_not_utf16_unit", () =>
+      expectFallbackReason(new Error("a".repeat(199) + "\u{1F600}x"), "a".repeat(199) + "\u{1F600}"));
+    it("thrown_null_prototype_object_still_settles", () => expectFallbackReason(Object.create(null), "unknown"));
+    it("thrown_value_with_throwing_toString_still_settles", () =>
+      expectFallbackReason({ toString: () => { throw new Error("no"); } }, "unknown"));
+    it("error_with_throwing_message_getter_still_settles", () => {
+      const e = new Error("m");
+      Object.defineProperty(e, "message", { get() { throw new Error("no"); } });
+      return expectFallbackReason(e, "unknown");
+    });
+
+    it("provider_returns_undefined_still_settles_as_reserved_flagged", async () => {
+      const { out, row } = await settledRaw(undefined);
+      expect(out).toBeUndefined();
+      expect(row.result).toEqual({ unserializable: true, reason: "unknown" });
+      expect(row.actual_invalid).toBe(true);
+      expect(row.provider_ref).toBeNull();
+      expect(await budget()).toEqual({ reserved: 0, spent: 1000 });
+    });
+
+    it("provider_returns_non_object_still_settles_as_reserved_flagged", async () => {
+      const { out, row } = await settledRaw("just a string");
+      expect(out).toBe("just a string");
+      expect(row.result).toEqual({ unserializable: true, reason: "unknown" });
+      expect(row.actual_invalid).toBe(true);
+      expect(await budget()).toEqual({ reserved: 0, spent: 1000 });
+    });
+
+    it("settleIntent_called_directly_with_circular_result_does_not_throw", async () => {
+      const id = await newStage();
+      const c = await claim(id, "w1");
+      const r = await reserveIntent(db.pool, c, { stepIndex: 0, toolCallIndex: 0, reserveMicroUsd: 1000, budgetScopes: ["g"] });
+      if (r.kind !== "new") throw new Error("expected new");
+      const a: Record<string, unknown> = {};
+      a.self = a;
+      await settleIntent(db.pool, r.intentId, { actualMicroUsd: 9, result: a, providerRef: "r\u0000" });
+      const row = await intentOf(callKey(id, 0, 0));
+      expect(row.status).toBe("done");
+      expect(row.result).toMatchObject({ unserializable: true });
+      expect(row.provider_ref).toBe("r");
+      expect(await budget()).toEqual({ reserved: 0, spent: 9 });
+    });
+
+    it("result_exactly_1MiB_is_kept_and_1MiB_plus_one_is_truncated", async () => {
+      const max = 1024 * 1024;
+      const kept = await settledRaw({ result: "x".repeat(max - 2), actualMicroUsd: 1 });
+      expect(kept.row.result).toBe("x".repeat(max - 2));
+      const cut = await settledRaw({ result: "x".repeat(max - 1), actualMicroUsd: 1 });
+      expect(cut.row.result).toEqual({ truncated: true, bytes: max + 1 });
+    });
+
+    it("provider_ref_with_nul_and_lone_surrogate_is_cleaned (and a huge providerRef is capped at 1 KiB)", async () => {
+      const a = await settledRaw({ result: "ok", actualMicroUsd: 1, providerRef: "a\u0000b\ud800c" });
+      expect(a.row.provider_ref).toBe("ab\uFFFDc");
+      const b = await settledRaw({ result: "ok", actualMicroUsd: 1, providerRef: "r".repeat(100_000) });
+      expect(b.row.provider_ref).toHaveLength(1024);
     });
   });
 });

@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { uuidv7 } from "@/server/core/ids";
+import { cleanProviderRef, toStorable } from "@/server/core/paid-call";
 import { callKey } from "@/server/core/spend";
 import { atomic, toNumber, type Claim, type Db } from "./stages";
 
@@ -187,8 +188,9 @@ export async function settleIntent(
   // An unusable actual (NaN, Infinity, negative, fractional, unsafe) must never make settle throw: the provider
   // already charged us. It is recorded as the reservation (worst case) with actual_invalid = true.
   const actualValid = Number.isSafeInteger(args.actualMicroUsd) && args.actualMicroUsd >= 0;
-  const resultJson = JSON.stringify(args.result ?? null);
-  const ref = args.providerRef ?? null;
+  // Defence in depth: sanitise here too so a direct caller cannot make JSON.stringify or Postgres reject the result.
+  const resultJson = JSON.stringify(toStorable(args.result) ?? null);
+  const ref = args.providerRef === undefined ? null : cleanProviderRef(args.providerRef);
 
   return atomic(db, async (q) => {
     const row = await lockIntent(q, intentId, resultJson);

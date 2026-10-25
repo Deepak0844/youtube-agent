@@ -26,13 +26,16 @@ import { callKey } from "./spend";
 // commitStage is then rejected by the fence. If settle itself throws (DB down) the intent stays pending, so the next
 // attempt goes to needs_decision rather than paying twice. settle never rejects what the provider returned: the result
 // is made JSON-safe first (toStorable) and an unusable actual cost is recorded as the reservation (see settleIntent);
-// the caller still receives the provider's ORIGINAL result on the first attempt. DB writes are separate statements: reserve, provider,
+// the caller still receives the provider's ORIGINAL result on the first attempt. Last resort: if anything while
+// preparing the post-provider values throws (a provider returning undefined or a non-object, throwing getters...), settle
+// still runs with {unserializable:true, reason:"unknown"}, actual = reservation, actual_invalid = true, no providerRef;
+// the caller then gets the provider's raw return value if it has no `.result`, else undefined. DB writes are separate statements: reserve, provider,
 // settle; no transaction is ever held open across the provider call.
 
 export const MAX_STORED_RESULT_BYTES = 1024 * 1024;
 
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
-const cleanString = (v: string): string => v.replace(/\u0000/g, "").replace(LONE_SURROGATE, "\uFFFD");
+export const cleanString = (v: string): string => v.replace(/\u0000/g, "").replace(LONE_SURROGATE, "\uFFFD");
 
 function walk(v: unknown, ancestors: Set<object>): unknown {
   switch (typeof v) {
@@ -64,6 +67,43 @@ function walk(v: unknown, ancestors: Set<object>): unknown {
   }
 }
 
+// Cuts by code point (never splits a surrogate pair).
+function cutCodePoints(v: string, max: number): string {
+  let out = "";
+  let n = 0;
+  for (const ch of v) {
+    if (n++ >= max) break;
+    out += ch;
+  }
+  return out;
+}
+
+export const MAX_PROVIDER_REF_BYTES = 1024;
+
+// providerRef for a text column: clean, then cap at 1 KiB of UTF-8 without splitting a code point.
+export function cleanProviderRef(v: string): string {
+  let out = "";
+  let bytes = 0;
+  for (const ch of cleanString(v)) {
+    const b = new TextEncoder().encode(ch).length;
+    if (bytes + b > MAX_PROVIDER_REF_BYTES) break;
+    out += ch;
+    bytes += b;
+  }
+  return out;
+}
+
+export const UNSERIALIZABLE_UNKNOWN = { unserializable: true, reason: "unknown" } as const;
+
+function safeReason(err: unknown): string {
+  try {
+    const msg = err instanceof Error ? err.message : String(err);
+    return cutCodePoints(cleanString(String(msg)), 200);
+  } catch {
+    return "unknown";
+  }
+}
+
 // Makes a provider result safe to store as jsonb: never throws.
 export function toStorable(value: unknown): unknown {
   try {
@@ -73,7 +113,7 @@ export function toStorable(value: unknown): unknown {
     if (bytes > MAX_STORED_RESULT_BYTES) return { truncated: true, bytes };
     return JSON.parse(json);
   } catch (err) {
-    return { unserializable: true, reason: String(err instanceof Error ? err.message : err).slice(0, 200) };
+    return { unserializable: true, reason: safeReason(err) };
   }
 }
 
@@ -181,12 +221,32 @@ export async function runPaidCall<T>(
       }
       throw err;
     }
-    await ports.settle(intentId, {
-      actualMicroUsd: out.actualMicroUsd, // invalid values are handled (recorded as the reservation) by the db
-      result: toStorable(out.result),
-      ...(typeof out.providerRef === "string" ? { providerRef: cleanString(out.providerRef) } : {}),
-    });
-    return out.result;
+    // Money was spent: whatever the provider handed back, settle MUST run. Everything derived from it is prepared
+    // inside one try/catch; on any failure we settle with an "unserializable" marker, actual = NaN (the db records
+    // the reservation, flagged actual_invalid) and no providerRef.
+    let args: { actualMicroUsd: number; result: unknown; providerRef?: string };
+    let returned: T | undefined;
+    try {
+      if (typeof out !== "object" || out === null) throw new TypeError("provider returned a non-object");
+      const ref = out.providerRef;
+      args = {
+        actualMicroUsd: out.actualMicroUsd, // invalid values are handled (recorded as the reservation) by the db
+        result: toStorable(out.result),
+        ...(typeof ref === "string" ? { providerRef: cleanProviderRef(ref) } : {}),
+      };
+      returned = out.result;
+    } catch {
+      args = { actualMicroUsd: Number.NaN, result: UNSERIALIZABLE_UNKNOWN };
+      try {
+        const raw: unknown = out;
+        const hasResult = typeof raw === "object" && raw !== null && "result" in raw;
+        returned = hasResult ? undefined : (raw as T);
+      } catch {
+        returned = undefined;
+      }
+    }
+    await ports.settle(intentId, args);
+    return returned as T;
   }
 
   const r = await ports.reserve(ctx.claim, {

@@ -6,6 +6,9 @@ import {
   LeaseLostError,
   NeedsDecisionError,
   runPaidCall,
+  toStorable,
+  cleanProviderRef,
+  MAX_STORED_RESULT_BYTES,
   type ClaimLike,
   type IntentStatusLike,
   type PaidCallCtx,
@@ -193,5 +196,47 @@ describe("runPaidCall", () => {
     expect(leaseLost).toBe(true);
     expect(f.log).toEqual(["reserve", "settle"]);
     expect(f.intent()?.status).toBe("done");
+  });
+
+  describe("toStorable fallback reason", () => {
+    const throwing = (v: unknown) => ({
+      get x(): never {
+        throw v;
+      },
+    });
+    const reasonOf = (v: unknown) => (toStorable(throwing(v)) as { unserializable: boolean; reason: string }).reason;
+
+    it("fallback_reason_with_nul_is_cleaned", () => {
+      expect(reasonOf(new Error("bad\u0000byte"))).toBe("badbyte");
+    });
+    it("fallback_reason_with_lone_surrogate_is_cleaned", () => {
+      expect(reasonOf(new Error("x\ud800"))).toBe("x\uFFFD");
+    });
+    it("fallback_reason_cut_by_code_point_not_utf16_unit", () => {
+      const r = reasonOf(new Error("a".repeat(199) + "\u{1F600}" + "tail"));
+      expect(r).toBe("a".repeat(199) + "\u{1F600}");
+      expect([...r]).toHaveLength(200);
+      expect(r.isWellFormed()).toBe(true);
+    });
+    it("hostile_thrown_values_fall_back_to_unknown", () => {
+      expect(reasonOf(Object.create(null))).toBe("unknown");
+      expect(reasonOf({ toString: () => { throw new Error("no"); } })).toBe("unknown");
+      const e = new Error("m");
+      Object.defineProperty(e, "message", { get() { throw new Error("no"); } });
+      expect(reasonOf(e)).toBe("unknown");
+    });
+  });
+
+  it("result_exactly_1MiB_is_kept_and_1MiB_plus_one_is_truncated", () => {
+    const exact = "x".repeat(MAX_STORED_RESULT_BYTES - 2); // JSON adds 2 quote bytes
+    expect(toStorable(exact)).toBe(exact);
+    expect(toStorable(exact + "x")).toEqual({ truncated: true, bytes: MAX_STORED_RESULT_BYTES + 1 });
+  });
+
+  it("provider_ref_with_nul_and_lone_surrogate_is_cleaned_and_capped", () => {
+    expect(cleanProviderRef("a\u0000b\ud800c")).toBe("ab\uFFFDc");
+    const capped = cleanProviderRef("\u{1F600}".repeat(1000)); // 4 bytes each
+    expect(new TextEncoder().encode(capped).length).toBe(1024);
+    expect(capped.isWellFormed()).toBe(true);
   });
 });
