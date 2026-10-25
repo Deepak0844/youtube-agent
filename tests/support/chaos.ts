@@ -18,7 +18,29 @@ import { createFakeProvider, hangs, knownFailure, ok, type Outcome } from "./fak
 // seed); the interleavings are real (Promise.all, real Postgres, real Redis, real BullMQ) and not deterministic, so
 // the invariants must hold for ALL interleavings. Replay a failing seed with CHAOS_SEED_ONLY=<n>.
 
-export type BrokenMode = "broken_call_key" | "broken_requeue" | "broken_upload_door";
+export type BrokenMode =
+  | "broken_call_key" // fresh call key per attempt, end to end (reserve AND the key the provider receives)
+  | "broken_requeue"
+  | "broken_upload_door"
+  | "broken_stalled_autoretry" // markStalled resets the row to publish_approved (an automatic retry)
+  | "no_commit"; // liveness self-check: every attempt dies before commit, so nothing can succeed
+
+export const COVERAGE_KEYS = [
+  "crash_after_claim",
+  "crash_after_reserve",
+  "crash_after_provider",
+  "crash_after_settle",
+  "crash_before_commit",
+  "dropped_delivery",
+  "concurrent_duplicate",
+  "flush_with_handlers_in_flight",
+  "lease_expiry_hit_running_stage",
+  "concurrent_reconcile",
+  "mark_stalled_stalled_something",
+  "stale_report_while_uploading",
+  "real_sigkill",
+] as const;
+export type CoverageKey = (typeof COVERAGE_KEYS)[number];
 
 export type CrashPoint = "after_claim" | "after_reserve" | "after_provider" | "after_settle" | "before_commit";
 export interface CrashSpec {
@@ -71,6 +93,8 @@ export interface ChaosResult {
   finalUploadStatuses: Record<string, string>;
   budgetConsistent: boolean;
   violations: string[];
+  coverage: Record<CoverageKey, number>;
+  uploadBehaviors: Record<string, UploadBehavior>;
 }
 
 export class CrashSignal extends Error {
@@ -98,7 +122,9 @@ export function planFor(seed: number, shape: Shape = DEFAULT_SHAPE): ChaosPlan {
   const pick = <T>(xs: readonly T[]): T => xs[int(0, xs.length - 1)]!;
   const POINTS: CrashPoint[] = ["after_claim", "after_reserve", "after_provider", "after_settle", "before_commit"];
 
-  const realKill = seed % 25 === 0 ? { marker: pick(["CLAIMED", "INTENT_RESERVED", "PROVIDER_RETURNED", "SETTLED"] as const) } : null;
+  // every 12th seed is a real SIGKILL seed; markers rotate so the first 60 seeds cover all four
+  const MARKERS = ["CLAIMED", "INTENT_RESERVED", "PROVIDER_RETURNED", "SETTLED"] as const;
+  const realKill = seed % 12 === 0 ? { marker: MARKERS[(seed / 12 - 1) % 4]! } : null;
   const capG = realKill || chance(0.7) ? 1_000_000_000 : int(4000, 14000);
 
   const stages: StagePlan[] = [];
@@ -128,7 +154,7 @@ export function planFor(seed: number, shape: Shape = DEFAULT_SHAPE): ChaosPlan {
   for (let i = 0; i < shape.uploads; i++) {
     const dupStarts = int(1, 4);
     uploads.push({
-      behavior: pick(["ok", "ok", "ok", "fail", "hang", "late_success", "slow_stall"] as const),
+      behavior: pick(["ok", "ok", "fail", "hang", "hang", "late_success", "slow_stall"] as const),
       video: i === 2 && chance(0.35) ? 0 : i,
       dupStarts,
       dupDelaysMs: Array.from({ length: dupStarts }, (_, k) => (k === 0 ? 0 : chance(0.4) ? 0 : int(20, 300))),
@@ -172,6 +198,8 @@ async function installProbes(pool: pg.Pool): Promise<void> {
       end if;
       return new;
     end $$`);
+  // The harness's own record of provider calls per LOGICAL step (stage id:step index), independent of the product's key.
+  await pool.query("create table if not exists chaos_logical_calls (seq bigserial primary key, logical_key text not null)");
   await pool.query("drop trigger if exists chaos_stage_t on stage_runs");
   await pool.query("create trigger chaos_stage_t after update on stage_runs for each row execute function chaos_log_transition('stage')");
   await pool.query("drop trigger if exists chaos_upload_t on uploads");
@@ -203,6 +231,11 @@ export async function runChaos(args: {
   const plan = planFor(seed, shape);
   const { pool, redisUrl } = args.deps.db;
   const violations: string[] = [];
+  const cov = Object.fromEntries(COVERAGE_KEYS.map((k) => [k, 0])) as Record<CoverageKey, number>;
+  const crashed = (point: CrashPoint): never => {
+    cov[`crash_${point}` as CoverageKey]++;
+    throw new CrashSignal(point);
+  };
   const unexpected = (where: string, e: unknown) => {
     violations.push(`unexpected_error[${where}]: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
   };
@@ -256,6 +289,7 @@ export async function runChaos(args: {
       WORKER_ID: "child",
       STOP_AFTER: plan.realKill.marker,
       TTL_MS: String(TTL_MS),
+      CHAOS_LOGICAL_KEY: `${stageIds[0]}:0`,
     });
     try {
       await child.waitMarker(plan.realKill.marker, 60_000);
@@ -263,6 +297,7 @@ export async function runChaos(args: {
       unexpected("real_kill", e);
     }
     await child.kill9();
+    cov.real_sigkill++;
   }
 
   // ---- queue + workers
@@ -276,6 +311,7 @@ export async function runChaos(args: {
     let spec: CrashSpec | null | undefined;
     let lastStep = -1;
     const specFor = (fence: number): CrashSpec | null => {
+      if (brokenMode === "no_commit") return { point: "before_commit", step: shape.steps - 1 };
       const m = ordinals.get(idx) ?? new Map<number, number>();
       ordinals.set(idx, m);
       if (!m.has(fence)) m.set(fence, m.size);
@@ -286,16 +322,18 @@ export async function runChaos(args: {
       reserve: async (claim, a) => {
         if (spec === undefined) spec = specFor(claim.fence);
         lastStep = a.stepIndex;
-        if (spec?.point === "after_claim" && a.stepIndex === 0) throw new CrashSignal("after_claim");
+        if (spec?.point === "after_claim" && a.stepIndex === 0) crashed("after_claim");
         const ra = brokenMode === "broken_call_key" ? { ...a, toolCallIndex: nonce++ } : a;
         const r = await base.reserve(claim, ra);
-        if (spec?.point === "after_reserve" && a.stepIndex === spec.step && r.kind === "new") throw new CrashSignal("after_reserve");
+        // no_commit: a retry whose steps are all done dies right before the commit too
+        if (brokenMode === "no_commit" && a.stepIndex === shape.steps - 1 && r.kind === "existing" && r.status === "done") crashed("before_commit");
+        if (spec?.point === "after_reserve" && a.stepIndex === spec.step && r.kind === "new") crashed("after_reserve");
         return r;
       },
       settle: async (intentId, a) => {
-        if (spec?.point === "after_provider" && lastStep === spec.step) throw new CrashSignal("after_provider");
+        if (spec?.point === "after_provider" && lastStep === spec.step) crashed("after_provider");
         await base.settle(intentId, a);
-        if ((spec?.point === "after_settle" || spec?.point === "before_commit") && lastStep === spec.step) throw new CrashSignal(spec.point);
+        if ((spec?.point === "after_settle" || spec?.point === "before_commit") && lastStep === spec.step) crashed(spec.point);
       },
       warn: () => {},
     };
@@ -306,12 +344,24 @@ export async function runChaos(args: {
     try {
       if (viaQueue && (dropped.get(idx) ?? 0) < plan.stages[idx]!.dropBeforeClaim) {
         dropped.set(idx, (dropped.get(idx) ?? 0) + 1);
+        cov.dropped_delivery++;
         return; // worker died before claiming: the delivery is simply lost
       }
       await runStage(
         pool,
         {
-          provider: { call: (key) => fake.call(key) },
+          provider: {
+            call: async (key, step) => {
+              // harness-owned record per logical step, whatever key the product chose
+              await pool.query("insert into chaos_logical_calls (logical_key) values ($1)", [`${stageIds[idx]}:${step.stepIndex}`]);
+              let k = key;
+              if (brokenMode === "broken_call_key") {
+                k = `${key}#${nonce++}`; // fresh key per attempt, end to end
+                script[k] = script[key]!;
+              }
+              return fake.call(k);
+            },
+          },
           ttlMs: TTL_MS,
           workerId,
           stepsFor: (stage) => steps(stageIdx.get(stage.id)!),
@@ -331,6 +381,18 @@ export async function runChaos(args: {
   const workers = ["w1", "w2"].map((wid) =>
     queue.startWorker(async (job) => deliver(stageIdx.get(job.stageRunId)!, job, wid, true), { concurrency: 3, onError }),
   );
+
+  // markStalled, or (broken_stalled_autoretry) the mutation that resets a stalled row to publish_approved
+  const stall = async (ms: number): Promise<string[]> => {
+    if (brokenMode !== "broken_stalled_autoretry") return markStalled(pool, ms);
+    const r = await pool.query<{ id: string }>(
+      `update uploads set status = 'publish_approved', failure_reason = null
+        where status = 'uploading' and coalesce(last_progress_at, started_at) < clock_timestamp() - make_interval(secs => $1::double precision / 1000.0)
+    returning id`,
+      [ms],
+    );
+    return r.rows.map((x) => x.id);
+  };
 
   const doReconcile = async () => {
     try {
@@ -401,10 +463,17 @@ export async function runChaos(args: {
   }
   async function staleReport(i: number): Promise<void> {
     const id = uploadIds[i]!;
+    const cur = await pool.query<{ status: string }>("select status from uploads where id = $1", [id]);
+    if (cur.rows[0]?.status === "uploading") cov.stale_report_while_uploading++;
     // attempt 0 and 9999 can never be a live attempt (a start bumps to >= 1; at most a handful of starts happen)
     for (const attempt of [0, 9999]) {
       try {
-        if (await finishUpload(pool, id, attempt, { kind: "uploaded", youtubeId: `stale-${id}` })) {
+        // An `uploaded` report with a video id is (rightly) logged as `finish_rejected ... youtube_id=` and that log line blocks
+        // every later start of the row. Uploads that are meant to be stalled and re-delivered therefore send a `failed`
+        // stale report instead, so the stale-report probe does not mask the re-delivery check.
+        const sabotaged = ["hang", "late_success", "slow_stall"].includes(plan.uploads[i]!.behavior);
+        const outcome = sabotaged ? ({ kind: "failed", reason: "stale chaos" } as const) : ({ kind: "uploaded", youtubeId: `stale-${id}` } as const);
+        if (await finishUpload(pool, id, attempt, outcome)) {
           violations.push(`I2 stale attempt ${attempt} report was accepted for upload u${i}`);
         }
       } catch (e) {
@@ -427,7 +496,7 @@ export async function runChaos(args: {
     if (!(plan.realKill && i === 0)) tasks.push(at(0, () => queue.enqueue(id, 0, 0, HASH)));
     for (let k = 0; k < sp.extraDeliveries; k++) tasks.push(at(0, () => queue.enqueue(id, 0, 1000 + k, HASH)));
     if (sp.directDups > 0) {
-      tasks.push(at(sp.directDupAtMs, () => Promise.all(Array.from({ length: sp.directDups }, (_, d) => deliver(i, job, `d${d}`, false)))));
+      tasks.push(at(sp.directDupAtMs, () => (cov.concurrent_duplicate++, Promise.all(Array.from({ length: sp.directDups }, (_, d) => deliver(i, job, `d${d}`, false))))));
     }
   });
   plan.uploads.forEach((up, i) => {
@@ -445,16 +514,22 @@ export async function runChaos(args: {
     tasks.push(at(ev.atMs, async () => {
       switch (ev.kind) {
         case "flush":
+          if (inflight > 0) cov.flush_with_handlers_in_flight++;
           await redis.flushall();
           break;
         case "reconcile":
+          if (ev.double) cov.concurrent_reconcile++;
           await (ev.double ? Promise.all([doReconcile(), doReconcile()]) : doReconcile());
           break;
         case "mark_stalled":
-          await markStalled(pool, STALL_MS);
+          if ((await stall(STALL_MS)).length > 0) cov.mark_stalled_stalled_something++;
           break;
         case "expire_lease":
-          await pool.query("update stage_runs set lease_until = clock_timestamp() - interval '1 second' where id = $1 and status = 'running'", [stageIds[ev.stage]]);
+          if (
+            (await pool.query("update stage_runs set lease_until = clock_timestamp() - interval '1 second' where id = $1 and status = 'running'", [stageIds[ev.stage]])).rowCount
+          ) {
+            cov.lease_expiry_hit_running_stage++;
+          }
           break;
       }
     }));
@@ -494,10 +569,24 @@ export async function runChaos(args: {
   // uploads: let everything that can finish finish, stall the rest, then release late successes
   try {
     await waitFor(() => [...settled.values()].every((i) => ["hang", "late_success"].includes(plan.uploads[i]!.behavior)), "uploads settled", 15_000);
-    await markStalled(pool, 1);
+    await stall(1);
     for (const r of holds.values()) r();
     await waitFor(() => [...settled.values()].every((i) => plan.uploads[i]!.behavior === "hang"), "late successes reported", 15_000);
-    await markStalled(pool, 1);
+    await stall(1);
+    // Re-deliver every upload job after the final stall (two concurrent rounds): a stalled/failed/uploaded upload must
+    // never start again. A start here is counted like any other uploader start (I2 fails if it is a second one).
+    const redeliver: UploadJobDeps = {
+      ...uploadDeps,
+      uploader: {
+        upload: async (uploadId) => {
+          starts.set(uploadId, (starts.get(uploadId) ?? 0) + 1);
+          return { kind: "failed", reason: "redelivery" };
+        },
+      },
+    };
+    for (let round = 0; round < 2; round++) {
+      await Promise.all(uploadIds.flatMap((id) => [0, 1].map(() => handleUploadJob(pool, redeliver, id).catch((e) => unexpected("redelivery", e)))));
+    }
   } catch (e) {
     unexpected("upload quiesce", e);
   }
@@ -508,6 +597,9 @@ export async function runChaos(args: {
     calls.set(r.call_key, r.n);
     if (r.n > 1) violations.push(`I1 call key ${r.call_key} was called ${r.n} times`);
   }
+
+  const logical = await pool.query<{ logical_key: string; n: number }>("select logical_key, count(*)::int as n from chaos_logical_calls group by logical_key");
+  for (const r of logical.rows) if (r.n > 1) violations.push(`I1b logical step ${r.logical_key} was called ${r.n} times`);
 
   for (const [id, n] of starts) if (n > 1) violations.push(`I2 upload u${uploadIdx.get(id)} (${id}) had ${n} uploader starts`);
   const dupVideo = await pool.query("select video_id, count(*) from uploads where status in ('uploading','uploaded') group by video_id having count(*) > 1");
@@ -584,5 +676,46 @@ export async function runChaos(args: {
     finalUploadStatuses,
     budgetConsistent,
     violations,
+    coverage: cov,
+    uploadBehaviors: Object.fromEntries(plan.uploads.map((u, i) => [`u${i}`, u.behavior])),
   };
+}
+
+// Liveness over a sweep: a harness whose system never succeeds proves nothing. Returns violation strings.
+export function checkLiveness(results: ChaosResult[]): string[] {
+  const out: string[] = [];
+  let stages = 0;
+  let succeeded = 0;
+  let okUploads = 0;
+  let okUploaded = 0;
+  let uploaded = 0;
+  for (const r of results) {
+    for (const s of Object.values(r.finalStageStatuses)) {
+      stages++;
+      if (s === "succeeded") succeeded++;
+    }
+    for (const [k, s] of Object.entries(r.finalUploadStatuses)) {
+      if (s === "uploaded") uploaded++;
+      if (r.uploadBehaviors[k] === "ok") {
+        okUploads++;
+        if (s === "uploaded") okUploaded++;
+      }
+    }
+  }
+  if (stages === 0 || succeeded / stages < 0.3) out.push(`LIVENESS only ${succeeded}/${stages} stages succeeded (need >= 30%)`);
+  if (uploaded < 1) out.push("LIVENESS no upload ended uploaded");
+  if (okUploads === 0 || okUploaded / okUploads < 0.3) out.push(`LIVENESS only ${okUploaded}/${okUploads} uploads that were not sabotaged ended uploaded (need >= 30%)`);
+  return out;
+}
+
+// Fault coverage over a sweep of n seeds: every fault kind must actually have happened.
+const COMMON: CoverageKey[] = ["crash_after_claim", "crash_after_reserve", "crash_after_provider", "crash_after_settle", "crash_before_commit", "dropped_delivery", "concurrent_duplicate", "concurrent_reconcile"];
+export function checkCoverage(results: ChaosResult[], n: number): string[] {
+  const out: string[] = [];
+  for (const k of COVERAGE_KEYS) {
+    const total = results.reduce((a, r) => a + r.coverage[k], 0);
+    const need = k === "real_sigkill" ? (n >= 12 ? 1 : 0) : COMMON.includes(k) && n >= 100 ? Math.floor(n / 10) : 1;
+    if (total < need) out.push(`COVERAGE ${k}: ${total} < ${need}`);
+  }
+  return out;
 }

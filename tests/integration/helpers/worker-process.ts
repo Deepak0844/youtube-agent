@@ -63,6 +63,8 @@ async function main(): Promise<void> {
     ports,
     { claim, stepIndex: 0, toolCallIndex: 0, reserveMicroUsd: 1000, budgetScopes: ["g"], kind: "paid" },
     async (key) => {
+      // chaos harness only: record the LOGICAL step independently of the product's call key
+      if (process.env.CHAOS_LOGICAL_KEY) await pool.query("insert into chaos_logical_calls (logical_key) values ($1)", [process.env.CHAOS_LOGICAL_KEY]);
       const out = await provider.call(key);
       if (delay > 0) await new Promise((r) => setTimeout(r, delay));
       return out;
