@@ -25,6 +25,7 @@ export const AUDIT_EVENTS = {
   "password.change_failure": "Owner password change failed",
   "totp.enabled": "Two-factor sign-in enabled",
   "totp.disabled": "Two-factor sign-in disabled",
+  "totp.backfilled": "Existing two-factor secrets were encrypted into the vault",
   "totp.recovery_regenerated": "Recovery codes regenerated",
 } as const;
 

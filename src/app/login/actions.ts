@@ -39,6 +39,8 @@ export async function loginAction(prev: LoginState, form: FormData): Promise<Log
       const min = Math.max(1, Math.ceil((r.retryAfterMs ?? 60_000) / 60_000));
       return { needCode: prev.needCode, error: `Too many attempts. Try again in ${min} minute${min === 1 ? "" : "s"}.` };
     }
+    if (r.reason === "vault")
+      return { needCode: prev.needCode, error: "Two-factor sign-in is unavailable: the vault key is missing or wrong. Restore VAULT_MASTER_KEY, or run npm run owner:reset." };
     if (r.reason === "busy") return { needCode: prev.needCode, error: "Busy right now. Try again in a moment." };
     return { needCode: prev.needCode, error: prev.needCode ? "Incorrect username, password or code." : "Incorrect username or password." };
   }
