@@ -56,24 +56,47 @@ function matching(s: string, open: number): number {
   return -1;
 }
 
-/** Body text `{ ... }` (inclusive) of a function whose declaration head ends at `from`; null if not analysable. */
-function bodyAfterHead(s: string, from: number): string | null {
-  const paren = s.indexOf("(", from);
-  if (paren < 0) return null;
+const RET = String.raw`(?::[^={;]*?)?`; // optional return type annotation
+
+/** `{ ... }` (inclusive) of a function declaration, directly after its name: `[<T>](params)[: type] {`. */
+function fnDeclBody(s: string, pos: number): string | null {
+  const m = /^\s*(?:<[^>(]*>)?\s*\(/.exec(s.slice(pos));
+  if (!m) return null;
+  return afterParams(s, pos + m[0].length - 1, false);
+}
+
+function afterParams(s: string, paren: number, arrow: boolean): string | null {
   const pend = matching(s, paren);
   if (pend < 0) return null;
-  const rest = /^\s*(?::[^={;]*?)?\s*(=>\s*)?\{/.exec(s.slice(pend + 1));
+  const rest = new RegExp(`^\\s*${RET}\\s*${arrow ? "=>\\s*" : ""}\\{`).exec(s.slice(pend + 1));
   if (!rest) return null; // expression-bodied arrow or something odd: require an inline block
   const open = pend + 1 + rest[0].length - 1;
   const close = matching(s, open);
   return close < 0 ? null : s.slice(open, close + 1);
 }
 
+/** Body of what follows `NAME =`. ONLY these shapes are analysable: `async? function (…) {`, `async? (…) => {`,
+ *  `async? ident => {`. An alias or call (`= h;`, `= withAuth(…)`) returns null and the caller FAILS the file. */
+function constBody(s: string, pos: number): string | null {
+  const t = s.slice(pos);
+  const fn = /^\s*(?:async\s+)?function\b[^(]*\(/.exec(t);
+  if (fn) return afterParams(s, pos + fn[0].length - 1, false);
+  const ar = /^\s*(?:async\s+)?\(/.exec(t);
+  if (ar) return afterParams(s, pos + ar[0].length - 1, true);
+  const id = /^\s*(?:async\s+)?\w+\s*=>\s*\{/.exec(t);
+  if (id) {
+    const open = pos + id[0].length - 1;
+    const close = matching(s, open);
+    return close < 0 ? null : s.slice(open, close + 1);
+  }
+  return null;
+}
+
 function declBody(s: string, local: string): string | null {
   const f = new RegExp(`(?<![.\\w])(?:async\\s+)?function\\s+${local}\\b`).exec(s);
-  if (f) return bodyAfterHead(s, f.index + f[0].length);
-  const c = new RegExp(`(?<![.\\w])(?:const|let|var)\\s+${local}\\s*=\\s*(?:async\\s+)?(?:function\\b[^(]*)?`).exec(s);
-  return c ? bodyAfterHead(s, c.index + c[0].length) : null;
+  if (f) return fnDeclBody(s, f.index + f[0].length);
+  const c = new RegExp(`(?<![.\\w])(?:const|let|var)\\s+${local}\\s*(?::[^=]+)?=`).exec(s);
+  return c ? constBody(s, c.index + c[0].length) : null;
 }
 
 export interface Handler {
@@ -84,16 +107,14 @@ export interface Handler {
 export function exportedHandlers(blanked: string): { handlers: Handler[]; problems: string[] } {
   const handlers: Handler[] = [];
   const problems: string[] = [];
-  const seen = new Set<string>();
   const add = (name: string, body: string | null) => {
-    seen.add(name);
     handlers.push({ name, body });
   };
   for (const m of blanked.matchAll(/\bexport\s+(?:async\s+)?function\s+(\w+)/g)) {
-    if (METHODS.includes(m[1]!)) add(m[1]!, bodyAfterHead(blanked, m.index + m[0].length));
+    if (METHODS.includes(m[1]!)) add(m[1]!, fnDeclBody(blanked, m.index + m[0].length));
   }
-  for (const m of blanked.matchAll(/\bexport\s+(?:const|let|var)\s+(\w+)\s*(?::[^=]+)?=\s*(?:async\s+)?(?:function\b[^(]*)?/g)) {
-    if (METHODS.includes(m[1]!)) add(m[1]!, bodyAfterHead(blanked, m.index + m[0].length));
+  for (const m of blanked.matchAll(/\bexport\s+(?:const|let|var)\s+(\w+)\s*(?::[^=]+)?=/g)) {
+    if (METHODS.includes(m[1]!)) add(m[1]!, constBody(blanked, m.index + m[0].length));
   }
   for (const m of blanked.matchAll(/\bexport\s*\{([^}]*)\}\s*(from\b)?/g)) {
     if (m[2]) {
@@ -110,18 +131,39 @@ export function exportedHandlers(blanked: string): { handlers: Handler[]; proble
   return { handlers, problems };
 }
 
-/** Guard rule for one handler body: `const x = await requireOwnerApi(` at the top level of the body, nothing returned
- *  before it, and the very next statement returns x when it is a Response. A guard in a helper the handler calls is NOT
- *  accepted (keep it inline). */
+const depthOf = (text: string): number => [...text].reduce((d, ch) => d + (ch === "{" ? 1 : ch === "}" ? -1 : 0), 0);
+
+/** Text before a guard may only declare variables: no call/await except `new URL(<x>.url)`, no assignments or mutations. */
+function preludeProblem(before: string): string | null {
+  const cleaned = before.replace(/new\s+URL\s*\(\s*\w+\.url\s*\)/g, "URL_OK").replace(/\b(?:const|let|var)\s+\w+\s*=\s*$/, "");
+  if (/\bawait\b|\(|\bdelete\b|\+\+|--|\bnew\b|\byield\b/.test(cleaned)) return "work (a call, await or mutation) happens before the guard";
+  if (/\b(return|throw)\b/.test(cleaned)) return "a return/throw comes before the guard";
+  for (const stmt of cleaned.split(/[;\n]/).map((x) => x.trim()).filter(Boolean)) {
+    if (!/^(?:const|let|var)\b/.test(stmt) && !/^[\w\s,:{}[\]]*$/.test(stmt)) return "a non-declaration statement comes before the guard";
+    if (!/^(?:const|let|var)\b/.test(stmt) && /=/.test(stmt)) return "an assignment comes before the guard";
+  }
+  return null;
+}
+
+/** Common position rule: the first `call` match must be at depth 0 of the body, preceded by declarations only. */
+function guardPosition(inner: string, call: RegExp): { idx: number } | { problem: string } {
+  const m = call.exec(inner);
+  if (!m) return { problem: "guard call not found" };
+  const before = inner.slice(0, m.index);
+  if (depthOf(before) !== 0) return { problem: "guard is nested inside a block (if/else/loop/callback/function), not at the top of the body" };
+  const bad = preludeProblem(before);
+  return bad ? { problem: bad } : { idx: m.index };
+}
+
+/** Guard rule for one handler body: `const x = await requireOwnerApi(` at the top level of the body, only declarations
+ *  before it, and the very next statement returns x when it is a Response. Helpers are not followed (keep it inline). */
 export function handlerGuarded(body: string | null): string | null {
-  if (!body) return "handler body cannot be analysed (use a block body)";
+  if (!body) return "handler cannot be analysed (alias, wrapped or expression-bodied handlers are not accepted; use `async function`/arrow with a block body)";
   const inner = body.slice(1, -1);
   const m = /(?:const|let)\s+(\w+)\s*=\s*await\s+requireOwnerApi\s*\(/.exec(inner);
   if (!m) return "no `const x = await requireOwnerApi(`";
-  const before = inner.slice(0, m.index);
-  const depth = [...before].reduce((d, ch) => d + (ch === "{" ? 1 : ch === "}" ? -1 : 0), 0);
-  if (depth !== 0) return "guard is nested inside a block (if/else/loop/function), not at the top of the handler";
-  if (/\b(return|throw)\b/.test(before)) return "a return/throw comes before the guard";
+  const pos = guardPosition(inner, /(?:const|let)\s+\w+\s*=\s*await\s+requireOwnerApi\s*\(/);
+  if ("problem" in pos) return pos.problem;
   const open = inner.indexOf("(", m.index + m[0].length - 1);
   const end = matching(inner, open);
   const name = m[1]!;
@@ -132,24 +174,32 @@ export function handlerGuarded(body: string | null): string | null {
   return null;
 }
 
+const OWNER_CALL = /\bawait\s+requireOwner\s*\(/;
+function componentGuarded(body: string): string | null {
+  const inner = body.slice(1, -1);
+  if (!OWNER_CALL.test(inner)) return "no `await requireOwner(`";
+  const pos = guardPosition(inner, OWNER_CALL);
+  return "problem" in pos ? pos.problem : null;
+}
+
 function defaultComponentBody(b: string): string | null {
   const direct = /\bexport\s+default\s+(?:async\s+)?function\b\s*\w*/.exec(b);
-  if (direct) return bodyAfterHead(b, direct.index + direct[0].length);
+  if (direct) return fnDeclBody(b, direct.index + direct[0].length);
   const ref = /\bexport\s+default\s+(\w+)\s*;?/.exec(b);
   return ref ? declBody(b, ref[1]!) : null;
 }
 
-/** Page rule: `await requireOwner(` in the default component, or in a component of the same file that the default
- *  component renders (`<Name`) or calls; needed because cookies() must sit inside <Suspense> under cacheComponents. */
+/** Page rule: `await requireOwner(` first thing, at the top of the default component, or of a same-file component it
+ *  renders/calls (cookies() must sit inside <Suspense> under cacheComponents, so the real `/` page guards in an inner one). */
 function pageGuarded(b: string): string | null {
   const body = defaultComponentBody(b);
   if (!body) return "default export of the page cannot be analysed";
-  if (/\bawait\s+requireOwner\s*\(/.test(body)) return null;
+  if (OWNER_CALL.test(body)) return componentGuarded(body);
   for (const m of b.matchAll(/(?<![.\w])(?:async\s+)?function\s+([A-Z]\w*)/g)) {
-    const inner = bodyAfterHead(b, m.index + m[0].length);
-    if (inner && /\bawait\s+requireOwner\s*\(/.test(inner) && new RegExp(`<${m[1]}[\\s/>]|\\b${m[1]}\\s*\\(`).test(body)) return null;
+    const inner = fnDeclBody(b, m.index + m[0].length);
+    if (inner && OWNER_CALL.test(inner) && new RegExp(`<${m[1]}[\\s/>]|\\b${m[1]}\\s*\\(`).test(body)) return componentGuarded(inner);
   }
-  return "default component does not `await requireOwner(` (directly or via a component it renders)";
+  return "default component does not `await requireOwner(` (directly or via a component it renders); keep the guarded component in the same file";
 }
 
 /** Guard check for a page.* or route.* file. Returns violations (empty = ok). */
@@ -165,6 +215,15 @@ export function checkRoute(o: { url: string; file: string; src: string; isPublic
       for (const h of handlers) {
         const why = handlerGuarded(h.body);
         if (why) out.push(`${h.name}: ${why}`);
+      }
+    }
+    if (o.isPublic) {
+      const own = ["/api/v1", "/api/webhooks", "/api/oauth"].some((p) => o.url === p || o.url.startsWith(p + "/"));
+      const need = own ? "assertAllowedHost" : "assertSameOrigin";
+      for (const h of handlers.filter((x) => ["POST", "PUT", "PATCH", "DELETE"].includes(x.name))) {
+        const inner = h.body?.slice(1, -1) ?? "";
+        const m = new RegExp(`\\b${need}\\s*\\(`).exec(inner);
+        if (!m || depthOf(inner.slice(0, m.index)) !== 0) out.push(`${h.name}: public state-changing handler must call ${need}( at the top level`);
       }
     }
     if (PROXY_EXCLUDED.some((p) => o.url === p || o.url.startsWith(p + "/"))) {
@@ -194,9 +253,9 @@ export function checkActionFile(srcRaw: string): string[] {
   for (let m; (m = re.exec(b)); ) {
     const name = (m[1] ?? m[2])!;
     if (ACTION_ALLOW.includes(name)) continue;
-    const start = b.indexOf("{", m.index + m[0].length);
-    const body = start < 0 ? "" : b.slice(start, matching(b, start) + 1 || undefined);
-    if (!/\brequireOwner\s*\(/.test(body)) out.push(`server action ${name} does not call requireOwner(`);
+    const body = m[1] ? fnDeclBody(b, m.index + m[0].length) : constBody(b, m.index + m[0].length);
+    const why = body ? componentGuarded(body) : "cannot be analysed (use a block body)";
+    if (why) out.push(`server action ${name}: ${why}`);
   }
   return out;
 }

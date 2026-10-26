@@ -79,6 +79,13 @@ describe("checkers (synthetic sources)", () => {
       expect(page("export default function P(){ return <S><Inner/></S> }\nasync function Inner(){ await requireOwner(); return 1 }")).toEqual([]);
       expect(page("async function P(){ await requireOwner(); }\nexport default P;")).toEqual([]);
     });
+    it("work or nesting before the page guard fails", () => {
+      expect(page("export default async function P(){ await db.q(); await requireOwner(); }")).not.toEqual([]);
+      expect(page("export default async function P(){ if (x) { await requireOwner(); } }")).not.toEqual([]);
+      expect(page("export default async function P(){ items.forEach(async () => { await requireOwner(); }) }")).not.toEqual([]);
+      expect(page("export default function P(){ return <I/> }\nasync function I(){ const d = await load(); await requireOwner(); }")).not.toEqual([]);
+      expect(page("export default async function P({ params }){ const p = params; await requireOwner(); }")).toEqual([]);
+    });
     it("a guard in a component that is never rendered fails", () => {
       expect(page("export default function P(){ return null }\nasync function Inner(){ await requireOwner() }")).not.toEqual([]);
     });
@@ -130,6 +137,35 @@ describe("checkers (synthetic sources)", () => {
       expect(route("export async function GET(r){ const o = await requireOwnerApi(r); return 1 }")).not.toEqual([]);
       expect(route("export async function GET(r){ const o = await requireOwnerApi(r); if (o instanceof Response) return Response.json({}); return o }")).not.toEqual([]);
     });
+    it("an alias or wrapped handler is not analysable and never borrows another handler's body", () => {
+      expect(route(`const h = x;\nexport const GET = h;\nexport async function POST(r){ ${G} }`).join()).toContain("GET");
+      expect(route(`const GET = h;\nexport { GET };\nexport async function POST(r){ ${G} }`).join()).toContain("GET");
+      expect(route(`export const GET = withAuth(async (r) => { ${G} });`)).not.toEqual([]);
+      expect(route(`export const GET = async r => { ${G} }`)).toEqual([]);
+      expect(route(`export const GET = async function named(r) { ${G} }`)).toEqual([]);
+      expect(route(`export async function GET(r: Request): Promise<Response> { ${G} }`)).toEqual([]);
+    });
+    it("work before the guard fails; only declarations and new URL(request.url) may precede it", () => {
+      expect(route(`export async function GET(r){ await db.query(); ${G} }`)).not.toEqual([]);
+      expect(route(`export async function GET(r){ await db.delete(); ${G} }`)).not.toEqual([]);
+      expect(route(`export async function GET(r){ const x = readStuff(); ${G} }`)).not.toEqual([]);
+      expect(route(`export async function GET(r){ counter++; ${G} }`)).not.toEqual([]);
+      expect(route(`export async function GET(r){ state = 1; ${G} }`)).not.toEqual([]);
+      expect(route(`export async function GET(r){ const url = new URL(r.url); ${G} return url }`)).toEqual([]);
+      expect(route(`export async function GET(r){ const { a } = r; ${G} }`)).toEqual([]);
+      expect(route(`export async function GET(r){ ${G} await db.query() }`)).toEqual([]);
+    });
+    it("public state-changing handlers call assertSameOrigin (or assertAllowedHost for token/signature routes) at the top level", () => {
+      const pub = (url: string, src: string) => checkRoute({ url, file: "src/app/x/route.ts", src, isPublic: true });
+      expect(pub("/api/auth/login", "export async function POST(r){ return 1 }")).not.toEqual([]);
+      expect(pub("/api/auth/login", "export async function POST(r){ const b = assertSameOrigin(r); if (b) return b }")).toEqual([]);
+      expect(pub("/api/auth/login", "export async function POST(r){ if (x) { assertSameOrigin(r) } }")).not.toEqual([]);
+      expect(pub("/api/auth/login", "export async function GET(r){ return 1 }")).toEqual([]);
+      expect(pub("/api/v1/x", "export async function POST(r){ return 1 }")).not.toEqual([]);
+      expect(pub("/api/v1/x", "export async function POST(r){ assertAllowedHost(r) }")).toEqual([]);
+      expect(pub("/api/webhooks/s", "export async function POST(r){ assertAllowedHost(r) }")).toEqual([]);
+      expect(pub("/api/oauth/cb", "export async function POST(r){ assertSameOrigin(r) }")).not.toEqual([]);
+    });
     it("re-exports cannot be checked and fail", () => {
       expect(route('export { GET } from "./other"')).not.toEqual([]);
       expect(route('export * from "./other"')).not.toEqual([]);
@@ -167,6 +203,11 @@ describe("checkers (synthetic sources)", () => {
       expect(checkActionFile(head + "export var f = async () => { await db.q() }")).not.toEqual([]);
       expect(checkActionFile("export async function f(){ 'use server'; await db.q() }")).not.toEqual([]);
       expect(checkActionFile("export function plain(){}")).toEqual([]);
+    });
+    it("the guard must be the first call and at the top of the action body", () => {
+      expect(checkActionFile(head + "export async function a(){ await db.q(); await requireOwner(); }")).not.toEqual([]);
+      expect(checkActionFile(head + "export async function a(){ if (x) { await requireOwner(); } }")).not.toEqual([]);
+      expect(checkActionFile(head + "export async function a(){ await requireOwner(); await db.q(); }")).toEqual([]);
     });
     it("a requireOwner mention in a string or comment does not count", () => {
       expect(checkActionFile(head + 'export async function f(){ const s = "requireOwner("; }')).not.toEqual([]);
