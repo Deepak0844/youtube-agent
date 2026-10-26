@@ -37,7 +37,7 @@ describe("route inventory (real files)", () => {
       .filter((f) => f.startsWith(APP))
       .map((f) => ({ f, base: path.basename(f).replace(SOURCE_EXT, "") }))
       .filter(({ base }) => SPECIAL_FILES.includes(base) || METADATA_FILES.includes(base));
-    expect(found.map(({ f }) => path.relative(APP, f)).sort()).toEqual(["layout.tsx"]); // a new special file must be reviewed here
+    expect(found.map(({ f }) => path.relative(APP, f)).sort()).toEqual(["(app)/layout.tsx", "(app)/settings/layout.tsx", "layout.tsx"].map((p) => p.split("/").join(path.sep))); // a new special file must be reviewed here
     for (const { f, base } of found.filter(({ base }) => METADATA_FILES.includes(base))) {
       expect(isPublicPath(urlOf(f) + "/" + base), `${f} would be public`).toBe(false);
     }

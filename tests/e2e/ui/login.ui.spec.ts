@@ -34,13 +34,15 @@ test("correct login reaches the protected page, cookie is HttpOnly, logout retur
   await page.goto("/");
   await expect(page).toHaveURL(/\/login\?next=%2F$/);
   await signIn(page, OWNER_USERNAME, OWNER_PASSWORD);
-  await expect(page.getByRole("heading", { name: "YT Studio" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Home" })).toBeVisible();
   expect(new URL(page.url()).pathname).toBe("/");
   expect(await page.evaluate(() => document.cookie)).not.toContain("ytstudio_session");
   const c = (await context.cookies()).find((x) => x.name === "ytstudio_session")!;
   expect(c).toMatchObject({ httpOnly: true, sameSite: "Lax", path: "/", secure: false });
 
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login/);
   await page.goto("/");
   await expect(page).toHaveURL(/\/login\?next=%2F$/);
@@ -52,7 +54,7 @@ for (const evil of ["//evil.test", "https://evil.test", "/\\evil.test", "javascr
     const { context, page } = await fresh(browser);
     await page.goto(`/login?next=${encodeURIComponent(evil)}`);
     await signIn(page, OWNER_USERNAME, OWNER_PASSWORD);
-    await expect(page.getByRole("heading", { name: "YT Studio" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Home" })).toBeVisible();
     expect(new URL(page.url()).origin).toBe(new URL(baseURL!).origin);
     expect(new URL(page.url()).pathname).toBe("/");
     await context.close();
