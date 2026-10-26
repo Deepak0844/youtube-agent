@@ -13,6 +13,10 @@ const io = [...nodeIo, ...nodeIo.map((m) => `node:${m}`), ...ioPackages];
 const effectDirs = ["db", "providers", "llm", "queue", "render"];
 const effects = effectDirs.flatMap((d) => [`@/server/${d}`, `@/server/${d}/*`, `**/${d}`, `**/${d}/*`]);
 const orm = ["drizzle-orm", "drizzle-orm/*"];
+// The vault and its master key are server-only. Client code (src/ui, and .tsx under src/app other than the server-only
+// Next entry files) may not import them; server actions (actions.ts) and page/layout/route files may.
+const vault = ["@/server/db/vault", "@/server/db/master-key", "**/db/vault", "**/db/master-key"];
+const serverEntries = ["page", "layout", "template", "default", "loading", "not-found", "forbidden", "unauthorized"].map((n) => `src/app/**/${n}.tsx`);
 
 const restrict = (...groups) => ({
   "no-restricted-imports": ["error", { patterns: [{ group: groups.flat() }] }],
@@ -53,6 +57,11 @@ const eslintConfig = defineConfig([
   // Import boundaries (Doc 2 §2). Raw table access is db-only; the package is
   // not installed yet, the rule is pre-wired.
   { files: ["src/**/*.{ts,tsx,mts}"], ignores: ["src/server/**", "src/worker/**"], rules: restrict(orm) },
+  {
+    files: ["src/ui/**/*.{ts,tsx,mts}", "src/app/**/*.{tsx,jsx}"],
+    ignores: serverEntries,
+    rules: restrict(orm, vault),
+  },
   { files: ["src/server/**/*.{ts,tsx,mts}", "src/worker/**/*.{ts,tsx,mts}"], rules: restrict(framework, presentation, orm) },
   { files: ["src/server/db/**/*.{ts,tsx,mts}"], rules: restrict(framework, presentation) },
   { files: ["src/server/core/**/*.{ts,tsx,mts}"], rules: { ...restrict(framework, presentation, orm, io, effects), ...coreOnly } },
