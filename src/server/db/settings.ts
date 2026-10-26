@@ -14,7 +14,11 @@ export async function setSetting(
   db: pg.Pool,
   key: string,
   value: unknown,
-  opts: { actor: Actor },
+  opts: {
+    actor: Actor;
+    /** Runs in the same transaction after the write (e.g. the audit row). If it throws, nothing is saved. */
+    inTx?: (client: pg.PoolClient, change: { old: unknown; new: unknown }) => Promise<void>;
+  },
 ): Promise<{ old: unknown; new: unknown }> {
   const parsed = parseSetting(key, value);
   if (SETTINGS[key as keyof typeof SETTINGS].safety && opts.actor !== "session") {
@@ -29,6 +33,7 @@ export async function setSetting(
        on conflict (key) do update set value = excluded.value, updated_at = now(), updated_by = excluded.updated_by`,
       [key, JSON.stringify(parsed), opts.actor],
     );
+    await opts.inTx?.(client, { old: prev, new: parsed });
     await client.query("commit");
     return { old: prev, new: parsed };
   } catch (err) {
