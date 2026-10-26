@@ -22,6 +22,9 @@
     "image:egress-proxy": "docker build -f infra/Dockerfile.egress-proxy -t ytstudio-egress-proxy:dev ."
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.88",
+    "@ai-sdk/openai-compatible": "^3.0.78",
+    "ai": "^7.0.153",
     "bullmq": "^6.4.2",
     "ioredis": "^6.0.0",
     "ipaddr.js": "^2.5.0",
@@ -29,7 +32,8 @@
     "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "undici": "^8.12.3"
+    "undici": "^8.12.3",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
