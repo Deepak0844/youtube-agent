@@ -1,15 +1,16 @@
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getPool } from "@/server/db/pool";
 import { validateSession } from "@/server/db/auth";
-import { readSessionCookie, SESSION_COOKIE } from "./session-cookie";
+import { readSessionCookie } from "./session-cookie";
 
 // The REAL session check (the proxy only looks for the cookie). The token is read from the cookie only, never from a
-// query string or body. Under cacheComponents, call this from inside a <Suspense> boundary (cookies() is request-time data).
+// query string or body. Under cacheComponents, call this from inside a <Suspense> boundary (headers() is request-time data).
 
 /** Pages, server components, server actions: no/invalid session -> redirect('/login') (throws). */
 export async function requireOwner(): Promise<{ sessionId: string }> {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  // The raw Cookie header through the same reader as the proxy and route handlers (cookies().get picks the LAST duplicate).
+  const token = readSessionCookie((await headers()).get("cookie"));
   if (!token) redirect("/login");
   const s = await validateSession(getPool(), token);
   if (!s.ok) redirect("/login");

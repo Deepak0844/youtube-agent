@@ -100,4 +100,11 @@ describe("session cookie", () => {
     expect(readSessionCookie("ytstudio_session=")).toBeNull();
     expect(readSessionCookie(null)).toBeNull();
   });
+  it("fails closed on more than one ytstudio_session cookie, whatever their order or values", () => {
+    expect(readSessionCookie("ytstudio_session=garbage; ytstudio_session=valid")).toBeNull();
+    expect(readSessionCookie("ytstudio_session=valid; ytstudio_session=garbage")).toBeNull();
+    expect(readSessionCookie("ytstudio_session=a; x=1; ytstudio_session=a")).toBeNull();
+    expect(readSessionCookie("ytstudio_session=; ytstudio_session=valid")).toBeNull();
+    expect(readSessionCookie("ytstudio_session=valid; YTSTUDIO_SESSION=other")).toBe("valid"); // a different name is not a duplicate
+  });
 });
