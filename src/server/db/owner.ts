@@ -95,6 +95,15 @@ async function readLink(q: Db, tokenHash: string, lock: boolean): Promise<LinkSt
   return rows[0] ?? null;
 }
 
+/** Read-only: is this setup link usable right now? One neutral boolean, so the page cannot reveal why a link is bad. */
+export async function setupLinkUsable(db: Db, token: string): Promise<boolean> {
+  try {
+    return refusal(await readLink(db, hashToken(token), false)) === null;
+  } catch {
+    return false;
+  }
+}
+
 const refusal = (l: LinkState | null): ConsumeResult | null =>
   !l ? { ok: false, reason: "invalid" } : l.used ? { ok: false, reason: "used" } : l.expired ? { ok: false, reason: "expired" } : null;
 
