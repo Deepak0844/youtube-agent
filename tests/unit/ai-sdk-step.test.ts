@@ -24,6 +24,14 @@ describe("ai-sdk step", () => {
     expect(r.usage).toEqual({ inputTokens: 11, outputTokens: 7 });
     expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(100);
   });
+  it("system_messages_go_to_instructions_not_messages", async () => {
+    const model = mk([{ type: "text", text: "x" }]);
+    const step = createAiSdkStep(model, [], 10);
+    await step([{ role: "system", content: "be brief" }, { role: "user", content: "go" }], "k");
+    const prompt = model.doGenerateCalls[0]?.prompt ?? [];
+    expect(prompt.filter((p) => p.role === "system")).toHaveLength(1);
+    expect(prompt.filter((p) => p.role === "user")).toHaveLength(1);
+  });
   it("missing_usage_fails_closed", async () => {
     const step = createAiSdkStep(mk([{ type: "text", text: "x" }], usage(undefined, undefined)), [], 10);
     await expect(step([{ role: "user", content: "go" }], "k")).rejects.toThrow(/no token usage/);

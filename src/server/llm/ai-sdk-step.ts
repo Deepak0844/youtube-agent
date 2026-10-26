@@ -14,7 +14,8 @@ function toModelMessages(messages: Message[]): ModelMessage[] {
   const out: ModelMessage[] = [];
   const names = new Map<string, string>();
   for (const m of messages) {
-    if (m.role === "system" || m.role === "user") out.push({ role: m.role, content: m.content });
+    if (m.role === "system") continue; // passed as `instructions`, the SDK rejects system messages in `messages`
+    if (m.role === "user") out.push({ role: m.role, content: m.content });
     else if (m.role === "assistant") {
       for (const c of m.toolCalls ?? []) names.set(c.id, c.name);
       out.push({
@@ -48,6 +49,7 @@ export function createAiSdkStep(model: LanguageModel, decls: ToolDecl[], maxOutp
   return async (messages, _idempotencyKey, signal): Promise<StepResult> => {
     const r = await generateText({
       model,
+      instructions: messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n") || undefined,
       messages: toModelMessages(messages),
       tools,
       maxOutputTokens,

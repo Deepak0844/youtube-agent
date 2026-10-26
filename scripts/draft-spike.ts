@@ -59,9 +59,15 @@ async function main() {
     ],
   });
   const json = out.text.match(/\{[\s\S]*\}/)?.[0] ?? "";
-  const parsed = Evidence.safeParse(JSON.parse(json || "null"));
+  let raw: unknown = null;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    console.log("model output was not valid JSON:", out.text.slice(0, 300));
+  }
+  const parsed = Evidence.safeParse(raw);
   const fake = parsed.success ? parsed.data.claims.filter((c) => !seen.has(c.sourceUrl)) : [];
-  console.log({ steps: out.steps, spentUsd: spentMicro / 1e6, contractOk: parsed.success, invented: fake.length });
+  console.log({ topic, steps: out.steps, spentUsd: spentMicro / 1e6, contractOk: parsed.success, invented: fake.length });
   process.exitCode = parsed.success && fake.length === 0 ? 0 : 1;
 }
 main().catch((e) => { console.error(e); process.exit(1); });
