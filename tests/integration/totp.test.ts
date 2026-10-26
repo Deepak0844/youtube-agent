@@ -14,14 +14,15 @@ import {
   useRecoveryCode as redeemRecoveryCode,
   verifyOwnerTotp,
 } from "@/server/db/totp";
+import { getSecret } from "@/server/db/vault";
 import { withTestDb, type TestDb } from "../support/db";
 
 const BASE = "http://localhost:3000";
 const PW = "correct horse battery staple";
 let db: TestDb;
+const ring = makeKeyring(generateMasterKey());
 beforeAll(async () => {
   db = await withTestDb();
-  const ring = makeKeyring(generateMasterKey());
   setTotpKeyring(() => ring);
 });
 beforeEach(async () => {
@@ -84,6 +85,7 @@ describe("enrollment", () => {
     expect(await totpEnabled(db.pool)).toBe(false);
     expect(await unusedRecoveryCodeCount(db.pool)).toBe(0);
     expect((await q("select totp_pending_secret from owner")).rows[0].totp_pending_secret).toBe("vault:totp.pending");
+    expect(await getSecret(db.pool, ring, "totp.pending")).toBe(secret); // a wrong code keeps the same pending secret
   });
 
   it("enable_without_pending_fails_and_begin_refused_when_enabled", async () => {

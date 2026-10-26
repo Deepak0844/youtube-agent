@@ -3,7 +3,7 @@ import { generateMasterKey, makeKeyring, type Keyring } from "@/server/core/vaul
 import { generateSecret, totpCode } from "@/server/core/totp";
 import { login } from "@/server/db/auth";
 import { clearOwnerSecurity, consumeSetupLink, createSetupLink } from "@/server/db/owner";
-import { beginTotpEnrollment, disableTotp, enableTotp, setTotpKeyring, totpEnabled, verifyOwnerTotp } from "@/server/db/totp";
+import { beginTotpEnrollment, disableTotp, enableTotp, setTotpKeyring, TotpVaultError, totpEnabled, verifyOwnerTotp } from "@/server/db/totp";
 import { backfillTotpSecrets } from "@/server/db/totp-backfill";
 import { getSecret } from "@/server/db/vault";
 import { withTestDb, type TestDb } from "../support/db";
@@ -165,5 +165,38 @@ describe("backfill", () => {
     expect(await backfillTotpSecrets(db.ownerPool, ring)).toEqual({ secret: false, pending: false });
     await makeOwner();
     expect(await backfillTotpSecrets(db.ownerPool, ring)).toEqual({ secret: false, pending: false });
+  });
+});
+
+describe("no downgrade when the vault row is gone or the row is not in vault form", () => {
+  it("deleted_totp_secret_row_keeps_2fa_on_and_refuses_every_second_factor", async () => {
+    const { secret, codes } = await enable();
+    await q("delete from secrets where name = 'totp.secret'"); // as the app role
+    expect(await totpEnabled(db.pool)).toBe(true); // flag true + no row is NOT "2FA off"
+    expect(await attempt()).toEqual({ ok: false, reason: "needs_totp" });
+    expect(await attempt(totpCode(secret, NOW + 30_000))).toEqual({ ok: false, reason: "vault" });
+    expect(await attempt(codes[0])).toEqual({ ok: false, reason: "vault" });
+    await expect(disableTotp(db.pool, { proof: codes[1]!, nowMs: NOW })).rejects.toBeInstanceOf(TotpVaultError);
+    expect((await q("select count(*) n from sessions")).rows[0].n).toBe("0");
+    expect((await q("select totp_secret, totp_encrypted from owner")).rows[0]).toEqual({ totp_secret: "vault:totp.secret", totp_encrypted: true });
+  });
+
+  it("marker_present_but_flag_false_is_refused", async () => {
+    const { secret } = await enable();
+    await db.ownerPool.query("update owner set totp_encrypted = false");
+    expect(await attempt(totpCode(secret, NOW + 30_000))).toEqual({ ok: false, reason: "vault" });
+  });
+});
+
+describe("audit of vault refusals", () => {
+  it("is_recorded_with_non_secret_detail_and_does_not_count_toward_lockout", async () => {
+    const { secret } = await enable();
+    setTotpKeyring(() => otherRing);
+    for (let i = 0; i < 8; i++) expect(await attempt(totpCode(secret, NOW + 30_000))).toEqual({ ok: false, reason: "vault" });
+    const rows = (await q("select detail from audit_log where event = 'login.failure'")).rows;
+    expect(rows).toHaveLength(8);
+    expect(rows[0].detail).toEqual({ reason: "vault", ip: "10.0.0.1" });
+    expect((await q("select count(*) n from login_attempts where not success")).rows[0].n).toBe("0");
+    expect(await dump()).not.toContain(secret);
   });
 });

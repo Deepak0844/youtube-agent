@@ -165,10 +165,14 @@ async function loginAdmitted(db: Db, input: LoginInput): Promise<LoginResult> {
       // Fail closed: if the vault cannot open the TOTP secret, no second factor (recovery codes included) is accepted.
       let second: boolean;
       try {
-        totpKeyring();
+        totpKeyring(); // defence in depth: verifyLocked also fails closed, but a bad key must never reach the recovery-code branch
         second = typeof code === "string" && ((await verifyOwnerTotp(q, code, nowMs)) || (await useRecoveryCode(q, code)));
       } catch (e) {
-        if (e instanceof TotpVaultError) return { result: { ok: false, reason: "vault" } };
+        if (e instanceof TotpVaultError) {
+          // The password was right, so this is not a guess: audited (non-secret detail) but not counted toward lockout.
+          await audit(q, "login.failure", { reason: "vault", ip });
+          return { result: { ok: false, reason: "vault" } };
+        }
         throw e;
       }
       if (!second) return fail();

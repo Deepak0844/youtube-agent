@@ -10,6 +10,10 @@ import { getSecret, putSecret } from "@/server/db/vault";
 // TOTP enrollment/verification and recovery codes. The TOTP secret lives only in the vault (secrets rows SECRET_NAME / PENDING_NAME);
 // owner.totp_secret / totp_pending_secret hold a marker and owner.totp_encrypted = true. Any other non-null value is a pre-vault
 // plaintext row: it is never used (fail closed) until scripts/totp-backfill.ts encrypts it. Never log a secret or put it in audit detail.
+// Design note: the owner columns hold a marker and the ciphertext lives in separate `secrets` rows (not in the owner columns).
+// Rolling a row back to an older ciphertext is a documented residual risk (vault-crypto.ts, no version in the AAD), and an attacker
+// with app-role DML on these tables already has full compromise. A deleted `totp.secret` row does NOT turn 2FA off: totpEnabled
+// keys off the owner marker, and the missing row makes every second factor fail closed.
 // Recovery codes are stored only as SHA-256 hashes.
 // Lock order follows owner.ts: owner advisory lock first, then the owner row (FOR UPDATE).
 
