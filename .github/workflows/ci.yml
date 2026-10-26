@@ -45,15 +45,27 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Install ffmpeg (host ffprobe is used by render tests)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          ffprobe -version
       - name: Build sandbox images
         run: |
           npm run image:render
           npm run image:egress-proxy
+      - name: Host ffprobe (render tests probe videos on the host)
+        # apt-get install ffmpeg pulls ~100 packages from the runner's mirror, which sometimes crawls (one run lost 28
+        # minutes of the 30 minute budget; the tests themselves need ~8). The render image already contains Remotion's
+        # self-contained ffprobe (plus its own libs), so copy that out; apt is only the fallback.
+        timeout-minutes: 8
+        run: |
+          dir=$(docker run --rm --entrypoint sh ytstudio-render:dev -c 'dirname "$(find /opt/render/node_modules/@remotion -name ffprobe -type f | head -1)"')
+          cid=$(docker create ytstudio-render:dev)
+          docker cp "$cid:$dir" "$HOME/ffprobe-bin"
+          docker rm "$cid" >/dev/null
+          echo "$HOME/ffprobe-bin" >> "$GITHUB_PATH"
+          if ! "$HOME/ffprobe-bin/ffprobe" -version; then
+            echo "bundled ffprobe unusable, falling back to apt"
+            sudo timeout 200 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 update
+            sudo timeout 300 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y --no-install-recommends ffmpeg
+            ffprobe -version
+          fi
       - run: npm run test:integration
 
   e2e:
