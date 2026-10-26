@@ -140,7 +140,9 @@ for (const e of PROTECTED) {
   });
 
   // Path and Host variants that try to reach the same handler by another spelling. None may return content: allowed are the
-  // proxy's 307 to /login, Next's 308 to the canonical path (which is then judged as above), 401, 404 (no such route).
+  // proxy's 307 to /login, or (for a page guarded inside Suspense, e.g. /settings/keys, where Next normalises a dot segment and
+  // serves the shell) the exact streamed redirect digest to /login, Next's 308 to the canonical path (which is then judged as
+  // above), 401, 404 (no such route).
   test.describe(`path and Host variants of ${e.url}`, () => {
     const variants: [string, string | null][] = [
       ["trailing slash", e.url === "/" ? null : e.url + "/"],
@@ -158,7 +160,7 @@ for (const e of PROTECTED) {
           const r = await send(request, url, method, headers);
           const s = r.res.status();
           const canonical = new URL(r.res.headers().location ?? "", ORIGIN).pathname;
-          const ok = isLoginRedirect(r.res) || s === 401 || s === 404 || (s === 308 && (canonical === e.url || canonical === url.replace(/\/+$/, "") || canonical === "/" + url.replace(/^\/+/, "")));
+          const ok = redirectsToLogin(r.res, r.body) || s === 401 || s === 404 || (s === 308 && (canonical === e.url || canonical === url.replace(/\/+$/, "") || canonical === "/" + url.replace(/^\/+/, "")));
           expect(ok, `${method} ${url} (${state}) -> ${s} ${r.res.headers().location ?? ""}`).toBe(true);
           if (s === 404) expect(r.body, "a 404 must not carry the protected content").not.toContain(REDIRECT_DIGEST.replace("NEXT_REDIRECT", "NEVER"));
         });
