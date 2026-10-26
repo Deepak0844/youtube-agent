@@ -1,3 +1,4 @@
+import { purgeExpired } from "@/server/db/auth";
 import { createPool } from "@/server/db/pool";
 import { migrate } from "@/server/db/migrate";
 import { audit, createSetupLink, lockOwner, ownerExists, revokeAllSessions } from "@/server/db/owner";
@@ -53,6 +54,11 @@ export async function runOwnerReset(db: Db, env: Record<string, string | undefin
   });
   if (link === null) return fail("No owner exists. Use `npm run owner:create` first.");
   return { exitCode: 0, stdout: `${link}\n`, stderr: "" };
+}
+
+export async function runAuthPurge(db: Db): Promise<CliResult> {
+  const r = await purgeExpired(db);
+  return { exitCode: 0, stdout: `purged sessions=${r.sessions} attempts=${r.attempts} audit=${r.audit}\n`, stderr: "" };
 }
 
 export async function cliMain(run: (db: Db, env: Record<string, string | undefined>) => Promise<CliResult>): Promise<void> {

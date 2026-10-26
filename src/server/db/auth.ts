@@ -191,6 +191,7 @@ async function loginAdmitted(db: Db, input: LoginInput): Promise<LoginResult> {
       /* ignore */
     }
   }
+  if (out.result.ok) maybePurge(db);
   return out.result;
 }
 
@@ -324,7 +325,9 @@ async function changePasswordAdmitted(db: Db, sessionId: string, current: string
   });
 }
 
-export async function purgeExpired(db: Db): Promise<{ sessions: number; attempts: number }> {
+// Retention: dead sessions (past absolute/idle expiry, or revoked > 30 d), login_attempts > 30 d, audit_log > 90 d.
+// Takes NO owner/login lock (plain deletes), so it never blocks a login.
+export async function purgeExpired(db: Db): Promise<{ sessions: number; attempts: number; audit: number }> {
   const s = await db.query(
     `delete from sessions
       where absolute_expires_at <= clock_timestamp()
@@ -332,5 +335,24 @@ export async function purgeExpired(db: Db): Promise<{ sessions: number; attempts
          or revoked_at <= clock_timestamp() - interval '30 days'`,
   );
   const a = await db.query("delete from login_attempts where at <= clock_timestamp() - interval '30 days'");
-  return { sessions: s.rowCount ?? 0, attempts: a.rowCount ?? 0 };
+  const l = await db.query("delete from audit_log where at <= clock_timestamp() - interval '90 days'");
+  return { sessions: s.rowCount ?? 0, attempts: a.rowCount ?? 0, audit: l.rowCount ?? 0 };
+}
+
+// Opportunistic purge after a successful login: fire-and-forget, at most once per interval per process.
+type PurgeState = { last: number | null; intervalMs: number; now: () => number; purge: typeof purgeExpired };
+const g = globalThis as { __authPurge?: PurgeState };
+const purgeState = (): PurgeState => (g.__authPurge ??= { last: null, intervalMs: 3_600_000, now: Date.now, purge: purgeExpired });
+/** Test hook: replaces the purge function / clock / interval and resets the throttle. */
+export function configureAuthPurge(o: { purge?: typeof purgeExpired; now?: () => number; intervalMs?: number } = {}): void {
+  g.__authPurge = { last: null, intervalMs: o.intervalMs ?? 3_600_000, now: o.now ?? Date.now, purge: o.purge ?? purgeExpired };
+}
+function maybePurge(db: Db): void {
+  const st = purgeState();
+  const t = st.now();
+  if (st.last !== null && t - st.last < st.intervalMs) return;
+  st.last = t;
+  void Promise.resolve()
+    .then(() => st.purge(db))
+    .catch((err: unknown) => console.error(JSON.stringify({ event: "auth.purge_failed", error: err instanceof Error ? err.message : "unknown error" })));
 }

@@ -13,8 +13,9 @@ import { hashPassword } from "@/server/core/auth-crypto";
 import { lockoutDelayMs } from "@/server/core/auth-rules";
 import { totpCode } from "@/server/core/totp";
 import {
-  authInFlight, configureAuthAdmission, changePassword, listSessions, login, logout, purgeExpired, revokeOtherSessions, revokeSession, validateSession,
+  authInFlight, configureAuthAdmission, configureAuthPurge, changePassword, listSessions, login, logout, purgeExpired, revokeOtherSessions, revokeSession, validateSession,
 } from "@/server/db/auth";
+import { runAuthPurge } from "@/server/db/owner-cli";
 import { consumeSetupLink, createSetupLink } from "@/server/db/owner";
 import { beginTotpEnrollment, enableTotp } from "@/server/db/totp";
 import { withTestDb, type TestDb } from "../support/db";
@@ -31,6 +32,7 @@ beforeEach(async () => {
   spies.verify!.mockClear();
   spies.dummy!.mockClear();
   configureAuthAdmission({ maxInFlightAuth: 1000, maxPerIp: 1000 }); // admission has its own describe
+  configureAuthPurge({ purge: async () => ({ sessions: 0, attempts: 0, audit: 0 }) }); // purge has its own describe
 });
 afterAll(async () => {
   await db?.stop();
@@ -577,6 +579,87 @@ describe("ip hardening", () => {
     const { sessionId } = (await validateSession(db.pool, r.token)) as { sessionId: string };
     await fail("alice", "9.9.9.9", 5);
     expect(await changePassword(db.pool, sessionId, PW, NEWPW)).toEqual({ ok: false, reason: "locked" });
+  });
+});
+
+describe("purge", () => {
+  async function seed() {
+    const live = await session();
+    const idle = await session();
+    const abs = await session();
+    const oldRevoked = await session();
+    const recentRevoked = await session();
+    const h = async (t: string) => (await q("select id from sessions where token_hash = encode(sha256($1::bytea),'hex')", [t])).rows[0].id as string;
+    await q("update sessions set created_at = created_at - interval '9 hours', last_seen_at = last_seen_at - interval '9 hours' where id = $1", [await h(idle.token)]);
+    await q("update sessions set created_at = created_at - interval '8 days', absolute_expires_at = absolute_expires_at - interval '8 days' where id = $1", [await h(abs.token)]);
+    await q("update sessions set revoked_at = now() - interval '31 days' where id = $1", [await h(oldRevoked.token)]);
+    await q("update sessions set revoked_at = now() - interval '29 days' where id = $1", [await h(recentRevoked.token)]);
+    await q("delete from login_attempts");
+    await q("insert into login_attempts (username_key, ip, at, success) values ('a','i', now() - interval '31 days', false), ('b','i', now() - interval '29 days', false)");
+    await q("delete from audit_log");
+    await q("insert into audit_log (at, event) values (now() - interval '91 days', 'old'), (now() - interval '89 days', 'recent')");
+    return { live, recentRevoked };
+  }
+
+  it("purge_deletes_expired_sessions_and_old_attempts_and_old_audit_rows", async () => {
+    await makeOwner();
+    const { live, recentRevoked } = await seed();
+    const r = await purgeExpired(db.pool);
+    expect(r).toEqual({ sessions: 3, attempts: 1, audit: 1 });
+    // rows inside the retention windows survive
+    expect((await validateSession(db.pool, live.token)).ok).toBe(true);
+    expect(Number((await q("select count(*) n from sessions")).rows[0].n)).toBe(2);
+    expect((await q("select username_key k from login_attempts")).rows.map((x) => x.k)).toEqual(["b"]);
+    expect((await q("select event from audit_log")).rows.map((x) => x.event)).toEqual(["recent"]);
+    void recentRevoked;
+  });
+
+  it("login_triggers_purge_at_most_once_per_hour", async () => {
+    await makeOwner();
+    let clock = 1_000_000;
+    const purge = vi.fn(async () => ({ sessions: 0, attempts: 0, audit: 0 }));
+    configureAuthPurge({ purge, now: () => clock });
+    const tick = () => new Promise((r) => setImmediate(r));
+    await wrong({ ip: "1.0.0.1" });
+    await tick();
+    expect(purge).toHaveBeenCalledTimes(0); // failures never trigger it
+    expect((await attempt({ ip: "1.0.0.2" })).ok).toBe(true);
+    await tick();
+    expect(purge).toHaveBeenCalledTimes(1);
+    expect((await attempt({ ip: "1.0.0.3" })).ok).toBe(true);
+    await tick();
+    expect(purge).toHaveBeenCalledTimes(1);
+    clock += 3_600_000 - 1;
+    await attempt({ ip: "1.0.0.4" });
+    await tick();
+    expect(purge).toHaveBeenCalledTimes(1);
+    clock += 2;
+    await attempt({ ip: "1.0.0.5" });
+    await tick();
+    expect(purge).toHaveBeenCalledTimes(2);
+  });
+
+  it("purge_failure_does_not_fail_the_login", async () => {
+    await makeOwner();
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    configureAuthPurge({ purge: async () => { throw new Error("purge boom"); } });
+    try {
+      expect((await attempt()).ok).toBe(true);
+      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setImmediate(r));
+      expect(err).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(err.mock.calls[0]![0]))).toEqual({ event: "auth.purge_failed", error: "purge boom" });
+    } finally {
+      err.mockRestore();
+    }
+  });
+
+  it("auth_purge_cli_function_returns_counts", async () => {
+    await makeOwner();
+    await seed();
+    const r = await runAuthPurge(db.pool);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toBe("purged sessions=3 attempts=1 audit=1\n");
   });
 });
 

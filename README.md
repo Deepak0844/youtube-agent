@@ -37,6 +37,8 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## Environment variables for authentication
 
+The app binds to 127.0.0.1 (`npm run dev` / `npm start`); a reverse proxy is required before it is public.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `DATABASE_URL` | none (required) | Postgres connection string; the web app refuses to start work without it. |
