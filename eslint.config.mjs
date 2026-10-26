@@ -48,6 +48,7 @@ const eslintConfig = defineConfig([
     "docs/**",
     // Remotion fixture: bundled by Remotion inside the render container, not by Next/tsc.
     "tests/fixtures/remotion-spike/**",
+    "tests/fixtures/remotion-tsx/**",
   ]),
   // Import boundaries (Doc 2 §2). Raw table access is db-only; the package is
   // not installed yet, the rule is pre-wired.
