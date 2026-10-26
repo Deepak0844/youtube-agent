@@ -3,8 +3,9 @@ import { OWNER_PASSWORD, OWNER_USERNAME } from "../fixtures/owner";
 
 // Fresh, logged-out context per test. TRUST_PROXY=1 on the e2e server: a unique x-forwarded-for per context keeps one
 // test's failures (lockout is per username AND per address) from locking another.
+let nextHost = Math.floor(Math.random() * 254); // sequential, not random: a random pick collides across tests
 async function fresh(browser: Browser) {
-  const ip = `192.0.2.${Math.floor(Math.random() * 250) + 1}`;
+  const ip = `192.0.2.${(nextHost++ % 254) + 1}`;
   const context = await browser.newContext({ storageState: { cookies: [], origins: [] }, extraHTTPHeaders: { "x-forwarded-for": ip } });
   return { context, page: await context.newPage() };
 }

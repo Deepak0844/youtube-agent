@@ -44,6 +44,8 @@ const eslintConfig = defineConfig([
     "test-results/**",
     // Agent tooling, not app code.
     ".claude/**",
+    // Plan docs and the frozen old-app snapshot (gitignored, not app code).
+    "docs/**",
     // Remotion fixture: bundled by Remotion inside the render container, not by Next/tsc.
     "tests/fixtures/remotion-spike/**",
   ]),

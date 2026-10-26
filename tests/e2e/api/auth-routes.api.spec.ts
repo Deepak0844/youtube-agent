@@ -6,7 +6,9 @@ import { endSessionPool, expireSession, mintSession, revokeSession } from "../fi
 // lockout never leaks into another (all traffic is really 127.0.0.1).
 const port = process.env.E2E_PORT!;
 const ORIGIN = `http://127.0.0.1:${port}`;
-const uniq = () => `203.0.113.${Math.floor(Math.random() * 250) + 1}`;
+// Lockouts are also per address, so addresses must never repeat within a run (a random pick collides: birthday problem).
+let nextHost = Math.floor(Math.random() * 254);
+const uniq = () => `203.0.113.${(nextHost++ % 254) + 1}`;
 const uname = (p: string) => `${p}-${Math.random().toString(36).slice(2, 10)}`;
 const cookie = (t: string) => ({ cookie: `ytstudio_session=${t}` });
 
