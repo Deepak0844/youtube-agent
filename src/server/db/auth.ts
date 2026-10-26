@@ -7,7 +7,7 @@ import { normalizeIp, UNKNOWN_IP } from "@/server/core/ip";
 import { createSemaphore } from "@/server/core/semaphore";
 import { audit, lockOwner } from "@/server/db/owner";
 import { atomic, type Db } from "@/server/db/stages";
-import { totpEnabled, useRecoveryCode, verifyOwnerTotp } from "@/server/db/totp";
+import { TotpVaultError, totpEnabled, totpKeyring, useRecoveryCode, verifyOwnerTotp } from "@/server/db/totp";
 
 // Login, sessions and lockout. Only SHA-256 of session tokens is stored. Lockout and expiry use the DATABASE clock.
 //
@@ -63,7 +63,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export type LoginResult =
   | { ok: true; token: string; expiresAt: Date; absoluteExpiresAt: Date }
-  | { ok: false; reason: "invalid" | "locked" | "needs_totp" | "busy"; retryAfterMs?: number };
+  | { ok: false; reason: "invalid" | "locked" | "needs_totp" | "busy" | "vault"; retryAfterMs?: number };
 
 export interface LoginInput {
   username: string;
@@ -162,7 +162,15 @@ async function loginAdmitted(db: Db, input: LoginInput): Promise<LoginResult> {
     if (await totpEnabled(q)) {
       const code = input.code;
       if (code === undefined || code === "") return { result: { ok: false, reason: "needs_totp" } };
-      const second = typeof code === "string" && ((await verifyOwnerTotp(q, code, nowMs)) || (await useRecoveryCode(q, code)));
+      // Fail closed: if the vault cannot open the TOTP secret, no second factor (recovery codes included) is accepted.
+      let second: boolean;
+      try {
+        totpKeyring();
+        second = typeof code === "string" && ((await verifyOwnerTotp(q, code, nowMs)) || (await useRecoveryCode(q, code)));
+      } catch (e) {
+        if (e instanceof TotpVaultError) return { result: { ok: false, reason: "vault" } };
+        throw e;
+      }
       if (!second) return fail();
     }
 

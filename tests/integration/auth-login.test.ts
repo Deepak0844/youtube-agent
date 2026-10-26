@@ -17,7 +17,8 @@ import {
 } from "@/server/db/auth";
 import { runAuthPurge } from "@/server/db/owner-cli";
 import { consumeSetupLink, createSetupLink } from "@/server/db/owner";
-import { beginTotpEnrollment, enableTotp } from "@/server/db/totp";
+import { beginTotpEnrollment, enableTotp, setTotpKeyring } from "@/server/db/totp";
+import { generateMasterKey, makeKeyring } from "@/server/core/vault-crypto";
 import { withTestDb, type TestDb } from "../support/db";
 
 const BASE = "http://localhost:3000";
@@ -26,6 +27,8 @@ const NEWPW = "another long passphrase 42";
 let db: TestDb;
 beforeAll(async () => {
   db = await withTestDb();
+  const ring = makeKeyring(generateMasterKey());
+  setTotpKeyring(() => ring);
 });
 beforeEach(async () => {
   await db.reset();
