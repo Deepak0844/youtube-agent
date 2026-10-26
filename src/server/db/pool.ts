@@ -11,3 +11,15 @@ export function createPool(url: string, opts: { connectionTimeoutMillis?: number
   });
   return pool;
 }
+
+// One pool per Node process for the Next runtime. Cached on globalThis so dev HMR re-evaluating this module does not leak
+// pools. Migrations are NOT run here (CLI / e2e global-setup do that).
+const KEY = Symbol.for("ytstudio.pool");
+export function getPool(): pg.Pool {
+  const g = globalThis as unknown as Record<symbol, pg.Pool | undefined>;
+  const cached = g[KEY];
+  if (cached) return cached;
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL is not set; the web app cannot reach Postgres");
+  return (g[KEY] = createPool(url));
+}

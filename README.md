@@ -34,3 +34,18 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Environment variables for authentication
+
+The app binds to 127.0.0.1 (`npm run dev` / `npm start`); a reverse proxy is required before it is public.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DATABASE_URL` | none (required) | Postgres connection string; the web app refuses to start work without it. |
+| `APP_URL` | `http://localhost:3000` | Base URL printed in the one-time setup link by `npm run owner:create` / `owner:reset`. |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1,[::1]` | Comma-separated Host names the app answers to (port and trailing dot ignored, exact match). Anything else gets 400. Setting it replaces the default list. |
+| `TRUST_PROXY` | unset | Set to `1` only when a reverse proxy you run sits in front. Then the client address is the RIGHTMOST `x-forwarded-for` entry (the one your proxy appended; the leftmost values are supplied by the client and are never used) and `x-forwarded-proto` decides the `Secure` cookie flag. |
+| `AUTH_MAX_IN_FLIGHT` | `3` | Most login attempts handled at once, process-wide; more get 503 with `Retry-After`. `AUTH_MAX_PER_IP` (default `1`) caps one address. |
+
+With `TRUST_PROXY` unset, Next.js gives the app no trustworthy client address, so all clients share one lockout bucket. That is fine on localhost. Before the server is public (Phase 10) it needs a reverse proxy with `TRUST_PROXY=1`, rate limiting at the proxy, and a reserved admission slot for known-good addresses so a flood cannot lock the owner out.
+
