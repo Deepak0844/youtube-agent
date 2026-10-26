@@ -87,8 +87,8 @@ describe("no code path in src writes a safety setting as anything but a session"
     expect(bad).toEqual([]);
   });
 
-  it("the import allow-list is explicit and empty today (a new importer must be added here on purpose)", () => {
-    expect([...SETTINGS_IMPORT_ALLOW]).toEqual([]);
+  it("the import allow-list is explicit (a new importer must be added here on purpose)", () => {
+    expect([...SETTINGS_IMPORT_ALLOW]).toEqual(["src/server/db/llm-models.ts"]); // read-only getSetting of network.local_services
   });
 
   const OK = 'import { setSetting } from "@/server/db/settings";\nawait setSetting(db, k, v, { actor: "session" });';

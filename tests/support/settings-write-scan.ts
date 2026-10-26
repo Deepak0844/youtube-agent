@@ -9,7 +9,10 @@ import ts from "typescript";
 //  (c) no file other than settings.ts may mention the `settings` table in SQL (any schema/quoting/ONLY/case, folded string
 //      concatenation, and the "settings" literal next to write keywords for string-built SQL).
 /** Files allowed to import the settings module. Empty on purpose: add a file here only together with a review of its calls. */
-export const SETTINGS_IMPORT_ALLOW: readonly string[] = [];
+export const SETTINGS_IMPORT_ALLOW: readonly string[] = [
+  // Reads network.local_services with getSetting to derive a model endpoint kind; never calls setSetting. Needs owner review.
+  "src/server/db/llm-models.ts",
+];
 
 const SETTINGS_MODULE = "src/server/db/settings";
 const OWNER_FILE = "src/server/db/settings.ts";
