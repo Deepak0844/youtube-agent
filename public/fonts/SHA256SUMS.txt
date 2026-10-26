@@ -1,0 +1,7 @@
+2ee17598a98d8a59e4df8152d015bec9ab8e4d5672cc0ab42bef806b568e3971  instrument-sans-latin.woff2  (@fontsource-variable/instrument-sans@5.3.0)
+51ca196f49a33e79e7870ff88ebd2829a3f627a51e7d690986618f0e7ad2b52d  noto-sans-latin.woff2  (@fontsource-variable/noto-sans@5.3.0)
+3b3cae4d2600cb502286577fcfbc7f0caa05d9bb3c28d6699aeb56302d35e730  noto-sans-devanagari.woff2  (@fontsource-variable/noto-sans-devanagari@5.3.0)
+98e5b968b0e64d56a5833e1f8059453784190564ceeeda96613fd87282d3d8a1  noto-sans-tamil.woff2  (@fontsource-variable/noto-sans-tamil@5.3.0)
+bd266bd1cddc15b5ed21d69a6e68ed8747427af31e1f42d87104de547ff15f3c  noto-sans-telugu.woff2  (@fontsource-variable/noto-sans-telugu@5.3.0)
+c21d9e855daa5f1e3e8aeccc53fe469d98a7dc41abb4d85bd6d8574341559eec  noto-sans-malayalam.woff2  (@fontsource-variable/noto-sans-malayalam@5.3.0)
+c91f1e7b985ef85f1d06a3ce6f571ae8c52747e7f43a0520e6696d5bcc8e9f25  noto-sans-kannada.woff2  (@fontsource-variable/noto-sans-kannada@5.3.0)
