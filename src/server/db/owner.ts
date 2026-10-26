@@ -1,6 +1,7 @@
 import { hashPassword, hashToken, newToken } from "@/server/core/auth-crypto";
 import { normalizeUsername, validatePassword } from "@/server/core/auth-rules";
 import { uuidv7 } from "@/server/core/ids";
+import { insertAudit } from "@/server/db/audit";
 import { atomic, type Db } from "@/server/db/stages";
 
 // Owner setup links and owner-level operations. Only SHA-256 hashes of tokens are stored. Every expiry/used comparison
@@ -28,31 +29,10 @@ export async function revokeAllSessions(db: Db): Promise<number> {
   return r.rowCount ?? 0;
 }
 
-// Anything that looks like a token, hash, code or link (a run of 32+ URL-safe chars inside a string longer than 40) is a secret.
-const SECRET_RE = /[A-Za-z0-9_-]{32,}/;
-function scrub(v: unknown, found: string[], key = ""): unknown {
-  if (typeof v === "string") {
-    if (v.length > 40 && SECRET_RE.test(v)) {
-      found.push(key);
-      return "[redacted]";
-    }
-    return v;
-  }
-  if (Array.isArray(v)) return v.map((x) => scrub(x, found, key));
-  if (v !== null && typeof v === "object") {
-    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrub(x, found, k)]));
-  }
-  return v;
-}
-
+// Thin legacy wrapper over the shared writer (src/server/db/audit.ts). Outside production a secret-looking value is a bug in
+// the caller and fails loudly; in production it is redacted and we carry on.
 export async function audit(db: Db, event: string, detail: Record<string, unknown> = {}): Promise<void> {
-  const found: string[] = [];
-  const safe = scrub(detail, found);
-  // Outside production a secret-looking value is a bug in the caller: fail loudly. In production it is redacted and we carry on.
-  if (found.length > 0 && process.env.NODE_ENV !== "production") throw new Error("audit detail contains a secret-looking value");
-  // Key names only, never values: a redaction in production means a caller bug that must not stay silent.
-  for (const key of found) console.error(JSON.stringify({ event: "audit.redacted", key }));
-  await db.query("insert into audit_log (event, detail) values ($1, $2::jsonb)", [event, JSON.stringify(safe)]);
+  await insertAudit(db, event, detail, { failOnSecret: true });
 }
 
 // Owner-level lock, first in the lock order. Transaction-scoped; works with no owner row and re-entrant in one session.
