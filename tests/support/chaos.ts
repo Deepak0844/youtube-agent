@@ -241,7 +241,7 @@ export async function runChaos(args: {
   };
 
   await args.deps.db.reset();
-  await installProbes(pool);
+  await installProbes(args.deps.db.ownerPool); // DDL: the app role may not create tables
 
   // ---- data
   await pool.query("insert into budgets (scope, cap_micro_usd) values ('g', $1)", [plan.capG]);

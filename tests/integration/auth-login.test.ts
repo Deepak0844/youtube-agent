@@ -159,7 +159,7 @@ describe("lockout", () => {
   it("delay_table_matches_lockoutDelayMs_via_time_travel", async () => {
     await makeOwner();
     for (const n of [5, 6, 7, 12, 30]) {
-      await q("truncate login_attempts");
+      await db.ownerPool.query("truncate login_attempts");
       await fail("alice", "7.7.7.7", n);
       const r = await attempt({ ip: "8.8.8.8" });
       expect(r).toMatchObject({ ok: false, reason: "locked" });
@@ -421,7 +421,7 @@ describe("sessions", () => {
     await q("update sessions set revoked_at = now() - interval '31 days', created_at = created_at - interval '32 days', last_seen_at = last_seen_at - interval '32 days' where id = $1", [await h(oldRevoked.token)]);
     await q("update sessions set revoked_at = now() where id = (select id from sessions order by created_at desc limit 1)");
     await q("insert into login_attempts (username_key, ip, at, success) values ('a','i', now() - interval '31 days', false), ('a','i', now() - interval '29 days', false)");
-    const r = await purgeExpired(db.pool);
+    const r = await purgeExpired(db.ownerPool);
     expect(r.sessions).toBe(3);
     expect(r.attempts).toBe(1);
     expect((await validateSession(db.pool, live.token)).ok).toBe(true);
@@ -596,15 +596,15 @@ describe("purge", () => {
     await q("update sessions set revoked_at = now() - interval '29 days' where id = $1", [await h(recentRevoked.token)]);
     await q("delete from login_attempts");
     await q("insert into login_attempts (username_key, ip, at, success) values ('a','i', now() - interval '31 days', false), ('b','i', now() - interval '29 days', false)");
-    await q("delete from audit_log");
-    await q("insert into audit_log (at, event) values (now() - interval '91 days', 'old'), (now() - interval '89 days', 'recent')");
+    await db.ownerPool.query("delete from audit_log");
+    await db.ownerPool.query("insert into audit_log (at, event) values (now() - interval '91 days', 'old'), (now() - interval '89 days', 'recent')");
     return { live, recentRevoked };
   }
 
   it("purge_deletes_expired_sessions_and_old_attempts_and_old_audit_rows", async () => {
     await makeOwner();
     const { live, recentRevoked } = await seed();
-    const r = await purgeExpired(db.pool);
+    const r = await purgeExpired(db.ownerPool);
     expect(r).toEqual({ sessions: 3, attempts: 1, audit: 1 });
     // rows inside the retention windows survive
     expect((await validateSession(db.pool, live.token)).ok).toBe(true);
@@ -626,6 +626,8 @@ describe("purge", () => {
     expect((await attempt({ ip: "1.0.0.2" })).ok).toBe(true);
     await tick();
     expect(purge).toHaveBeenCalledTimes(1);
+    // the app role may not delete audit_log, so the login-triggered purge must skip it
+    expect(purge).toHaveBeenCalledWith(expect.anything(), { audit: false });
     expect((await attempt({ ip: "1.0.0.3" })).ok).toBe(true);
     await tick();
     expect(purge).toHaveBeenCalledTimes(1);
@@ -657,7 +659,7 @@ describe("purge", () => {
   it("auth_purge_cli_function_returns_counts", async () => {
     await makeOwner();
     await seed();
-    const r = await runAuthPurge(db.pool);
+    const r = await runAuthPurge(db.ownerPool);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toBe("purged sessions=3 attempts=1 audit=1\n");
   });

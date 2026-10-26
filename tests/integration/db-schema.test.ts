@@ -41,10 +41,10 @@ describe("schema", () => {
   });
 
   it("migrate_is_idempotent", async () => {
-    await migrate(db.pool);
-    await Promise.all([migrate(db.pool), migrate(db.pool), migrate(db.pool)]);
+    await migrate(db.ownerPool);
+    await Promise.all([migrate(db.ownerPool), migrate(db.ownerPool), migrate(db.ownerPool)]);
     const { rows } = await db.pool.query("select name from schema_migrations");
-    expect(rows.map((r: { name: string }) => r.name).sort()).toEqual(["0000_spike_c.sql", "0001_owner_auth.sql", "0002_setup_links_unique.sql", "0003_totp_pending.sql"]);
+    expect(rows.map((r: { name: string }) => r.name).sort()).toEqual(["0000_spike_c.sql", "0001_owner_auth.sql", "0002_setup_links_unique.sql", "0003_totp_pending.sql", "0004_roles_grants.sql"]);
   });
 
   it("status_check_constraints_reject_unknown_values", async () => {
@@ -118,7 +118,7 @@ describe("schema", () => {
   it("migrate_destroys_the_client_when_unlock_fails_and_recovers", async () => {
     const released: unknown[] = [];
     const connect = async () => {
-      const client = await db.pool.connect();
+      const client = await db.ownerPool.connect();
       const query = client.query.bind(client) as (...a: unknown[]) => Promise<unknown>;
       (client as unknown as { query: unknown }).query = (text: unknown, ...rest: unknown[]) => {
         if (typeof text === "string" && text.includes("pg_advisory_unlock")) return Promise.reject(new Error("boom"));
@@ -131,10 +131,10 @@ describe("schema", () => {
       }) as typeof client.release;
       return client;
     };
-    await migrate(db.pool, connect);
+    await migrate(db.ownerPool, connect);
     expect(released).toEqual([true]);
-    await migrate(db.pool);
+    await migrate(db.ownerPool);
     const { rows } = await db.pool.query("select name from schema_migrations");
-    expect(rows.map((r: { name: string }) => r.name).sort()).toEqual(["0000_spike_c.sql", "0001_owner_auth.sql", "0002_setup_links_unique.sql", "0003_totp_pending.sql"]);
+    expect(rows.map((r: { name: string }) => r.name).sort()).toEqual(["0000_spike_c.sql", "0001_owner_auth.sql", "0002_setup_links_unique.sql", "0003_totp_pending.sql", "0004_roles_grants.sql"]);
   });
 });
