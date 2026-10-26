@@ -142,9 +142,10 @@ describe("test", () => {
 
   it("rejected and unreachable are recorded; a network failure never shows the error body", async () => {
     await saveProviderKey(db.pool, loader, "anthropic", KEY);
-    const rej = await testProviderKey(db.pool, loader, "anthropic", { fetcher: async () => new Response(KEY, { status: 401 }) });
+    const rej = await testProviderKey(db.pool, loader, "anthropic", { cooldownMs: 0, fetcher: async () => new Response(KEY, { status: 401 }) });
     expect(rej).toEqual({ ok: true, result: "rejected" });
     const down = await testProviderKey(db.pool, loader, "anthropic", {
+      cooldownMs: 0,
       fetcher: async () => {
         throw new Error(`boom ${KEY}`);
       },
@@ -165,5 +166,32 @@ describe("test", () => {
     const fetcher = vi.fn();
     expect(await testProviderKey(db.pool, () => makeKeyring(b64()), "anthropic", { fetcher })).toMatchObject({ ok: false });
     expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+describe("test cooldown (server side)", () => {
+  const ok = () => vi.fn(async () => new Response("{}", { status: 200 }));
+  it("a second test of the same provider inside the cooldown is refused with a fixed message and makes no request", async () => {
+    await saveProviderKey(db.pool, loader, "anthropic", KEY);
+    const f1 = ok();
+    expect(await testProviderKey(db.pool, loader, "anthropic", { fetcher: f1 })).toEqual({ ok: true, result: "ok" });
+    const f2 = ok();
+    expect(await testProviderKey(db.pool, loader, "anthropic", { fetcher: f2 })).toEqual({ ok: false, message: "Try again shortly." });
+    expect(f1).toHaveBeenCalledTimes(1);
+    expect(f2).not.toHaveBeenCalled();
+    expect((await audit()).filter((r) => r.event === "key.tested")).toHaveLength(1);
+  });
+  it("another provider is not held up by it", async () => {
+    await saveProviderKey(db.pool, loader, "anthropic", KEY);
+    await saveProviderKey(db.pool, loader, "openai", "sk-abcdefghijklmnopqrstuvwxyz0123");
+    await testProviderKey(db.pool, loader, "anthropic", { fetcher: ok() });
+    expect(await testProviderKey(db.pool, loader, "openai", { fetcher: ok() })).toEqual({ ok: true, result: "ok" });
+  });
+  it("it lifts once the cooldown has passed", async () => {
+    await saveProviderKey(db.pool, loader, "anthropic", KEY);
+    await testProviderKey(db.pool, loader, "anthropic", { fetcher: ok() });
+    await new Promise((r) => setTimeout(r, 60));
+    const r = await testProviderKey(db.pool, loader, "anthropic", { fetcher: ok(), cooldownMs: 30 });
+    expect(r).toEqual({ ok: true, result: "ok" });
   });
 });

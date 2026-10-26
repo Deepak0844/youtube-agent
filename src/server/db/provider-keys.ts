@@ -30,6 +30,7 @@ export interface ProviderKeyRow {
 export type KeyOutcome = { ok: true } | { ok: false; message: string };
 export type TestOutcome = { ok: true; result: KeyTestResult } | { ok: false; message: string };
 
+const TEST_COOLDOWN_MS = 8000;
 const GENERIC = "Could not complete that. Nothing was changed.";
 
 /** Does the loaded master key open every stored entry? Never throws for a missing key. */
@@ -92,12 +93,18 @@ export async function removeProviderKey(db: Db, id: string): Promise<KeyOutcome>
 }
 
 /** One free request with the stored key. Records the verdict (audit + last test); the response body is never read. */
-export async function testProviderKey(db: Db, loader: KeyringLoader, id: string, opts: { fetcher?: KeyFetcher } = {}): Promise<TestOutcome> {
+export async function testProviderKey(db: Db, loader: KeyringLoader, id: string, opts: { fetcher?: KeyFetcher; cooldownMs?: number } = {}): Promise<TestOutcome> {
   if (!isProviderId(id)) return { ok: false, message: "Unknown provider." };
   try {
     const ring = await ringIfHealthy(db, loader);
     if (!ring) return { ok: false, message: "The vault is not ready, so the key cannot be tested." };
     if (!(await hasSecret(db, secretName(id)))) return { ok: false, message: "No key is saved for this provider." };
+    // Per-provider cooldown, judged by the database clock from the last recorded test: a hammered Test button cannot spam the provider.
+    const recent = await db.query(
+      "select 1 from audit_log where event = 'key.tested' and detail->>'provider' = $1 and at > now() - ($2::double precision * interval '1 millisecond') limit 1",
+      [id, opts.cooldownMs ?? TEST_COOLDOWN_MS],
+    );
+    if (recent.rows.length > 0) return { ok: false, message: "Try again shortly." };
     const key = await getSecret(db, ring, secretName(id));
     const result = await runKeyTest(id, key, { fetcher: opts.fetcher });
     await recordAudit(db as pg.Pool, "key.tested", { provider: id, result });

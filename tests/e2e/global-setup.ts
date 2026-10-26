@@ -35,11 +35,13 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const port = process.env.E2E_PORT!;
   // The server runs as the least-privilege app role; migrations run as the owner (see migrate-cli.mts).
   const appUrl = withRole(infra.databaseUrl, "ytstudio_app", E2E_APP_PW);
+  const vaultKey = generateMasterKey(); // throwaway key for the throwaway database (settings/keys page)
+  process.env.E2E_VAULT_MASTER_KEY = vaultKey; // workers inherit it so specs can seed real ciphertext
   const env = {
     ...process.env,
     DATABASE_URL: appUrl,
     REDIS_URL: infra.redisUrl,
-    VAULT_MASTER_KEY: generateMasterKey(), // throwaway key for the throwaway database (settings/keys page)
+    VAULT_MASTER_KEY: vaultKey,
     TRUST_PROXY: "1",
     AUTH_MAX_IN_FLIGHT: "1",
     UPLOAD_MAX_BYTES: String(50 * 1024 * 1024), // lets the oversize test stay small

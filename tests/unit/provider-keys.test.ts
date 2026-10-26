@@ -68,12 +68,25 @@ describe("test requests are fixed, free and key-bearing only for the provider", 
     elevenlabs: "https://api.elevenlabs.io/v1/models",
     pexels: "https://api.pexels.com/v1/curated?per_page=1",
   };
-  it.each(Object.entries(FIXED))("%s uses a fixed GET url", (id, url) => {
-    const r = keyTestRequest(id as never, SAMPLES[id]!);
-    expect(r.url).toBe(url);
-    expect(r.method).toBe("GET");
-    expect(JSON.stringify([...Object.entries(r.headers)])).toContain(SAMPLES[id]!);
-    expect(r.url).not.toContain(SAMPLES[id]!);
+  it.each(Object.entries(FIXED))("%s: the whole request (method, url, headers) is exactly the expected object", (id, url) => {
+    const k = SAMPLES[id]!;
+    const HEADERS: Record<string, Record<string, string>> = {
+      anthropic: { "x-api-key": k, "anthropic-version": "2023-06-01" },
+      openai: { authorization: `Bearer ${k}` },
+      gemini: { "x-goog-api-key": k },
+      deepseek: { authorization: `Bearer ${k}` },
+      openrouter: { authorization: `Bearer ${k}` },
+      elevenlabs: { "xi-api-key": k },
+      pexels: { authorization: k },
+    };
+    expect(keyTestRequest(id as never, k)).toStrictEqual({ url, method: "GET", headers: HEADERS[id] });
+  });
+  it("the key is in no URL except Pixabay's", () => {
+    for (const p of PROVIDERS) {
+      const r = keyTestRequest(p.id, SAMPLES[p.id]!);
+      if (p.id === "pixabay") expect(r.url).toContain(SAMPLES[p.id]!);
+      else expect(r.url).not.toContain(SAMPLES[p.id]!);
+    }
   });
   it("pixabay can only carry its key in the query string, on its own host", () => {
     const r = keyTestRequest("pixabay", SAMPLES.pixabay!);
