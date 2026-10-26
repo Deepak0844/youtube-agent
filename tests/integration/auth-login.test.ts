@@ -1,3 +1,4 @@
+import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const spies = vi.hoisted(() => ({ verify: null as null | ReturnType<typeof vi.fn>, dummy: null as null | ReturnType<typeof vi.fn> }));
@@ -12,7 +13,7 @@ import { hashPassword } from "@/server/core/auth-crypto";
 import { lockoutDelayMs } from "@/server/core/auth-rules";
 import { totpCode } from "@/server/core/totp";
 import {
-  changePassword, listSessions, login, logout, purgeExpired, revokeOtherSessions, revokeSession, validateSession,
+  authInFlight, configureAuthAdmission, changePassword, listSessions, login, logout, purgeExpired, revokeOtherSessions, revokeSession, validateSession,
 } from "@/server/db/auth";
 import { consumeSetupLink, createSetupLink } from "@/server/db/owner";
 import { beginTotpEnrollment, enableTotp } from "@/server/db/totp";
@@ -29,6 +30,7 @@ beforeEach(async () => {
   await db.reset();
   spies.verify!.mockClear();
   spies.dummy!.mockClear();
+  configureAuthAdmission({ maxInFlightAuth: 1000, maxPerIp: 1000 }); // admission has its own describe
 });
 afterAll(async () => {
   await db?.stop();
@@ -163,7 +165,7 @@ describe("lockout", () => {
       const d = lockoutDelayMs(n);
       expect(r.retryAfterMs).toBeLessThanOrEqual(d);
       expect(r.retryAfterMs).toBeGreaterThan(d - 5000);
-      await back(lockoutDelayMs(n + 1) / 1000 + 1); // the locked attempt above was itself recorded as failure n+1
+      await back(d / 1000 + 1); // locked attempts are not recorded: the lock ends `d` after the last real failure
       expect((await attempt({ ip: "8.8.8.8" })).ok).toBe(true);
     }
   });
@@ -203,13 +205,15 @@ describe("lockout", () => {
     expect((await attempt()).ok).toBe(true);
   });
 
-  it("twenty_concurrent_wrong_attempts_exactly_5_verifies_20_failures_rest_locked", async () => {
+  it("twenty_concurrent_wrong_attempts_exactly_5_verifies_5_failures_rest_locked", async () => {
     await makeOwner();
     const rs = await Promise.all(Array.from({ length: 20 }, () => wrong()));
     expect(rs.filter((r) => !r.ok && r.reason === "invalid")).toHaveLength(5);
     expect(rs.filter((r) => !r.ok && r.reason === "locked")).toHaveLength(15);
     expect(verifies()).toBe(5);
-    expect(await failures()).toBe(20);
+    expect(await failures()).toBe(5); // locked attempts are refused, not recorded
+    expect(Number((await q("select count(*) n from login_attempts")).rows[0].n)).toBe(5);
+    expect(Number((await q("select count(*) n from audit_log where detail->>'reason' = 'locked'")).rows[0].n)).toBe(0);
   });
 
   it("concurrent_attempts_on_different_usernames_from_one_ip_are_capped_by_ip", async () => {
@@ -372,9 +376,10 @@ describe("sessions", () => {
   it("changePassword_wrong_current_5_times_locks", async () => {
     const { token } = await session();
     const { sessionId } = (await validateSession(db.pool, token)) as { sessionId: string };
-    for (let i = 0; i < 5; i++) await changePassword(db.pool, sessionId, "nope nope nope", NEWPW);
+    for (let i = 0; i < 5; i++) await changePassword(db.pool, sessionId, "nope nope nope", NEWPW, "10.0.0.1");
     const before = verifies();
-    expect(await changePassword(db.pool, sessionId, PW, NEWPW)).toEqual({ ok: false, reason: "locked" });
+    expect(await changePassword(db.pool, sessionId, PW, NEWPW, "10.0.0.1")).toEqual({ ok: false, reason: "locked" });
+    expect(await failures()).toBe(5);
     expect(verifies()).toBe(before);
   });
 
@@ -421,6 +426,133 @@ describe("sessions", () => {
     // the idle-revoked-recently row stays
     expect(Number((await q("select count(*) n from sessions")).rows[0].n)).toBe(2);
   });
+});
+
+describe("lockout does not become a denial of service", () => {
+  it("locked_attempts_are_not_recorded_and_do_not_extend_the_lock", async () => {
+    await makeOwner();
+    await fail("alice", "7.7.7.7", 5);
+    const n0 = Number((await q("select count(*) n from login_attempts")).rows[0].n);
+    for (let i = 0; i < 3; i++) expect(await attempt({ ip: `8.8.8.${i}` })).toMatchObject({ reason: "locked" });
+    expect(Number((await q("select count(*) n from login_attempts")).rows[0].n)).toBe(n0);
+  });
+
+  it("lock_expires_delay_after_last_real_failure", async () => {
+    await makeOwner();
+    await fail("alice", "7.7.7.7", 5);
+    for (let i = 0; i < 8; i++) await attempt({ ip: `8.8.8.${i}` }); // hammering while locked
+    await back(61); // 60 s delay for 5 real failures has passed
+    expect((await attempt({ ip: "8.8.8.99" })).ok).toBe(true);
+  });
+
+  it("known_good_ip_bypasses_username_lock_but_not_ip_lock", async () => {
+    await makeOwner();
+    expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
+    await fail("alice", "9.9.9.9", 8); // attacker failures from elsewhere lock the username
+    expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
+    await fail("other", "1.1.1.1", 5); // now the ip itself is locked
+    expect(await attempt({ ip: "1.1.1.1" })).toMatchObject({ ok: false, reason: "locked" });
+  });
+
+  it("unknown_ip_is_locked_by_username_lock", async () => {
+    await makeOwner();
+    expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
+    await fail("alice", "9.9.9.9", 5);
+    expect(await attempt({ ip: "2.2.2.2" })).toMatchObject({ ok: false, reason: "locked" });
+  });
+
+  it("known_good_status_expires_after_30_days", async () => {
+    await makeOwner();
+    expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
+    await q("update login_attempts set at = at - interval '31 days' where success");
+    await fail("alice", "9.9.9.9", 5);
+    expect(await attempt({ ip: "1.1.1.1" })).toMatchObject({ ok: false, reason: "locked" });
+  });
+
+  it("attacker_rotating_ips_cannot_keep_a_known_good_ip_locked_out", async () => {
+    await makeOwner();
+    expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
+    for (let i = 0; i < 30; i++) await attempt({ password: "bad bad bad bad", ip: `66.0.0.${i}`, username: "alice" });
+    expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
+  });
+
+  it("wrong_password_from_known_good_ip_still_counts_as_failure", async () => {
+    await makeOwner();
+    expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
+    expect(await wrong({ ip: "1.1.1.1" })).toEqual({ ok: false, reason: "invalid" });
+    expect(await failures()).toBe(1);
+    for (let i = 0; i < 4; i++) await wrong({ ip: "1.1.1.1" }); // 5 failures on the ip lock it
+    expect(await attempt({ ip: "1.1.1.1" })).toMatchObject({ reason: "locked" });
+    // and the username streak (5) locks unknown ips
+    expect(await attempt({ ip: "3.3.3.3" })).toMatchObject({ reason: "locked" });
+  });
+});
+
+describe("admission control", () => {
+  const url = () => db.pool.options.connectionString!;
+
+  it("flood_of_logins_does_not_starve_other_queries", async () => {
+    await makeOwner();
+    configureAuthAdmission({ maxInFlightAuth: 3, maxPerIp: 1 });
+    const small = new pg.Pool({ connectionString: url(), max: 4 });
+    try {
+      const flood = Promise.all(Array.from({ length: 40 }, (_, i) => login(small, { username: `user${i}`, password: "wrong wrong wrong", ip: `20.0.0.${i}` })));
+      await new Promise((r) => setTimeout(r, 50));
+      const t0 = Date.now();
+      await small.query("select 1");
+      expect(Date.now() - t0).toBeLessThan(500);
+      const rs = await flood;
+      expect(rs.some((r) => !r.ok && r.reason === "busy")).toBe(true);
+      expect(rs.every((r) => !r.ok)).toBe(true);
+    } finally {
+      await small.end();
+    }
+  }, 60_000);
+
+  it("one_ip_cannot_fill_the_global_cap", async () => {
+    await makeOwner();
+    configureAuthAdmission({ maxInFlightAuth: 3, maxPerIp: 1 });
+    const same = Array.from({ length: 10 }, () => wrong({ ip: "50.0.0.1" }));
+    const other = wrong({ ip: "50.0.0.2" });
+    const rs = await Promise.all(same);
+    expect(rs.filter((r) => !r.ok && r.reason === "busy")).toHaveLength(9);
+    expect(await other).toEqual({ ok: false, reason: "invalid" }); // another ip still got a slot
+  });
+
+  it("busy_result_never_touches_the_db", async () => {
+    await makeOwner();
+    configureAuthAdmission({ maxInFlightAuth: 1, maxPerIp: 1 });
+    let touches = 0;
+    const counting = new Proxy(db.pool, {
+      get(t, p) {
+        if (p === "connect" || p === "query") touches++;
+        const v = (t as never)[p];
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(t) : v;
+      },
+    });
+    const holder = wrong({ ip: "60.0.0.1" });
+    const busy = await login(counting, { username: "alice", password: PW, ip: "60.0.0.2" });
+    const busyCp = await changePassword(counting, "00000000-0000-4000-8000-000000000000", PW, NEWPW, "60.0.0.3");
+    expect(busy).toEqual({ ok: false, reason: "busy" });
+    expect(busyCp).toEqual({ ok: false, reason: "busy" });
+    expect(touches).toBe(0);
+    await holder;
+  });
+
+  it("slot_is_released_on_error_and_on_success", async () => {
+    await makeOwner();
+    configureAuthAdmission({ maxInFlightAuth: 3, maxPerIp: 1 });
+    const broken = { connect: async () => { throw new Error("db down"); }, query: async () => { throw new Error("db down"); } } as unknown as pg.Pool;
+    await fail("x", "70.0.0.1", 5); // ip locked: cheap refusals, no scrypt
+    for (let i = 0; i < 100; i++) {
+      await expect(login(broken, { username: "alice", password: PW, ip: "70.0.0.9" })).rejects.toThrow();
+      expect(await attempt({ ip: "70.0.0.1" })).toMatchObject({ reason: "locked" });
+    }
+    expect((await attempt({ ip: "70.0.0.5" })).ok).toBe(true);
+    expect(authInFlight()).toBe(0);
+    const rs = await Promise.all(["a", "b", "c"].map((x) => attempt({ ip: `71.0.0.${x}` })));
+    expect(rs.every((r) => r.ok)).toBe(true); // all 3 slots usable again
+  }, 60_000);
 });
 
 describe("audit", () => {

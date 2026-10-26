@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { dummyVerify, hashPassword, hashToken, needsRehash, newToken, verifyPassword } from "@/server/core/auth-crypto";
 import { lockoutDelayMs, normalizeUsername, sessionExpiry, validatePassword } from "@/server/core/auth-rules";
 import { uuidv7 } from "@/server/core/ids";
+import { createAdmission } from "@/server/core/admission";
 import { createSemaphore } from "@/server/core/semaphore";
 import { audit, lockOwner } from "@/server/db/owner";
 import { atomic, type Db } from "@/server/db/stages";
@@ -10,23 +11,34 @@ import { totpEnabled, useRecoveryCode, verifyOwnerTotp } from "@/server/db/totp"
 // Login, sessions and lockout. Only SHA-256 of session tokens is stored. Lockout and expiry use the DATABASE clock.
 //
 // DESIGN (documented decisions)
-// - LOCK ORDER: login:<username_key> advisory lock, then loginip:<ip> advisory lock, then the owner lock (owner.ts order),
-//   then rows. Every login/changePassword attempt holds these for its WHOLE attempt, scrypt included. So attempts for one
-//   username (or one ip) run strictly one at a time: a burst of N wrong passwords gets exactly 5 real verifies, the rest are
-//   refused as `locked` (overshoot bound = 0). Cost: one connection held ~170 ms per attempt; fine for a single owner.
-//   (The owner lock alone already serialises all attempts; the per-key locks keep the guarantee if that lock is ever narrowed.)
-// - Concurrent scrypt across different keys is capped by a process-wide semaphore of 2 (each hash needs ~128 MiB).
-// - Lock rule: failures since the last success for the key within 24 h; delay = lockoutDelayMs(count); locked while
-//   clock_timestamp() < last_failure_at + delay. Attempts made WHILE locked are recorded as failures too (so a hammered key
-//   stays locked), but the delay is capped at 1 h by lockoutDelayMs. They are never verified. Known trade-off: anyone can keep
-//   the owner's username locked by hammering it; the owner recovers through the CLI (owner:reset) or by waiting for it to stop.
-// - Full success writes one success row (username_key + ip): it ends the failure streak of BOTH keys (a streak is counted
-//   since the last success row for that key/ip).
-// - Password correct but TOTP missing (`needs_totp`): NOTHING is recorded and no streak is reset. Wrong second factor is a failure.
-// - Invalid username strings share one cost path with unknown users (dummyVerify) and are keyed by a hash of the raw input.
+// - ADMISSION (before any DB use): at most `maxInFlightAuth` (default 3) login/changePassword attempts in flight or queued
+//   process-wide, and 1 per ip. Excess attempts return `busy` immediately and never check out a connection, so a flood of
+//   unauthenticated requests cannot starve the pool. `configureAuthAdmission` changes the limits.
+// - LOCK ORDER (login and changePassword): advisory lock login:<username_key>, then loginip:<ip>, then the owner advisory
+//   lock (owner.ts), then the owner row, then other rows. All are held for the whole attempt, scrypt included, so attempts
+//   are strictly serial and a burst of N wrong passwords gets exactly 5 real verifies (overshoot 0). The owner lock alone
+//   already serialises everything; the per-key locks are kept as defence in depth in case that lock is ever narrowed.
+// - Concurrent scrypt is capped by a process-wide semaphore of 2 (each hash needs ~128 MiB).
+// - LOCK RULE: failures since the last success for the key within 24 h; delay = lockoutDelayMs(count) (cap 1 h); locked
+//   while clock_timestamp() < last REAL failure + delay. Attempts made while locked are refused with `locked`, are NOT
+//   verified, NOT recorded and NOT audited, so they never extend the lock: an attacker cannot keep a key locked beyond
+//   `delay` after the last verified failure by hammering it.
+// - KNOWN-GOOD IP: the USERNAME lock does not apply to an ip with a successful login row for that username in the last 30
+//   days, so the owner is not locked out from their usual address by an attacker's failures. The IP lock still applies to
+//   everyone, and a known-good ip's real failures count normally (toward both keys).
+// - Full success writes one success row (username_key + ip): it ends the failure streak of both keys.
+// - needs_totp (password right, TOTP on, no code): nothing recorded, no reset, no session. Wrong second factor = failure.
+// - Invalid username strings: keyed by a hash of the raw input, dummyVerify path, same result as an unknown user.
 // - Audit rows carry only event + reason (+ ip); never usernames, passwords, tokens or codes.
 
 export const passwordSemaphore = createSemaphore(2);
+
+let admission = createAdmission({ maxTotal: 3, maxPerKey: 1 });
+/** Startup/test hook: replaces the admission limits (resets the in-flight counters). */
+export function configureAuthAdmission(o: { maxInFlightAuth?: number; maxPerIp?: number } = {}): void {
+  admission = createAdmission({ maxTotal: o.maxInFlightAuth ?? 3, maxPerKey: o.maxPerIp ?? 1 });
+}
+export const authInFlight = (): number => admission.inFlight();
 
 export const IDLE_MS = 8 * 3_600_000;
 const MAX_PW_UNITS = 1024;
@@ -35,7 +47,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export type LoginResult =
   | { ok: true; token: string; expiresAt: Date; absoluteExpiresAt: Date }
-  | { ok: false; reason: "invalid" | "locked" | "needs_totp"; retryAfterMs?: number };
+  | { ok: false; reason: "invalid" | "locked" | "needs_totp" | "busy"; retryAfterMs?: number };
 
 export interface LoginInput {
   username: string;
@@ -74,11 +86,32 @@ async function lockedFor(q: Db, col: KeyCol, val: string): Promise<number> {
 const record = (q: Db, key: string, ip: string, success: boolean) =>
   q.query("insert into login_attempts (username_key, ip, at, success) values ($1, $2, clock_timestamp(), $3)", [key, ip, success]);
 
+async function knownGoodIp(q: Db, key: string, ip: string): Promise<boolean> {
+  const { rows } = await q.query(
+    "select 1 from login_attempts where username_key = $1 and ip = $2 and success and at > clock_timestamp() - interval '30 days' limit 1",
+    [key, ip],
+  );
+  return rows.length > 0;
+}
+
+// Ip lock applies to everyone; the username lock does not apply to a known-good ip.
 async function checkLocks(q: Db, key: string, ip: string): Promise<number> {
-  return Math.max(await lockedFor(q, "username_key", key), await lockedFor(q, "ip", ip));
+  const ipWait = await lockedFor(q, "ip", ip);
+  const userWait = (await knownGoodIp(q, key, ip)) ? 0 : await lockedFor(q, "username_key", key);
+  return Math.max(ipWait, userWait);
 }
 
 export async function login(db: Db, input: LoginInput): Promise<LoginResult> {
+  const release = admission.tryEnter(cleanIp(input?.ip));
+  if (!release) return { ok: false, reason: "busy" };
+  try {
+    return await loginAdmitted(db, input);
+  } finally {
+    release();
+  }
+}
+
+async function loginAdmitted(db: Db, input: LoginInput): Promise<LoginResult> {
   const ip = cleanIp(input.ip);
   const norm = normalizeUsername(input.username);
   const key = norm ?? `~invalid:${sha16(String(input.username))}`; // '~' cannot occur in a valid username
@@ -92,11 +125,7 @@ export async function login(db: Db, input: LoginInput): Promise<LoginResult> {
     await lockOwner(q); // before reading the owner: a concurrent reset must finish first (or wait for us), never be bypassed
 
     const wait = await checkLocks(q, key, ip);
-    if (wait > 0) {
-      await record(q, key, ip, false);
-      await audit(q, "login.failure", { reason: "locked", ip });
-      return { result: { ok: false, reason: "locked", retryAfterMs: wait } };
-    }
+    if (wait > 0) return { result: { ok: false, reason: "locked", retryAfterMs: wait } }; // nothing recorded: never extends the lock
 
     const { rows } = await q.query<{ username: string; password_hash: string }>("select username, password_hash from owner where id = 1");
     const owner = rows[0];
@@ -217,18 +246,25 @@ export async function revokeOtherSessions(db: Db, keepSessionId: string): Promis
   return r.rowCount ?? 0;
 }
 
-export type ChangePasswordResult = { ok: true; token: string } | { ok: false; reason: "invalid" | "weak_password" | "locked" };
+export type ChangePasswordResult = { ok: true; token: string } | { ok: false; reason: "invalid" | "weak_password" | "locked" | "busy" };
 
-export async function changePassword(db: Db, sessionId: string, current: string, next: string): Promise<ChangePasswordResult> {
+export async function changePassword(db: Db, sessionId: string, current: string, next: string, ip?: string): Promise<ChangePasswordResult> {
+  const clean = cleanIp(ip);
+  const release = admission.tryEnter(clean);
+  if (!release) return { ok: false, reason: "busy" };
+  try {
+    return await changePasswordAdmitted(db, sessionId, current, next, clean);
+  } finally {
+    release();
+  }
+}
+
+async function changePasswordAdmitted(db: Db, sessionId: string, current: string, next: string, ip: string): Promise<ChangePasswordResult> {
   if (typeof sessionId !== "string" || !UUID_RE.test(sessionId)) return { ok: false, reason: "invalid" };
-  // Find the owner's key and the session ip without locks, then lock in the standard order and re-check.
-  const pre = await db.query<{ username: string; ip: string | null }>(
-    "select o.username, s.ip from owner o join sessions s on s.id = $1 where o.id = 1",
-    [sessionId],
-  );
+  // Find the owner's key without locks, then lock in the standard order and re-check.
+  const pre = await db.query<{ username: string }>("select username from owner where id = 1");
   if (!pre.rows[0]) return { ok: false, reason: "invalid" };
   const key = pre.rows[0].username;
-  const ip = cleanIp(pre.rows[0].ip);
 
   return atomic(db, async (qc): Promise<ChangePasswordResult> => {
     const q = qc as Db;
@@ -245,11 +281,7 @@ export async function changePassword(db: Db, sessionId: string, current: string,
     if (!o || !o.live || o.username !== key) return { ok: false, reason: "invalid" };
 
     const wait = await checkLocks(q, key, ip);
-    if (wait > 0) {
-      await record(q, key, ip, false);
-      await audit(q, "password.change_failure", { reason: "locked" });
-      return { ok: false, reason: "locked" };
-    }
+    if (wait > 0) return { ok: false, reason: "locked" }; // not recorded: never extends the lock
     const okCur = typeof current === "string" && current.length <= MAX_PW_UNITS && (await passwordSemaphore.run(() => verifyPassword(current, o.password_hash)));
     if (!okCur) {
       if (typeof current !== "string" || current.length > MAX_PW_UNITS) await passwordSemaphore.run(() => dummyVerify());

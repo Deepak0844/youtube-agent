@@ -6,8 +6,10 @@ import { atomic, type Db } from "@/server/db/stages";
 // Owner setup links and owner-level operations. Only SHA-256 hashes of tokens are stored. Every expiry/used comparison
 // uses the DATABASE clock (clock_timestamp()). Never put tokens, passwords, codes or links in audit detail.
 //
-// LOCK ORDER (every writer, to avoid deadlocks): 1) the owner advisory lock (lockOwner), 2) the per-purpose advisory
-// lock (createSetupLink only), 3) row locks: owner row, then setup_links rows. Never take them in another order.
+// LOCK ORDER (every writer, to avoid deadlocks): 0) auth.ts login/changePassword only: advisory locks login:<username_key>
+// then loginip:<ip> (kept as defence in depth; the owner lock below already serialises them), 1) the owner advisory lock
+// (lockOwner), 2) the per-purpose setup_links advisory lock (createSetupLink only), 3) row locks: owner row, then
+// setup_links rows. Never take them in another order.
 
 export type SetupPurpose = "create" | "reset";
 export type ConsumeResult =
