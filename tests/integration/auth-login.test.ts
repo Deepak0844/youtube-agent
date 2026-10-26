@@ -555,6 +555,31 @@ describe("admission control", () => {
   }, 60_000);
 });
 
+describe("ip hardening", () => {
+  it("ipv4_mapped_ipv6_and_plain_ipv4_share_one_lock", async () => {
+    await makeOwner();
+    for (let i = 0; i < 5; i++) await attempt({ username: `user${i}`, ip: "::ffff:9.9.9.9" });
+    expect(await attempt({ ip: "9.9.9.9" })).toMatchObject({ ok: false, reason: "locked" });
+    expect(await attempt({ ip: " ::FFFF:909:909 " })).toMatchObject({ ok: false, reason: "locked" });
+  });
+
+  it("unknown_ip_success_does_not_bypass_username_lock", async () => {
+    await makeOwner();
+    expect((await attempt({ ip: undefined })).ok).toBe(true);
+    await fail("alice", "9.9.9.9", 5);
+    expect(await attempt({ ip: undefined })).toMatchObject({ ok: false, reason: "locked" });
+  });
+
+  it("changePassword_without_ip_is_not_known_good", async () => {
+    await makeOwner();
+    const r = await attempt({ ip: undefined });
+    if (!r.ok) throw new Error("login");
+    const { sessionId } = (await validateSession(db.pool, r.token)) as { sessionId: string };
+    await fail("alice", "9.9.9.9", 5);
+    expect(await changePassword(db.pool, sessionId, PW, NEWPW)).toEqual({ ok: false, reason: "locked" });
+  });
+});
+
 describe("audit", () => {
   it("rows_hold_no_secrets", async () => {
     await makeOwner();

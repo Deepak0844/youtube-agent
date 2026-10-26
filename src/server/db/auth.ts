@@ -3,6 +3,7 @@ import { dummyVerify, hashPassword, hashToken, needsRehash, newToken, verifyPass
 import { lockoutDelayMs, normalizeUsername, sessionExpiry, validatePassword } from "@/server/core/auth-rules";
 import { uuidv7 } from "@/server/core/ids";
 import { createAdmission } from "@/server/core/admission";
+import { normalizeIp, UNKNOWN_IP } from "@/server/core/ip";
 import { createSemaphore } from "@/server/core/semaphore";
 import { audit, lockOwner } from "@/server/db/owner";
 import { atomic, type Db } from "@/server/db/stages";
@@ -25,7 +26,12 @@ import { totpEnabled, useRecoveryCode, verifyOwnerTotp } from "@/server/db/totp"
 //   `delay` after the last verified failure by hammering it.
 // - KNOWN-GOOD IP: the USERNAME lock does not apply to an ip with a successful login row for that username in the last 30
 //   days, so the owner is not locked out from their usual address by an attacker's failures. The IP lock still applies to
-//   everyone, and a known-good ip's real failures count normally (toward both keys).
+//   everyone, and a known-good ip's real failures count normally (toward both keys). The 'unknown' ip is never known-good.
+//   Ips are normalised (normalizeIp: trim, lowercase, zone id stripped, IPv4-mapped IPv6 -> IPv4) before every key use.
+// - RESIDUAL LIMITS (accepted for the spike): (1) a flood from many unknown ips can keep the username locked for NEW ips for up
+//   to 1 h per real failure; the owner on a known-good ip is unaffected; remedies are owner:reset or waiting. (2) three attacker
+//   ips can hold every admission slot and make the owner's login return `busy`. A reserved slot for known-good ips and proxy
+//   rate limiting must be done before the server move (Phase 10).
 // - Full success writes one success row (username_key + ip): it ends the failure streak of both keys.
 // - needs_totp (password right, TOTP on, no code): nothing recorded, no reset, no session. Wrong second factor = failure.
 // - Invalid username strings: keyed by a hash of the raw input, dummyVerify path, same result as an unknown user.
@@ -59,7 +65,7 @@ export interface LoginInput {
 }
 
 const sha16 = (s: string) => createHash("sha256").update(s, "utf8").digest("hex").slice(0, 16);
-const cleanIp = (ip: unknown): string => (typeof ip === "string" && ip.length > 0 ? ip.slice(0, 64) : "unknown");
+const cleanIp = normalizeIp;
 
 async function lockKeys(q: Db, key: string, ip: string): Promise<void> {
   await q.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`login:${key}`]);
@@ -87,6 +93,7 @@ const record = (q: Db, key: string, ip: string, success: boolean) =>
   q.query("insert into login_attempts (username_key, ip, at, success) values ($1, $2, clock_timestamp(), $3)", [key, ip, success]);
 
 async function knownGoodIp(q: Db, key: string, ip: string): Promise<boolean> {
+  if (ip === UNKNOWN_IP) return false; // a caller without an ip can never bypass the username lock
   const { rows } = await q.query(
     "select 1 from login_attempts where username_key = $1 and ip = $2 and success and at > clock_timestamp() - interval '30 days' limit 1",
     [key, ip],
