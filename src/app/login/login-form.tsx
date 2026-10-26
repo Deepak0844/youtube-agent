@@ -27,11 +27,11 @@ export function LoginForm({ next }: { next: string }) {
         </label>
       ) : null}
       {state.error ? (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-negative">
           {state.error}
         </p>
       ) : null}
-      <button type="submit" disabled={pending} className="rounded bg-black px-3 py-2 text-white disabled:opacity-60">
+      <button type="submit" disabled={pending} className="rounded-control bg-text px-4 py-2 font-medium text-ground disabled:opacity-60">
         Sign in
       </button>
     </form>

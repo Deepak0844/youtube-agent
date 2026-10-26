@@ -1,0 +1,65 @@
+/* Design tokens: Doc 3 §3, verbatim values. One dark theme, no light theme planned.
+   Elevation by lightness only (ground -> surface -> raised): no card borders, no shadows. */
+:root {
+  --ground:#000; --surface:#111; --raised:#2a2a2a;
+  --border:#1a1a1a; --rule:#161616; --control:#444;
+  --text:#fff; --muted:#b4b4b4; --faint:#949494;
+  /* data hue: tally-light amber (replaces the dealt lime #c6f24e) */
+  --accent:#f2a33a; --positive:#5fc48a; --negative:#e5484d; --warning:#e3c34b;
+  --chart-1:#f2a33a; --chart-2:#e6e6e6; --chart-3:#6b6b6b;
+  --pill-positive-bg:#16261d; --pill-positive-ink:#5fc48a;
+  --pill-negative-bg:#2c1a20; --pill-negative-ink:#f0707a; /* lighter than --negative on purpose: 4.5:1 on its tinted ground */
+  --pill-warning-bg:#2a2614;  --pill-warning-ink:#e3c34b;
+  --pill-neutral-bg:#222;     --pill-neutral-ink:#fff;
+  --radius-card:20px; --radius-control:999px;
+  --row-height:80px; --sidebar-width:210px; --gap:14px; /* inside panels and lists */ --gap-layout:24px; /* between main column and rail */
+  --pad:22px; /* card padding */ --gutter:29px; /* page margin from the sidebar rule and window edge */ --control-height:36px;
+  --fs-page-title:24px; --fs-title:20px; /* panel titles */ --fs-section:16px; --fs-kpi:24px; --fs-body:14px; --fs-small:12px;
+}
+
+/* Tailwind 4 mapping. The default palette is wiped so no stray indigo/slate utility can exist. */
+@theme inline {
+  --color-*: initial;
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-border: var(--border);
+  --color-rule: var(--rule);
+  --color-control: var(--control);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-warning: var(--warning);
+  --color-pill-positive-bg: var(--pill-positive-bg);
+  --color-pill-positive-ink: var(--pill-positive-ink);
+  --color-pill-negative-bg: var(--pill-negative-bg);
+  --color-pill-negative-ink: var(--pill-negative-ink);
+  --color-pill-warning-bg: var(--pill-warning-bg);
+  --color-pill-warning-ink: var(--pill-warning-ink);
+  --color-pill-neutral-bg: var(--pill-neutral-bg);
+  --color-pill-neutral-ink: var(--pill-neutral-ink);
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --radius-card: var(--radius-card);
+  --radius-control: var(--radius-control);
+
+  --spacing-gap: var(--gap);
+  --spacing-layout: var(--gap-layout);
+  --spacing-pad: var(--pad);
+  --spacing-gutter: var(--gutter);
+
+  --text-page-title: var(--fs-page-title);
+  --text-title: var(--fs-title);
+  --text-section: var(--fs-section);
+  --text-kpi: var(--fs-kpi);
+  --text-body: var(--fs-body);
+  --text-small: var(--fs-small);
+
+  --font-sans: var(--font-instrument), var(--font-noto-latin), var(--font-noto-devanagari), var(--font-noto-tamil),
+    var(--font-noto-telugu), var(--font-noto-malayalam), var(--font-noto-kannada), system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
