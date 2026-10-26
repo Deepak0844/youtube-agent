@@ -65,7 +65,7 @@ export async function hashPassword(pw: string): Promise<string> {
   return `scrypt$${N}$${R}$${P}$${salt.toString("base64")}$${key.toString("base64")}`;
 }
 
-/** `opts.equal` is a test-only seam; production always uses crypto.timingSafeEqual. */
+/** `opts.equal` is an `@internal` test-only seam; production callers must not pass it (default is crypto.timingSafeEqual). */
 export async function verifyPassword(pw: string, stored: string, opts: { equal?: Equal } = {}): Promise<boolean> {
   try {
     if (typeof pw !== "string" || tooLong(pw)) return false;
@@ -88,7 +88,11 @@ export function needsRehash(stored: string): boolean {
 const DUMMY_SALT = Buffer.alloc(SALT_BYTES, 7);
 /** Full-cost scrypt, result discarded: equalises timing for unknown-username paths. */
 export async function dummyVerify(): Promise<void> {
-  await derive("dummy-password-for-timing", DUMMY_SALT, KEY_BYTES, N, R, P);
+  try {
+    await derive("dummy-password-for-timing", DUMMY_SALT, KEY_BYTES, N, R, P);
+  } catch {
+    // never throws: an error here must not turn into a distinguishable response for unknown users
+  }
 }
 
 const sha256hex = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
