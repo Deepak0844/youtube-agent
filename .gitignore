@@ -46,3 +46,6 @@ next-env.d.ts
 docs
 /test-results
 /playwright-report
+
+# local upload storage
+/.data/
