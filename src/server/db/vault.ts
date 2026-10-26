@@ -2,7 +2,7 @@
 // Plaintext exists only in the return value of getSecret and in the argument of putSecret: it is decrypted per call,
 // never cached, never logged, and list/status paths never decrypt for display (they expose the stored masked tail only).
 import type pg from "pg";
-import { decryptSecret, encryptSecret, hintFor, VaultError, type Keyring } from "@/server/core/vault-crypto";
+import { decryptSecret, encryptSecret, hintAllowedFor, hintFor, VaultError, type Keyring } from "@/server/core/vault-crypto";
 
 type Db = Pick<pg.Pool, "query">;
 interface Row {
@@ -18,15 +18,16 @@ export interface SecretListing {
   keyId: string;
   updatedAt: Date;
 }
-export type VaultStatus = { status: "ok" | "wrong_key" | "unreadable"; unreadable: string[] };
+export type VaultStatus = { status: "ok" | "missing_key" | "wrong_key" | "unreadable"; unreadable: string[] };
 
-export async function putSecret(db: Db, ring: Keyring, name: string, plain: string): Promise<void> {
+/** `hint: false` stores no masked tail. Names under totp. and owner. never get one regardless. */
+export async function putSecret(db: Db, ring: Keyring, name: string, plain: string, opts: { hint?: boolean } = {}): Promise<void> {
   const s = encryptSecret(ring, name, plain); // validates name and size before any DB write
   await db.query(
     `insert into secrets (name, ciphertext, nonce, key_id, hint) values ($1, $2, $3, $4, $5)
      on conflict (name) do update set ciphertext = excluded.ciphertext, nonce = excluded.nonce, key_id = excluded.key_id,
        hint = excluded.hint, updated_at = now()`,
-    [name, s.ciphertext, s.nonce, s.keyId, hintFor(plain)],
+    [name, s.ciphertext, s.nonce, s.keyId, hintFor(plain, opts.hint !== false && hintAllowedFor(name))],
   );
 }
 
@@ -56,8 +57,15 @@ export async function listSecrets(db: Db): Promise<SecretListing[]> {
   return rows.map((r) => ({ name: r.name, hint: r.hint, keyId: r.key_id, updatedAt: r.updated_at }));
 }
 
-/** Decrypts every row to prove the loaded key opens them (nothing is returned or logged but names). */
-export async function vaultStatus(db: Db, ring: Keyring): Promise<VaultStatus> {
+/** Decrypts every row to prove the loaded key opens them (nothing is returned or logged but names). Pass a loader to get `missing_key` instead of a throw. */
+export async function vaultStatus(db: Db, ringOrLoader: Keyring | (() => Keyring)): Promise<VaultStatus> {
+  let ring: Keyring;
+  try {
+    ring = typeof ringOrLoader === "function" ? ringOrLoader() : ringOrLoader;
+  } catch (e) {
+    if (e instanceof VaultError && e.code === "bad_key") return { status: "missing_key", unreadable: [] };
+    throw e;
+  }
   const { rows } = await db.query<Row>("select name, ciphertext, nonce, key_id from secrets order by name");
   const unreadable: string[] = [];
   let wrongKey = false;
@@ -72,12 +80,19 @@ export async function vaultStatus(db: Db, ring: Keyring): Promise<VaultStatus> {
   return { status: unreadable.length === 0 ? "ok" : wrongKey ? "wrong_key" : "unreadable", unreadable };
 }
 
-/** Rotation: re-encrypts every row not sealed by the current key. Returns the number rewrapped; idempotent. Fails (throws) on the first unreadable row. */
-export async function rewrapAll(db: Db, ring: Keyring): Promise<number> {
+/** Rotation: re-encrypts every row not sealed by the current key. Idempotent. Unreadable rows are named (not thrown on) and skipped. */
+export async function rewrapAll(db: Db, ring: Keyring): Promise<{ rewrapped: number; unreadable: string[] }> {
   const { rows } = await db.query<Row>("select name, ciphertext, nonce, key_id from secrets where key_id <> $1 order by name", [ring.current.id]);
-  let n = 0;
+  let rewrapped = 0;
+  const unreadable: string[] = [];
   for (const r of rows) {
-    const plain = decryptSecret(ring, r.name, { ciphertext: r.ciphertext, nonce: r.nonce, keyId: r.key_id });
+    let plain: string;
+    try {
+      plain = decryptSecret(ring, r.name, { ciphertext: r.ciphertext, nonce: r.nonce, keyId: r.key_id });
+    } catch {
+      unreadable.push(r.name);
+      continue;
+    }
     const s = encryptSecret(ring, r.name, plain);
     // Guarded on the old nonce so a concurrent put() of a newer value is not overwritten with the stale one.
     const u = await db.query("update secrets set ciphertext = $2, nonce = $3, key_id = $4 where name = $1 and nonce = $5", [
@@ -87,7 +102,7 @@ export async function rewrapAll(db: Db, ring: Keyring): Promise<number> {
       s.keyId,
       r.nonce,
     ]);
-    n += u.rowCount ?? 0;
+    rewrapped += u.rowCount ?? 0;
   }
-  return n;
+  return { rewrapped, unreadable };
 }

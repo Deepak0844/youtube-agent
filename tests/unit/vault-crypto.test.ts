@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { decryptSecret, encryptSecret, generateMasterKey, hintFor, keyIdOf, makeKeyring, parseMasterKey, VaultError } from "@/server/core/vault-crypto";
+import { decryptSecret, encryptSecret, generateMasterKey, hintAllowedFor, hintFor, keyIdOf, makeKeyring, parseMasterKey, VaultError } from "@/server/core/vault-crypto";
 
 const b64 = () => randomBytes(32).toString("base64");
 const ring = (k = b64(), prev?: string) => makeKeyring(k, prev);
@@ -22,6 +22,13 @@ describe("master key parsing", () => {
   });
   it.each(["", "abc", Buffer.alloc(31).toString("base64"), Buffer.alloc(33).toString("base64"), "not base64 !!", undefined])("rejects_%s", (v) => {
     expect(() => parseMasterKey(v as string)).toThrow(VaultError);
+  });
+  it("rejects_non_canonical_base64_and_whitespace", () => {
+    const good = Buffer.alloc(32).toString("base64"); // 43 x "A" + "="
+    expect(parseMasterKey(good).length).toBe(32);
+    expect(() => parseMasterKey(good.slice(0, 42) + "B=")).toThrow(VaultError); // same bytes, non-canonical trailing bits
+    for (const bad of [` ${good}`, `${good} `, `${good}\n`, `${good}\r\n`, good.slice(0, 20) + " " + good.slice(21), good.replace("=", "")])
+      expect(() => parseMasterKey(bad)).toThrow(VaultError);
   });
   it("key_id_is_stable_and_short", () => {
     const k = parseMasterKey(b64());
@@ -71,6 +78,15 @@ describe("encrypt/decrypt", () => {
     for (const c of [rec.ciphertext.subarray(0, -1), rec.ciphertext.subarray(0, 8), Buffer.alloc(0), Buffer.concat([rec.ciphertext, Buffer.from([0])])])
       expect(() => decryptSecret(r, "a", { ...rec, ciphertext: c })).toThrow(VaultError);
     expect(() => decryptSecret(r, "a", { ...rec, nonce: rec.nonce.subarray(0, 11) })).toThrow(VaultError);
+  });
+  it("any_ciphertext_shorter_than_the_tag_throws_including_15_bytes", () => {
+    const r = ring();
+    const rec = encryptSecret(r, "a", PLAIN);
+    for (let n = 0; n <= 16; n++) {
+      const e = failure(() => decryptSecret(r, "a", { ...rec, ciphertext: randomBytes(n) }));
+      expect(e).toBeInstanceOf(VaultError);
+      expect(e.code).toBe("decrypt_failed");
+    }
   });
   it("ciphertext_moved_to_another_name_fails_aad", () => {
     const r = ring();
@@ -149,10 +165,16 @@ describe("no plaintext leaks", () => {
 });
 
 describe("hint", () => {
-  it("shows_last_4_only_for_long_values", () => {
+  it("shows_last_4_only_for_values_of_24_plus_chars", () => {
     expect(hintFor(PLAIN)).toBe("1234");
     expect(hintFor("short")).toBe("");
-    expect(hintFor("a".repeat(15))).toBe("");
-    expect(hintFor("a".repeat(16))).toBe("aaaa");
+    expect(hintFor("a".repeat(23))).toBe("");
+    expect(hintFor("a".repeat(24))).toBe("aaaa");
+  });
+  it("hint_can_be_disabled_and_is_never_allowed_for_totp_or_owner_names", () => {
+    expect(hintFor(PLAIN, false)).toBe("");
+    expect(hintAllowedFor("provider.a.key")).toBe(true);
+    expect(hintAllowedFor("totp.owner")).toBe(false);
+    expect(hintAllowedFor("owner.totp")).toBe(false);
   });
 });

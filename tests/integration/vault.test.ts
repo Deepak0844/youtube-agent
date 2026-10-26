@@ -52,9 +52,8 @@ describe("vault db", () => {
   it("listing_returns_only_masked_tail_never_decrypts", async () => {
     await putSecret(db.pool, ring, "provider.a.key", PLAIN);
     await putSecret(db.pool, ring, "provider.b.key", "short");
-    const wrong = makeKeyring(key()); // listing needs no key at all
-    void wrong;
-    const rows = await listSecrets(db.pool);
+    const rows = await listSecrets(db.pool); // takes no keyring: it cannot decrypt
+    expect(listSecrets.length).toBe(1);
     expect(rows.map((r) => [r.name, r.hint])).toEqual([
       ["provider.a.key", "1234"],
       ["provider.b.key", ""],
@@ -109,12 +108,59 @@ describe("vault db", () => {
     await putSecret(db.pool, ring, "b", "another-value-000000");
     const rotating = makeKeyring(K2, K1);
     expect(await getSecret(db.pool, rotating, "a")).toBe(PLAIN); // old row readable during the window
-    expect(await rewrapAll(db.pool, rotating)).toBe(2);
-    expect(await rewrapAll(db.pool, rotating)).toBe(0); // idempotent
+    expect(await rewrapAll(db.pool, rotating)).toEqual({ rewrapped: 2, unreadable: [] });
+    expect(await rewrapAll(db.pool, rotating)).toEqual({ rewrapped: 0, unreadable: [] }); // idempotent
     const after = makeKeyring(K2); // old key dropped
     expect(await getSecret(db.pool, after, "a")).toBe(PLAIN);
     expect(await getSecret(db.pool, after, "b")).toBe("another-value-000000");
     expect((await db.ownerPool.query("select distinct key_id from secrets")).rows).toEqual([{ key_id: rotating.current.id }]);
+  });
+
+  it("rewrap_names_unreadable_rows_and_still_rewraps_the_rest", async () => {
+    const K2 = key();
+    await putSecret(db.pool, ring, "a", PLAIN);
+    await putSecret(db.pool, ring, "b", PLAIN);
+    await putSecret(db.pool, makeKeyring(key()), "c", PLAIN); // sealed by a key we do not have
+    await db.ownerPool.query("update secrets set nonce = decode('000000000000000000000000','hex') where name = 'b'");
+    const r = await rewrapAll(db.pool, makeKeyring(K2, K1));
+    expect(r).toEqual({ rewrapped: 1, unreadable: ["b", "c"] });
+  });
+
+  it("rewrap_does_not_overwrite_a_value_written_concurrently", async () => {
+    const K2 = key();
+    await putSecret(db.pool, ring, "a", PLAIN);
+    const rotating = makeKeyring(K2, K1);
+    let fired = false;
+    const racing = {
+      async query(sql: string, params?: unknown[]) {
+        const res = await db.pool.query(sql, params);
+        if (!fired && sql.trimStart().startsWith("select")) {
+          fired = true;
+          await putSecret(db.pool, rotating, "a", "newer-value-written-concurrently");
+        }
+        return res;
+      },
+    } as unknown as Pick<import("pg").Pool, "query">;
+    expect((await rewrapAll(racing, rotating)).rewrapped).toBe(0);
+    expect(await getSecret(db.pool, rotating, "a")).toBe("newer-value-written-concurrently");
+  });
+
+  it("hint_rules_short_totp_owner_and_opt_out", async () => {
+    const long = "x".repeat(30) + "WXYZ";
+    await putSecret(db.pool, ring, "provider.a.key", long);
+    await putSecret(db.pool, ring, "provider.b.key", long, { hint: false });
+    await putSecret(db.pool, ring, "totp.owner", long);
+    await putSecret(db.pool, ring, "owner.recovery", long);
+    await putSecret(db.pool, ring, "provider.c.key", "y".repeat(22) + "Q");
+    const h = Object.fromEntries((await listSecrets(db.pool)).map((r) => [r.name, r.hint]));
+    expect(h).toEqual({ "provider.a.key": "WXYZ", "provider.b.key": "", "totp.owner": "", "owner.recovery": "", "provider.c.key": "" });
+  });
+
+  it("status_is_missing_key_when_the_keyring_cannot_load", async () => {
+    await putSecret(db.pool, ring, "a", PLAIN);
+    const loader = () => loadKeyring({});
+    expect(await vaultStatus(db.pool, loader)).toEqual({ status: "missing_key", unreadable: [] });
+    expect(await vaultStatus(db.pool, () => ring)).toEqual({ status: "ok", unreadable: [] });
   });
 
   it("errors_and_logs_never_contain_plaintext", async () => {
@@ -156,6 +202,7 @@ describe("loadKeyring", () => {
   it("reads_env_and_fails_explicitly_when_missing", () => {
     expect(loadKeyring({ VAULT_MASTER_KEY: K1 }).current.id).toBe(ring.current.id);
     expect(() => loadKeyring({})).toThrow(/missing or malformed/);
+    expect(() => loadKeyring({ VAULT_MASTER_KEY: ` ${K1}` })).toThrow(VaultError);
     expect(() => loadKeyring({ VAULT_MASTER_KEY: "short" })).toThrow(VaultError);
     expect(loadKeyring({ VAULT_MASTER_KEY: key(), VAULT_MASTER_KEY_PREVIOUS: K1 }).byId.has(ring.current.id)).toBe(true);
   });

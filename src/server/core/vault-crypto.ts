@@ -75,6 +75,9 @@ export function makeKeyring(currentB64: string, previousB64?: string): Keyring {
   return { current, byId };
 }
 
+// KNOWN RESIDUAL RISK (rollback): the AAD binds name and key id but not a version or timestamp. Anyone who can write the
+// secrets table can restore an OLDER ciphertext for the SAME name (e.g. a rotated-out provider key) and it will still
+// authenticate and decrypt. GCM cannot detect this; defend with DB access control and backup hygiene, not crypto.
 const aad = (keyId: string, name: string) => Buffer.from(`${AAD_PREFIX}\0${keyId}\0${name}`, "utf8");
 
 function checkName(name: string): void {
@@ -109,8 +112,17 @@ export function decryptSecret(ring: Keyring, name: string, rec: SealedSecret): s
   }
 }
 
-/** Non-secret display hint: last 4 chars, only when the value is long enough that 4 chars are not a meaningful part of it. */
-export function hintFor(plain: string): string {
+const HINT_MIN_CHARS = 24;
+const NO_HINT_PREFIXES = ["totp.", "owner."];
+
+/** Names whose secrets are short or high-value (TOTP seeds, owner credentials): they never get a stored hint. */
+export function hintAllowedFor(name: string): boolean {
+  return !NO_HINT_PREFIXES.some((p) => name.startsWith(p));
+}
+
+/** Non-secret display hint: last 4 chars, only for values of 24+ chars (so 4 chars are a small part of the value) and when enabled. */
+export function hintFor(plain: string, enabled = true): string {
+  if (!enabled) return "";
   const chars = [...plain];
-  return chars.length >= 16 ? chars.slice(-4).join("") : "";
+  return chars.length >= HINT_MIN_CHARS ? chars.slice(-4).join("") : "";
 }

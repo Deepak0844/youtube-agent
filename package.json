@@ -10,6 +10,7 @@
     "db:migrate": "tsx scripts/db-migrate.ts",
     "vault:init": "tsx scripts/vault-init.ts",
     "vault:check": "tsx --env-file-if-exists=.env.local scripts/vault-check.ts",
+    "vault:rotate": "tsx --env-file-if-exists=.env.local scripts/vault-rotate.ts",
     "owner:create": "tsx scripts/owner-create.ts",
     "owner:reset": "tsx scripts/owner-reset.ts",
     "auth:purge": "tsx scripts/auth-purge.ts",

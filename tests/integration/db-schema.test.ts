@@ -1,7 +1,12 @@
+import { readdirSync } from "node:fs";
+import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { migrate } from "@/server/db/migrate";
 import { uuidv7 } from "@/server/core/ids";
 import { withTestDb, type TestDb } from "../support/db";
+
+// Derived from the migrations directory so parallel branches adding migrations do not conflict here.
+const MIGRATIONS_DIR = path.join(process.cwd(), "src/server/db/migrations");
 
 let db: TestDb;
 beforeAll(async () => {
@@ -44,7 +49,7 @@ describe("schema", () => {
     await migrate(db.ownerPool);
     await Promise.all([migrate(db.ownerPool), migrate(db.ownerPool), migrate(db.ownerPool)]);
     const { rows } = await db.pool.query("select name from schema_migrations");
-    expect(rows.map((r: { name: string }) => r.name).sort()).toEqual(["0000_spike_c.sql", "0001_owner_auth.sql", "0002_setup_links_unique.sql", "0003_totp_pending.sql", "0004_roles_grants.sql", "0007_secrets.sql"]);
+    expect(rows.map((r: { name: string }) => r.name).sort()).toEqual(readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort());
   });
 
   it("status_check_constraints_reject_unknown_values", async () => {
@@ -135,6 +140,6 @@ describe("schema", () => {
     expect(released).toEqual([true]);
     await migrate(db.ownerPool);
     const { rows } = await db.pool.query("select name from schema_migrations");
-    expect(rows.map((r: { name: string }) => r.name).sort()).toEqual(["0000_spike_c.sql", "0001_owner_auth.sql", "0002_setup_links_unique.sql", "0003_totp_pending.sql", "0004_roles_grants.sql", "0007_secrets.sql"]);
+    expect(rows.map((r: { name: string }) => r.name).sort()).toEqual(readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort());
   });
 });

@@ -1,11 +1,18 @@
+import { existsSync, statSync } from "node:fs";
 import { getMigratePool, getPool } from "@/server/db/pool";
-import { encryptSecret, decryptSecret } from "@/server/core/vault-crypto";
+import { encryptSecret, decryptSecret, type Keyring } from "@/server/core/vault-crypto";
 import { loadKeyring } from "@/server/db/master-key";
 import { vaultStatus } from "@/server/db/vault";
 
 // Prints ok | missing_key | wrong_key | unreadable (+ names). Never prints key material or secret values.
 async function main(): Promise<void> {
-  let ring;
+  const envFile = process.env.VAULT_ENV_FILE || ".env.local";
+  if (existsSync(envFile) && (statSync(envFile).mode & 0o077) !== 0) {
+    process.stderr.write(`insecure: ${envFile} is readable by group/other. Run: chmod 600 ${envFile}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  let ring: Keyring;
   try {
     ring = loadKeyring();
     if (decryptSecret(ring, "vault.selftest", encryptSecret(ring, "vault.selftest", "x")) !== "x") throw new Error("selftest");
