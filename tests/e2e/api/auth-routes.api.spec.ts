@@ -20,6 +20,10 @@ function loginReq(request: APIRequestContext, body: object, headers: Record<stri
 
 test.afterAll(endSessionPool);
 
+test("no x-powered-by header", async ({ request }) => {
+  for (const p of ["/healthz", "/login", "/api/me"]) expect((await request.get(p, { maxRedirects: 0 })).headers()["x-powered-by"], p).toBeUndefined();
+});
+
 test.describe("host allow-list", () => {
   for (const host of ["evil.test", "localhost.evil.test", "127.0.0.1.evil.test", "localhost@evil.test", "evil.test:3000"]) {
     test(`forged_host_is_rejected: ${host}`, async ({ request }) => {
@@ -161,7 +165,12 @@ test.describe("api login route", () => {
 
     // logout needs the session and the same origin
     const anon = await playwright.request.newContext({ baseURL: ORIGIN }); // the shared `request` keeps the cookie jar
-    expect((await anon.post("/api/auth/logout", { headers: { origin: ORIGIN }, maxRedirects: 0 })).status()).toBe(401);
+    const noSession = await anon.post("/api/auth/logout", { headers: { origin: ORIGIN }, maxRedirects: 0 });
+    expect(noSession.status()).toBe(200); // idempotent, and it always clears the cookie
+    expect(noSession.headers()["set-cookie"]).toContain("Max-Age=0");
+    const stale = await anon.post("/api/auth/logout", { headers: { origin: ORIGIN, ...cookie("garbage") } });
+    expect(stale.status()).toBe(200);
+    expect(stale.headers()["set-cookie"]).toContain("Max-Age=0");
     await anon.dispose();
     expect((await request.post("/api/auth/logout", { headers: { ...cookie(token), origin: "http://evil.test" } })).status()).toBe(403);
     const out = await request.post("/api/auth/logout", { headers: { ...cookie(token), origin: ORIGIN } });
