@@ -46,9 +46,21 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install ffmpeg (host ffprobe is used by render tests)
+        # The apt mirror sometimes stalls for ~28 minutes, which used up the whole job timeout while the tests
+        # themselves need ~8. Each attempt is capped, and a stalled one is retried.
+        timeout-minutes: 8
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          if ! command -v ffprobe >/dev/null; then
+            for attempt in 1 2 3; do
+              if sudo timeout 150 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 update \
+                && sudo timeout 200 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20 install -y --no-install-recommends ffmpeg; then
+                break
+              fi
+              echo "apt attempt $attempt failed or stalled"
+              [ "$attempt" = 3 ] && exit 1
+              sleep 5
+            done
+          fi
           ffprobe -version
       - name: Build sandbox images
         run: |
