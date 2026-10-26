@@ -1,7 +1,10 @@
 // Spike A live check: can a model produce valid, really-sourced evidence with webSearch/fetchPage?
-// Needs ANTHROPIC_API_KEY, DRAFT_MODEL, DRAFT_IN_PER_M_USD, DRAFT_OUT_PER_M_USD (prices are yours; no price = refused)
+// Provider via DRAFT_PROVIDER: "openai-compatible" (Ollama / LM Studio / any; needs DRAFT_BASE_URL, e.g.
+// http://127.0.0.1:11434/v1, local = set both prices to 0) or "anthropic" (needs ANTHROPIC_API_KEY).
+// Always needs DRAFT_MODEL, DRAFT_IN_PER_M_USD, DRAFT_OUT_PER_M_USD (no price = refused)
 // and SearXNG at SEARXNG_URL (default http://127.0.0.1:8888). Spend is tracked in memory only.
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { z } from "zod";
 import { runAgent } from "@/server/core/agent-loop";
 import type { PaidCallPorts } from "@/server/core/paid-call";
@@ -33,7 +36,10 @@ async function main() {
     markStageNeedsDecision: async () => {},
     warn: (e, d) => console.warn(e, d),
   };
-  const anthropic = createAnthropic({ apiKey: need("ANTHROPIC_API_KEY") });
+  const model =
+    (process.env.DRAFT_PROVIDER ?? "openai-compatible") === "anthropic"
+      ? createAnthropic({ apiKey: need("ANTHROPIC_API_KEY") })(need("DRAFT_MODEL"))
+      : createOpenAICompatible({ name: "local", baseURL: need("DRAFT_BASE_URL"), apiKey: process.env.DRAFT_API_KEY })(need("DRAFT_MODEL"));
   const decls = [
     { name: "webSearch", description: "Search the web. Returns titles, URLs, snippets.", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } },
     { name: "fetchPage", description: "Fetch text of a URL previously returned by webSearch.", inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } },
@@ -45,7 +51,7 @@ async function main() {
     budgetScopes: ["spike"],
     maxOutputTokens: 2000,
     maxSteps: 10,
-    step: createAiSdkStep(anthropic(need("DRAFT_MODEL")), decls, 2000),
+    step: createAiSdkStep(model, decls, 2000),
     tools,
     messages: [
       { role: "system", content: 'You research facts for a short video. Use webSearch (and fetchPage) to find real sources. Finish with ONLY JSON: {"claims":[{"claim":"...","sourceUrl":"<url returned by webSearch>","quote":"<exact words from the source>"}]} with at least 3 claims.' },
