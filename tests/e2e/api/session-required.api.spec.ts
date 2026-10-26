@@ -160,6 +160,10 @@ for (const e of PROTECTED) {
           const r = await send(request, url, method, headers);
           const s = r.res.status();
           const canonical = new URL(r.res.headers().location ?? "", ORIGIN).pathname;
+<<<<<<< HEAD
+=======
+          // A page behind <Suspense> answers 200 with the static shell and redirects inside the stream (redirectsToLogin).
+>>>>>>> 311ca6b (test(app): real action ids for the system page, mutation-checked)
           const ok = redirectsToLogin(r.res, r.body) || s === 401 || s === 404 || (s === 308 && (canonical === e.url || canonical === url.replace(/\/+$/, "") || canonical === "/" + url.replace(/^\/+/, "")));
           expect(ok, `${method} ${url} (${state}) -> ${s} ${r.res.headers().location ?? ""}`).toBe(true);
           // A 200 that carries the redirect digest is only the static shell: no page heading or content may be in it.

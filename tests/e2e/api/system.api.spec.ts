@@ -65,6 +65,7 @@ test("positive control: with a session and the right Origin the real action chan
   await seed("network.local_services", ["localhost:11434"]);
   const token = await mintSession();
   const res = await post(request, "saveLocalServicesAction", { services: "localhost:22434" }, { cookie: token, origin: ORIGIN });
+  expect(await succeeded(res)).toBe(true);
   expect(await value("network.local_services")).toEqual(["localhost:22434"]);
 });
 
