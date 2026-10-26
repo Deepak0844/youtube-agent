@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { checkCoverage, checkLiveness, planFor, runChaos, type BrokenMode, type ChaosResult } from "../support/chaos";
+import { findViolation } from "../support/chaos-detect";
 import { withTestDb, type TestDb } from "../support/db";
 import { killAllChildren } from "./helpers/stage-env";
 
@@ -43,14 +44,9 @@ const withPrefix = (all: Array<{ seed: number; result: ChaosResult }>, p: string
   all.flatMap(({ seed, result }) => result.violations.filter((v) => v.startsWith(p)).map((v) => `seed ${seed}: ${v}`));
 
 // Runs seeds until the harness reports a violation with the given prefix.
-async function detect(mode: BrokenMode, prefix: string): Promise<{ seed: number; count: number } | null> {
-  for (const seed of seeds()) {
-    const r = await runChaos({ seed, ...SHAPE, brokenMode: mode, deps: { db } });
-    const hits = r.violations.filter((v) => v.startsWith(prefix));
-    if (hits.length > 0) return { seed, count: hits.length };
-  }
-  return null;
-}
+// Returns the run that saw it: a seed is NOT guaranteed to repeat a violation (real interleavings), so never replay it.
+const detect = (mode: BrokenMode, prefix: string) =>
+  findViolation((seed) => runChaos({ seed, ...SHAPE, brokenMode: mode, deps: { db } }), seeds(), prefix);
 
 describe("chaos", () => {
   it("invariant_no_call_key_is_called_twice_over_N_seeded_runs", async () => {
@@ -94,7 +90,7 @@ describe("chaos", () => {
   it("harness_detects_fresh_key_per_attempt_via_logical_step_check", async () => {
     const hit = await detect("broken_call_key", "I1b");
     expect(hit).not.toBeNull();
-    const r = await runChaos({ seed: hit!.seed, ...SHAPE, brokenMode: "broken_call_key", deps: { db } });
+    const r = hit!.result; // the run that reported I1b; a replay of the same seed may legitimately differ
     expect(r.violations.filter((v) => v.startsWith("I1b")).length).toBeGreaterThan(0);
     expect(r.violations.filter((v) => v.startsWith("I1 "))).toEqual([]); // I1 alone would have missed it
     expect([...r.providerCallsByKey.values()].every((n) => n === 1)).toBe(true);
