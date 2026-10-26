@@ -115,6 +115,38 @@ describe("setup links", () => {
     }
   });
 
+  it("concurrent_createSetupLink_leaves_exactly_one_live_link_per_purpose", async () => {
+    await makeOwner();
+    const url = db.pool.options.connectionString!;
+    const pools = Array.from({ length: 20 }, () => new pg.Pool({ connectionString: url, max: 1 }));
+    try {
+      await Promise.all(pools.map((p, i) => createSetupLink(p, i % 2 ? "create" : "reset", BASE)));
+    } finally {
+      await Promise.all(pools.map((p) => p.end()));
+    }
+    const { rows } = await q("select purpose, count(*)::int as n from setup_links where used_at is null group by purpose order by purpose");
+    expect(rows).toEqual([{ purpose: "create", n: 1 }, { purpose: "reset", n: 1 }]);
+  });
+
+  it("expired_unused_link_does_not_block_a_new_one", async () => {
+    await link("create");
+    await q("update setup_links set expires_at = clock_timestamp() - interval '1 second'");
+    await link("create");
+    expect((await q("select count(*)::int as n from setup_links where used_at is null")).rows[0].n).toBe(1);
+  });
+
+  it("concurrent_owner_create_cli_leaves_one_live_link", async () => {
+    const url = db.pool.options.connectionString!;
+    const pools = Array.from({ length: 10 }, () => new pg.Pool({ connectionString: url, max: 1 }));
+    try {
+      const res = await Promise.all(pools.map((p) => runOwnerCreate(p, {})));
+      expect(res.every((r) => r.exitCode === 0)).toBe(true);
+    } finally {
+      await Promise.all(pools.map((p) => p.end()));
+    }
+    expect((await q("select count(*)::int as n from setup_links where used_at is null")).rows[0].n).toBe(1);
+  });
+
   it("only_the_hash_is_stored", async () => {
     const t = tokenOf(await link("create"));
     const { rows } = await q("select * from setup_links");
@@ -160,6 +192,63 @@ describe("reset", () => {
     expect(await consumeSetupLink(db.pool, before, { username: USER, password: PW })).toEqual({ ok: false, reason: "used" });
   });
 
+  it("twenty_concurrent_consumes_of_a_reset_link_exactly_one_wins", async () => {
+    await makeOwner();
+    const t = tokenOf(await link("reset"));
+    const url = db.pool.options.connectionString!;
+    const pools = Array.from({ length: 20 }, () => new pg.Pool({ connectionString: url, max: 1 }));
+    try {
+      const res = await Promise.all(pools.map((p, i) => consumeSetupLink(p, t, { username: `user${i}`.padEnd(5, "x"), password: PW })));
+      expect(res.filter((r) => r.ok)).toHaveLength(1);
+      expect(res.filter((r) => !r.ok && r.reason === "used")).toHaveLength(19);
+    } finally {
+      await Promise.all(pools.map((p) => p.end()));
+    }
+  });
+
+  it("consume_racing_owner_reset_never_errors_and_never_leaves_two_live_links", async () => {
+    await makeOwner();
+    const url = db.pool.options.connectionString!;
+    const a = new pg.Pool({ connectionString: url, max: 1 });
+    const b = new pg.Pool({ connectionString: url, max: 1 });
+    try {
+      for (let i = 0; i < 30; i++) {
+        const t = tokenOf(await link("reset"));
+        const [c, r] = await Promise.all([
+          consumeSetupLink(a, t, { username: USER, password: PW }),
+          runOwnerReset(b, {}),
+        ]);
+        expect(r.exitCode).toBe(0);
+        if (!c.ok) expect(c.reason).toBe("used"); // superseded by the reset link
+        expect((await q("select count(*)::int as n from setup_links where purpose = 'reset' and used_at is null")).rows[0].n).toBeLessThanOrEqual(1);
+        // the superseded link must never be live
+        expect((await q("select used_at from setup_links where token_hash = encode(sha256($1::bytea), 'hex')", [t])).rows[0].used_at).not.toBeNull();
+      }
+    } finally {
+      await Promise.all([a.end(), b.end()]);
+    }
+  }, 120_000);
+
+  it("no_deadlock_between_consume_and_reset", async () => {
+    await makeOwner();
+    const url = db.pool.options.connectionString!;
+    const pools = Array.from({ length: 4 }, () => new pg.Pool({ connectionString: url, max: 1 }));
+    try {
+      for (let i = 0; i < 30; i++) {
+        const t = tokenOf(await link("reset"));
+        const res = await Promise.allSettled([
+          consumeSetupLink(pools[0]!, t, { username: USER, password: PW }),
+          runOwnerReset(pools[1]!, {}),
+          runOwnerReset(pools[2]!, {}),
+          consumeSetupLink(pools[3]!, t, { username: USER, password: PW }),
+        ]);
+        for (const r of res) expect(r.status).toBe("fulfilled");
+      }
+    } finally {
+      await Promise.all(pools.map((p) => p.end()));
+    }
+  }, 180_000);
+
   it("revokeAllSessions_is_idempotent", async () => {
     await seedSecurity();
     expect(await revokeAllSessions(db.pool)).toBe(2);
@@ -193,12 +282,18 @@ describe("audit", () => {
 
   it("guard_redacts_in_production", async () => {
     const prev = process.env.NODE_ENV;
+    const logged: string[] = [];
+    const orig = console.error;
+    console.error = (m: unknown) => void logged.push(String(m));
     (process.env as Record<string, string>).NODE_ENV = "production";
     try {
       await audit(db.pool, "x", { t: "B".repeat(43), keep: "fine" });
     } finally {
       (process.env as Record<string, string>).NODE_ENV = prev!;
+      console.error = orig;
     }
+    expect(logged.map((l) => JSON.parse(l))).toEqual([{ event: "audit.redacted", key: "t" }]);
+    expect(logged.join()).not.toContain("BBBB");
     const { rows } = await q("select detail from audit_log");
     expect(rows[0].detail).toEqual({ t: "[redacted]", keep: "fine" });
   });
@@ -236,13 +331,16 @@ describe("cli functions", () => {
     expect(r.stderr).toMatch(/no owner/i);
   });
 
-  it("reset_kills_sessions_and_totp_immediately_before_the_link_is_used", async () => {
+  it("pending_reset_keeps_totp_enforced_until_link_is_consumed", async () => {
     await makeOwner();
     await seedSecurity();
     const r = await runOwnerReset(db.pool, {});
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toMatch(/^http:\/\/localhost:3000\/setup\/[A-Za-z0-9_-]{43}\n$/);
     expect((await q("select count(*)::int as n from sessions where revoked_at is null")).rows[0].n).toBe(0);
+    expect((await q("select count(*)::int as n from recovery_codes")).rows[0].n).toBe(2);
+    expect((await q("select totp_secret from owner")).rows[0].totp_secret).toBe("SECRET");
+    expect(await consumeSetupLink(db.pool, tokenOf(r.stdout.trim()), { username: USER, password: PW })).toEqual({ ok: true });
     expect((await q("select count(*)::int as n from recovery_codes")).rows[0].n).toBe(0);
     expect((await q("select totp_secret from owner")).rows[0].totp_secret).toBeNull();
   });

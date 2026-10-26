@@ -5,6 +5,9 @@ import { atomic, type Db } from "@/server/db/stages";
 
 // Owner setup links and owner-level operations. Only SHA-256 hashes of tokens are stored. Every expiry/used comparison
 // uses the DATABASE clock (clock_timestamp()). Never put tokens, passwords, codes or links in audit detail.
+//
+// LOCK ORDER (every writer, to avoid deadlocks): 1) the owner advisory lock (lockOwner), 2) the per-purpose advisory
+// lock (createSetupLink only), 3) row locks: owner row, then setup_links rows. Never take them in another order.
 
 export type SetupPurpose = "create" | "reset";
 export type ConsumeResult =
@@ -25,27 +28,34 @@ export async function revokeAllSessions(db: Db): Promise<number> {
 
 // Anything that looks like a token, hash, code or link (a run of 32+ URL-safe chars inside a string longer than 40) is a secret.
 const SECRET_RE = /[A-Za-z0-9_-]{32,}/;
-function scrub(v: unknown, found: { n: number }): unknown {
+function scrub(v: unknown, found: string[], key = ""): unknown {
   if (typeof v === "string") {
     if (v.length > 40 && SECRET_RE.test(v)) {
-      found.n++;
+      found.push(key);
       return "[redacted]";
     }
     return v;
   }
-  if (Array.isArray(v)) return v.map((x) => scrub(x, found));
+  if (Array.isArray(v)) return v.map((x) => scrub(x, found, key));
   if (v !== null && typeof v === "object") {
-    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrub(x, found)]));
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrub(x, found, k)]));
   }
   return v;
 }
 
 export async function audit(db: Db, event: string, detail: Record<string, unknown> = {}): Promise<void> {
-  const found = { n: 0 };
+  const found: string[] = [];
   const safe = scrub(detail, found);
   // Outside production a secret-looking value is a bug in the caller: fail loudly. In production it is redacted and we carry on.
-  if (found.n > 0 && process.env.NODE_ENV !== "production") throw new Error("audit detail contains a secret-looking value");
+  if (found.length > 0 && process.env.NODE_ENV !== "production") throw new Error("audit detail contains a secret-looking value");
+  // Key names only, never values: a redaction in production means a caller bug that must not stay silent.
+  for (const key of found) console.error(JSON.stringify({ event: "audit.redacted", key }));
   await db.query("insert into audit_log (event, detail) values ($1, $2::jsonb)", [event, JSON.stringify(safe)]);
+}
+
+// Owner-level lock, first in the lock order. Transaction-scoped; works with no owner row and re-entrant in one session.
+export async function lockOwner(db: Db): Promise<void> {
+  await db.query("select pg_advisory_xact_lock(hashtext('owner_auth'))");
 }
 
 // Clears TOTP + recovery codes and revokes every session. Caller supplies the transaction.
@@ -60,7 +70,9 @@ export async function createSetupLink(db: Db, purpose: SetupPurpose, baseUrl: st
   const { token, tokenHash } = newToken();
   await atomic(db, async (qc) => {
     const q = qc as Db;
-    // A newer link replaces every older unused link of the same purpose.
+    await lockOwner(q);
+    await q.query("select pg_advisory_xact_lock(hashtext('setup_links:' || $1::text))", [purpose]);
+    // A newer link replaces every older unused link of the same purpose (expired-unused ones included, so the unique index never blocks).
     await q.query("update setup_links set used_at = clock_timestamp() where purpose = $1 and used_at is null", [purpose]);
     await q.query(
       `insert into setup_links (id, token_hash, purpose, expires_at) values ($1, $2, $3, clock_timestamp() + interval '${LINK_TTL}')`,
@@ -114,6 +126,8 @@ export async function consumeSetupLink(
   // Lock, re-verify and write in one transaction; the row lock makes concurrent consumers take turns.
   return atomic(db, async (qc): Promise<ConsumeResult> => {
     const q = qc as Db;
+    await lockOwner(q);
+    await q.query("select 1 from owner where id = 1 for update");
     const link = await readLink(q, tokenHash, true);
     const bad = refusal(link);
     if (bad || !link) return bad ?? { ok: false, reason: "invalid" };

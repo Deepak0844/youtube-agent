@@ -1,6 +1,6 @@
 import { createPool } from "@/server/db/pool";
 import { migrate } from "@/server/db/migrate";
-import { audit, clearOwnerSecurity, createSetupLink, ownerExists } from "@/server/db/owner";
+import { audit, createSetupLink, lockOwner, ownerExists, revokeAllSessions } from "@/server/db/owner";
 import { atomic, type Db } from "@/server/db/stages";
 
 // CLI logic, in-process testable. stdout carries ONLY the one-time link (one line); messages go to stderr.
@@ -27,6 +27,7 @@ export async function runOwnerCreate(db: Db, env: Record<string, string | undefi
   if (!base) return fail("APP_URL must be an http(s) URL");
   const link = await atomic(db, async (qc) => {
     const q = qc as Db; // atomic always hands over a PoolClient (or the caller's client)
+    await lockOwner(q);
     if (await ownerExists(q)) return null;
     const l = await createSetupLink(q, "create", base);
     await audit(q, "owner.create_link");
@@ -41,10 +42,11 @@ export async function runOwnerReset(db: Db, env: Record<string, string | undefin
   if (!base) return fail("APP_URL must be an http(s) URL");
   const link = await atomic(db, async (qc) => {
     const q = qc as Db; // atomic always hands over a PoolClient (or the caller's client)
-    // Lock the owner row so a concurrent reset/consume serialises with us.
+    await lockOwner(q); // lock order: owner first, then setup links (see owner.ts)
     const { rows } = await q.query("select 1 from owner where id = 1 for update");
     if (rows.length === 0) return null;
-    const { sessionsRevoked } = await clearOwnerSecurity(q); // old sessions, TOTP and recovery codes die now, not when the link is used
+    // Only sessions die now. TOTP and recovery codes stay enforced until the link is consumed, so a pending reset never weakens login.
+    const sessionsRevoked = await revokeAllSessions(q);
     const l = await createSetupLink(q, "reset", base);
     await audit(q, "owner.reset_link", { sessionsRevoked });
     return l;
