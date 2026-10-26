@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   dummyVerify,
   hashPassword,
@@ -15,14 +15,15 @@ import {
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const b64 = (n: number) => randomBytes(n).toString("base64");
 const PW = "correct-horse-battery";
+let GOOD = "";
+beforeAll(async () => {
+  GOOD = await hashPassword(PW);
+});
 
 describe("password hashing", () => {
   it("roundtrips, rejects wrong password, salts differ, reports timing", async () => {
-    const t0 = performance.now();
-    const h = await hashPassword(PW);
-    const ms = performance.now() - t0;
-    console.log(`hashPassword ms: ${ms.toFixed(0)}`);
-    expect(h).toMatch(/^scrypt\$32768\$8\$1\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+$/);
+    const h = GOOD;
+    expect(h).toMatch(/^scrypt\$131072\$8\$1\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+$/);
     const [, , , , salt = "", key = ""] = h.split("$");
     expect(Buffer.from(salt, "base64")).toHaveLength(16);
     expect(Buffer.from(key, "base64")).toHaveLength(64);
@@ -33,9 +34,34 @@ describe("password hashing", () => {
     expect(needsRehash(h)).toBe(false);
   });
 
+  it("old N=2^15 hashes still verify and need rehash", async () => {
+    const salt = randomBytes(16);
+    const { scryptSync } = await import("node:crypto");
+    const key = scryptSync(PW, salt, 64, { N: 32768, r: 8, p: 1, maxmem: 128 * 1024 * 1024 });
+    const old = `scrypt$32768$8$1$${salt.toString("base64")}$${key.toString("base64")}`;
+    expect(await verifyPassword(PW, old)).toBe(true);
+    expect(needsRehash(old)).toBe(true);
+  });
+
+  it("over_length_password_is_rejected_without_work", async () => {
+    for (const pw of ["a".repeat(1025), "😀".repeat(1025), "a".repeat(10_000_000)]) {
+      const t0 = performance.now();
+      await expect(hashPassword(pw)).rejects.toThrow(RangeError);
+      expect(await verifyPassword(pw, GOOD)).toBe(false);
+      expect(performance.now() - t0).toBeLessThan(50);
+    }
+  });
+
+  it("exactly_1024_is_accepted", async () => {
+    for (const pw of ["a".repeat(1024), "😀".repeat(1024)]) {
+      const h = await hashPassword(pw);
+      expect(await verifyPassword(pw, h)).toBe(true);
+    }
+  });
+
   it("rejects non-string password on hash; verify returns false", async () => {
     await expect(hashPassword(123 as unknown as string)).rejects.toThrow();
-    const h = await hashPassword(PW);
+    const h = GOOD;
     expect(await verifyPassword(123 as unknown as string, h)).toBe(false);
   });
 
@@ -61,7 +87,7 @@ describe("password hashing", () => {
   });
 
   it("hostile stored values return false fast without throwing", async () => {
-    const good = await hashPassword(PW);
+    const good = GOOD;
     const p = good.split("$") as [string, string, string, string, string, string];
     const s = b64(16);
     const k = b64(64);
@@ -71,22 +97,23 @@ describe("password hashing", () => {
       good + "$extra",
       [p[0], p[1], p[2], p[3], p[4]].join("$"),
       `scrypt$${2 ** 40}$8$1$${s}$${k}`,
-      `scrypt$32768$0$1$${s}$${k}`,
-      `scrypt$32768$8$1000$${s}$${k}`,
-      `scrypt$32768$1000$1$${s}$${k}`,
+      `scrypt$131072$0$1$${s}$${k}`,
+      `scrypt$131072$8$1000$${s}$${k}`,
+      `scrypt$131072$1000$1$${s}$${k}`,
       `scrypt$32769$8$1$${s}$${k}`,
       `scrypt$8192$8$1$${s}$${k}`,
       `scrypt$${2 ** 21}$8$1$${s}$${k}`,
-      `scrypt$32768$8$1$${b64(100000)}$${k}`,
-      `scrypt$32768$8$1$${s}$${b64(100000)}`,
-      `scrypt$32768$8$1$${b64(4)}$${k}`,
-      `scrypt$32768$8$1$${s}$${b64(8)}`,
-      `scrypt$32768$8$1$!!!$${k}`,
+      `scrypt$131072$8$1$${b64(100000)}$${k}`,
+      `scrypt$131072$8$1$${s}$${b64(100000)}`,
+      `scrypt$131072$8$1$${b64(4)}$${k}`,
+      `scrypt$131072$8$1$${s}$${b64(8)}`,
+      `scrypt$1048576$16$1$${s}$${k}`,
+      `scrypt$131072$8$1$!!!$${k}`,
       `scrypt$0x8000$8$1$${s}$${k}`,
-      `scrypt$32768.0$8$1$${s}$${k}`,
-      `scrypt$-32768$8$1$${s}$${k}`,
+      `scrypt$131072.0$8$1$${s}$${k}`,
+      `scrypt$-131072$8$1$${s}$${k}`,
       `scrypt$NaN$8$1$${s}$${k}`,
-      `scrypt$32768$8$1$${s}$` ,
+      `scrypt$131072$8$1$${s}$` ,
       `bcrypt$32768$8$1$${s}$${k}`,
     ];
     // flip bytes in the key
@@ -109,7 +136,7 @@ describe("password hashing", () => {
   });
 
   it("verifyPassword compares with the injected/real timing-safe equal", async () => {
-    const h = await hashPassword(PW);
+    const h = GOOD;
     const equal = vi.fn((a: Uint8Array, b: Uint8Array) => Buffer.from(a).equals(Buffer.from(b)));
     expect(await verifyPassword(PW, h, { equal })).toBe(true);
     expect(equal).toHaveBeenCalledTimes(1);

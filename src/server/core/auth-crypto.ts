@@ -1,13 +1,17 @@
 // Password hashing and token helpers. Pure over node:crypto (no IO).
 import { createHash, randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
 
-const N = 32768; // 2^15
+const N = 131072; // 2^17 (OWASP minimum for scrypt, r=8 p=1)
 const R = 8;
 const P = 1;
 const SALT_BYTES = 16;
 const KEY_BYTES = 64;
-// Hard cap on scrypt memory (128*N*r) accepted from a stored value: 64 MiB (current cost is 32 MiB).
-const MAX_MEM = 64 * 1024 * 1024;
+// Hard cap on scrypt memory (128*N*r) accepted from a stored value: 256 MiB (current cost is 128 MiB).
+const MAX_MEM = 256 * 1024 * 1024;
+const MAX_PW_CODEPOINTS = 1024;
+
+/** True if pw has more than 1024 code points; O(1) for huge strings (code points <= UTF-16 units). */
+const tooLong = (pw: string) => pw.length > 2 * MAX_PW_CODEPOINTS || (pw.length > MAX_PW_CODEPOINTS && [...pw].length > MAX_PW_CODEPOINTS);
 const MAX_STORED_LEN = 1024;
 
 type Params = { N: number; r: number; p: number; salt: Buffer; key: Buffer };
@@ -18,7 +22,7 @@ const norm = (pw: string) => pw.normalize("NFKC");
 
 function derive(pw: string, salt: Uint8Array, keyLen: number, n: number, r: number, p: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    scrypt(norm(pw), salt, keyLen, { N: n, r, p, maxmem: MAX_MEM * 2 }, (e, k) => (e ? reject(e) : resolve(k)));
+    scrypt(norm(pw), salt, keyLen, { N: n, r, p, maxmem: MAX_MEM * 2 + 1024 * 1024 }, (e, k) => (e ? reject(e) : resolve(k)));
   });
 }
 
@@ -55,6 +59,7 @@ function parse(stored: unknown): Params | null {
 
 export async function hashPassword(pw: string): Promise<string> {
   if (typeof pw !== "string") throw new TypeError("password must be a string");
+  if (tooLong(pw)) throw new RangeError("password too long");
   const salt = randomBytes(SALT_BYTES);
   const key = await derive(pw, salt, KEY_BYTES, N, R, P);
   return `scrypt$${N}$${R}$${P}$${salt.toString("base64")}$${key.toString("base64")}`;
@@ -63,7 +68,7 @@ export async function hashPassword(pw: string): Promise<string> {
 /** `opts.equal` is a test-only seam; production always uses crypto.timingSafeEqual. */
 export async function verifyPassword(pw: string, stored: string, opts: { equal?: Equal } = {}): Promise<boolean> {
   try {
-    if (typeof pw !== "string") return false;
+    if (typeof pw !== "string" || tooLong(pw)) return false;
     const s = parse(stored);
     if (!s) return false;
     const key = await derive(pw, s.salt, s.key.length, s.N, s.r, s.p);
