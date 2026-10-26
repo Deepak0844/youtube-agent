@@ -33,5 +33,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "remotion", "infra", "tests/fixtures/remotion-spike", "docs", ".claude"]
+  "exclude": ["node_modules", "remotion", "infra", "tests/fixtures/remotion-spike", "tests/fixtures/remotion-tsx", "docs", ".claude"]
 }
