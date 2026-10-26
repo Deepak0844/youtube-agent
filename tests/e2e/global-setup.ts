@@ -1,3 +1,4 @@
+import os from "node:os";
 import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -28,6 +29,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     REDIS_URL: infra.redisUrl,
     TRUST_PROXY: "1",
     AUTH_MAX_IN_FLIGHT: "1",
+    UPLOAD_MAX_BYTES: String(50 * 1024 * 1024), // lets the oversize test stay small
+    UPLOAD_DIR: path.join(os.tmpdir(), `ytstudio-e2e-uploads-${port}`),
   };
   process.env.E2E_DATABASE_URL = infra.databaseUrl; // workers inherit it (tests/e2e/fixtures/sessions.ts)
 
