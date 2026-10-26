@@ -54,7 +54,15 @@ With `TRUST_PROXY` unset, Next.js gives the app no trustworthy client address, s
 ### Database roles (run once per database)
 
 1. Start Postgres (OrbStack/compose) and create an empty database; keep a superuser URL for it.
-2. `BOOTSTRAP_DATABASE_URL=<superuser url> YTSTUDIO_OWNER_PASSWORD=... YTSTUDIO_APP_PASSWORD=... npm run db:bootstrap` (idempotent; re-running rotates both passwords).
+2. `BOOTSTRAP_DATABASE_URL=<superuser url> YTSTUDIO_OWNER_PASSWORD=... YTSTUDIO_APP_PASSWORD=... npm run db:bootstrap`.
 3. `MIGRATE_DATABASE_URL=<ytstudio_owner url> npm run db:migrate`, then run the app with `DATABASE_URL=<ytstudio_app url>`.
 
-A database created before this change, with tables owned by another user, must be re-owned to `ytstudio_owner` first (or recreated).
+What the bootstrap changes (idempotent, but each run does ALL of this again): it creates/updates both roles and **rotates both passwords**, makes `ytstudio_owner` the owner of the database and of schema `public`, and **revokes all PUBLIC rights** on the database and the schema. It aborts, naming them, if schema `public` already holds tables, sequences or views owned by any other role (re-own them to `ytstudio_owner` or recreate the database), because migration 0004's default grants would otherwise silently not apply.
+
+Password handling: the passwords are sent as parameters and the bootstrap transaction turns off statement and parameter logging, so a failure should not put them in the server log. Limits: a server with `pg_stat_statements`, `auto_explain` or a log-shipping proxy in front can still capture the `CREATE ROLE ... PASSWORD` statement; rotate the passwords afterwards if you cannot rule that out.
+
+New tables created by later migrations get full SELECT/INSERT/UPDATE/DELETE for the app role automatically. Any ledger-like table (audit, history, money) needs an explicit `revoke update, delete, truncate ... from ytstudio_app` in its migration; `audit_log` and `schema_migrations` already have it. `spend_intents` and `upload_log` have full DML on purpose.
+
+### Scheduled retention (owner side)
+
+The app role cannot delete `audit_log`, so the 90-day audit retention is a **scheduled owner-side job**: `npm run auth:purge` (deletes dead sessions, login attempts older than 30 days and audit rows older than 90 days). It needs only `MIGRATE_DATABASE_URL`. Run it daily: either load `infra/com.ytstudio.auth-purge.plist` with launchd (03:15 daily), or cron, e.g. `15 3 * * * cd /path/to/youtube-agent && MIGRATE_DATABASE_URL=... npm run auth:purge`. The web app also purges sessions and attempts (not audit) at most hourly after a successful login, using only its own app role.

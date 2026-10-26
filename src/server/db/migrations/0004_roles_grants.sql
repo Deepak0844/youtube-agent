@@ -6,6 +6,9 @@ alter default privileges for role ytstudio_owner in schema public grant usage, s
 grant select, insert, update, delete on all tables in schema public to ytstudio_app;
 grant usage, select on all sequences in schema public to ytstudio_app;
 
+-- CHECKLIST for every future migration that adds a table: the default above gives the app full DML. A ledger-like table
+-- (audit, history, money) must get an explicit `revoke update, delete, truncate ... from ytstudio_app`. spend_intents and
+-- upload_log keep full DML on purpose (they are mutable state machines), as does everything else not listed below.
 -- Tighten: audit history is append-only for the app; the migration ledger is read-only.
 revoke update, delete, truncate on audit_log from ytstudio_app;
 revoke insert, update, delete, truncate on schema_migrations from ytstudio_app;

@@ -12,6 +12,11 @@ export async function bootstrapRoles(superPool: pg.Pool, pw: { ownerPassword: st
   const client = await superPool.connect();
   try {
     await client.query("begin");
+    // Keep the passwords out of the server log if a statement fails (superuser-settable, transaction-local).
+    await client.query("set local log_statement = 'none'");
+    await client.query("set local log_min_error_statement = 'panic'");
+    await client.query("set local log_parameter_max_length_on_error = 0");
+    await client.query("set local log_parameter_max_length = 0");
     await client.query("select set_config('bootstrap.owner_pw', $1, true), set_config('bootstrap.app_pw', $2, true)", [pw.ownerPassword, pw.appPassword]);
     await client.query(sql);
     await client.query("commit");

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { migrate } from "@/server/db/migrate";
 import { APP_PW, OWNER_PW, withTestDb, type TestDb } from "../support/db";
 import { bootstrapRoles } from "@/server/db/bootstrap";
+import { purgeExpired } from "@/server/db/auth";
 
 let db: TestDb;
 beforeAll(async () => {
@@ -85,5 +86,53 @@ describe("db roles and grants", () => {
   it("public_has_no_create_on_schema", async () => {
     const r = await db.ownerPool.query("select has_schema_privilege('public', 'public', 'CREATE') c");
     expect(r.rows[0].c).toBe(false);
+  });
+
+  it("app_role_has_no_references_trigger_or_truncate_on_any_table", async () => {
+    const { rows } = await db.ownerPool.query<{ t: string; r: boolean; g: boolean; x: boolean }>(
+      `select tablename t,
+              has_table_privilege('ytstudio_app', format('%I.%I', schemaname, tablename), 'REFERENCES') r,
+              has_table_privilege('ytstudio_app', format('%I.%I', schemaname, tablename), 'TRIGGER') g,
+              has_table_privilege('ytstudio_app', format('%I.%I', schemaname, tablename), 'TRUNCATE') x
+         from pg_tables where schemaname = 'public'`,
+    );
+    expect(rows.length).toBeGreaterThan(5);
+    expect(rows.filter((x) => x.r || x.g || x.x)).toEqual([]);
+  });
+
+  it("bootstrap_aborts_when_public_holds_an_object_owned_by_someone_else", async () => {
+    await db.superPool.query("create table foreign_owned_t (id int)");
+    try {
+      await expect(bootstrapRoles(db.superPool, { ownerPassword: OWNER_PW, appPassword: APP_PW })).rejects.toThrow(/foreign_owned_t/);
+    } finally {
+      await db.superPool.query("drop table foreign_owned_t");
+    }
+    await bootstrapRoles(db.superPool, { ownerPassword: OWNER_PW, appPassword: APP_PW }); // clean again
+  });
+});
+
+describe("audit retention", () => {
+  const seedOld = async () => {
+    await db.ownerPool.query("delete from audit_log");
+    await db.ownerPool.query("insert into audit_log (at, event) values (now() - interval '91 days', 'old'), (now() - interval '89 days', 'recent')");
+  };
+  const events = async () => (await db.ownerPool.query("select event from audit_log order by at")).rows.map((r) => r.event);
+
+  it("login_triggered_purge_as_app_role_succeeds_and_leaves_audit_rows", async () => {
+    await seedOld();
+    await expect(purgeExpired(db.pool, { audit: false })).resolves.toMatchObject({ audit: 0 });
+    expect(await events()).toEqual(["old", "recent"]);
+  });
+
+  it("app_role_cannot_run_the_audit_part_of_the_purge", async () => {
+    await seedOld();
+    await expect(purgeExpired(db.pool)).rejects.toMatchObject(denied);
+    expect(await events()).toEqual(["old", "recent"]);
+  });
+
+  it("owner_side_purge_deletes_audit_rows_older_than_90_days", async () => {
+    await seedOld();
+    await expect(purgeExpired(db.ownerPool)).resolves.toMatchObject({ audit: 1 });
+    expect(await events()).toEqual(["recent"]);
   });
 });

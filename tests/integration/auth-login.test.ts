@@ -626,6 +626,8 @@ describe("purge", () => {
     expect((await attempt({ ip: "1.0.0.2" })).ok).toBe(true);
     await tick();
     expect(purge).toHaveBeenCalledTimes(1);
+    // the app role may not delete audit_log, so the login-triggered purge must skip it
+    expect(purge).toHaveBeenCalledWith(expect.anything(), { audit: false });
     expect((await attempt({ ip: "1.0.0.3" })).ok).toBe(true);
     await tick();
     expect(purge).toHaveBeenCalledTimes(1);

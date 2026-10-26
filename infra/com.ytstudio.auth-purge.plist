@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Daily owner-side retention job (sessions, login attempts, audit_log older than 90 days).
+     Edit the two paths and MIGRATE_DATABASE_URL, then: cp to ~/Library/LaunchAgents/ && launchctl load <file>.
+     The file holds owner credentials: chmod 600 it. Never give MIGRATE_DATABASE_URL to the web app or worker. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.ytstudio.auth-purge</string>
+  <key>WorkingDirectory</key><string>/PATH/TO/youtube-agent</string>
+  <key>ProgramArguments</key>
+  <array><string>/usr/local/bin/npm</string><string>run</string><string>auth:purge</string></array>
+  <key>EnvironmentVariables</key>
+  <dict><key>MIGRATE_DATABASE_URL</key><string>postgres://ytstudio_owner:PASSWORD@127.0.0.1:5432/DBNAME</string></dict>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>15</integer></dict>
+  <key>StandardErrorPath</key><string>/tmp/ytstudio-auth-purge.err</string>
+</dict>
+</plist>
