@@ -1,24 +1,29 @@
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { totpCode } from "@/server/core/totp";
+import { generateMasterKey, makeKeyring } from "@/server/core/vault-crypto";
 import { consumeSetupLink, createSetupLink } from "@/server/db/owner";
 import {
   beginTotpEnrollment,
   disableTotp,
   enableTotp,
   regenerateRecoveryCodes,
+  setTotpKeyring,
   totpEnabled,
   unusedRecoveryCodeCount,
   useRecoveryCode as redeemRecoveryCode,
   verifyOwnerTotp,
 } from "@/server/db/totp";
+import { getSecret } from "@/server/db/vault";
 import { withTestDb, type TestDb } from "../support/db";
 
 const BASE = "http://localhost:3000";
 const PW = "correct horse battery staple";
 let db: TestDb;
+const ring = makeKeyring(generateMasterKey());
 beforeAll(async () => {
   db = await withTestDb();
+  setTotpKeyring(() => ring);
 });
 beforeEach(async () => {
   await db.reset();
@@ -52,20 +57,20 @@ describe("enrollment", () => {
     expect(uri).toContain(`secret=${secret}`);
     expect(uri).toContain("alice");
     const o = (await q("select * from owner")).rows[0];
-    expect(o.totp_pending_secret).toBe(secret);
+    expect(o.totp_pending_secret).toBe("vault:totp.pending");
     expect(o.totp_secret).toBeNull();
     expect(await totpEnabled(db.pool)).toBe(false);
     const again = await beginTotpEnrollment(db.pool);
     expect(again.secret).not.toBe(secret);
-    expect((await q("select totp_pending_secret from owner")).rows[0].totp_pending_secret).toBe(again.secret);
+    expect((await q("select totp_pending_secret from owner")).rows[0].totp_pending_secret).toBe("vault:totp.pending");
   });
 
   it("enroll_and_confirm_enables_and_returns_ten_codes", async () => {
-    const { secret, codes } = await enable();
+    const { codes } = await enable();
     expect(codes).toHaveLength(10);
     expect(await totpEnabled(db.pool)).toBe(true);
     const o = (await q("select * from owner")).rows[0];
-    expect(o.totp_secret).toBe(secret);
+    expect(o.totp_secret).toBe("vault:totp.secret");
     expect(o.totp_pending_secret).toBeNull();
     expect(Number(o.totp_last_step)).toBe(step);
     expect(await unusedRecoveryCodeCount(db.pool)).toBe(10);
@@ -79,7 +84,8 @@ describe("enrollment", () => {
     expect(await enableTotp(db.pool, totpCode(secret, NOW + 5 * 30000), NOW)).toEqual({ ok: false });
     expect(await totpEnabled(db.pool)).toBe(false);
     expect(await unusedRecoveryCodeCount(db.pool)).toBe(0);
-    expect((await q("select totp_pending_secret from owner")).rows[0].totp_pending_secret).toBe(secret);
+    expect((await q("select totp_pending_secret from owner")).rows[0].totp_pending_secret).toBe("vault:totp.pending");
+    expect(await getSecret(db.pool, ring, "totp.pending")).toBe(secret); // a wrong code keeps the same pending secret
   });
 
   it("enable_without_pending_fails_and_begin_refused_when_enabled", async () => {

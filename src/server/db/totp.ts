@@ -1,22 +1,69 @@
 import { hashToken, newRecoveryCodes, normalizeRecoveryCode } from "@/server/core/auth-crypto";
 import { uuidv7 } from "@/server/core/ids";
 import { generateSecret, otpauthUri, verifyTotp } from "@/server/core/totp";
+import { VaultError, type Keyring } from "@/server/core/vault-crypto";
+import { loadKeyring } from "@/server/db/master-key";
 import { audit, lockOwner } from "@/server/db/owner";
 import { atomic, type Db } from "@/server/db/stages";
+import { getSecret, putSecret } from "@/server/db/vault";
 
-// TOTP enrollment/verification and recovery codes. The TOTP secret is stored RAW in owner.totp_secret / totp_pending_secret
-// until the Phase 1 vault exists; never log it or put it in audit detail. Recovery codes are stored only as SHA-256 hashes.
+// TOTP enrollment/verification and recovery codes. The TOTP secret lives only in the vault (secrets rows SECRET_NAME / PENDING_NAME);
+// owner.totp_secret / totp_pending_secret hold a marker and owner.totp_encrypted = true. Any other non-null value is a pre-vault
+// plaintext row: it is never used (fail closed) until scripts/totp-backfill.ts encrypts it. Never log a secret or put it in audit detail.
+// Design note: the owner columns hold a marker and the ciphertext lives in separate `secrets` rows (not in the owner columns).
+// Rolling a row back to an older ciphertext is a documented residual risk (vault-crypto.ts, no version in the AAD), and an attacker
+// with app-role DML on these tables already has full compromise. A deleted `totp.secret` row does NOT turn 2FA off: totpEnabled
+// keys off the owner marker, and the missing row makes every second factor fail closed.
+// Recovery codes are stored only as SHA-256 hashes.
 // Lock order follows owner.ts: owner advisory lock first, then the owner row (FOR UPDATE).
 
 const ISSUER = "YT Studio";
-type Row = { username: string; totp_secret: string | null; totp_pending_secret: string | null; totp_last_step: string | null };
+export const SECRET_NAME = "totp.secret";
+export const PENDING_NAME = "totp.pending";
+export const SECRET_MARKER = `vault:${SECRET_NAME}`;
+export const PENDING_MARKER = `vault:${PENDING_NAME}`;
+
+/** TOTP cannot be checked because the vault is unusable or the row is not in vault form. Message is fixed: no key or secret material. */
+export class TotpVaultError extends Error {
+  constructor() {
+    super("vault unavailable: two-factor verification is refused (check VAULT_MASTER_KEY and run db:migrate)");
+    this.name = "TotpVaultError";
+  }
+}
+
+let provider: () => Keyring = () => loadKeyring();
+/** Test seam: inject a keyring source (null restores the environment-backed default). */
+export function setTotpKeyring(p: (() => Keyring) | null): void {
+  provider = p ?? (() => loadKeyring());
+}
+/** Resolves the keyring or throws TotpVaultError, whatever the cause (the cause text is dropped on purpose). */
+export function totpKeyring(): Keyring {
+  try {
+    return provider();
+  } catch {
+    throw new TotpVaultError();
+  }
+}
+
+type Row = { username: string; totp_secret: string | null; totp_pending_secret: string | null; totp_last_step: string | null; totp_encrypted: boolean };
 
 async function lockedOwner(q: Db): Promise<Row | null> {
   await lockOwner(q);
   const { rows } = await q.query<Row>(
-    "select username, totp_secret, totp_pending_secret, totp_last_step from owner where id = 1 for update",
+    "select username, totp_secret, totp_pending_secret, totp_last_step, totp_encrypted from owner where id = 1 for update",
   );
   return rows[0] ?? null;
+}
+
+/** The enabled secret in plaintext, only if the row is in vault form. Any failure is a TotpVaultError. */
+async function readSecret(q: Db, o: Row, ring: Keyring): Promise<string> {
+  if (!o.totp_encrypted || o.totp_secret !== SECRET_MARKER) throw new TotpVaultError();
+  try {
+    return await getSecret(q, ring, SECRET_NAME);
+  } catch (e) {
+    if (e instanceof VaultError) throw new TotpVaultError();
+    throw e;
+  }
 }
 
 const lastStep = (r: Row): number | null => (r.totp_last_step === null ? null : Number(r.totp_last_step));
@@ -45,8 +92,10 @@ export async function beginTotpEnrollment(db: Db): Promise<{ secret: string; uri
     const o = await lockedOwner(q);
     if (!o) throw new Error("no owner");
     if (o.totp_secret !== null) throw new Error("totp already enabled");
+    const ring = totpKeyring();
     const secret = generateSecret();
-    await q.query("update owner set totp_pending_secret = $1, updated_at = clock_timestamp() where id = 1", [secret]);
+    await putSecret(q, ring, PENDING_NAME, secret, { hint: false });
+    await q.query("update owner set totp_pending_secret = $1, updated_at = clock_timestamp() where id = 1", [PENDING_MARKER]);
     return { secret, uri: otpauthUri(secret, o.username, ISSUER) };
   });
 }
@@ -60,12 +109,22 @@ export async function enableTotp(
   return atomic(db, async (qc) => {
     const q = qc as Db;
     const o = await lockedOwner(q);
-    if (!o || o.totp_secret !== null || o.totp_pending_secret === null) return { ok: false as const };
-    const v = verifyTotp(o.totp_pending_secret, code, nowMs, null);
+    if (!o || o.totp_secret !== null || o.totp_pending_secret !== PENDING_MARKER) return { ok: false as const }; // legacy plaintext pending: restart enrollment
+    const ring = totpKeyring();
+    let pending: string;
+    try {
+      pending = await getSecret(q, ring, PENDING_NAME);
+    } catch (e) {
+      if (e instanceof VaultError) throw new TotpVaultError();
+      throw e;
+    }
+    const v = verifyTotp(pending, code, nowMs, null);
     if (!v.ok) return { ok: false as const };
+    await putSecret(q, ring, SECRET_NAME, pending, { hint: false });
+    await q.query("delete from secrets where name = $1", [PENDING_NAME]);
     await q.query(
-      "update owner set totp_secret = totp_pending_secret, totp_pending_secret = null, totp_last_step = $1, updated_at = clock_timestamp() where id = 1",
-      [v.step],
+      "update owner set totp_secret = $2, totp_encrypted = true, totp_pending_secret = null, totp_last_step = $1, updated_at = clock_timestamp() where id = 1",
+      [v.step, SECRET_MARKER],
     );
     const recoveryCodes = await storeCodes(q);
     await audit(q, "totp.enabled");
@@ -75,7 +134,8 @@ export async function enableTotp(
 
 async function verifyLocked(q: Db, o: Row, code: string, nowMs: number): Promise<boolean> {
   if (o.totp_secret === null) return false;
-  const v = verifyTotp(o.totp_secret, code, nowMs, lastStep(o));
+  const secret = await readSecret(q, o, totpKeyring());
+  const v = verifyTotp(secret, code, nowMs, lastStep(o));
   if (!v.ok) return false;
   const r = await q.query(
     "update owner set totp_last_step = $1 where id = 1 and (totp_last_step is null or totp_last_step < $1)",
@@ -84,7 +144,7 @@ async function verifyLocked(q: Db, o: Row, code: string, nowMs: number): Promise
   return (r.rowCount ?? 0) === 1;
 }
 
-/** Verifies a login TOTP code and burns its step. Concurrent use of one code: exactly one caller gets true. */
+/** Verifies a login TOTP code and burns its step. Throws TotpVaultError (fail closed) when the vault cannot open the secret. Concurrent use of one code: exactly one caller gets true. */
 export async function verifyOwnerTotp(db: Db, code: string, nowMs: number = Date.now()): Promise<boolean> {
   return atomic(db, async (qc) => {
     const q = qc as Db;
@@ -113,8 +173,9 @@ export async function disableTotp(db: Db, opts: { proof: string; nowMs?: number 
     const ok = (await verifyLocked(q, o, opts.proof, opts.nowMs ?? Date.now())) || (await useRecoveryCode(q, opts.proof));
     if (!ok) return false;
     await q.query(
-      "update owner set totp_secret = null, totp_pending_secret = null, totp_last_step = null, updated_at = clock_timestamp() where id = 1",
+      "update owner set totp_secret = null, totp_pending_secret = null, totp_encrypted = false, totp_last_step = null, updated_at = clock_timestamp() where id = 1",
     );
+    await q.query("delete from secrets where name in ($1, $2)", [SECRET_NAME, PENDING_NAME]);
     await q.query("delete from recovery_codes");
     await audit(q, "totp.disabled");
     return true;

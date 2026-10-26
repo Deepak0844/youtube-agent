@@ -42,6 +42,8 @@ export async function POST(request: Request) {
       return json({ error: "busy" }, 503, { "retry-after": "2" });
     case "locked":
       return json({ error: "locked" }, 429, { "retry-after": String(Math.max(1, Math.ceil((r.retryAfterMs ?? 60_000) / 1000))) });
+    case "vault":
+      return json({ error: "vault_unavailable" }, 503);
     case "needs_totp":
       return json({ error: "totp_required" }, 401);
     default:

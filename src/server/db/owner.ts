@@ -42,7 +42,8 @@ export async function lockOwner(db: Db): Promise<void> {
 
 // Clears TOTP + recovery codes and revokes every session. Caller supplies the transaction.
 export async function clearOwnerSecurity(db: Db): Promise<{ sessionsRevoked: number }> {
-  await db.query("update owner set totp_secret = null, totp_pending_secret = null, totp_last_step = null, updated_at = clock_timestamp() where id = 1");
+  await db.query("update owner set totp_secret = null, totp_pending_secret = null, totp_encrypted = false, totp_last_step = null, updated_at = clock_timestamp() where id = 1");
+  await db.query("delete from secrets where name in ('totp.secret', 'totp.pending')");
   await db.query("delete from recovery_codes");
   return { sessionsRevoked: await revokeAllSessions(db) };
 }
