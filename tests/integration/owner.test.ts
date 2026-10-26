@@ -348,7 +348,7 @@ describe("cli functions", () => {
 
 describe("cli process", () => {
   it("owner_create_script_wires_up_and_exits_correctly", async () => {
-    const env = { ...process.env, DATABASE_URL: db.pool.options.connectionString!, APP_URL: "" };
+    const env = { ...process.env, DATABASE_URL: db.pool.options.connectionString!, MIGRATE_DATABASE_URL: db.ownerUrl, APP_URL: "" };
     delete (env as Record<string, string | undefined>).APP_URL;
     const ok = await run("npx", ["tsx", "scripts/owner-create.ts"], { env, timeout: 90_000 });
     expect(ok.stdout).toMatch(/^http:\/\/localhost:3000\/setup\/[A-Za-z0-9_-]{43}\n$/);
@@ -359,7 +359,7 @@ describe("cli process", () => {
       stderr: expect.stringMatching(/owner already exists/i),
     });
     const noDb = { ...process.env };
-    delete (noDb as Record<string, string | undefined>).DATABASE_URL;
-    await expect(run("npx", ["tsx", "scripts/owner-create.ts"], { env: noDb, timeout: 90_000 })).rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/DATABASE_URL/) });
+    delete (noDb as Record<string, string | undefined>).MIGRATE_DATABASE_URL;
+    await expect(run("npx", ["tsx", "scripts/owner-create.ts"], { env: noDb, timeout: 90_000 })).rejects.toMatchObject({ code: 1, stderr: expect.stringMatching(/MIGRATE_DATABASE_URL/) });
   }, 240_000);
 });

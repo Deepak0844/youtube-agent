@@ -27,7 +27,7 @@ beforeEach(async () => {
   await db.reset();
   provider = createFakeProvider({ pool: db.pool });
   await provider.init();
-  await db.pool.query("truncate fake_provider_calls");
+  await db.ownerPool.query("truncate fake_provider_calls");
   await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('g', 100000000)");
   queue = createJobQueue(db.redisUrl, "stages", `disasters-${process.pid}-${queueN++}`);
   closers = [() => queue.close()];

@@ -12,6 +12,15 @@ import { startInfra } from "../support/infra";
 import { OWNER_PASSWORD, OWNER_USERNAME, SEED_IP, STORAGE_STATE } from "./fixtures/owner";
 
 const run = promisify(execFile);
+const E2E_OWNER_PW = "e2e-owner-pw";
+const E2E_APP_PW = "e2e-app-pw";
+
+function withRole(url: string, user: string, password: string): string {
+  const u = new URL(url);
+  u.username = user;
+  u.password = password;
+  return u.toString();
+}
 
 // The app needs the infra URLs at start, and Playwright starts `webServer` before globalSetup, so the server is spawned
 // here instead. Set E2E_SKIP_BUILD=1 to reuse an existing `.next` build.
@@ -23,22 +32,24 @@ const run = promisify(execFile);
 export default async function globalSetup(): Promise<() => Promise<void>> {
   const infra = await startInfra(); // fails fast, naming OrbStack, when Docker is down
   const port = process.env.E2E_PORT!;
+  // The server runs as the least-privilege app role; migrations run as the owner (see migrate-cli.mts).
+  const appUrl = withRole(infra.databaseUrl, "ytstudio_app", E2E_APP_PW);
   const env = {
     ...process.env,
-    DATABASE_URL: infra.databaseUrl,
+    DATABASE_URL: appUrl,
     REDIS_URL: infra.redisUrl,
     TRUST_PROXY: "1",
     AUTH_MAX_IN_FLIGHT: "1",
     UPLOAD_MAX_BYTES: String(50 * 1024 * 1024), // lets the oversize test stay small
     UPLOAD_DIR: path.join(os.tmpdir(), `ytstudio-e2e-uploads-${port}`),
   };
-  process.env.E2E_DATABASE_URL = infra.databaseUrl; // workers inherit it (tests/e2e/fixtures/sessions.ts)
+  process.env.E2E_DATABASE_URL = appUrl; // workers inherit it (tests/e2e/fixtures/sessions.ts)
 
   try {
     if (!process.env.E2E_SKIP_BUILD) {
       await run("npx", ["next", "build"], { env, maxBuffer: 64 * 1024 * 1024 });
     }
-    await seedOwner(infra.databaseUrl);
+    await seedOwner(infra.databaseUrl, appUrl);
     const server = await startServer("npx", ["next", "start", "-H", "127.0.0.1", "-p", port], {
       env,
       url: `http://127.0.0.1:${port}/healthz`,
@@ -56,10 +67,18 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
 // Migrate, create the fixed owner through the real setup-link path, log in once through the real login() and save the
 // session as a Playwright storageState for the ui-* projects.
-async function seedOwner(databaseUrl: string): Promise<void> {
-  const pool = createPool(databaseUrl);
+async function seedOwner(superUrl: string, appUrl: string): Promise<void> {
+  const pool = createPool(appUrl);
   try {
-    await run("npx", ["tsx", "tests/e2e/fixtures/migrate-cli.mts"], { env: { ...process.env, DATABASE_URL: databaseUrl } });
+    await run("npx", ["tsx", "tests/e2e/fixtures/migrate-cli.mts"], {
+      env: {
+        ...process.env,
+        BOOTSTRAP_DATABASE_URL: superUrl,
+        MIGRATE_DATABASE_URL: withRole(superUrl, "ytstudio_owner", E2E_OWNER_PW),
+        YTSTUDIO_OWNER_PASSWORD: E2E_OWNER_PW,
+        YTSTUDIO_APP_PASSWORD: E2E_APP_PW,
+      },
+    });
     const link = await createSetupLink(pool, "create", "http://127.0.0.1");
     const consumed = await consumeSetupLink(pool, link.slice(link.lastIndexOf("/") + 1), { username: OWNER_USERNAME, password: OWNER_PASSWORD });
     if (!consumed.ok) throw new Error(`e2e owner seeding failed: ${consumed.reason}`);

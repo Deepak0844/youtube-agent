@@ -23,3 +23,10 @@ export function getPool(): pg.Pool {
   if (!url) throw new Error("DATABASE_URL is not set; the web app cannot reach Postgres");
   return (g[KEY] = createPool(url));
 }
+
+// Owner-role pool for migrations and maintenance CLIs (audit retention deletes). Not cached: callers end() it.
+export function getMigratePool(): pg.Pool {
+  const url = process.env.MIGRATE_DATABASE_URL;
+  if (!url) throw new Error("MIGRATE_DATABASE_URL is not set; migrations and maintenance run as the owner role");
+  return createPool(url);
+}

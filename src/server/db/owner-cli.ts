@@ -1,5 +1,5 @@
 import { purgeExpired } from "@/server/db/auth";
-import { createPool } from "@/server/db/pool";
+import { getMigratePool } from "@/server/db/pool";
 import { migrate } from "@/server/db/migrate";
 import { audit, createSetupLink, lockOwner, ownerExists, revokeAllSessions } from "@/server/db/owner";
 import { atomic, type Db } from "@/server/db/stages";
@@ -62,13 +62,13 @@ export async function runAuthPurge(db: Db): Promise<CliResult> {
 }
 
 export async function cliMain(run: (db: Db, env: Record<string, string | undefined>) => Promise<CliResult>): Promise<void> {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    process.stderr.write("DATABASE_URL is not set\n");
+  // Owner role: these CLIs migrate and purge audit_log, which the app role may not do.
+  if (!process.env.MIGRATE_DATABASE_URL) {
+    process.stderr.write("MIGRATE_DATABASE_URL is not set\n");
     process.exitCode = 1;
     return;
   }
-  const pool = createPool(url);
+  const pool = getMigratePool();
   try {
     await migrate(pool);
     const r = await run(pool, process.env);

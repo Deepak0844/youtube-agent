@@ -51,7 +51,8 @@ export function createFakeProvider(opts: { pool?: pg.Pool; script?: Record<strin
     },
     async init() {
       if (!opts.pool) return;
-      await opts.pool.query("create table if not exists fake_provider_calls (call_key text not null, at timestamptz not null default now())");
+      // The table is created by withTestDb as the owner (the app role may not run DDL); this only checks it is there.
+      await opts.pool.query("select 1 from fake_provider_calls limit 0");
     },
     async call(key) {
       calls.set(key, (calls.get(key) ?? 0) + 1);

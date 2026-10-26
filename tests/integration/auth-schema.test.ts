@@ -76,7 +76,7 @@ describe("auth schema", () => {
 
   it("migrate_is_idempotent_with_all_files", async () => {
     const files = readdirSync("src/server/db/migrations").filter((f) => f.endsWith(".sql")).sort();
-    await Promise.all([migrate(db.pool), migrate(db.pool)]);
+    await Promise.all([migrate(db.ownerPool), migrate(db.ownerPool)]);
     const { rows } = await db.pool.query<{ name: string }>("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual(files);
     expect(files).toContain("0001_owner_auth.sql");
