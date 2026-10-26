@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId, useState } from "react";
+import { useActionState, useId, useRef, useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle, AlertDialogTrigger } from "@/ui/primitives/alert-dialog";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
@@ -32,6 +32,7 @@ const noState: KeyActionState = {};
 export function KeyRow(p: KeyRowProps) {
   const uid = useId();
   const [editing, setEditing] = useState(false);
+  const removeForm = useRef<HTMLFormElement>(null);
   const [setState, setAction, setPending] = useActionState(async (prev: KeyActionState, form: FormData) => {
     const r = await setKeyAction(prev, form);
     if (r.kind === "saved") setEditing(false); // close the editor once the key is stored
@@ -92,7 +93,7 @@ export function KeyRow(p: KeyRowProps) {
             <Button variant="secondary" disabled={!p.canSave || busy} aria-expanded={showInput} onClick={() => setEditing((v) => !v)} aria-label={`Replace ${p.label} key`}>
               {editing ? "Cancel" : "Replace"}
             </Button>
-            <form id={`${uid}-remove`} action={removeAction}>
+            <form ref={removeForm} action={removeAction}>
               <input type="hidden" name="provider" value={p.id} />
             </form>
             <AlertDialog>
@@ -108,7 +109,7 @@ export function KeyRow(p: KeyRowProps) {
                 </AlertDialogDescription>
                 <div className="flex flex-wrap justify-end gap-2">
                   <AlertDialogCancel>Keep key</AlertDialogCancel>
-                  <AlertDialogAction type="submit" form={`${uid}-remove`}>
+                  <AlertDialogAction onClick={() => removeForm.current?.requestSubmit()}>
                     Remove key
                   </AlertDialogAction>
                 </div>
