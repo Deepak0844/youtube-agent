@@ -44,7 +44,7 @@ describe("schema", () => {
     await migrate(db.pool);
     await Promise.all([migrate(db.pool), migrate(db.pool), migrate(db.pool)]);
     const { rows } = await db.pool.query("select name from schema_migrations");
-    expect(rows).toHaveLength(1);
+    expect(rows.map((r: { name: string }) => r.name).sort()).toEqual(["0000_spike_c.sql", "0001_owner_auth.sql"]);
   });
 
   it("status_check_constraints_reject_unknown_values", async () => {
@@ -135,6 +135,6 @@ describe("schema", () => {
     expect(released).toEqual([true]);
     await migrate(db.pool);
     const { rows } = await db.pool.query("select name from schema_migrations");
-    expect(rows).toHaveLength(1);
+    expect(rows.map((r: { name: string }) => r.name).sort()).toEqual(["0000_spike_c.sql", "0001_owner_auth.sql"]);
   });
 });
