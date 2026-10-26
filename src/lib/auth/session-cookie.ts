@@ -31,16 +31,23 @@ function serialize(value: string, a: CookieAttrs): string {
 export const serializeSessionCookie = (token: string, o: { secure: boolean }): string => serialize(token, sessionCookieAttrs(o.secure));
 export const serializeClearCookie = (o: { secure: boolean }): string => serialize("", sessionCookieAttrs(o.secure, 0));
 
-/** Exact-name lookup in a Cookie header; the first match wins; empty value = absent. */
+/**
+ * Exact-name lookup in a Cookie header; empty value = absent. MORE THAN ONE cookie with this name is ambiguous (parsers
+ * disagree on first vs last, and a sibling host can plant a second one), so it counts as NO session (fail closed).
+ * Every session check (proxy, route handlers, pages) goes through this one function.
+ */
 export function readSessionCookie(cookieHeader: string | null | undefined): string | null {
   if (!cookieHeader) return null;
+  let found: string | null = null;
+  let count = 0;
   for (const part of cookieHeader.split(";")) {
     const i = part.indexOf("=");
     if (i < 0) continue;
     if (part.slice(0, i).trim() === SESSION_COOKIE) {
+      if (++count > 1) return null;
       const v = part.slice(i + 1).trim();
-      return v.length > 0 && v.length <= 256 ? v : null;
+      found = v.length > 0 && v.length <= 256 ? v : null;
     }
   }
-  return null;
+  return found;
 }
