@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_LOCAL_SERVICES,
+  localServiceBlockers,
   matchLocalService,
   ownServicePorts,
   parseLocalServicesInput,
@@ -106,19 +107,89 @@ describe("own service ports", () => {
       SEARXNG_URL: "http://127.0.0.1:18888",
       RENDER_RUNNER_URL: "http://127.0.0.1:7001",
       FETCHER_URL: "http://127.0.0.1:7002",
-      OWN_SERVICE_PORTS: "9001, 9002,junk,70000",
+      OWN_SERVICE_PORTS: "9001, 9002",
     });
     for (const n of [5432, 6379, 8888, 3128, 3129, 3000, 55432, 56379, 18888, 7001, 7002, 9001, 9002]) expect(p.has(n), String(n)).toBe(true);
-    expect(p.has(70000)).toBe(false);
   });
-  it("survives unparseable URLs and defaults ports by scheme", () => {
-    const p = ownServicePorts({ DATABASE_URL: "not a url", REDIS_URL: "redis://cache" });
-    expect(p.has(5432)).toBe(true);
-    expect(p.has(6379)).toBe(true);
+  it("a URL without a port counts under its scheme default", () => {
+    const p = ownServicePorts({
+      DATABASE_URL: "postgres://db",
+      REDIS_URL: "redis://cache",
+      SEARXNG_URL: "http://searx",
+      RENDER_RUNNER_URL: "https://runner",
+      FETCHER_URL: "http://fetcher",
+    });
+    for (const n of [5432, 6379, 80, 443]) expect(p.has(n), String(n)).toBe(true);
+    expect(validateLocalService("localhost:80", p).ok).toBe(false);
+  });
+  it("reads PORT, the app's own port", () => {
+    expect(ownServicePorts({ PORT: "4123" }).has(4123)).toBe(true);
+  });
+  it("fails closed: an own-service setting that cannot be read is an error, never silently skipped", () => {
+    for (const env of [
+      { DATABASE_URL: "not a url" },
+      { REDIS_URL: "redis://:::" },
+      { SEARXNG_URL: "searx" },
+      { RENDER_RUNNER_URL: "http://" },
+      { FETCHER_URL: "ht!tp://x" },
+      { PORT: "abc" },
+      { OWN_SERVICE_PORTS: "9001,junk" },
+      { OWN_SERVICE_PORTS: "70000" },
+    ]) {
+      expect(() => ownServicePorts(env), JSON.stringify(env)).toThrow(/own-service/);
+    }
+    // unset or empty is simply not configured
+    expect(() => ownServicePorts({ DATABASE_URL: "", RENDER_RUNNER_URL: undefined })).not.toThrow();
+  });
+  it("the fixed set is always present, whatever the env says", () => {
+    const p = ownServicePorts({ DATABASE_URL: "postgres://db:9999/x" });
+    for (const n of [5432, 6379, 8888, 3128, 3129, 3000]) expect(p.has(n), String(n)).toBe(true);
   });
   it("the validator uses the set it is given", () => {
     expect(validateLocalService("localhost:9001", new Set([9001])).ok).toBe(false);
     expect(validateLocalService("localhost:9001", new Set([9002])).ok).toBe(true);
+  });
+});
+
+describe("production needs the own-service URLs before any entry counts", () => {
+  const all = { RENDER_RUNNER_URL: "http://127.0.0.1:7001", FETCHER_URL: "http://127.0.0.1:7002", SEARXNG_URL: "http://127.0.0.1:8888", EGRESS_PROXY_URL: "http://127.0.0.1:3128" };
+  it("names what is missing in production and nothing outside it", () => {
+    expect(localServiceBlockers({ NODE_ENV: "production" })).toEqual(["RENDER_RUNNER_URL", "FETCHER_URL", "SEARXNG_URL", "EGRESS_PROXY_URL"]);
+    expect(localServiceBlockers({ NODE_ENV: "production", ...all, FETCHER_URL: "  " })).toEqual(["FETCHER_URL"]);
+    expect(localServiceBlockers({ NODE_ENV: "production", ...all })).toEqual([]);
+    expect(localServiceBlockers({ NODE_ENV: "development" })).toEqual([]);
+    expect(localServiceBlockers({ NODE_ENV: "test" })).toEqual([]);
+    expect(localServiceBlockers({})).toEqual([]);
+  });
+  it("every entry is refused in production until they are set; an empty list is still fine", () => {
+    const prod = { NODE_ENV: "production" };
+    const r = validateLocalService("localhost:11434", OWN, prod);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/RENDER_RUNNER_URL/);
+    expect(parseLocalServicesInput("localhost:11434", OWN, prod).ok).toBe(false);
+    expect(parseLocalServicesInput("", OWN, prod)).toEqual({ ok: true, entries: [] });
+    expect(validateLocalService("localhost:11434", OWN, { ...prod, ...all }).ok).toBe(true);
+  });
+  it("matching refuses everything while blocked", () => {
+    expect(matchLocalService(["localhost:11434"], new URL("http://localhost:11434/"), new Set(), { NODE_ENV: "production" })).toBe(false);
+    expect(matchLocalService(["localhost:11434"], new URL("http://localhost:11434/"), new Set(), { NODE_ENV: "production", ...all })).toBe(true);
+  });
+});
+
+describe("bind-any and numeric-looking hosts, with their reasons", () => {
+  it("0.0.0.0, :: and mapped forms are refused for the bind-any reason, not by accident", () => {
+    for (const raw of ["0.0.0.0:11434", "[::]:11434", "[::ffff:0.0.0.0]:11434", "[0:0:0:0:0:0:0:0]:80"]) {
+      const r = validateLocalService(raw, OWN);
+      expect(r.ok, raw).toBe(false);
+      if (!r.ok) expect(r.reason, raw).toMatch(/every address/);
+    }
+  });
+  it("a final label that looks numeric (0x, hex, digits) is read as an address and refused unless it is a clean dotted quad", () => {
+    for (const raw of ["0x:80", "host.0x:80", "a.0X1:80", "foo.123:80", "foo.0x7f000001:80", "10.0.0.0x1:80"]) {
+      const r = validateLocalService(raw, OWN);
+      expect(r.ok, raw).toBe(false);
+      if (!r.ok) expect(r.reason, raw).toMatch(/four plain numbers/);
+    }
   });
 });
 

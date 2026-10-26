@@ -59,16 +59,24 @@ export function storageRoot(): string {
   return path.resolve(process.env.STORAGE_ROOT ?? ".data");
 }
 
+/** What the page shows for a folder: relative to the app when inside it, otherwise only the last two segments. Never a home directory. */
+export function displayPath(abs: string, cwd: string = process.cwd()): string {
+  const rel = path.relative(cwd, abs);
+  if (rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)) return rel;
+  const tail = abs.split(path.sep).filter(Boolean).slice(-2).join("/");
+  return tail ? `…/${tail}` : "…";
+}
+
 async function diskFor(root: string): Promise<SystemStatus["disk"]> {
   for (const dir of [root, path.dirname(root), process.cwd()]) {
     try {
       const s = await statfs(dir);
-      return { root, freeBytes: Number(s.bavail) * Number(s.bsize), totalBytes: Number(s.blocks) * Number(s.bsize) };
+      return { root: displayPath(root), freeBytes: Number(s.bavail) * Number(s.bsize), totalBytes: Number(s.blocks) * Number(s.bsize) };
     } catch {
       /* try the next parent */
     }
   }
-  return { root, freeBytes: 0, totalBytes: 0 };
+  return { root: displayPath(root), freeBytes: 0, totalBytes: 0 };
 }
 
 export async function getSystemStatus(db: pg.Pool, opts: { redisUrl?: string } = {}): Promise<SystemStatus> {

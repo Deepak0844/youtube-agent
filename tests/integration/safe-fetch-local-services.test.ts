@@ -74,9 +74,61 @@ describe("typed fetch with a local-service list", () => {
     expect(err.reason).toBe("not-listed");
   });
 
-  it("without_a_list_typed_mode_behaves_as_before", async () => {
-    const res = await safeFetch(`http://127.0.0.1:${ollama}/`, undefined, { mode: "typed" });
-    expect(await res.text()).toBe("ollama");
+  it("a_typed_call_that_forgets_the_list_reaches_nothing_local", async () => {
+    const before = ollamaHits;
+    // @ts-expect-error typed mode requires localServices at compile time; at run time a missing list means an empty one
+    const err = await refused(safeFetch(`http://127.0.0.1:${ollama}/`, undefined, { mode: "typed" }));
+    expect(err.reason).toBe("not-listed");
+    for (const [host, ip] of [["lan.test", "192.168.1.20"], ["dock.test", "172.17.0.2"], ["cg.test", "100.64.0.9"], ["v6.test", "fd00::5"]]) {
+      // @ts-expect-error same: no list given
+      const e = await refused(safeFetch(`http://${host}:${ollama}/`, undefined, { mode: "typed", lookup: lookupTo(ip!) }));
+      expect(e.reason).toBe("not-listed");
+    }
+    expect(ollamaHits).toBe(before);
+  });
+
+  it.each([
+    ["loopback postgres", "http://127.0.0.1:5432/", "127.0.0.1"],
+    ["loopback redis", "http://127.0.0.1:6379/", "127.0.0.1"],
+    ["lan postgres", "http://pg.lan.test:5432/", "192.168.1.20"],
+    ["docker redis", "http://r.test:6379/", "172.17.0.2"],
+    ["searxng port", "http://127.0.0.1:8888/", "127.0.0.1"],
+  ])("own_service_ports_are_refused_with_no_list_and_no_own_services_%s", async (_n, url, ip) => {
+    const err = await refused(safeFetch(url, undefined, { mode: "typed", localServices: [], lookup: lookupTo(ip!) }));
+    expect(err.reason).toBe("own-service");
+  });
+
+  it("own_service_ports_stay_refused_even_when_the_entry_was_written_by_hand", async () => {
+    const err = await refused(safeFetch("http://127.0.0.1:6379/", undefined, { mode: "typed", localServices: ["127.0.0.1:6379"] }));
+    expect(err.reason).toBe("own-service");
+  });
+
+  it("an_unreadable_own_service_setting_refuses_every_local_target", async () => {
+    const old = process.env.SEARXNG_URL;
+    process.env.SEARXNG_URL = "not a url";
+    try {
+      await expect(safeFetch(`http://127.0.0.1:${ollama}/`, undefined, { mode: "typed", localServices: [`127.0.0.1:${ollama}`] })).rejects.toThrow(/own-service/);
+    } finally {
+      if (old === undefined) delete process.env.SEARXNG_URL;
+      else process.env.SEARXNG_URL = old;
+    }
+  });
+
+  it("in_production_nothing_local_is_reachable_until_the_own_service_urls_are_set", async () => {
+    const keep = { ...process.env };
+    const env = process.env as Record<string, string | undefined>;
+    env.NODE_ENV = "production";
+    for (const n of ["RENDER_RUNNER_URL", "FETCHER_URL", "SEARXNG_URL", "EGRESS_PROXY_URL"]) delete env[n];
+    try {
+      const err = await refused(safeFetch(`http://127.0.0.1:${ollama}/`, undefined, { mode: "typed", localServices: [`127.0.0.1:${ollama}`] }));
+      expect(err.reason).toBe("not-listed");
+      Object.assign(env, { RENDER_RUNNER_URL: "http://127.0.0.1:7001", FETCHER_URL: "http://127.0.0.1:7002", SEARXNG_URL: "http://127.0.0.1:8888", EGRESS_PROXY_URL: "http://127.0.0.1:3128" });
+      const res = await safeFetch(`http://127.0.0.1:${ollama}/`, undefined, { mode: "typed", localServices: [`127.0.0.1:${ollama}`] });
+      expect(await res.text()).toBe("ollama");
+    } finally {
+      for (const k of Object.keys(env)) if (!(k in keep)) delete env[k];
+      Object.assign(env, keep);
+    }
   });
 
   it("public_targets_do_not_need_the_list", async () => {
@@ -111,14 +163,14 @@ describe("typed fetch with a local-service list", () => {
   });
 
   it("the_apps_own_ports_are_refused_even_if_a_row_was_written_by_hand", async () => {
-    // 5432 is in the fixed own-port set, so the entry is invalid and ignored; nothing is allowed by it
+    // 5432 is in the fixed own-port set: refused as an own service before the list is even read
     for (const entry of ["127.0.0.1:5432", "localhost:6379"]) {
       const host = entry.split(":")[0]!;
       const port = Number(entry.split(":")[1]);
       const err = await refused(
         safeFetch(`http://${host}:${port}/`, undefined, { mode: "typed", localServices: [entry], lookup: lookupTo("127.0.0.1") }),
       );
-      expect(err.reason).toBe("not-listed");
+      expect(err.reason).toBe("own-service");
     }
   });
 
@@ -163,7 +215,7 @@ describe("bind-any addresses are never a target", () => {
     const before = ollamaHits;
     const host = new URL(url).hostname.replace(/^\[|\]$/g, "");
     for (const options of [
-      { mode: "typed" as const },
+      { mode: "typed" as const, localServices: [] },
       { mode: "typed" as const, localServices: [`${host}:${ollama}`, `0.0.0.0:${ollama}`, `[::]:${ollama}`] },
       { mode: "indirect" as const },
     ]) {
@@ -196,6 +248,7 @@ describe("bind-any addresses are never a target", () => {
         const err = await refused(
           safeFetch(`http://svc.test:5432/`, undefined, {
             mode: "typed",
+            localServices: [],
             ownServices: [{ host: anyHost, port: 5432 }],
             lookup: lookupTo(ip),
           }),
@@ -206,7 +259,11 @@ describe("bind-any addresses are never a target", () => {
   });
 
   it("a_bind_any_own_service_does_not_block_other_ports", async () => {
-    const res = await safeFetch(`http://127.0.0.1:${ollama}/`, undefined, { mode: "typed", ownServices: [{ host: "0.0.0.0", port: 5432 }] });
+    const res = await safeFetch(`http://127.0.0.1:${ollama}/`, undefined, {
+      mode: "typed",
+      localServices: [`127.0.0.1:${ollama}`],
+      ownServices: [{ host: "0.0.0.0", port: 5432 }],
+    });
     expect(await res.text()).toBe("ollama");
   });
 });

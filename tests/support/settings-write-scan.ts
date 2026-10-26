@@ -13,6 +13,8 @@ import ts from "typescript";
 export const SETTINGS_IMPORT_ALLOW: Readonly<Record<string, readonly string[]>> = {
   // Reads network.local_services with getSetting to derive a model endpoint kind and uses the Actor type; never writes.
   "src/server/db/llm-models.ts": ["getSetting", "Actor"],
+  // Phase 1 Task 10: reads with getSetting and writes only through setSessionSettings (no actor argument, session by construction).
+  "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],
 };
 
 const SETTINGS_MODULE = "src/server/db/settings";

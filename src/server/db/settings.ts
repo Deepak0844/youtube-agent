@@ -14,11 +14,7 @@ export async function setSetting(
   db: pg.Pool,
   key: string,
   value: unknown,
-  opts: {
-    actor: Actor;
-    /** Runs in the same transaction after the write (e.g. the audit row). If it throws, nothing is saved. */
-    inTx?: (client: pg.PoolClient, change: { old: unknown; new: unknown }) => Promise<void>;
-  },
+  opts: { actor: Actor },
 ): Promise<{ old: unknown; new: unknown }> {
   const parsed = parseSetting(key, value);
   if (SETTINGS[key as keyof typeof SETTINGS].safety && opts.actor !== "session") {
@@ -33,7 +29,6 @@ export async function setSetting(
        on conflict (key) do update set value = excluded.value, updated_at = now(), updated_by = excluded.updated_by`,
       [key, JSON.stringify(parsed), opts.actor],
     );
-    await opts.inTx?.(client, { old: prev, new: parsed });
     await client.query("commit");
     return { old: prev, new: parsed };
   } catch (err) {
@@ -47,4 +42,48 @@ export async function setSetting(
 async function getSettingForUpdate(client: pg.PoolClient, key: string): Promise<unknown> {
   const { rows } = await client.query<{ value: unknown }>("select value from settings where key = $1 for update", [key]);
   return rows.length > 0 ? rows[0]!.value : (SETTINGS as Record<string, SettingDef>)[key]!.default;
+}
+
+export interface SessionWrite {
+  key: string;
+  /** The new value, or a function of the current one (read under the transaction's lock). */
+  value: unknown | ((current: unknown) => unknown);
+}
+
+/**
+ * Several settings written as the logged-in session in ONE transaction, serialised against other callers by an advisory
+ * lock, so two concurrent saves cannot interleave their keys. `onChange` runs in the same transaction for every key (it
+ * is where the audit row goes); if it or any write throws, none of the keys change. There is no actor argument on
+ * purpose: this path can only ever write as a session, which is what safety keys require.
+ */
+export async function setSessionSettings(
+  db: pg.Pool,
+  writes: readonly SessionWrite[],
+  onChange: (client: pg.PoolClient, key: string, change: { old: unknown; new: unknown }) => Promise<void>,
+): Promise<Array<{ key: string; old: unknown; new: unknown }>> {
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext('ytstudio.settings.session-batch'))");
+    const out: Array<{ key: string; old: unknown; new: unknown }> = [];
+    for (const w of writes) {
+      if (!isSettingKey(w.key)) throw new Error(`unknown setting: ${w.key}`);
+      const prev = await getSettingForUpdate(client, w.key);
+      const next = parseSetting(w.key, typeof w.value === "function" ? (w.value as (c: unknown) => unknown)(prev) : w.value);
+      await client.query(
+        `insert into settings (key, value, updated_at, updated_by) values ($1, $2::jsonb, now(), 'session')
+         on conflict (key) do update set value = excluded.value, updated_at = now(), updated_by = excluded.updated_by`,
+        [w.key, JSON.stringify(next)],
+      );
+      await onChange(client, w.key, { old: prev, new: next });
+      out.push({ key: w.key, old: prev, new: next });
+    }
+    await client.query("commit");
+    return out;
+  } catch (err) {
+    await client.query("rollback").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }

@@ -1,7 +1,18 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { BlockedAddressError, BlockedRedirectError, safeFetch } from "@/server/providers/net/safe-fetch";
+import { BlockedAddressError, BlockedRedirectError, safeFetch as realSafeFetch, type SafeFetchOptions } from "@/server/providers/net/safe-fetch";
+
+// These tests exercise the address policy, redirects, pinning and timeouts, not the owner's allow-list (that is
+// safe-fetch-local-services.test.ts). Typed calls therefore list the exact host:port they were pointed at, as an owner
+// who typed that URL into /settings/system would have. Own services, metadata and bind-any are still refused first.
+type Loose = Omit<SafeFetchOptions, "mode" | "localServices"> & { mode: "typed" | "indirect"; localServices?: readonly string[] };
+const safeFetch = (url: string, init: RequestInit | undefined, o: Loose): Promise<Response> => {
+  if (o.mode === "indirect" || o.localServices) return realSafeFetch(url, init, o as SafeFetchOptions);
+  const u = new URL(url);
+  const entry = `${u.hostname}:${u.port || (u.protocol === "https:" ? 443 : 80)}`;
+  return realSafeFetch(url, init, { ...o, mode: "typed", localServices: [entry] } as SafeFetchOptions);
+};
 
 type Handler = (req: IncomingMessage, res: ServerResponse) => void;
 

@@ -7,20 +7,22 @@ import { classifyAddress, type AddressClass } from "@/server/core/net-policy";
 
 export type FetchMode = "typed" | "indirect";
 
-export interface SafeFetchOptions {
-  mode: FetchMode;
+interface SafeFetchBase {
   ownServices?: Array<{ host: string; port: number }>;
-  /**
-   * Typed mode only. The owner's `network.local_services` list (exact host:port strings). When given, a typed URL whose
-   * address is private/loopback/CGNAT/Docker is allowed only if its host and port are listed; link-local is never allowed.
-   * When omitted the older rule applies (any such address except own services). Own services and metadata are refused
-   * either way, before the list is consulted.
-   */
-  localServices?: readonly string[];
   maxRedirects?: number;
   timeoutMs?: number;
   lookup?: (host: string) => Promise<string[]>;
 }
+
+/**
+ * Typed mode must say which local services it may reach: `localServices` is the owner's `network.local_services` list
+ * (exact host:port strings; pass `[]` for "none"). A private/loopback/CGNAT/Docker address is reachable only if its host
+ * and port are listed; link-local never is. Own-service ports, own services and metadata are refused first, so typing them
+ * into the list changes nothing. Leaving the list out is a compile error, and at run time it means an empty list.
+ */
+export type SafeFetchOptions =
+  | (SafeFetchBase & { mode: "typed"; localServices: readonly string[] })
+  | (SafeFetchBase & { mode: "indirect"; localServices?: undefined });
 
 export class BlockedAddressError extends Error {
   constructor(
@@ -168,9 +170,13 @@ function check(address: string, url: URL, mode: FetchMode, own: OwnService[], li
   }
   const allowed = mode === "typed" ? TYPED_ALLOWED.has(cls) : cls === "public";
   if (!allowed) throw new BlockedAddressError(address, cls);
-  if (mode === "typed" && listed !== undefined && cls !== "public") {
+  if (mode === "typed" && cls !== "public") {
+    // The app's own ports are never a typed destination on any local address, whatever the caller passed. It throws, and
+    // so refuses, if the own-service settings cannot be read.
+    const ownPorts = ownServicePorts();
+    if (ownPorts.has(port)) throw new BlockedAddressError(address, "own-service");
     if (!LISTABLE_CLASSES.has(cls)) throw new BlockedAddressError(address, cls);
-    if (!matchLocalService(listed, url, ownServicePorts())) {
+    if (!matchLocalService(listed ?? [], url, ownPorts)) {
       throw new BlockedAddressError(address, "not-listed", `Local address ${address} is not on the local-service list`);
     }
   }

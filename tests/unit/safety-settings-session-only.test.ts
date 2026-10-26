@@ -89,7 +89,10 @@ describe("no code path in src writes a safety setting as anything but a session"
 
   it("the import allow-list is explicit (a new importer must be added here on purpose)", () => {
     // file -> the only names it may import. llm-models reads network.local_services (getSetting) and uses the Actor type.
-    expect(SETTINGS_IMPORT_ALLOW).toEqual({ "src/server/db/llm-models.ts": ["getSetting", "Actor"] });
+    expect(SETTINGS_IMPORT_ALLOW).toEqual({
+      "src/server/db/llm-models.ts": ["getSetting", "Actor"],
+      "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],
+    });
     for (const names of Object.values(SETTINGS_IMPORT_ALLOW)) expect(names).not.toContain("setSetting");
   });
 

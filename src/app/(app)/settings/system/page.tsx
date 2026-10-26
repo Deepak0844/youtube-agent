@@ -1,9 +1,8 @@
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
-import { MAX_LOCAL_SERVICES } from "@/server/core/local-services";
+import { localServiceBlockers, MAX_LOCAL_SERVICES } from "@/server/core/local-services";
 import { getPool } from "@/server/db/pool";
-import { getSetting } from "@/server/db/settings";
-import { loadLocalServices } from "@/server/db/system-settings";
+import { loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
 import { Pill } from "@/ui/primitives/pill";
 import { LimitsForm, LocalServicesForm } from "./forms";
@@ -20,15 +19,9 @@ export default function SystemSettings() {
 async function Owned() {
   await requireOwner();
   const db = getPool();
-  const [status, renders, jobs, warnGb, longMinutes, tracks, services] = await Promise.all([
-    getSystemStatus(db),
-    getSetting(db, "jobs.concurrent_renders") as Promise<number>,
-    getSetting(db, "jobs.concurrent_jobs") as Promise<number>,
-    getSetting(db, "storage.warn_gb") as Promise<number>,
-    getSetting(db, "video.max_long_minutes") as Promise<number>,
-    getSetting(db, "tracks.enabled") as Promise<{ scene_kit: boolean }>,
-    loadLocalServices(db),
-  ]);
+  const [status, view] = await Promise.all([getSystemStatus(db), loadSystemSettings(db)]);
+  const { renders, jobs, warnGb, longMinutes, services } = view;
+  const blockers = localServiceBlockers();
   return (
     <div className="flex min-w-0 flex-col gap-layout">
       <h1 className="text-page-title font-semibold tracking-tight">System</h1>
@@ -41,7 +34,7 @@ async function Owned() {
           jobs={jobs}
           warnGb={warnGb}
           longMinutes={longMinutes}
-          sceneKit={tracks.scene_kit}
+          sceneKit={view.sceneKit}
           tracksLater={["Code scenes (Phase 4)", "Collage (Phase 8)", "AI video (Phase 9)"]}
         />
       </section>
@@ -52,6 +45,12 @@ async function Owned() {
           local is only reachable if it is listed here. The studio&apos;s own services (database, Redis, search, renderer, fetcher)
           and cloud metadata addresses can never be listed. Changes are written to the audit log.
         </p>
+        {blockers.length > 0 ? (
+          <p role="note" className="mb-5 max-w-[60ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">
+            Local services are switched off. The server is missing these settings, so the studio cannot tell which ports are its
+            own: {blockers.join(", ")}. Set them, restart, and the list below takes effect.
+          </p>
+        ) : null}
         <LocalServicesForm entries={services} max={MAX_LOCAL_SERVICES} />
       </section>
     </div>

@@ -25,32 +25,55 @@ const FIXED_OWN_PORTS = [
   3000, // this app
 ];
 
-function portOfUrl(raw: string | undefined, fallback?: number): number | undefined {
-  if (!raw) return undefined;
+const DEFAULT_PORT: Record<string, number> = { "http:": 80, "https:": 443, "postgres:": 5432, "postgresql:": 5432, "redis:": 6379, "rediss:": 6379 };
+
+// Fail closed: a value that is set but cannot be read throws, so nothing is allowed on a guess. Unset or empty is "not configured".
+function portOfUrl(name: string, raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const bad = () => new Error(`own-service setting ${name} is not a valid URL with a known port`);
+  let u: URL;
   try {
-    const u = new URL(raw);
-    if (u.port) return Number(u.port);
-    return fallback;
+    u = new URL(raw);
   } catch {
-    return undefined;
+    throw bad();
   }
+  const port = u.port ? Number(u.port) : DEFAULT_PORT[u.protocol];
+  if (!u.hostname || port === undefined || !Number.isInteger(port) || port < 1 || port > 65535) throw bad();
+  return port;
 }
 
+// Services that must be configured in production before any local entry counts (see localServiceBlockers).
+const PRODUCTION_REQUIRED = ["RENDER_RUNNER_URL", "FETCHER_URL", "SEARXNG_URL", "EGRESS_PROXY_URL"] as const;
+
+/**
+ * In production the own-service ports are only known if these URLs are set. Until they are, every local-service entry is
+ * refused (fail closed). Returns the names still missing; empty outside production.
+ */
+export function localServiceBlockers(env: Record<string, string | undefined> = process.env): string[] {
+  if (env.NODE_ENV !== "production") return [];
+  return PRODUCTION_REQUIRED.filter((n) => (env[n] ?? "").trim() === "");
+}
+
+/** Throws (own-service ...) when any configured value cannot be read; callers must treat a throw as "refuse". */
 export function ownServicePorts(env: Record<string, string | undefined> = process.env): Set<number> {
   const ports = new Set<number>(FIXED_OWN_PORTS);
   const add = (n: number | undefined) => {
-    if (n !== undefined && Number.isInteger(n) && n >= 1 && n <= 65535) ports.add(n);
+    if (n !== undefined) ports.add(n);
   };
-  add(portOfUrl(env.DATABASE_URL, 5432));
-  add(portOfUrl(env.MIGRATE_DATABASE_URL, 5432));
-  add(portOfUrl(env.REDIS_URL, 6379));
-  add(portOfUrl(env.SEARXNG_URL));
-  add(portOfUrl(env.RENDER_RUNNER_URL));
-  add(portOfUrl(env.FETCHER_URL));
-  add(portOfUrl(env.EGRESS_PROXY_URL));
-  for (const part of (env.OWN_SERVICE_PORTS ?? "").split(",")) {
-    const p = part.trim();
-    if (/^[1-9][0-9]{0,4}$/.test(p)) add(Number(p));
+  add(portOfUrl("DATABASE_URL", env.DATABASE_URL));
+  add(portOfUrl("MIGRATE_DATABASE_URL", env.MIGRATE_DATABASE_URL));
+  add(portOfUrl("REDIS_URL", env.REDIS_URL));
+  add(portOfUrl("SEARXNG_URL", env.SEARXNG_URL));
+  add(portOfUrl("RENDER_RUNNER_URL", env.RENDER_RUNNER_URL));
+  add(portOfUrl("FETCHER_URL", env.FETCHER_URL));
+  add(portOfUrl("EGRESS_PROXY_URL", env.EGRESS_PROXY_URL));
+  for (const [name, raw] of [["PORT", env.PORT], ["OWN_SERVICE_PORTS", env.OWN_SERVICE_PORTS]] as const) {
+    if (raw === undefined || raw.trim() === "") continue;
+    for (const part of raw.split(",")) {
+      const p = part.trim();
+      if (!/^[1-9][0-9]{0,4}$/.test(p) || Number(p) > 65535) throw new Error(`own-service setting ${name} is not a list of ports`);
+      ports.add(Number(p));
+    }
   }
   return ports;
 }
@@ -73,7 +96,7 @@ const R = {
 } as const;
 
 const LOCAL_CLASSES: ReadonlySet<AddressClass> = new Set(["private", "loopback", "cgnat", "docker"]);
-const NUMERIC_LABEL = /^(?:0x[0-9a-f]+|[0-9]+)$/i;
+const NUMERIC_LABEL = /^(?:0x[0-9a-f]*|[0-9]+)$/i;
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 function isBindAny(host: string): boolean {
@@ -90,8 +113,14 @@ function isBindAny(host: string): boolean {
 }
 
 /** Validates one raw entry. On success `entry` is the canonical spelling that gets stored. */
-export function validateLocalService(raw: string, ownPorts: ReadonlySet<number> = ownServicePorts()): EntryResult {
+export function validateLocalService(
+  raw: string,
+  ownPorts: ReadonlySet<number> = ownServicePorts(),
+  env: Record<string, string | undefined> = process.env,
+): EntryResult {
   if (typeof raw !== "string") return refuse(R.shape);
+  const blocked = localServiceBlockers(env);
+  if (blocked.length > 0) return refuse(`Local services stay switched off until the server is configured with: ${blocked.join(", ")}.`);
   const text = raw.trim();
   if (text.length === 0 || text.length > 270 || !/^[\x21-\x7e]+$/.test(text)) return refuse(R.shape);
 
@@ -147,13 +176,17 @@ export function validateLocalService(raw: string, ownPorts: ReadonlySet<number> 
 export type ParseResult = { ok: true; entries: string[] } | { ok: false; errors: Array<{ line: number; reason: string }> };
 
 /** Textarea input, one entry per line. Blank lines are skipped, duplicates collapse (first spelling wins, order kept). */
-export function parseLocalServicesInput(text: string, ownPorts: ReadonlySet<number> = ownServicePorts()): ParseResult {
+export function parseLocalServicesInput(
+  text: string,
+  ownPorts: ReadonlySet<number> = ownServicePorts(),
+  env: Record<string, string | undefined> = process.env,
+): ParseResult {
   if (typeof text !== "string" || text.length > MAX_INPUT_CHARS) return { ok: false, errors: [{ line: 0, reason: "That list is far too long." }] };
   const entries: string[] = [];
   const errors: Array<{ line: number; reason: string }> = [];
   text.split(/\r?\n/).forEach((line, i) => {
     if (line.trim() === "") return;
-    const r = validateLocalService(line, ownPorts);
+    const r = validateLocalService(line, ownPorts, env);
     if (!r.ok) errors.push({ line: i + 1, reason: r.reason });
     else if (!entries.includes(r.entry)) entries.push(r.entry);
   });
@@ -165,7 +198,13 @@ export function parseLocalServicesInput(text: string, ownPorts: ReadonlySet<numb
 }
 
 /** Does the URL's exact host and port appear in the list? Invalid stored entries are ignored, never trusted. */
-export function matchLocalService(list: readonly string[], url: URL, ownPorts: ReadonlySet<number> = new Set()): boolean {
+export function matchLocalService(
+  list: readonly string[],
+  url: URL,
+  ownPorts: ReadonlySet<number> = new Set(),
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (localServiceBlockers(env).length > 0) return false;
   let host = url.hostname.toLowerCase();
   if (host.startsWith("[") && host.endsWith("]")) {
     host = host.slice(1, -1);
@@ -175,7 +214,7 @@ export function matchLocalService(list: readonly string[], url: URL, ownPorts: R
   const port = url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80;
   const wanted = `${host}:${port}`;
   return list.some((raw) => {
-    const r = validateLocalService(raw, ownPorts);
+    const r = validateLocalService(raw, ownPorts, env);
     return r.ok && r.entry === wanted && raw === r.entry;
   });
 }
