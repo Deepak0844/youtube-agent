@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { GATES, GATE_IDS, gateById, type Gate } from "@/server/core/gates";
+import { GATES, GATE_IDS, GATE_ROADMAP_PHASE, gateById, type Gate, type GateId } from "@/server/core/gates";
 import { SETTINGS } from "@/server/core/settings-registry";
-import { GATE_SUITES, gatesWithoutSuite, expectApprovalVoidedByChange, expectSessionRequired, expectStaleHashRejected, expectTokenCannotPass, type GateAct, type GateAttempt, type GateResult } from "../support/gate-invariants";
+import { GATE_SUITES, gatesWithoutSuite, suiteProblems, expectApprovalVoidedByChange, expectSessionRequired, expectStaleHashRejected, expectTokenCannotPass, type GateAct, type GateAttempt, type GateResult } from "../support/gate-invariants";
 
 // Doc 02 4.4 as data, plus the registry rule: a gate row without a test suite (or an explicit todoPhase) fails the build.
 describe("GATES (Doc 02 4.4)", () => {
@@ -48,15 +48,28 @@ describe("gate suite registry", () => {
     expect(gatesWithoutSuite(GATES, GATE_SUITES)).toEqual([]);
     expect(Object.keys(GATE_SUITES).sort()).toEqual([...GATE_IDS].sort());
   });
-  it("a suite entry points at a real file that mentions the gate; a todo names a phase of 2 or later", () => {
+  it("a suite entry is a real file that imports the harness and runs its helpers for the gate; a todo equals the roadmap phase", () => {
     for (const [id, s] of Object.entries(GATE_SUITES)) {
       if ("suite" in s) {
         expect(existsSync(s.suite), `${id}: ${s.suite}`).toBe(true);
-        expect(readFileSync(s.suite, "utf8"), `${id} not mentioned in ${s.suite}`).toContain(id === "allow_public" ? "policy.allow_public" : id);
+        expect(suiteProblems(id, readFileSync(s.suite, "utf8")), `${id}: ${s.suite}`).toEqual([]);
       } else {
-        expect(Number.isInteger(s.todoPhase) && s.todoPhase >= 2, `${id} todoPhase`).toBe(true);
+        expect(s.todoPhase, `${id} todoPhase must equal GATE_ROADMAP_PHASE`).toBe(GATE_ROADMAP_PHASE[id as GateId]);
+        expect(s.todoPhase, `${id} todoPhase`).toBeGreaterThanOrEqual(2);
       }
     }
+  });
+  it("the roadmap phase constant covers every gate", () => {
+    expect(Object.keys(GATE_ROADMAP_PHASE).sort()).toEqual([...GATE_IDS].sort());
+  });
+  it("SELF-TEST: a suite file that only mentions the gate (no harness import, no helper call, no describe) is rejected", () => {
+    expect(suiteProblems("publish", '// publish\nconst x = "publish";')).not.toEqual([]);
+    expect(suiteProblems("publish", 'import { expectSessionRequired } from "../support/gate-invariants";\n// publish')).not.toEqual([]);
+    const good = `import { describe, it } from "vitest";
+import { expectSessionRequired, expectTokenCannotPass } from "../support/gate-invariants";
+describe("publish gate", () => { it("x", async () => { await expectSessionRequired(gateById("publish"), act); await expectTokenCannotPass(gateById("publish"), act); }); });`;
+    expect(suiteProblems("publish", good)).toEqual([]);
+    expect(suiteProblems("cost", good)).not.toEqual([]); // wrong gate id
   });
   it("SELF-TEST: a new gate id without a suite fails the registry check", () => {
     const extra: Gate = Object.freeze({ id: "brand_new" as never, label: "x", hashCovers: Object.freeze(["x"]), approvedBy: "session", hashBound: true });

@@ -34,6 +34,21 @@ export const GATES: readonly Gate[] = Object.freeze([
   row("live_title", "Live title switch (title experiments)", ["video", "new_title"]),
 ]);
 
+/** Roadmap phase (Doc 05) in which each gate's action ships and its real test suite must replace the registry todo. */
+export const GATE_ROADMAP_PHASE: Readonly<Record<GateId, number>> = Object.freeze({
+  outline: 6,
+  script: 4,
+  cost: 4,
+  chapter: 6,
+  video: 4,
+  thumbnail: 6,
+  evidence: 5,
+  publish: 5,
+  comment_reply: 8,
+  allow_public: 5,
+  live_title: 8,
+});
+
 export function gateById(id: GateId): Gate {
   const g = GATES.find((x) => x.id === id);
   if (!g) throw new Error(`unknown gate: ${String(id)}`);

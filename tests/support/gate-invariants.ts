@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import type { Gate, GateId } from "@/server/core/gates";
+import { GATE_ROADMAP_PHASE, type Gate, type GateId } from "@/server/core/gates";
 
 // Shared checks for every human gate (Doc 02 4.4, 5). A phase that implements a gate writes ONE `act` function that
 // drives its real approval path, then runs the four helpers below against it. The helpers fail closed: a refusal
@@ -69,18 +69,28 @@ export type GateSuite = { suite: string } | { todoPhase: number };
  * tests/unit/gates.test.ts (and the Record type breaks `tsc`).
  */
 export const GATE_SUITES: Record<GateId, GateSuite> = {
-  outline: { todoPhase: 6 },
-  script: { todoPhase: 4 },
-  cost: { todoPhase: 4 },
-  chapter: { todoPhase: 6 },
-  video: { todoPhase: 4 },
-  thumbnail: { todoPhase: 6 },
-  evidence: { todoPhase: 5 },
-  publish: { todoPhase: 5 },
-  comment_reply: { todoPhase: 8 },
+  outline: { todoPhase: GATE_ROADMAP_PHASE.outline },
+  script: { todoPhase: GATE_ROADMAP_PHASE.script },
+  cost: { todoPhase: GATE_ROADMAP_PHASE.cost },
+  chapter: { todoPhase: GATE_ROADMAP_PHASE.chapter },
+  video: { todoPhase: GATE_ROADMAP_PHASE.video },
+  thumbnail: { todoPhase: GATE_ROADMAP_PHASE.thumbnail },
+  evidence: { todoPhase: GATE_ROADMAP_PHASE.evidence },
+  publish: { todoPhase: GATE_ROADMAP_PHASE.publish },
+  comment_reply: { todoPhase: GATE_ROADMAP_PHASE.comment_reply },
   allow_public: { suite: "tests/unit/safety-settings-session-only.test.ts" }, // the flag is the safety setting policy.allow_public
-  live_title: { todoPhase: 8 },
+  live_title: { todoPhase: GATE_ROADMAP_PHASE.live_title },
 };
+
+/** What a registered suite file must contain: the harness import, a helper call, a describe, and the gate id as a string. */
+export function suiteProblems(id: string, src: string): string[] {
+  const out: string[] = [];
+  if (!/from\s+["'][^"']*support\/gate-invariants["']/.test(src)) out.push("does not import tests/support/gate-invariants");
+  if (!/\bexpect(?:SessionRequired|TokenCannotPass|StaleHashRejected|ApprovalVoidedByChange)\s*\(/.test(src)) out.push("never calls a gate-invariants helper");
+  if (!/\bdescribe\s*[(.]/.test(src)) out.push("has no describe block");
+  if (!new RegExp(`["'\`]${id}["'\`]`).test(src)) out.push(`never names the gate "${id}" as a string`);
+  return out;
+}
 
 /** Ids of gates that have neither a suite path nor a numeric todoPhase. */
 export function gatesWithoutSuite(gates: readonly Gate[], suites: Record<string, GateSuite | undefined>): string[] {
