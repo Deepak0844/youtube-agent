@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { generateMasterKey } from "@/server/core/vault-crypto";
 import { login } from "@/server/db/auth";
 import { consumeSetupLink, createSetupLink } from "@/server/db/owner";
 import { createPool } from "@/server/db/pool";
@@ -38,6 +39,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     ...process.env,
     DATABASE_URL: appUrl,
     REDIS_URL: infra.redisUrl,
+    VAULT_MASTER_KEY: generateMasterKey(), // throwaway key for the throwaway database (settings/keys page)
     TRUST_PROXY: "1",
     AUTH_MAX_IN_FLIGHT: "1",
     UPLOAD_MAX_BYTES: String(50 * 1024 * 1024), // lets the oversize test stay small
