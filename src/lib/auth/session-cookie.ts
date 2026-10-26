@@ -6,7 +6,11 @@ export function trustProxy(): boolean {
   return process.env.TRUST_PROXY === "1";
 }
 
-/** https from the URL; the forwarded proto is honoured ONLY behind a trusted proxy (TRUST_PROXY=1). */
+/**
+ * Secure when the request is https. Our own code reads x-forwarded-proto only with TRUST_PROXY=1; note that Next itself
+ * builds request.url from the forwarded proto, so without TRUST_PROXY a client can already make `protocol` https. That
+ * only makes the cookie Secure (stricter), never weaker.
+ */
 export function isSecureRequest(o: { protocol: string | null | undefined; forwardedProto: string | null | undefined; trustProxy: boolean }): boolean {
   if (o.trustProxy && o.forwardedProto) return o.forwardedProto.split(",").pop()!.trim().toLowerCase() === "https";
   return o.protocol === "https:";

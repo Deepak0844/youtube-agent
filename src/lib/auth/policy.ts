@@ -56,6 +56,7 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
   { path: "/healthz", match: "exact" },
   { path: "/readyz", match: "exact" },
   { path: "/api/auth/login", match: "exact" }, // JSON login; does its own origin, lockout and admission checks
+  { path: "/api/auth/logout", match: "exact" }, // idempotent: clears its own cookie, needs no valid session
   { path: "/api/media", match: "prefix" }, // signed URL (Phase 3)
   { path: "/api/webhooks", match: "prefix" },
   { path: "/api/oauth", match: "prefix" }, // OAuth callback

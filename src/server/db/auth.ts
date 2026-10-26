@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { dummyVerify, hashPassword, hashToken, needsRehash, newToken, verifyPassword } from "@/server/core/auth-crypto";
 import { lockoutDelayMs, normalizeUsername, sessionExpiry, validatePassword } from "@/server/core/auth-rules";
 import { uuidv7 } from "@/server/core/ids";
-import { createAdmission } from "@/server/core/admission";
+import { createAdmission, type Admission } from "@/server/core/admission";
 import { normalizeIp, UNKNOWN_IP } from "@/server/core/ip";
 import { createSemaphore } from "@/server/core/semaphore";
 import { audit, lockOwner } from "@/server/db/owner";
@@ -37,14 +37,24 @@ import { totpEnabled, useRecoveryCode, verifyOwnerTotp } from "@/server/db/totp"
 // - Invalid username strings: keyed by a hash of the raw input, dummyVerify path, same result as an unknown user.
 // - Audit rows carry only event + reason (+ ip); never usernames, passwords, tokens or codes.
 
-export const passwordSemaphore = createSemaphore(2);
-
-let admission = createAdmission({ maxTotal: 3, maxPerKey: 1 });
-/** Startup/test hook: replaces the admission limits (resets the in-flight counters). */
-export function configureAuthAdmission(o: { maxInFlightAuth?: number; maxPerIp?: number } = {}): void {
-  admission = createAdmission({ maxTotal: o.maxInFlightAuth ?? 3, maxPerKey: o.maxPerIp ?? 1 });
+// Admission and the scrypt semaphore live on globalThis: Next bundles this module once per entry (route handler, server
+// action, page), and per-bundle copies would each grant the full cap. Created lazily, shared by every copy.
+const SHARED = Symbol.for("ytstudio.auth.shared");
+interface Shared {
+  admission: Admission;
+  semaphore: ReturnType<typeof createSemaphore>;
 }
-export const authInFlight = (): number => admission.inFlight();
+function shared(): Shared {
+  const g = globalThis as unknown as Record<symbol, Shared | undefined>;
+  return (g[SHARED] ??= { admission: createAdmission({ maxTotal: 3, maxPerKey: 1 }), semaphore: createSemaphore(2) });
+}
+export const passwordSemaphore = { run: <T>(fn: () => Promise<T>): Promise<T> => shared().semaphore.run(fn) };
+
+/** Startup/test hook: replaces the shared admission limits (resets the in-flight counters). */
+export function configureAuthAdmission(o: { maxInFlightAuth?: number; maxPerIp?: number } = {}): void {
+  shared().admission = createAdmission({ maxTotal: o.maxInFlightAuth ?? 3, maxPerKey: o.maxPerIp ?? 1 });
+}
+export const authInFlight = (): number => shared().admission.inFlight();
 
 export const IDLE_MS = 8 * 3_600_000;
 const MAX_PW_UNITS = 1024;
@@ -109,7 +119,7 @@ async function checkLocks(q: Db, key: string, ip: string): Promise<number> {
 }
 
 export async function login(db: Db, input: LoginInput): Promise<LoginResult> {
-  const release = admission.tryEnter(cleanIp(input?.ip));
+  const release = shared().admission.tryEnter(cleanIp(input?.ip));
   if (!release) return { ok: false, reason: "busy" };
   try {
     return await loginAdmitted(db, input);
@@ -257,7 +267,7 @@ export type ChangePasswordResult = { ok: true; token: string } | { ok: false; re
 
 export async function changePassword(db: Db, sessionId: string, current: string, next: string, ip?: string): Promise<ChangePasswordResult> {
   const clean = cleanIp(ip);
-  const release = admission.tryEnter(clean);
+  const release = shared().admission.tryEnter(clean);
   if (!release) return { ok: false, reason: "busy" };
   try {
     return await changePasswordAdmitted(db, sessionId, current, next, clean);

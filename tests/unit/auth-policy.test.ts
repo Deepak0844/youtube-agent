@@ -31,7 +31,7 @@ describe("public path policy", () => {
     ["/setup/x", true], ["/setup/", true], ["/setupx", false], ["/setup-x/y", false],
     ["/healthz", true], ["/healthz/x", false], ["/readyz", true],
     ["/api/v1", true], ["/api/v1/shorts", true], ["/api/v1x", false], ["/api/media/abc", true], ["/api/webhooks/stripe", true], ["/api/oauth/callback", true],
-    ["/api/auth/login", true], ["/api/auth/logout", false], ["/api/me", false], ["/", false], ["/shorts", false],
+    ["/api/auth/login", true], ["/api/auth/logout", true], ["/api/auth/logout/x", false], ["/api/me", false], ["/", false], ["/shorts", false],
     ["//login", true], ["/login/../api/me", false], ["/api/v1/../me", false], ["/%6Cogin", true], ["/%6cogin/..%2Fapi/me", false],
     ["/Login", false], ["/LOGIN", false], ["/login%2F..%2Fapi%2Fme", false], ["/%2e%2e/login", true],
     ["/%zz", false], ["/%E0%A4%A", false], ["/login\\..\\api", false], ["/login%00", false], ["/api/v1%2F..%2Fme", false],
