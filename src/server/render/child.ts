@@ -2,7 +2,8 @@ import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type { Readable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import path from "node:path";
-import { commandLabelOf, readProcInfo } from "./proc-info";
+import { realpath } from "node:fs/promises";
+import { argsHash, commandLabelOf, readProcInfo } from "./proc-info";
 
 // SECURITY CONTROL: the one way the worker runs host tools (ffprobe/ffmpeg now; whisper.cpp and others later). The child:
 //  - is started with an args array and shell:false, so metacharacters in arguments are literal;
@@ -16,6 +17,7 @@ export interface ChildSpec {
   command: string;
   args: string[];
   cwd: string;
+  cwdRoot?: string; // when set, cwd must resolve (symlinks followed) to this folder or inside it
   envAllow?: string[]; // names copied from the worker's environment; default ["PATH"]
   timeoutMs: number;
   maxOutputBytes: number;
@@ -34,7 +36,7 @@ export interface ChildResult {
 
 /** Where live children are recorded. Registration failing is fatal for that child (fail closed: never run untracked). */
 export interface ChildRegistry {
-  register(row: { pid: number; startedAtEpoch: number; commandLabel: string; stageRunId: string }): Promise<void>;
+  register(row: { pid: number; startedAtEpoch: number; commandLabel: string; argsSha256: string; stageRunId: string }): Promise<void>;
   unregister(pid: number, startedAtEpoch: number): Promise<void>;
 }
 
@@ -42,11 +44,14 @@ export interface RunChildDeps {
   registry?: ChildRegistry;
   env?: Record<string, string | undefined>; // test hook: where allow-listed values come from (default process.env)
   killGraceMs?: number; // SIGTERM to SIGKILL gap (default 2000)
+  registryTimeoutMs?: number; // longest runChild waits on the registry (register/unregister); a stalled DB cannot hang it (default 5000)
 }
 
 export class ChildError extends Error {}
 
 const SECRET_NAME = /key|secret|token|passw|credential|database|redis|auth|vault|cookie|session/i;
+// Names that change what a program loads or runs, refused even when a caller asks for them.
+const DANGEROUS_NAME = /^(LD_.*|DYLD_.*|NODE_OPTIONS|NODE_PATH|BASH_ENV|ENV|IFS|PYTHON.*|PERL5?LIB|PERL5?OPT|RUBYOPT|RUBYLIB|JAVA_TOOL_OPTIONS|_JAVA_OPTIONS)$/i;
 const MAX_LINE_CHARS = 64 * 1024;
 
 /** Builds the child's environment: exactly the allow-listed names that are set. HOME is never passed unless explicitly allowed. */
@@ -55,6 +60,7 @@ export function buildChildEnv(allow: readonly string[] | undefined, src: Record<
   const out: Record<string, string> = {};
   for (const n of names) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(n)) throw new ChildError(`Invalid environment variable name: ${n}`);
+    if (DANGEROUS_NAME.test(n)) throw new ChildError(`Refusing to pass ${n} to a child process: it can change which code the child loads.`);
     if (SECRET_NAME.test(n)) throw new ChildError(`Refusing to pass ${n} to a child process: the name looks like a secret.`);
     const v = src[n];
     if (v !== undefined) out[n] = v;
@@ -76,6 +82,18 @@ export async function runChild(spec: ChildSpec, deps: RunChildDeps = {}): Promis
   }
   if (!path.isAbsolute(spec.cwd)) throw new ChildError("Child working directory must be an absolute path.");
   const env = buildChildEnv(spec.envAllow, deps.env);
+  if (spec.cwdRoot !== undefined) {
+    let root: string;
+    let cwd: string;
+    try {
+      [root, cwd] = await Promise.all([realpath(spec.cwdRoot), realpath(spec.cwd)]);
+    } catch {
+      throw new ChildError("Child working directory does not exist.");
+    }
+    if (cwd !== root && !cwd.startsWith(root.endsWith(path.sep) ? root : root + path.sep)) {
+      throw new ChildError("Child working directory is outside the allowed folder.");
+    }
+  }
   if (spec.signal.aborted) return { code: null, signal: null, truncated: false, timedOut: false, aborted: true };
 
   const grace = deps.killGraceMs ?? 2000;
@@ -193,32 +211,55 @@ export async function runChild(spec: ChildSpec, deps: RunChildDeps = {}): Promis
     child.once("error", () => finish(null, null));
   });
 
+  // Registration runs beside the child, never in front of it: a stalled database can neither delay the child's own
+  // timeout/abort handling nor hang this call. If the child is not recorded in time (or recording fails) it is killed.
+  const regTimeout = deps.registryTimeoutMs ?? 5000;
   let startedAtEpoch = 0;
   let registered = false;
+  let regError: unknown;
+  let regTimedOut = false;
+  const bounded = <T>(p: Promise<T>): Promise<void> =>
+    new Promise<void>((resolve) => {
+      const t = setTimeout(resolve, regTimeout);
+      p.then(
+        () => (clearTimeout(t), resolve()),
+        () => (clearTimeout(t), resolve()),
+      );
+    });
+  const track = (async (): Promise<void> => {
+    if (!deps.registry) return;
+    const info = await readProcInfo(pid);
+    if (!info) return; // already exited, nothing to track
+    startedAtEpoch = info.startedAtEpoch;
+    await deps.registry.register({ pid, startedAtEpoch, commandLabel: commandLabelOf(info.args), argsSha256: argsHash(info.args), stageRunId: spec.stageRunId });
+    registered = true;
+  })();
+  const regGuard = setTimeout(() => {
+    regTimedOut = true;
+    killGroup(pid, "SIGKILL"); // never leave an untracked child running
+  }, regTimeout);
+  const tracked = track.then(
+    () => clearTimeout(regGuard),
+    (e: unknown) => {
+      clearTimeout(regGuard);
+      regError = e;
+      killGroup(pid, "SIGKILL");
+    },
+  );
   try {
-    if (deps.registry) {
-      const info = await readProcInfo(pid);
-      if (info) {
-        startedAtEpoch = info.startedAtEpoch;
-        try {
-          await deps.registry.register({ pid, startedAtEpoch, commandLabel: commandLabelOf(info.args), stageRunId: spec.stageRunId });
-          registered = true;
-        } catch (e) {
-          killGroup(pid, "SIGKILL"); // never leave an untracked child running
-          await done;
-          throw e;
-        }
-      } // else: already exited, nothing to track
-    }
     const r = await Promise.race([done, spawnFailed]);
+    await bounded(tracked); // let an in-flight register settle first so unregister cannot run before it
+    if (regError !== undefined) throw regError;
+    if (regTimedOut && !registered) throw new ChildError("Could not record the child process in time; it was stopped.");
     return { code: r.code, signal: r.signal, truncated, timedOut, aborted };
   } finally {
+    clearTimeout(regGuard);
     clearTimeout(timeoutTimer);
     clearTimeout(killTimer);
     clearTimeout(hardTimer);
     spec.signal.removeEventListener("abort", onAbort);
-    // We stopped this run: anything left in the group (a grandchild that outlived its parent) dies with it.
-    if (killed) killGroup(pid, "SIGKILL");
-    if (registered && deps.registry) await deps.registry.unregister(pid, startedAtEpoch).catch(() => undefined);
+    // Whatever way the run ended, anything left in the group (a grandchild that outlived its parent) dies with it.
+    killGroup(pid, "SIGKILL");
+    if (registered && deps.registry) await bounded(deps.registry.unregister(pid, startedAtEpoch));
   }
 }

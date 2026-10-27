@@ -5,8 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { runChild, ChildError, type ChildSpec } from "@/server/render/child";
-import { readProcInfo } from "@/server/render/proc-info";
-import { createChildRegistry, sweepOrphans } from "@/server/db/child-processes";
+import { argsHash, commandLabelOf, readProcInfo } from "@/server/render/proc-info";
+import { createChildRegistry, holdWorkerLock, sweepOrphans } from "@/server/db/child-processes";
 import { uuidv7 } from "@/server/core/ids";
 import { withTestDb, type TestDb } from "../support/db";
 
@@ -79,12 +79,56 @@ describe("runChild", () => {
   });
 
   it("heartbeat_keeps_ticking_while_a_child_burns_cpu", async () => {
+    // Warm up so one-off JIT/GC cost is not counted, then judge the 99th percentile of timer lag over a 1.5 s burn
+    // (a single scheduler hiccup on a busy CI box must not fail the test; a blocked loop would fail every sample).
+    await runChild(spec({ args: ["-e", "0"] }), deps());
     const h = monitorEventLoopDelay({ resolution: 10 });
     h.enable();
     const r = await runChild(spec({ args: ["-e", "const e=Date.now()+1500; while(Date.now()<e){}"] }), deps());
     h.disable();
     expect(r.code).toBe(0);
-    expect(h.max / 1e6).toBeLessThan(100); // ms
+    expect(h.percentile(99) / 1e6).toBeLessThan(100); // ms
+    expect(h.mean / 1e6).toBeLessThan(50);
+  });
+
+  it("a_grandchild_left_behind_by_a_normally_exiting_child_is_killed", async () => {
+    const pidFile = path.join(tmp, "left-behind.pid");
+    const code = `const {spawn}=require('child_process');const g=spawn('sleep',['300'],{stdio:'ignore'});g.unref();require('fs').writeFileSync(${JSON.stringify(pidFile)},String(g.pid))`;
+    const r = await runChild(spec({ args: ["-e", code] }), deps());
+    expect(r).toMatchObject({ code: 0, aborted: false, timedOut: false });
+    const gpid = Number(await readFile(pidFile, "utf8"));
+    await waitFor(() => !alive(gpid), 3000);
+  });
+
+  it("a_stalled_registry_cannot_hang_the_run_and_the_child_is_stopped", async () => {
+    const hang = { register: () => new Promise<void>(() => undefined), unregister: async () => undefined };
+    const t0 = Date.now();
+    await expect(runChild(spec({ args: ["-e", "setInterval(()=>{},1000)"] }), { registry: hang, killGraceMs: 200, registryTimeoutMs: 400 })).rejects.toThrow(ChildError);
+    expect(Date.now() - t0).toBeLessThan(4000);
+  });
+
+  it("a_fast_child_with_a_slow_register_never_leaves_a_stale_row", async () => {
+    const real = createChildRegistry(db.pool, "w-slow");
+    const order: string[] = [];
+    const slow = {
+      register: async (r: Parameters<typeof real.register>[0]) => {
+        await new Promise((res) => setTimeout(res, 400));
+        await real.register(r);
+        order.push("register");
+      },
+      unregister: async (pid: number, s: number) => {
+        order.push("unregister");
+        await real.unregister(pid, s);
+      },
+    };
+    const r = await runChild(spec({ args: ["-e", "setTimeout(()=>{},150)"] }), { registry: slow, killGraceMs: 200 });
+    expect(r.code).toBe(0);
+    expect(order).toEqual(["register", "unregister"]);
+    expect(await rows()).toHaveLength(0);
+  });
+
+  it("cwdRoot_is_enforced_by_runChild", async () => {
+    await expect(runChild(spec({ args: ["-e", "0"], cwdRoot: path.join(tmp, "nowhere-else") }), deps())).rejects.toThrow(ChildError);
   });
 
   it("abort_kills_the_whole_process_group_including_grandchildren", async () => {
@@ -232,18 +276,109 @@ describe("orphan sweep", () => {
     expect(await rows()).toHaveLength(0);
   }, 90_000);
 
-  async function liveRow(startedAtEpoch: number | null, label = "sleep") {
+  async function insertRow(pid: number, started: number, label: string, args: string, worker = "dead") {
+    await db.pool.query(
+      "insert into child_processes (pid, started_at_epoch, command_label, args_sha256, worker_id, stage_run_id) values ($1,$2,$3,$4,$5,$6)",
+      [pid, started, label, argsHash(args), worker, sid()],
+    );
+  }
+  async function liveRow(startedAtEpoch: number | null, label = "sleep", worker = "dead", argsOverride?: string) {
     const c = spawn("sleep", ["300"], { detached: true, stdio: "ignore" });
     c.unref();
     orphanPids.push(c.pid!);
     const info = await readProcInfo(c.pid!);
     expect(info).not.toBeNull();
-    await db.pool.query(
-      "insert into child_processes (pid, started_at_epoch, command_label, worker_id, stage_run_id) values ($1,$2,$3,'dead',$4)",
-      [c.pid, startedAtEpoch ?? info!.startedAtEpoch, label, sid()],
-    );
+    await insertRow(c.pid!, startedAtEpoch ?? info!.startedAtEpoch, label, argsOverride ?? info!.args, worker);
     return c.pid!;
   }
+
+  it("sweep_leaves_a_live_other_workers_rows_alone_and_kills_them_once_it_is_dead", async () => {
+    const lock = await holdWorkerLock(db.pool, "live-other");
+    const pid = await liveRow(null, "sleep", "live-other");
+    expect(await sweepOrphans(db.pool, "w-new", { killGraceMs: 300 })).toBe(0);
+    expect(alive(pid)).toBe(true);
+    expect(await rows()).toHaveLength(1); // not deleted either
+    await expect(holdWorkerLock(db.pool, "live-other")).rejects.toThrow(/already running/);
+    await lock.release();
+    expect(await sweepOrphans(db.pool, "w-new", { killGraceMs: 300 })).toBe(1);
+    await waitFor(() => !alive(pid), 5000);
+    expect(await rows()).toHaveLength(0);
+  });
+
+  it("a_worker_whose_connection_died_is_treated_as_dead", async () => {
+    const client = await db.pool.connect();
+    await client.query("select pg_advisory_lock(hashtextextended('yt-child-worker:' || $1, 0))", ["crashed"]);
+    const pid = await liveRow(null, "sleep", "crashed");
+    expect(await sweepOrphans(db.pool, "w-new", { killGraceMs: 300 })).toBe(0); // still held
+    client.release(true); // connection destroyed, as when a worker process dies
+    await waitFor(async () => (await sweepOrphans(db.pool, "w-new", { killGraceMs: 300 })) === 1, 5000);
+    await waitFor(() => !alive(pid), 5000);
+  });
+
+  it("sweep_kills_surviving_group_members_when_the_leader_is_already_dead", async () => {
+    const pidFile = path.join(tmp, "member.pid");
+    const code = `const {spawn}=require('child_process');const g=spawn('sleep',['300'],{stdio:'ignore'});g.unref();require('fs').writeFileSync(${JSON.stringify(pidFile)},String(g.pid));setInterval(()=>{},1000)`;
+    const leader = spawn(NODE, ["-e", code], { detached: true, stdio: "ignore" });
+    orphanPids.push(leader.pid!);
+    await waitFor(async () => {
+      try {
+        return (await readFile(pidFile, "utf8")).length > 0;
+      } catch {
+        return false;
+      }
+    });
+    const member = Number(await readFile(pidFile, "utf8"));
+    orphanPids.push(member);
+    const info = (await readProcInfo(leader.pid!))!;
+    await insertRow(leader.pid!, info.startedAtEpoch, commandLabelOf(info.args), info.args);
+    process.kill(leader.pid!, "SIGKILL"); // only the leader dies
+    await new Promise((r) => leader.once("exit", r));
+    expect(alive(leader.pid!)).toBe(false);
+    expect(alive(member)).toBe(true);
+    expect(await sweepOrphans(db.pool, "w-new", { killGraceMs: 300 })).toBe(1);
+    await waitFor(() => !alive(member), 5000);
+    expect(await rows()).toHaveLength(0);
+  });
+
+  it("sweep_matching_ignores_timezone_of_the_sweeping_process", async () => {
+    const pid = await liveRow(null);
+    const tz = process.env.TZ;
+    try {
+      process.env.TZ = "Pacific/Kiritimati"; // UTC+14: a local-time reading would be off by hours
+      expect(await sweepOrphans(db.pool, "w-new", { killGraceMs: 300 })).toBe(1);
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
+    await waitFor(() => !alive(pid), 5000);
+  });
+
+  it("proc_info_start_time_is_real_utc_and_the_same_under_any_TZ", async () => {
+    const c = spawn("sleep", ["300"], { detached: true, stdio: "ignore" });
+    c.unref();
+    orphanPids.push(c.pid!);
+    const before = Math.floor(Date.now() / 1000);
+    const tz = process.env.TZ;
+    const seen: number[] = [];
+    try {
+      for (const z of ["UTC", "Asia/Kolkata", "America/New_York"]) {
+        process.env.TZ = z;
+        seen.push((await readProcInfo(c.pid!))!.startedAtEpoch);
+      }
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
+    expect(new Set(seen).size).toBe(1);
+    expect(Math.abs(seen[0]! - before)).toBeLessThanOrEqual(5);
+  });
+
+  it("sweep_ignores_a_pid_whose_command_line_differs_even_with_the_same_name", async () => {
+    const pid = await liveRow(null, "sleep", "dead", "sleep 12345");
+    expect(await sweepOrphans(db.pool, "w-new", { killGraceMs: 300 })).toBe(0);
+    expect(alive(pid)).toBe(true);
+    expect(await rows()).toHaveLength(0);
+  });
 
   it("sweep_kills_a_matching_live_process_and_its_group", async () => {
     const pid = await liveRow(null);
@@ -267,19 +402,14 @@ describe("orphan sweep", () => {
   });
 
   it("sweep_removes_rows_of_dead_pids_without_error", async () => {
-    await db.pool.query(
-      "insert into child_processes (pid, started_at_epoch, command_label, worker_id, stage_run_id) values (999999,1,'sleep','dead',$1)",
-      [sid()],
-    );
+    await insertRow(999999, 1, "sleep", "sleep 300");
     expect(await sweepOrphans(db.pool, "w-new")).toBe(0);
     expect(await rows()).toHaveLength(0);
   });
 
   it("sweep_never_kills_its_own_process", async () => {
-    await db.pool.query(
-      "insert into child_processes (pid, started_at_epoch, command_label, worker_id, stage_run_id) values ($1,$2,$3,'dead',$4)",
-      [process.pid, (await readProcInfo(process.pid))!.startedAtEpoch, path.basename(NODE), sid()],
-    );
+    const me = (await readProcInfo(process.pid))!;
+    await insertRow(process.pid, me.startedAtEpoch, commandLabelOf(me.args), me.args);
     expect(await sweepOrphans(db.pool, "w-new")).toBe(0);
     expect(alive(process.pid)).toBe(true);
   });
