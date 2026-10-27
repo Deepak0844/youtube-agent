@@ -2,7 +2,7 @@
 // vault notice. Pure: no IO. The DB side is src/server/db/provider-keys.ts, the network side src/server/providers/key-test.ts.
 // Rule: a test is ONE read-only GET to a hard-coded https host (list models / key info). Nothing here can build a paid call.
 
-export const PROVIDER_IDS = ["anthropic", "openai", "gemini", "deepseek", "openrouter", "elevenlabs", "pexels", "pixabay"] as const;
+export const PROVIDER_IDS = ["anthropic", "openai", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom", "elevenlabs", "pexels", "pixabay"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 export type KeyTestResult = "ok" | "rejected" | "unreachable";
 
@@ -23,6 +23,14 @@ export const PROVIDERS: readonly ProviderDef[] = [
   { id: "gemini", label: "Gemini", role: "Language model", note: "Google AI Studio key", shape: /^(AIza[\w-]{30,60}|AQ\.[\w.-]{20,300})$/, shapeHint: "starts with AIza or AQ." },
   { id: "deepseek", label: "DeepSeek", role: "Language model", note: "DeepSeek API", shape: new RegExp(`^sk-${printable}{16,300}$`), shapeHint: "starts with sk-" },
   { id: "openrouter", label: "OpenRouter", role: "Language model", note: "One key, many models", shape: new RegExp(`^sk-or-${printable}{16,300}$`), shapeHint: "starts with sk-or-" },
+  { id: "groq", label: "Groq", role: "Language model", note: "Groq API", shape: new RegExp(`^gsk_${printable}{16,300}$`), shapeHint: "starts with gsk_" },
+  { id: "mistral", label: "Mistral", role: "Language model", note: "Mistral API", shape: /^[A-Za-z0-9]{24,100}$/, shapeHint: "letters and digits only" },
+  { id: "xai", label: "xAI", role: "Language model", note: "Grok models", shape: new RegExp(`^xai-${printable}{16,300}$`), shapeHint: "starts with xai-" },
+  { id: "moonshot", label: "Moonshot / Kimi", role: "Language model", note: "Kimi models", shape: new RegExp(`^sk-${printable}{16,300}$`), shapeHint: "starts with sk-" },
+  { id: "qwen", label: "Qwen (DashScope)", role: "Language model", note: "Alibaba Cloud Model Studio, international", shape: new RegExp(`^sk-${printable}{16,300}$`), shapeHint: "starts with sk-" },
+  { id: "together", label: "Together", role: "Language model", note: "Together AI", shape: /^[A-Za-z0-9_-]{32,200}$/, shapeHint: "letters, digits, _ and - only" },
+  { id: "siliconflow", label: "SiliconFlow", role: "Language model", note: "SiliconFlow international", shape: new RegExp(`^sk-${printable}{16,300}$`), shapeHint: "starts with sk-" },
+  { id: "custom", label: "Custom endpoint", role: "Language model", note: "Key for your own OpenAI-compatible address. Checked by the model Test button, not here.", shape: new RegExp(`^${printable}{8,300}$`), shapeHint: "8 or more visible characters" },
   { id: "elevenlabs", label: "ElevenLabs", role: "Voice", note: "Used from Phase 3", shape: /^(sk_[A-Za-z0-9]{20,200}|[a-f0-9]{32})$/, shapeHint: "starts with sk_ (or 32 hex characters)" },
   { id: "pexels", label: "Pexels", role: "Stock media", note: "Free stock photos and video, used from Phase 3", shape: /^[A-Za-z0-9]{20,100}$/, shapeHint: "letters and digits only" },
   { id: "pixabay", label: "Pixabay", role: "Stock media", note: "Free stock images, used from Phase 3", shape: /^[0-9]{4,}-[A-Za-z0-9]{16,64}$/, shapeHint: "looks like 12345678-abcdef..." },
@@ -53,8 +61,11 @@ export interface KeyTestRequest {
   headers: Record<string, string>;
 }
 
-/** The ONE free request used to test a key. Hosts and paths are constants; only the key varies. */
-export function keyTestRequest(id: ProviderId, key: string): KeyTestRequest {
+/**
+ * The ONE free request used to test a key. Hosts and paths are constants; only the key varies.
+ * `custom` has no fixed host (its address is the owner's own), so it has no key test: a key is never sent to a free-form URL here.
+ */
+export function keyTestRequest(id: ProviderId, key: string): KeyTestRequest | null {
   const bearer = { authorization: `Bearer ${key}` };
   switch (id) {
     case "anthropic":
@@ -67,6 +78,22 @@ export function keyTestRequest(id: ProviderId, key: string): KeyTestRequest {
       return { url: "https://api.deepseek.com/models", method: "GET", headers: bearer };
     case "openrouter":
       return { url: "https://openrouter.ai/api/v1/key", method: "GET", headers: bearer }; // key info: /models is public, so it proves nothing
+    case "groq":
+      return { url: "https://api.groq.com/openai/v1/models", method: "GET", headers: bearer };
+    case "mistral":
+      return { url: "https://api.mistral.ai/v1/models", method: "GET", headers: bearer };
+    case "xai":
+      return { url: "https://api.x.ai/v1/models", method: "GET", headers: bearer };
+    case "moonshot":
+      return { url: "https://api.moonshot.ai/v1/models", method: "GET", headers: bearer };
+    case "qwen":
+      return { url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models", method: "GET", headers: bearer };
+    case "together":
+      return { url: "https://api.together.ai/v1/models", method: "GET", headers: bearer };
+    case "siliconflow":
+      return { url: "https://api.siliconflow.com/v1/models", method: "GET", headers: bearer };
+    case "custom":
+      return null;
     case "elevenlabs":
       return { url: "https://api.elevenlabs.io/v1/models", method: "GET", headers: { "xi-api-key": key } };
     case "pexels":
