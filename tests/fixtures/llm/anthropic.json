@@ -1,0 +1,78 @@
+{
+  "provider": "anthropic",
+  "adapter": "anthropic",
+  "modelId": "claude-fixture",
+  "note": "Canned responses in the provider's documented wire format. Invented content, no real data.",
+  "completion": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-fixture",
+    "content": [
+      {
+        "type": "text",
+        "text": "Hello from the fixture."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 21,
+      "output_tokens": 9
+    }
+  },
+  "toolCall": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-fixture",
+    "content": [
+      {
+        "type": "tool_use",
+        "id": "toolu_1",
+        "name": "webSearch",
+        "input": {
+          "query": "fixture"
+        }
+      }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 21,
+      "output_tokens": 9
+    }
+  },
+  "structured": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-fixture",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"title\":\"Fixture\",\"beats\":[\"a\",\"b\"]}"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 21,
+      "output_tokens": 9
+    }
+  },
+  "noUsage": {
+    "id": "msg_fixture",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-fixture",
+    "content": [
+      {
+        "type": "text",
+        "text": "No usage here."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null
+  }
+}

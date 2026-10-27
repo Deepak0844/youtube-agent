@@ -10,6 +10,7 @@ const defaultFetcher: KeyFetcher = (url, init, o) => safeFetch(url, init, { mode
 
 export async function runKeyTest(id: ProviderId, key: string, opts: { fetcher?: KeyFetcher; timeoutMs?: number } = {}): Promise<KeyTestResult> {
   const req = keyTestRequest(id, key);
+  if (req === null) return "unreachable"; // no fixed host to test against: nothing is sent
   const timeoutMs = opts.timeoutMs ?? 10_000;
   try {
     const res = await (opts.fetcher ?? defaultFetcher)(req.url, { method: "GET", headers: req.headers, redirect: "manual" }, { timeoutMs, maxRedirects: 0 });

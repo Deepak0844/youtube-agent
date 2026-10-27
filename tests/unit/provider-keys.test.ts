@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isAuditEvent, redactDetail } from "@/server/core/audit-events";
 import { PROVIDERS, checkKeyShape, isProviderId, keyTestRequest, secretName, statusToResult, vaultNotice } from "@/server/core/provider-keys";
+import { hintFor } from "@/server/core/vault-crypto";
 import { runKeyTest } from "@/server/providers/key-test";
 import { safeFetch } from "@/server/providers/net/safe-fetch";
 
@@ -12,14 +13,30 @@ const SAMPLES: Record<string, string> = {
   gemini: "AIzaSyA-abcdefghijklmnopqrstuvwxyz01234",
   deepseek: "sk-abcdefghijklmnopqrstuvwxyz012345",
   openrouter: "sk-or-v1-abcdefghijklmnopqrstuvwxyz0123",
+  groq: "gsk_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH",
+  mistral: "abcdefghijklmnopqrstuvwxyz012345",
+  xai: "xai-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH",
+  moonshot: "sk-abcdefghijklmnopqrstuvwxyz0123456789ABCD",
+  qwen: "sk-abcdefghijklmnopqrstuvwxyz0123456789",
+  together: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  siliconflow: "sk-abcdefghijklmnopqrstuvwxyz0123456789abcdef",
+  custom: "my-local-proxy-key-0123456789",
   elevenlabs: "sk_abcdefghijklmnopqrstuvwxyz0123456789",
   pexels: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOP",
   pixabay: "12345678-abcdef0123456789abcdef012",
 };
 
 describe("provider list", () => {
-  it("is exactly the eight owner-approved providers, in order", () => {
-    expect(PROVIDERS.map((p) => p.id)).toEqual(["anthropic", "openai", "gemini", "deepseek", "openrouter", "elevenlabs", "pexels", "pixabay"]);
+  it("is exactly the owner-approved providers, in order", () => {
+    expect(PROVIDERS.map((p) => p.id)).toEqual([
+      "anthropic", "openai", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom",
+      "elevenlabs", "pexels", "pixabay",
+    ]);
+  });
+  it("the new language-model slots are all role Language model", () => {
+    for (const id of ["groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom"]) {
+      expect(PROVIDERS.find((p) => p.id === id)?.role, id).toBe("Language model");
+    }
   });
   it("secret names are provider.<id>.api_key and match the vault name rule", () => {
     for (const p of PROVIDERS) {
@@ -67,6 +84,13 @@ describe("test requests are fixed, free and key-bearing only for the provider", 
     openrouter: "https://openrouter.ai/api/v1/key",
     elevenlabs: "https://api.elevenlabs.io/v1/models",
     pexels: "https://api.pexels.com/v1/curated?per_page=1",
+    groq: "https://api.groq.com/openai/v1/models",
+    mistral: "https://api.mistral.ai/v1/models",
+    xai: "https://api.x.ai/v1/models",
+    moonshot: "https://api.moonshot.ai/v1/models",
+    qwen: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models",
+    together: "https://api.together.xyz/v1/models",
+    siliconflow: "https://api.siliconflow.com/v1/models",
   };
   it.each(Object.entries(FIXED))("%s: the whole request (method, url, headers) is exactly the expected object", (id, url) => {
     const k = SAMPLES[id]!;
@@ -78,18 +102,26 @@ describe("test requests are fixed, free and key-bearing only for the provider", 
       openrouter: { authorization: `Bearer ${k}` },
       elevenlabs: { "xi-api-key": k },
       pexels: { authorization: k },
+      groq: { authorization: `Bearer ${k}` },
+      mistral: { authorization: `Bearer ${k}` },
+      xai: { authorization: `Bearer ${k}` },
+      moonshot: { authorization: `Bearer ${k}` },
+      qwen: { authorization: `Bearer ${k}` },
+      together: { authorization: `Bearer ${k}` },
+      siliconflow: { authorization: `Bearer ${k}` },
     };
     expect(keyTestRequest(id as never, k)).toStrictEqual({ url, method: "GET", headers: HEADERS[id] });
   });
   it("the key is in no URL except Pixabay's", () => {
     for (const p of PROVIDERS) {
       const r = keyTestRequest(p.id, SAMPLES[p.id]!);
+      if (r === null) continue;
       if (p.id === "pixabay") expect(r.url).toContain(SAMPLES[p.id]!);
       else expect(r.url).not.toContain(SAMPLES[p.id]!);
     }
   });
   it("pixabay can only carry its key in the query string, on its own host", () => {
-    const r = keyTestRequest("pixabay", SAMPLES.pixabay!);
+    const r = keyTestRequest("pixabay", SAMPLES.pixabay!)!;
     const u = new URL(r.url);
     expect(u.origin).toBe("https://pixabay.com");
     expect(u.pathname).toBe("/api/");
@@ -98,10 +130,32 @@ describe("test requests are fixed, free and key-bearing only for the provider", 
   it("only https hosts, no body, never a paid verb", () => {
     for (const p of PROVIDERS) {
       const r = keyTestRequest(p.id, SAMPLES[p.id]!);
+      if (r === null) continue;
       expect(r.url.startsWith("https://")).toBe(true);
       expect(r.method).toBe("GET");
       expect(new URL(r.url).pathname).not.toMatch(/messages|completions|generate|speech|text-to|embeddings|images/);
     }
+  });
+});
+
+describe("custom slot has no fixed host, so its key is never sent to a free-form URL by a key test", () => {
+  it("keyTestRequest is null for custom and a non-null fixed https request for every other slot", () => {
+    expect(keyTestRequest("custom", SAMPLES.custom!)).toBeNull();
+    for (const p of PROVIDERS.filter((x) => x.id !== "custom")) expect(keyTestRequest(p.id, SAMPLES[p.id]!), p.id).not.toBeNull();
+  });
+  it("runKeyTest for custom makes no request at all", async () => {
+    let calls = 0;
+    const r = await runKeyTest("custom", SAMPLES.custom!, { fetcher: async () => (calls++, new Response("{}")) });
+    expect(r).toBe("unreachable");
+    expect(calls).toBe(0);
+  });
+});
+
+describe("new slots keep the masking rule (last four only)", () => {
+  it.each(["groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom"])("%s: hint is the last 4 characters", (id) => {
+    const k = SAMPLES[id]!;
+    expect(hintFor(k)).toBe(k.slice(-4));
+    expect(hintFor(k)).not.toContain(k.slice(0, -4));
   });
 });
 

@@ -95,6 +95,7 @@ export async function removeProviderKey(db: Db, id: string): Promise<KeyOutcome>
 /** One free request with the stored key. Records the verdict (audit + last test); the response body is never read. */
 export async function testProviderKey(db: Db, loader: KeyringLoader, id: string, opts: { fetcher?: KeyFetcher; cooldownMs?: number } = {}): Promise<TestOutcome> {
   if (!isProviderId(id)) return { ok: false, message: "Unknown provider." };
+  if (id === "custom") return { ok: false, message: "A custom key is checked by the Test button on its model, not here." };
   try {
     const ring = await ringIfHealthy(db, loader);
     if (!ring) return { ok: false, message: "The vault is not ready, so the key cannot be tested." };
