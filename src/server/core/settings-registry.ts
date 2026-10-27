@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_EVENT_SWITCHES, NOTIFY_EVENT_IDS, isHhmm, isTimeZone } from "@/server/core/notify";
 
 // Pure registry of owner settings (Docs 02 4.5-4.7, 07 3). `safety` keys weaken protections when changed, so only a
 // logged-in session may write them (never an API token or the system). The SQL seed in 0005_settings.sql must match.
@@ -13,6 +14,16 @@ const posInt = z.number().int().positive();
 const nonNegInt = z.number().int().nonnegative();
 const num = z.number().finite();
 const posNum = z.number().finite().positive();
+
+const hhmm = z.string().refine(isHhmm, "use HH:MM");
+const switches = z.object({ in_app: z.boolean(), desktop: z.boolean(), webhook: z.boolean() }).strict();
+// Notifications (Doc 04 5). None is a safety key: they only change who is told, never what is allowed.
+const notifyEvents = z
+  .record(z.string(), switches)
+  .refine((m) => Object.keys(m).every((k) => (NOTIFY_EVENT_IDS as string[]).includes(k)), "unknown notification event");
+const quietHours = z
+  .object({ enabled: z.boolean(), start: hhmm, end: hhmm, tz: z.string().refine(isTimeZone, "unknown time zone"), urgent_break_through: z.boolean().optional() })
+  .strict();
 
 export const SETTINGS = {
   "jobs.concurrent_renders": { schema: posInt, default: 1, safety: false, label: "Concurrent renders" },
@@ -62,6 +73,9 @@ export const SETTINGS = {
   "qa.long_height": { schema: posInt, default: 1080, safety: true, label: "QA long height" },
   "qa.long_min_s": { schema: posNum, default: 180, safety: true, label: "QA long min seconds" },
   "qa.long_max_s": { schema: posNum, default: 900, safety: true, label: "QA long max seconds" },
+  "notify.master": { schema: z.boolean(), default: true, safety: false, label: "Notifications on (master switch)" },
+  "notify.quiet_hours": { schema: quietHours, default: { enabled: false, start: "22:00", end: "07:00", tz: "Asia/Kolkata" }, safety: false, label: "Quiet hours" },
+  "notify.events": { schema: notifyEvents, default: DEFAULT_EVENT_SWITCHES as Record<string, unknown>, safety: false, label: "Notification switches per event and channel" },
   "display.currency": { schema: z.string().min(1), default: "USD", safety: false, label: "Display currency" },
 } satisfies Record<string, SettingDef>;
 
