@@ -25,6 +25,15 @@ describe("route inventory (real files)", () => {
     expect(routes.length).toBeGreaterThanOrEqual(8);
     expect(actionFiles.length).toBeGreaterThanOrEqual(3);
   });
+  it("the live feed route exists, needs a session, and checks it before opening the stream", () => {
+    const events = routes.find((f) => urlOf(f) === "/api/events");
+    expect(events, "src/app/api/events/route.ts").toBeDefined();
+    expect(isPublicPath("/api/events")).toBe(false);
+    const src = readFileSync(events!, "utf8");
+    expect(src.indexOf("requireOwnerApi(")).toBeGreaterThan(-1);
+    expect(src.indexOf("requireOwnerApi(")).toBeLessThan(src.indexOf("createEventStream("));
+    expect(src.indexOf("assertAllowedHost(request)")).toBeGreaterThan(-1);
+  });
   it.each(routes.map((f) => [urlOf(f), f]))("%s is public or properly guarded", (url, file) => {
     const v = checkRoute({ url: url!, file: file!, src: readFileSync(file!, "utf8"), isPublic: isPublicPath(url!) });
     expect(v, `${file}`).toEqual([]);

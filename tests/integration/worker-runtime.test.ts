@@ -1,4 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -272,5 +275,42 @@ describe("worker runtime with Postgres and Redis", () => {
     await waitFor(async () => (await getStage(db.pool, id))?.status === "succeeded", "next boot reclaimed");
     expect(await getStage(db.pool, id)).toMatchObject({ fence: 2, attemptSeq: 1, result: { restarted: true } });
     expect(draft).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("worker live feed and job logs", () => {
+  let root: string; let prevRoot: string | undefined;
+  beforeEach(async () => { prevRoot = process.env.STORAGE_ROOT; root = await mkdtemp(path.join(os.tmpdir(), "wk-logs-")); process.env.STORAGE_ROOT = root; });
+  afterEach(async () => { if (prevRoot === undefined) delete process.env.STORAGE_ROOT; else process.env.STORAGE_ROOT = prevRoot; await rm(root, { recursive: true, force: true }); });
+  const types = async () => (await db.pool.query("select type from events order by id")).rows.map((r) => r.type as string);
+
+  it("stage_outcomes_and_ctx_log_reach_the_events_table_and_a_redacted_log_file", async () => {
+    const worker = boot({ handlers: { draft: async (ctx) => { ctx.log("working with sk-ant-api03-abcdefghijklmnopqrstuvwxyz"); ctx.log("done"); return { ok: true }; } } }); await worker.ready;
+    const id = await stage(); await queue.enqueue(id, 0, 0, "h1");
+    await waitFor(async () => (await types()).includes("stage.succeeded"), "success event");
+    const t = await types();
+    expect(t[0]).toBe("stage.started"); expect(t).toContain("log"); expect(t.at(-1)).toBe("stage.succeeded");
+    const row = (await getStage(db.pool, id))!;
+    const text = await readFile(path.join(root, "videos", row.videoId, "logs", `draft-${row.fence}.log`), "utf8");
+    expect(text).toContain("done"); expect(text).not.toContain("sk-ant");
+    expect(JSON.stringify((await db.pool.query("select payload from events")).rows)).not.toContain("sk-ant");
+  });
+
+  it("failed_stage_emits_stage_failed", async () => {
+    const worker = boot({ handlers: { render: async () => ({}) } }); await worker.ready;
+    const id = await stage(); await queue.enqueue(id, 0, 0, "h1");
+    await waitFor(async () => (await types()).includes("stage.failed"), "failed event");
+  });
+
+  it("a_throwing_event_hook_does_not_break_the_job", async () => {
+    const bad = boot({ handlers: { draft: async (ctx) => { ctx.log("x"); return { ok: true }; } }, hooks: { emitEvent: async () => { throw new Error("events down"); } } }); await bad.ready;
+    const id = await stage(); await queue.enqueue(id, 0, 0, "h1");
+    await waitFor(async () => (await getStage(db.pool, id))?.status === "succeeded", "stage still succeeds");
+  });
+
+  it("the_prune_hook_removes_week_old_events_through_prune_events", async () => {
+    await db.pool.query("insert into events (type, at) values ('log', now() - interval '8 days'), ('log', now())");
+    const worker = boot({ intervalMs: 20 }); await worker.ready;
+    await waitFor(async () => (await db.pool.query("select 1 from events")).rowCount === 1, "old event pruned");
   });
 });

@@ -11,7 +11,7 @@ import {
   type PaidCallPorts,
 } from "./paid-call";
 import type { EngineConfig } from "./engine-config";
-import { createStageContext, StageAbort, type StageHandler } from "./stage-handler";
+import { createStageContext, StageAbort, type StageHandler, type StageLogHandle } from "./stage-handler";
 
 // The worker body for one stage attempt: claim -> paid steps (each through runPaidCall) -> commit. No IO here;
 // everything comes through ports (the Postgres adapter is src/server/db/stage-runner-adapter.ts).
@@ -41,6 +41,7 @@ export interface StageLike {
   id: string;
   name: string;
   inputHash: string;
+  videoId?: string;
 }
 
 export interface StageClaim extends ClaimLike {
@@ -71,6 +72,8 @@ export interface StageRunnerDeps {
   handler?: StageHandler;
   config?: EngineConfig;
   shutdownSignal?: AbortSignal;
+  /** Opens this attempt's log (file + feed). Must not throw; if it does the attempt runs without a log. */
+  openLog?: (stage: StageLike, claim: StageClaim) => StageLogHandle | undefined;
 }
 
 export interface StageRunnerPorts {
@@ -198,10 +201,22 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
       checkActive();
       if (!stage) throw new Error(`stage ${job.stageRunId} vanished after claim`);
       if (deps.handler) {
-        const internals = createStageContext({ stage, claim, config: handlerConfig!, signal: ctl.signal, paid, beforeCall });
-        const result = await deps.handler(internals.ctx);
-        providerTimedOut = internals.providerTimedOut();
-        return result;
+        let log: StageLogHandle | undefined;
+        try { log = deps.openLog?.(stage, claim); } catch { log = undefined; }
+        try {
+          const internals = createStageContext({ stage, claim, config: handlerConfig!, signal: ctl.signal, paid, beforeCall, log: log && ((line) => log!.write(line)) });
+          const result = await deps.handler(internals.ctx);
+          providerTimedOut = internals.providerTimedOut();
+          return result;
+        } finally {
+          // Flush the last lines, but never let a slow log hold the stage result for more than 2 s.
+          let t: ReturnType<typeof setTimeout> | undefined;
+          await Promise.race([
+            Promise.resolve().then(() => log?.close()).catch(() => {}),
+            new Promise<void>((r) => { t = setTimeout(r, 2000); }),
+          ]);
+          clearTimeout(t);
+        }
       }
       if (!deps.stepsFor) throw new Error("stage runner requires handler or stepsFor");
       const results: unknown[] = [];

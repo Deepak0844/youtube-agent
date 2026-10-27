@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { insertEvent } from "./events";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import type { GateId } from "@/server/core/gates";
 import { uuidv7 } from "@/server/core/ids";
@@ -150,6 +151,10 @@ export async function advanceVideo(db: pg.Pool, queue: EnqueueOnly, videoId: str
     }
     const next = action?.kind === "wait_gate" || action?.kind === "done" ? "waiting" : "active";
     if (next !== v.status) await c.query("update videos set status = $2, updated_at = now() where id = $1", [videoId, next]);
+    // Live feed rows are written in the same transaction as the transition they describe, so a rolled-back advance
+    // says nothing. Only a change INTO waiting speaks: repeated sweeps over a parked video stay quiet.
+    if (next !== v.status && action?.kind === "wait_gate") await insertEvent(c, { type: "gate.waiting", videoId, payload: { gate: action.gate } });
+    if (next !== v.status && action?.kind === "done") await insertEvent(c, { type: "video.done", videoId });
     return { created, action: action ?? null };
   });
   return { ...(await deliver(queue, decided.created)), action: decided.action };

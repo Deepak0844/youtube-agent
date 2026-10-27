@@ -75,6 +75,8 @@ function expectDenied(e: RouteEntry, method: string, state: string, r: Sent) {
 const CONTROL_STATUS: Record<string, number> = {
   "POST /api/uploads": 201, // valid session + same Origin, empty body -> stored as an empty upload (not 401, not 403)
 };
+// Routes that answer with a never-ending stream (server-sent events).
+const STREAMING = new Set(["GET /api/events"]);
 const controlStatus = (method: string, url: string): number | undefined => CONTROL_STATUS[`${method} ${url}`] ?? (method === "GET" ? 200 : undefined);
 
 let sessions: { expired: string; absolute: string; revoked: string; valid: string };
@@ -101,7 +103,7 @@ test.afterAll(endSessionPool);
 test("the derived table is not empty and contains the known routes", () => {
   expect(PROTECTED.length).toBeGreaterThanOrEqual(3);
   const urls = TABLE.map((r) => r.url);
-  for (const u of ["/", "/api/me", "/api/uploads", "/login", "/healthz"]) expect(urls, u).toContain(u);
+  for (const u of ["/", "/api/me", "/api/uploads", "/api/events", "/login", "/healthz"]) expect(urls, u).toContain(u);
 });
 
 // A page with no <h1>/<h2> of its own would make the marker check vacuous, so it fails here with the fix spelled out.
@@ -150,6 +152,18 @@ for (const e of PROTECTED) {
       test("control: a valid session is NOT refused and gets the expected success status", async ({ request }) => {
         const want = controlStatus(method, e.url);
         expect(want, `declare the expected valid-session status of ${method} ${e.url} in CONTROL_STATUS`).toBeDefined();
+        // An endless event stream cannot be read to the end: take the headers, then hang up.
+        if (STREAMING.has(`${method} ${e.url}`)) {
+          const ac = new AbortController();
+          try {
+            const live = await fetch(ORIGIN + e.url, { headers: { ...cookieOf(sessions.valid) }, signal: ac.signal });
+            expect(live.status, `${method} ${e.url}`).toBe(want);
+            expect(live.headers.get("content-type")).toContain("text/event-stream");
+          } finally {
+            ac.abort();
+          }
+          return;
+        }
         const { res, body } = await send(request, e.url, method, { ...cookieOf(sessions.valid), origin: ORIGIN });
         if (isDevOnly(e)) {
           expect([200, 404], `${method} ${e.url}`).toContain(res.status());
