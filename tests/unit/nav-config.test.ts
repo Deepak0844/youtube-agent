@@ -6,7 +6,7 @@ import { NAV_ITEMS, bottomBarItems, isActive, visibleNav } from "@/ui/shell/nav-
 
 // Settings pages are built on their own branches (tasks 8-12, 18) and only the shell task may edit the nav, so their
 // flags go on first. Each href leaves this list as its page lands; the list must be empty before Phase 1 closes.
-const PAGE_ARRIVES_ON_ANOTHER_BRANCH = ["/settings/google", "/settings/audit"];
+const PAGE_ARRIVES_ON_ANOTHER_BRANCH = ["/settings/audit"];
 
 const pageFile = (href: string) => {
   const dir = path.resolve("src/app/(app)", href === "/" ? "" : href.slice(1));

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { appendFileSync, writeFileSync } from "node:fs";
 
 export interface StartedServer {
   stop(): Promise<void>;
@@ -8,6 +9,8 @@ interface Options {
   url: string;
   timeoutMs: number;
   env?: NodeJS.ProcessEnv;
+  /** Also append the server output here (lets a test assert that something never reached a log). */
+  logFile?: string;
 }
 
 const tail = (text: string) => text.split("\n").slice(-20).join("\n");
@@ -17,8 +20,13 @@ const tail = (text: string) => text.split("\n").slice(-20).join("\n");
 export async function startServer(command: string, args: string[], options: Options): Promise<StartedServer> {
   const child = spawn(command, args, { env: options.env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
-  child.stdout.on("data", (d) => (output += d));
-  child.stderr.on("data", (d) => (output += d));
+  if (options.logFile) writeFileSync(options.logFile, "");
+  const keep = (d: Buffer) => {
+    output += d;
+    if (options.logFile) appendFileSync(options.logFile, d);
+  };
+  child.stdout.on("data", keep);
+  child.stderr.on("data", keep);
 
   let exited = false;
   const exit = new Promise<never>((_, reject) =>
