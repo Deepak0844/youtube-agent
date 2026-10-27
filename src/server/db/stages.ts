@@ -95,7 +95,8 @@ export async function insertQueuedStage(
   return id;
 }
 
-// One conditional UPDATE: no read-then-write. Only a queued row whose input_hash matches can be claimed.
+// One conditional UPDATE: no read-then-write. Only a queued row whose input_hash matches and that nobody asked to
+// cancel can be claimed (no money can be spent after a cancel request).
 export async function claimStage(
   db: Db,
   args: { id: string; inputHash: string; workerId: string; ttlMs: number },
@@ -111,7 +112,7 @@ export async function claimStage(
               lease_until = clock_timestamp() + ($4::bigint * interval '1 millisecond'),
               fence = fence + 1,
               updated_at = now()
-        where id = $1 and status = 'queued' and input_hash = $2
+        where id = $1 and status = 'queued' and input_hash = $2 and not cancel_requested
     returning fence, lease_until, attempt_seq`,
       [args.id, args.inputHash, args.workerId, args.ttlMs],
     );
@@ -178,11 +179,26 @@ export async function markStageNeedsDecision(db: Db, claim: Claim, reason: strin
   return res.rowCount === 1;
 }
 
-// Sets the flag only; it is the running worker (or reconciler) that acts on it.
-export async function requestCancel(db: Db, stageRunId: string): Promise<void> {
-  await db.query("update stage_runs set cancel_requested = true, updated_at = now() where id = $1", [
-    stageRunId,
-  ]);
+// Sets the flag only; it is the running worker (or reconciler) that acts on it. Only live rows are flagged:
+// a finished row (succeeded, failed, cancelled) is never touched. false = nothing was flagged.
+export async function requestCancel(db: Db, stageRunId: string): Promise<boolean> {
+  const res = await db.query(
+    `update stage_runs set cancel_requested = true, updated_at = now()
+      where id = $1 and status in ('queued', 'running', 'needs_decision')`,
+    [stageRunId],
+  );
+  return res.rowCount === 1;
+}
+
+// A queued row with the cancel flag can never be claimed (see claimStage), so it is moved to its final state here
+// instead of waiting forever. Conditional: running/finished rows are never touched. false = nothing changed.
+export async function cancelQueuedStage(db: Db, stageRunId: string): Promise<boolean> {
+  const res = await db.query(
+    `update stage_runs set status = 'cancelled', updated_at = clock_timestamp()
+      where id = $1 and status = 'queued' and cancel_requested`,
+    [stageRunId],
+  );
+  return res.rowCount === 1;
 }
 
 export async function getStage(db: Db, id: string): Promise<StageRow | null> {

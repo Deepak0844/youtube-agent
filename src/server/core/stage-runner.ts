@@ -90,6 +90,7 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
   if (!claim) return { kind: "noop" };
 
   let leaseLost = false;
+  let stopped = false; // set once the attempt has finished its work: a finished attempt must not extend the lease
   let releaseFailed = false;
   // Observe (never hide) a failed reservation release; the wrapper still warns and rethrows the original error.
   const paid: PaidCallPorts = {
@@ -104,6 +105,7 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
     },
   };
   const timer = setInterval(() => {
+    if (stopped) return;
     ports.heartbeat(claim, deps.ttlMs).then(
       (alive) => {
         if (!alive) {
@@ -125,9 +127,11 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
         await runPaidCall(paid, { claim, ...step }, (key) => deps.provider.call(key, step)),
       );
     }
+    stopped = true;
     const committed = await ports.commit(claim, { steps: results });
     return { kind: committed ? "committed" : "commit_rejected", claim };
   } catch (err) {
+    stopped = true;
     if (err instanceof NeedsDecisionError) return { kind: "needs_decision", claim };
     if (err instanceof LeaseLostError) return { kind: "lease_lost", claim };
     if (err instanceof BudgetRefusedError) {
@@ -141,6 +145,7 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
     }
     throw err;
   } finally {
+    stopped = true;
     clearInterval(timer);
   }
 }

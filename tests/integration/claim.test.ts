@@ -8,6 +8,7 @@ import {
   failStage,
   getStage,
   heartbeat,
+  cancelQueuedStage,
   insertQueuedStage,
   requestCancel,
 } from "@/server/db/stages";
@@ -321,5 +322,54 @@ describe("ttl validation and atomic claim", () => {
       client.release();
     }
     expect((await getStage(db.pool, id))?.status).toBe("queued");
+  });
+
+  it("queued_row_with_cancel_requested_cannot_be_claimed", async () => {
+    const id = await queued();
+    expect(await requestCancel(db.pool, id)).toBe(true);
+    expect(await claimStage(db.pool, { id, inputHash: "h1", workerId: "a", ttlMs: TTL })).toBeNull();
+    expect(await getStage(db.pool, id)).toMatchObject({ status: "queued", fence: 0, cancelRequested: true });
+  });
+
+  it("cancel_flag_on_finished_row_is_refused", async () => {
+    for (const finish of ["commit", "fail", "cancelled"] as const) {
+      const id = await queued();
+      if (finish === "cancelled") {
+        await db.pool.query("update stage_runs set status='cancelled' where id=$1", [id]);
+      } else {
+        const claim = (await claimStage(db.pool, { id, inputHash: "h1", workerId: "a", ttlMs: TTL }))!;
+        if (finish === "commit") await commitStage(db.pool, claim, {});
+        else await failStage(db.pool, claim, "boom");
+      }
+      const before = await getStage(db.pool, id);
+      expect(await requestCancel(db.pool, id), finish).toBe(false);
+      expect(await getStage(db.pool, id), finish).toEqual(before);
+    }
+    expect(await requestCancel(db.pool, uuidv7())).toBe(false);
+  });
+
+  it("requestCancel_flags_queued_running_and_needs_decision_rows", async () => {
+    for (const status of ["queued", "running", "needs_decision"]) {
+      const id = await queued();
+      await db.pool.query("update stage_runs set status=$2 where id=$1", [id, status]);
+      expect(await requestCancel(db.pool, id), status).toBe(true);
+      expect((await getStage(db.pool, id))?.cancelRequested, status).toBe(true);
+    }
+  });
+
+  it("queued_cancelled_row_becomes_cancelled_not_reenqueued", async () => {
+    const id = await queued();
+    expect(await cancelQueuedStage(db.pool, id)).toBe(false); // no flag yet: stays queued
+    expect((await getStage(db.pool, id))?.status).toBe("queued");
+    await requestCancel(db.pool, id);
+    expect(await cancelQueuedStage(db.pool, id)).toBe(true);
+    expect(await getStage(db.pool, id)).toMatchObject({ status: "cancelled", cancelRequested: true });
+    expect(await cancelQueuedStage(db.pool, id)).toBe(false); // already cancelled
+    // a running row with the flag is the worker's business, never touched here
+    const run = await queued();
+    await claimStage(db.pool, { id: run, inputHash: "h1", workerId: "a", ttlMs: TTL });
+    await requestCancel(db.pool, run);
+    expect(await cancelQueuedStage(db.pool, run)).toBe(false);
+    expect((await getStage(db.pool, run))?.status).toBe("running");
   });
 });
