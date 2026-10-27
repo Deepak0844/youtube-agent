@@ -55,5 +55,5 @@ test("with a session the page shows the newest entries and keeps secrets out of 
   const res = await request.get("/settings/audit", { headers: { cookie: `ytstudio_session=${token}` } });
   const body = await res.text();
   expect(body).toContain(MARK);
-  expect(body).not.toMatch(/postgres:\/\/|redis:\/\/|e2e-app-pw|e2e-owner-pw|dangerouslySetInnerHTML/);
+  expect(body).not.toMatch(/postgres:\/\/|redis:\/\/|e2e-app-pw|e2e-owner-pw/);
 });

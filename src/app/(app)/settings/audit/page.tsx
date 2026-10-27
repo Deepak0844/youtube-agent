@@ -177,13 +177,13 @@ function Entry({ row, now }: { row: AuditRow; now: Date }) {
       data-testid="audit-row"
       data-audit-id={row.id}
       data-event={truncateText(row.event, 80)}
-      className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-2 border-b border-rule py-4 last:border-b-0 md:grid-cols-[9.5rem_15rem_minmax(0,1fr)]"
+      className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-2 border-b border-rule py-4 last:border-b-0 md:grid-cols-[12.5rem_14rem_minmax(0,1fr)]"
     >
       <div className="min-w-0">
         <time dateTime={iso} className="block text-body font-medium">
           {relativeTime(row.at, now)}
         </time>
-        <span className="block font-mono text-small text-faint tabular-nums">{utcStamp(row.at)}</span>
+        <span className="block font-mono text-small whitespace-nowrap text-faint tabular-nums">{utcStamp(row.at)}</span>
       </div>
       <div className="min-w-0">
         <p className="m-0 flex flex-wrap items-center gap-2 text-body [overflow-wrap:anywhere]">
