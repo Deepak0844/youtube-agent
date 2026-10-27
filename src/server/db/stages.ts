@@ -180,6 +180,59 @@ export async function markStageNeedsDecision(db: Db, claim: Claim, reason: strin
   return res.rowCount === 1;
 }
 
+export type StopStageOutcome = "cancelled" | "failed" | "needs_decision" | "rejected";
+
+async function stopStage(
+  db: Db,
+  claim: Claim,
+  mode: "cancelled" | "failed",
+  reason: string,
+): Promise<StopStageOutcome> {
+  return atomic(db, async (q) => {
+    const live = await q.query(
+      `select id from stage_runs
+        where id = $1 and status = 'running' and fence = $2 and lease_owner = $3
+        for update`,
+      [claim.stageRunId, claim.fence, claim.workerId],
+    );
+    if (live.rowCount !== 1) return "rejected";
+    const open = await q.query(
+      `select id from spend_intents
+        where stage_run_id = $1 and status in ('pending', 'unknown')
+        order by id for update`,
+      [claim.stageRunId],
+    );
+    if (open.rowCount! > 0) {
+      await q.query(
+        "update spend_intents set status = 'unknown', updated_at = clock_timestamp() where stage_run_id = $1 and status = 'pending'",
+        [claim.stageRunId],
+      );
+      await q.query(
+        "update stage_runs set status = 'needs_decision', result = $2::jsonb, updated_at = clock_timestamp() where id = $1",
+        [claim.stageRunId, JSON.stringify({ needsDecision: reason })],
+      );
+      return "needs_decision";
+    }
+    await q.query(
+      "update stage_runs set status = $2, result = $3::jsonb, updated_at = clock_timestamp() where id = $1",
+      [claim.stageRunId, mode, mode === "failed" ? JSON.stringify({ error: reason }) : null],
+    );
+    return mode;
+  });
+}
+
+export function cancelStage(db: Db, claim: Claim): Promise<"cancelled" | "needs_decision" | "rejected"> {
+  return stopStage(db, claim, "cancelled", "cancel requested while a paid call of unknown outcome is open") as Promise<"cancelled" | "needs_decision" | "rejected">;
+}
+
+export function timeoutStage(
+  db: Db,
+  claim: Claim,
+  reason: "stage_timeout" | "provider_timeout",
+): Promise<"failed" | "needs_decision" | "rejected"> {
+  return stopStage(db, claim, "failed", reason) as Promise<"failed" | "needs_decision" | "rejected">;
+}
+
 // Sets the flag only; it is the running worker (or reconciler) that acts on it. Only live rows are flagged:
 // a finished row (succeeded, failed, cancelled) is never touched. false = nothing was flagged.
 export async function requestCancel(db: Db, stageRunId: string): Promise<boolean> {
