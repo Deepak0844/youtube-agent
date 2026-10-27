@@ -6,7 +6,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { callKey } from "@/server/core/spend";
 import type { StageHandler } from "@/server/core/stage-handler";
 import type { StageRunnerDeps } from "@/server/core/stage-runner";
-import { breakerHold, resetBreaker } from "@/server/db/breakers";
+import { admitStage, breakerHold, recordBreakerEvent, releaseProbe, resetBreaker } from "@/server/db/breakers";
 import { advanceAll, advanceVideo, rerunStage } from "@/server/db/pipeline";
 import { reconcile } from "@/server/db/reconciler";
 import { afterReconcile, afterStageOutcome, scheduleRetry, sweepRetries } from "@/server/db/retry";
@@ -65,7 +65,7 @@ function fakeQueue(): FakeQueue {
   return q;
 }
 
-const refuse503 = () => new NotProcessedError("provider said 503", { status: 503 });
+const refuse429 = () => new NotProcessedError("provider said 429", { status: 429 });
 const step = (over = {}) => ({ reserveMicroUsd: 1000, budgetScopes: ["g"], kind: "paid" as const, ...over });
 const deps = (handler: StageHandler, over: Partial<StageRunnerDeps> = {}): StageRunnerDeps => ({ provider: { call: (key) => provider.call(key) }, ttlMs: 5000, workerId: "w", handler, config, ...over });
 const failWith = (err: unknown): StageHandler => async () => {
@@ -110,7 +110,7 @@ describe("retry of confirmed provider rejections", () => {
     let id = draftId;
     const waits: number[] = [];
     for (const expected of [30_000, 120_000, 480_000]) {
-      const { after } = await attempt(q, id, failWith(refuse503()));
+      const { after } = await attempt(q, id, failWith(refuse429()));
       expect(after?.retry).toMatchObject({ kind: "scheduled", delayMs: expected });
       const next = await latest(v.id);
       expect(next.id).not.toBe(id);
@@ -129,7 +129,7 @@ describe("retry of confirmed provider rejections", () => {
     }
     expect(waits).toEqual([30_000, 120_000, 480_000]);
     // the fourth and last try fails: no fifth row
-    const last = await attempt(q, id, failWith(refuse503()));
+    const last = await attempt(q, id, failWith(refuse429()));
     expect(last.after?.retry).toMatchObject({ kind: "exhausted" });
     const rows = await stagesOf(v.id, "draft");
     expect(rows.map((r) => r.status)).toEqual(["failed", "failed", "failed", "failed"]);
@@ -141,11 +141,11 @@ describe("retry of confirmed provider rejections", () => {
     const { v, draftId } = await firstDraft(q);
     let id = draftId;
     for (let i = 0; i < 2; i++) {
-      await attempt(q, id, failWith(refuse503()));
+      await attempt(q, id, failWith(refuse429()));
       id = (await latest(v.id)).id;
       await makeDue(id);
     }
-    const { after } = await attempt(q, id, failWith(refuse503()));
+    const { after } = await attempt(q, id, failWith(refuse429()));
     expect(after?.retry).toMatchObject({ kind: "exhausted" });
     const rows = await stagesOf(v.id, "draft");
     expect(rows).toHaveLength(3); // engine.retry_attempts = 3 tries in total
@@ -205,7 +205,7 @@ describe("retry of confirmed provider rejections", () => {
     const handler: StageHandler = async (ctx) => {
       await ctx.paid(step(), (key) => provider.call(key));
       return ctx.paid(step(), async () => {
-        throw refuse503();
+        throw refuse429();
       });
     };
     const { after } = await attempt(q, draftId, handler);
@@ -225,7 +225,7 @@ describe("retry of confirmed provider rejections", () => {
     const { v, draftId } = await firstDraft(q);
     const paid = (fail: boolean): StageHandler => (ctx) =>
       ctx.paid(step(), async (key) => {
-        if (fail) throw refuse503();
+        if (fail) throw refuse429();
         return provider.call(key);
       });
     const first = await attempt(q, draftId, paid(true));
@@ -248,7 +248,7 @@ describe("retry of confirmed provider rejections", () => {
     const q = fakeQueue();
     const { v, draftId } = await firstDraft(q);
     const row = (await getStage(db.pool, draftId))!;
-    const outcome = await runStage(db.pool, deps(failWith(refuse503())), { stageRunId: draftId, inputHash: row.inputHash });
+    const outcome = await runStage(db.pool, deps(failWith(refuse429())), { stageRunId: draftId, inputHash: row.inputHash });
     expect(outcome.kind).toBe("known_failure");
     // the owner sends back with a note before the retry was scheduled: the hash the row was run for no longer applies
     const readers = { approvedGates: async () => new Set<never>(), feedback: async () => "make it shorter" };
@@ -256,11 +256,52 @@ describe("retry of confirmed provider rejections", () => {
     expect(await stagesOf(v.id, "draft")).toHaveLength(1);
   });
 
+  it("a_503_even_when_marked_not_processed_is_unclear_and_never_retried", async () => {
+    const q = fakeQueue();
+    const { v, draftId } = await firstDraft(q);
+    const { after } = await attempt(q, draftId, failWith(new NotProcessedError("bad gateway", { status: 503 })));
+    expect(after?.retry).toMatchObject({ kind: "not_retryable", reason: "not_transient" });
+    expect(await stagesOf(v.id, "draft")).toHaveLength(1);
+  });
+
+  it("permanently_refused_rows_are_marked_and_cannot_starve_the_sweep", async () => {
+    const q = fakeQueue();
+    // an old row that can never be retried (a paid call is not cleared), then a real one behind it
+    const a = await newVideo();
+    await advanceVideo(db.pool, q, a.id);
+    const stuck = (await latest(a.id)).id;
+    await db.ownerPool.query("update stage_runs set status = 'failed', result = '{\"error\":\"x\",\"class\":\"transient\"}' where id = $1", [stuck]);
+    await db.ownerPool.query("insert into spend_intents (id, stage_run_id, step_index, tool_call_index, call_key, status) values (gen_random_uuid(), $1, 0, 0, $2, 'unknown')", [stuck, callKey(stuck, 0, 0)]);
+    const { v: b, draftId } = await firstDraft(q);
+    const row = (await getStage(db.pool, draftId))!;
+    await runStage(db.pool, deps(failWith(refuse429())), { stageRunId: draftId, inputHash: row.inputHash }); // worker died before scheduling
+    const first = await sweepRetries(db.pool, q, undefined, { limit: 1 });
+    expect(first.gaveUp).toEqual([stuck]);
+    expect(first.scheduled).toEqual([]);
+    expect((await getStage(db.pool, stuck))!.result).toMatchObject({ retry_refused: "paid_call_not_cleared" });
+    // the refused row is not looked at again, so the real one is reached even with a limit of 1
+    const second = await sweepRetries(db.pool, q, undefined, { limit: 1 });
+    expect(second.scheduled).toHaveLength(1);
+    expect(second.gaveUp).toEqual([]);
+    expect((await stagesOf(b.id, "draft")).map((s) => s.status)).toEqual(["failed", "queued"]);
+    expect((await sweepRetries(db.pool, q)).gaveUp).toEqual([]);
+  });
+
+  it("a_swept_row_that_ran_out_of_retries_is_reported_as_given_up_once", async () => {
+    await setSetting(db.pool, "engine.retry_attempts", 1, { actor: "session" });
+    const q = fakeQueue();
+    const { draftId } = await firstDraft(q);
+    const row = (await getStage(db.pool, draftId))!;
+    await runStage(db.pool, deps(failWith(refuse429())), { stageRunId: draftId, inputHash: row.inputHash });
+    expect((await sweepRetries(db.pool, q)).gaveUp).toEqual([draftId]);
+    expect((await sweepRetries(db.pool, q)).gaveUp).toEqual([]);
+  });
+
   it("a_failed_row_the_owner_already_restarted_is_not_retried_again", async () => {
     const q = fakeQueue();
     const { v, draftId } = await firstDraft(q);
     const row = (await getStage(db.pool, draftId))!;
-    await runStage(db.pool, deps(failWith(refuse503())), { stageRunId: draftId, inputHash: row.inputHash });
+    await runStage(db.pool, deps(failWith(refuse429())), { stageRunId: draftId, inputHash: row.inputHash });
     await rerunStage(db.pool, q, v.id, "draft"); // the owner pressed rerun before the retry was scheduled
     expect(await scheduleRetry(db.pool, q, draftId)).toMatchObject({ kind: "not_retryable", reason: "superseded" });
     expect((await sweepRetries(db.pool, q)).scheduled).toEqual([]);
@@ -270,7 +311,7 @@ describe("retry of confirmed provider rejections", () => {
   it("two_schedulers_racing_make_exactly_one_retry_row", async () => {
     const q = fakeQueue();
     const { v, draftId } = await firstDraft(q);
-    await attempt(q, draftId, failWith(refuse503()));
+    await attempt(q, draftId, failWith(refuse429()));
     await db.ownerPool.query("delete from stage_runs where retry_of = $1", [draftId]); // pretend the process died before the row existed
     await Promise.all([1, 2, 3, 4].map(() => scheduleRetry(db.pool, q, draftId)));
     expect((await stagesOf(v.id, "draft")).filter((r) => r.retry_of === draftId)).toHaveLength(1);
@@ -280,7 +321,7 @@ describe("retry of confirmed provider rejections", () => {
     const q = fakeQueue();
     const { v, draftId } = await firstDraft(q);
     const row = (await getStage(db.pool, draftId))!;
-    await runStage(db.pool, deps(failWith(refuse503())), { stageRunId: draftId, inputHash: row.inputHash }); // no afterStageOutcome: the worker died
+    await runStage(db.pool, deps(failWith(refuse429())), { stageRunId: draftId, inputHash: row.inputHash }); // no afterStageOutcome: the worker died
     expect(await stagesOf(v.id, "draft")).toHaveLength(1);
     const swept = await sweepRetries(db.pool, q);
     expect(swept.scheduled).toHaveLength(1);
@@ -292,7 +333,7 @@ describe("not_before and the queue", () => {
   it("advance_ignores_the_waiting_row_until_it_is_due", async () => {
     const q = fakeQueue();
     const { v, draftId } = await firstDraft(q);
-    await attempt(q, draftId, failWith(refuse503()));
+    await attempt(q, draftId, failWith(refuse429()));
     const before = q.calls.length;
     const r = await advanceVideo(db.pool, q, v.id);
     expect(r.action).toMatchObject({ kind: "wait_stage", stage: "draft", status: "queued" });
@@ -303,7 +344,7 @@ describe("not_before and the queue", () => {
   it("not_before_survives_a_redis_wipe_and_a_mac_sleep", async () => {
     const q = fakeQueue();
     const { v, draftId } = await firstDraft(q);
-    await attempt(q, draftId, failWith(refuse503()));
+    await attempt(q, draftId, failWith(refuse429()));
     const retry = await latest(v.id);
     q.calls.length = 0; // Redis wiped: the delayed job is gone
     const early = await reconcile(db.pool, q, { graceMs: 0 });
@@ -423,11 +464,29 @@ describe("breaker wiring", () => {
     const { v, draftId } = await firstDraft(q); // admitted while the breaker was closed
     await openDraftBreaker(q);
     const row = (await getStage(db.pool, draftId))!;
-    await runStage(db.pool, deps(failWith(refuse503())), { stageRunId: draftId, inputHash: row.inputHash });
+    await runStage(db.pool, deps(failWith(refuse429())), { stageRunId: draftId, inputHash: row.inputHash });
     expect(await scheduleRetry(db.pool, q, draftId)).toMatchObject({ kind: "held", stage: "draft" });
     expect(await stagesOf(v.id, "draft")).toHaveLength(1);
     await db.ownerPool.query("update breakers set opened_at = clock_timestamp() - interval '901 seconds' where stage = 'draft'");
     expect((await sweepRetries(db.pool, q)).scheduled).toHaveLength(1);
+  });
+
+  it("the_half_open_probe_slot_is_given_back_when_no_row_is_created", async () => {
+    const q = fakeQueue();
+    await openDraftBreaker(q);
+    await db.ownerPool.query("update breakers set opened_at = clock_timestamp() - interval '901 seconds' where stage = 'draft'");
+    expect(await admitStage(db.pool, "draft")).toEqual({ allowed: true, probe: true });
+    expect(await admitStage(db.pool, "draft")).toMatchObject({ allowed: false });
+    await releaseProbe(db.pool, "draft");
+    expect(await admitStage(db.pool, "draft")).toEqual({ allowed: true, probe: true });
+  });
+
+  it("a_reset_and_its_audit_row_commit_together_or_not_at_all", async () => {
+    const q = fakeQueue();
+    await openDraftBreaker(q);
+    await expect(recordBreakerEvent(db.pool, "draft", "reset", async () => { throw new Error("audit failed"); })).rejects.toThrow(/audit failed/);
+    expect(await breakerHold(db.pool, "draft")).not.toBeNull(); // still open
+    expect((await db.pool.query("select 1 from audit_log where event = 'breaker.reset'")).rowCount).toBe(0);
   });
 
   it("only_the_owner_session_can_reset_a_breaker_and_it_is_audited", async () => {
@@ -475,7 +534,7 @@ describe("load", () => {
       const r = await ctx.paid(step(), async (key) => {
         if (flaky.has(videoId)) {
           flaky.delete(videoId);
-          throw refuse503();
+          throw refuse429();
         }
         return { ...(await provider.call(key)), actualMicroUsd: 1000 };
       });

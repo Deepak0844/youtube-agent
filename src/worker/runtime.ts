@@ -9,6 +9,7 @@ import { loadKeyring } from "@/server/db/master-key";
 import { vaultStatus } from "@/server/db/vault";
 import { reconcile, type ReconcileResult } from "@/server/db/reconciler";
 import { advanceAll } from "@/server/db/pipeline";
+import { NO_DECISIONS, type PipelineReaders } from "@/server/db/pipeline";
 import { afterReconcile, afterStageOutcome, sweepRetries } from "@/server/db/retry";
 import { notifyTransition, type NotifyPorts } from "@/server/db/notify";
 import { getStage } from "@/server/db/stages";
@@ -32,9 +33,9 @@ export interface WorkerHooks {
   loadSettings(pool: pg.Pool): Promise<WorkerSettings>;
   checkVault(pool: pg.Pool): Promise<string>;
   reconcile(pool: pg.Pool, queue: StageQueue, config: EngineConfig): Promise<unknown>;
-  advanceAll(pool: pg.Pool, queue: StageQueue): Promise<unknown>;
+  advanceAll(pool: pg.Pool, queue: StageQueue, readers?: PipelineReaders): Promise<unknown>;
   /** Retries for confirmed provider rejections: repairs a crash between "failed" and "retry row" and releases held ones. */
-  sweepRetries(pool: pg.Pool, queue: StageQueue): Promise<unknown>;
+  sweepRetries(pool: pg.Pool, queue: StageQueue, readers?: PipelineReaders): Promise<unknown>;
   /** Breaker bookkeeping and the retry for one finished attempt. */
   afterOutcome: typeof afterStageOutcome;
   /** Breaker bookkeeping for stages the reconciler failed or parked. */
@@ -59,6 +60,8 @@ export interface WorkerOptions {
   /** Handlers, or a factory that receives the registry render children must be registered with (so a crash leaves them sweepable). */
   handlers?: StageHandlers | ((env: { childRegistry: ChildRegistry }) => StageHandlers);
   workerId?: string;
+  /** Where the pipeline reads owner decisions. The SAME readers go to advance, retry scheduling and the retry sweep. */
+  readers?: PipelineReaders;
   log?: (message: string) => void;
   hooks?: Partial<WorkerHooks>;
   intervalMs?: number;
@@ -80,7 +83,7 @@ const defaults: WorkerHooks = {
   checkVault: async (pool) => (await vaultStatus(pool, loadKeyring)).status,
   reconcile: (pool, queue, config) => reconcile(pool, queue, { maxAttempts: config.retryAttempts - 1, attemptBasis: "claim" }),
   advanceAll,
-  sweepRetries: (pool, queue) => sweepRetries(pool, queue),
+  sweepRetries: (pool, queue, readers) => sweepRetries(pool, queue, readers),
   afterOutcome: afterStageOutcome,
   afterReconcile,
   runStage,
@@ -133,6 +136,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
   const hooks = { ...defaults, ...opts.hooks };
   const shutdown = new AbortController();
   const workerId = opts.workerId ?? randomUUID();
+  const readers = opts.readers ?? NO_DECISIONS;
   let pool = opts.pool;
   let workerLock: WorkerLock | undefined;
   let queue: StageQueue | undefined;
@@ -181,7 +185,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
         await hooks.notify(database, { channels: {} }, {
           event: "spend_cap_hit", from: "closed", to: "spend_cap_hit",
           transitionId: `breaker.${opened.stage}.${Math.round(opened.openedAtMs)}`,
-          detail: `${opened.stage} paused after repeated failures`,
+          detail: `Stage "${opened.stage}" is paused after repeated failures. New ${opened.stage} work waits until the pause ends; you can reset it.`,
         });
       } catch { log("notify failed"); }
     };
@@ -217,8 +221,15 @@ export function startRuntime(opts: WorkerOptions = {}) {
             await notifyReconciled(db, result);
             // Without handlers every stage would fail as "missing handler"; leave rows queued instead.
             if (!stopping && hasHandlers) {
-              await hooks.advanceAll(db, connected);
-              await hooks.sweepRetries(db, connected);
+              await hooks.advanceAll(db, connected, readers);
+              const swept = (await hooks.sweepRetries(db, connected, readers)) as { gaveUp?: string[] } | undefined;
+              // A retry the sweep gave up on is the moment the owner hears "video failed" (same key as the runner path, so once).
+              for (const id of swept?.gaveUp ?? []) {
+                try {
+                  const row = await getStage(db, id);
+                  await hooks.notify(db, { channels: {} }, { event: "video_failed", videoId: row?.videoId, from: "running", to: "failed", transitionId: `${id}.${row?.fence ?? 0}`, detail: row?.name });
+                } catch { log("notify failed"); }
+              }
             }
           }),
           guard("mark stalled uploads", () => hooks.markStalled(db)),
@@ -262,8 +273,9 @@ export function startRuntime(opts: WorkerOptions = {}) {
               let retryScheduled = false;
               if (outcome && "claim" in outcome) {
                 try {
-                  const follow = await hooks.afterOutcome(db, queue!, { kind: outcome.kind, stageRunId: outcome.claim.stageRunId });
-                  retryScheduled = follow.retry?.kind === "scheduled";
+                  const follow = await hooks.afterOutcome(db, queue!, { kind: outcome.kind, stageRunId: outcome.claim.stageRunId }, readers);
+                  // scheduled or held by the breaker: not news yet. The sweep tells the owner if it later gives up.
+                  retryScheduled = follow.retry?.kind === "scheduled" || follow.retry?.kind === "held";
                   if (follow.breakerOpened) await notifyBreaker(db, follow.breakerOpened);
                 } catch { log("retry bookkeeping failed"); }
               }

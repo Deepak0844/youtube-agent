@@ -26,7 +26,10 @@ export function classifyError(err: unknown): ErrorClass {
   if (!(err instanceof NotProcessedError)) return "unknown";
   const { status, code } = err;
   if (status !== undefined) {
-    if (status === 408 || status === 429 || (status >= 500 && status <= 599)) return "transient";
+    // Only 429 is a refusal the provider makes BEFORE doing work. 408 and 5xx can come after the work started (a gateway
+    // that timed out while the provider kept going), so they are unclear and never retried.
+    if (status === 429) return "transient";
+    if (status === 408 || (status >= 500 && status <= 599)) return "unknown";
     if (status >= 400 && status <= 499) return "permanent";
     return "unknown";
   }

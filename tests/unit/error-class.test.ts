@@ -6,8 +6,10 @@ describe("classifyError", () => {
   const np = (status?: number, code?: string) => new NotProcessedError("rejected", { status, code });
   const table: Array<[string, unknown, "transient" | "permanent" | "unknown"]> = [
     ["429 before processing", np(429), "transient"],
-    ["408 before processing", np(408), "transient"],
-    ["503 before processing", np(503), "transient"],
+    ["408 is unclear (work may have started)", np(408), "unknown"],
+    ["500 is unclear", np(500), "unknown"],
+    ["503 is unclear", np(503), "unknown"],
+    ["599 is unclear", np(599), "unknown"],
     ["connection refused before send", np(undefined, "ECONNREFUSED"), "transient"],
     ["DNS failure before send", np(undefined, "ENOTFOUND"), "transient"],
     ["400 rejected", np(400), "permanent"],

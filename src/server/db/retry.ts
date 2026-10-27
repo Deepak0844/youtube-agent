@@ -28,11 +28,18 @@ export type ScheduleResult =
   | { kind: "scheduled"; stageRunId: string; notBefore: Date; delayMs: number; enqueued: boolean }
   | { kind: "exhausted"; plain: string }
   | { kind: "held"; stage: StageName; until: Date | null }
-  | { kind: "not_retryable"; reason: string };
+  /** `terminal`: this row will never be retried (it carries a retry_refused marker), so the owner should hear about it */
+  | { kind: "not_retryable"; reason: string; terminal?: boolean };
 
 type Decided = { kind: "scheduled"; stageRunId: string; inputHash: string; notBefore: Date; delayMs: number } | Exclude<ScheduleResult, { kind: "scheduled" }>;
 
 const stop = (reason: string): Decided => ({ kind: "not_retryable", reason });
+// A refusal that can never change (a paid call is not cleared, the input went stale, not a pipeline stage) is written onto
+// the failed row, so the sweep stops looking at it instead of re-scanning it forever.
+async function refuse(c: pg.PoolClient, id: string, reason: string): Promise<Decided> {
+  await c.query("update stage_runs set result = result || $2::jsonb, updated_at = clock_timestamp() where id = $1 and status = 'failed'", [id, JSON.stringify({ retry_refused: reason })]);
+  return { kind: "not_retryable", reason, terminal: true };
+}
 
 export async function scheduleRetry(db: pg.Pool, queue: EnqueueOnly, failedStageId: string, readers: PipelineReaders = NO_DECISIONS): Promise<ScheduleResult> {
   const cfg = await getEngineConfig(db);
@@ -43,7 +50,7 @@ export async function scheduleRetry(db: pg.Pool, queue: EnqueueOnly, failedStage
     // Cheap early exit before any lock; both are checked again under the row lock below.
     if (head.status !== "failed") return stop("not_failed");
     if (head.class !== "transient") return stop("not_transient");
-    if (!(STAGE_NAMES as readonly string[]).includes(head.name)) return stop("not_a_pipeline_stage");
+    if (!(STAGE_NAMES as readonly string[]).includes(head.name)) return refuse(c, failedStageId, "not_a_pipeline_stage");
     const stage = head.name as StageName;
     // Lock order: video row (inside wantedHashLocked), then the stage row. Same as advance and cancel.
     const want = await wantedHashLocked(c, head.video_id, stage, readers);
@@ -61,8 +68,8 @@ export async function scheduleRetry(db: pg.Pool, queue: EnqueueOnly, failedStage
     const newest = await c.query<{ id: string }>("select id from stage_runs where video_id = $1 and name = $2 order by created_at desc, id desc limit 1", [head.video_id, stage]);
     if (newest.rows[0]!.id !== failedStageId) return stop("superseded");
     const open = await c.query("select 1 from spend_intents where stage_run_id = $1 and status <> 'failed_known'", [failedStageId]);
-    if (open.rowCount! > 0) return stop("paid_call_not_cleared");
-    if (want !== row.input_hash) return stop("stale_input");
+    if (open.rowCount! > 0) return refuse(c, failedStageId, "paid_call_not_cleared");
+    if (want !== row.input_hash) return refuse(c, failedStageId, "stale_input");
     const chain = await c.query<{ n: number }>(
       `with recursive chain as (
          select id, retry_of from stage_runs where id = $1
@@ -104,6 +111,8 @@ export async function scheduleRetry(db: pg.Pool, queue: EnqueueOnly, failedStage
 export interface SweepRetriesResult {
   scheduled: string[];
   held: string[];
+  /** failed stage ids the sweep just gave up on for good (retries used up, or refused for good): the owner is told for these */
+  gaveUp: string[];
 }
 
 /**
@@ -113,19 +122,20 @@ export interface SweepRetriesResult {
 export async function sweepRetries(db: pg.Pool, queue: EnqueueOnly, readers: PipelineReaders = NO_DECISIONS, opts: { limit?: number } = {}): Promise<SweepRetriesResult> {
   const { rows } = await db.query<{ id: string }>(
     `select s.id from stage_runs s
-      where s.status = 'failed' and s.result->>'class' = 'transient' and coalesce(s.result->>'exhausted', '') <> 'true'
+      where s.status = 'failed' and s.result->>'class' = 'transient' and coalesce(s.result->>'exhausted', '') <> 'true' and coalesce(s.result->>'retry_refused', '') = ''
         and not exists (select 1 from stage_runs c where c.retry_of = s.id)
         and not exists (select 1 from stage_runs n where n.video_id = s.video_id and n.name = s.name and (n.created_at, n.id) > (s.created_at, s.id))
         and exists (select 1 from videos v where v.id = s.video_id and v.status in ('active', 'waiting'))
       order by s.created_at, s.id limit $1`,
     [opts.limit ?? 200],
   );
-  const out: SweepRetriesResult = { scheduled: [], held: [] };
+  const out: SweepRetriesResult = { scheduled: [], held: [], gaveUp: [] };
   for (const { id } of rows) {
     try {
       const r = await scheduleRetry(db, queue, id, readers);
       if (r.kind === "scheduled") out.scheduled.push(r.stageRunId);
       if (r.kind === "held") out.held.push(id);
+      if (r.kind === "exhausted" || (r.kind === "not_retryable" && r.terminal)) out.gaveUp.push(id);
     } catch {
       // one bad row must not stop the sweep; the next tick looks again
     }

@@ -16,7 +16,7 @@ import {
   type StageName,
 } from "@/server/core/pipeline-plan";
 import type { StageQueue } from "@/server/queue/job-queue";
-import { admitStage } from "@/server/db/breakers";
+import { admitStage, releaseProbe } from "@/server/db/breakers";
 import { getSetting } from "@/server/db/settings";
 import { cancelQueuedStage, requestCancel } from "@/server/db/stages";
 import { createVideoRow, type VideoInput, type VideoRow } from "@/server/db/videos";
@@ -162,6 +162,7 @@ export async function advanceVideo(db: pg.Pool, queue: EnqueueOnly, videoId: str
       else {
         const id = await insertRun(c, videoId, action.stage, action.inputHash);
         if (id) created.push({ id, inputHash: action.inputHash });
+        else if (gate.probe) await releaseProbe(c, action.stage); // no row was made, so the probe slot is not spent
       }
     }
     const next = action?.kind === "wait_gate" || action?.kind === "done" ? "waiting" : "active";

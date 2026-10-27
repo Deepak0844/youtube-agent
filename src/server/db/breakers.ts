@@ -28,7 +28,8 @@ const toState = (r: Row | undefined): BreakerState => (r ? { status: r.status, f
 /** Records a stage outcome. A stage not in `breaker.stages` is never held: failure/success are ignored and a reset is refused. */
 export type BreakerResult = BreakerState & { justOpened: boolean };
 
-export async function recordBreakerEvent(db: pg.Pool, stage: string, event: BreakerEvent): Promise<BreakerResult> {
+/** `inTx` runs inside the same transaction, just before commit (used for the audit row of a reset): if it throws, nothing changes. */
+export async function recordBreakerEvent(db: pg.Pool, stage: string, event: BreakerEvent, inTx?: (client: pg.PoolClient) => Promise<void>): Promise<BreakerResult> {
   const { cfg, stages } = await loadConfig(db);
   if (!stages.includes(stage)) {
     if (event === "reset") throw new Error(`unknown breaker stage: ${stage}`);
@@ -50,6 +51,7 @@ export async function recordBreakerEvent(db: pg.Pool, stage: string, event: Brea
        where stage = $1`,
       [stage, next.status, next.failures, next.openedAtMs],
     );
+    if (inTx) await inTx(client);
     await client.query("commit");
     // "Just opened" = it was not holding before this event (closed, or half open after its cooldown) and is now.
     const wasHolding = !breakerAllows(before, row.now_ms, cfg);
@@ -76,7 +78,8 @@ async function readRow(db: Db, stage: string): Promise<Row> {
   return rows[0] ?? { status: "closed", failures: 0, opened_ms: null, probe_ms: null, now_ms: (await db.query<{ n: number }>("select (extract(epoch from clock_timestamp()) * 1000)::float8 as n")).rows[0]!.n };
 }
 
-export type Admission = { allowed: true } | { allowed: false; until: Date | null };
+/** `probe` is true when this admission used the single half-open probe slot (release it if no stage row ends up created). */
+export type Admission = { allowed: true; probe: boolean } | { allowed: false; until: Date | null };
 
 /**
  * Asks whether ONE new stage may start now. Closed or unguarded: yes. Open: no. Half open: the first caller takes the
@@ -86,14 +89,14 @@ export type Admission = { allowed: true } | { allowed: false; until: Date | null
  */
 export async function admitStage(db: Db, stage: string): Promise<Admission> {
   const { cfg, stages } = await loadConfig(db);
-  if (!stages.includes(stage) || cfg.threshold <= 0) return { allowed: true };
+  if (!stages.includes(stage) || cfg.threshold <= 0) return { allowed: true, probe: false };
   const deny = (row: Row): Admission => {
     const until = holdUntilMs(toState(row), row.probe_ms, row.now_ms, cfg);
     return { allowed: false, until: until === null ? null : new Date(until) };
   };
   const first = await readRow(db, stage);
   const d = admitBreaker(toState(first), first.probe_ms, first.now_ms, cfg);
-  if (!d.takesProbe) return d.allowed ? { allowed: true } : deny(first);
+  if (!d.takesProbe) return d.allowed ? { allowed: true, probe: false } : deny(first);
   await db.query("insert into breakers (stage) values ($1) on conflict (stage) do nothing", [stage]);
   return atomic(db, async (q) => {
     await q.query("select 1 from breakers where stage = $1 for update", [stage]);
@@ -101,8 +104,13 @@ export async function admitStage(db: Db, stage: string): Promise<Admission> {
     const again = admitBreaker(toState(row), row.probe_ms, row.now_ms, cfg);
     if (!again.allowed) return deny(row);
     if (again.takesProbe) await q.query("update breakers set probe_at = clock_timestamp(), updated_at = clock_timestamp() where stage = $1", [stage]);
-    return { allowed: true } as Admission;
+    return { allowed: true, probe: again.takesProbe } as Admission;
   });
+}
+
+/** Gives the half-open probe slot back (no stage row was created after all). Harmless when none is held. */
+export async function releaseProbe(db: Db, stage: string): Promise<void> {
+  await db.query("update breakers set probe_at = null, updated_at = clock_timestamp() where stage = $1 and probe_at is not null", [stage]);
 }
 
 /** Read-only: when is this stage held until? null = a stage may start now (or the stage is not guarded). For the "paused" text. */
@@ -121,7 +129,7 @@ export async function resetBreaker(db: pg.Pool, stage: string, actor: GateActor)
   if (bad) return { ok: false, reason: bad };
   const { stages } = await loadConfig(db);
   if (!stages.includes(stage)) return { ok: false, reason: "that stage has no breaker" };
-  await recordBreakerEvent(db, stage, "reset");
-  await recordAudit(db, "breaker.reset", { stage, sessionId: actor.sessionId });
+  // The audit row is written in the reset's own transaction: no reset without its audit row, and no audit row without a reset.
+  await recordBreakerEvent(db, stage, "reset", (client) => recordAudit(client, "breaker.reset", { stage, sessionId: actor.sessionId }));
   return { ok: true };
 }

@@ -74,7 +74,7 @@ describe("worker runtime with Postgres and Redis", () => {
   it("a_confirmed_provider_rejection_schedules_a_delayed_retry_row_and_stays_quiet_until_retries_run_out", async () => {
     const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" });
     await advanceVideo(db.pool, queue, v.id);
-    const worker = boot({ handlers: { draft: async () => { throw new NotProcessedError("provider said 503", { status: 503 }); } } }); await worker.ready;
+    const worker = boot({ handlers: { draft: async () => { throw new NotProcessedError("provider said 429", { status: 429 }); } } }); await worker.ready;
     const rows = async () => (await db.pool.query("select id, status, retry_of, not_before, input_hash, result from stage_runs where video_id = $1 order by created_at, id", [v.id])).rows;
     await waitFor(async () => (await rows()).length === 2, "retry row created");
     const [failed, retry] = await rows();
@@ -86,6 +86,30 @@ describe("worker runtime with Postgres and Redis", () => {
     // and the worker does not run it early
     await new Promise((r) => setTimeout(r, 300));
     expect((await rows()).map((r) => r.status)).toEqual(["failed", "queued"]);
+  });
+
+  it("a_retry_held_by_the_breaker_is_not_reported_as_a_failed_video", async () => {
+    await setSetting(db.pool, "breaker.threshold", 1, { actor: "session" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" });
+    await advanceVideo(db.pool, queue, v.id);
+    const worker = boot({ handlers: { draft: async () => { throw new NotProcessedError("slow down", { status: 429 }); } } }); await worker.ready;
+    await waitFor(async () => (await db.pool.query("select 1 from notifications where event = 'spend_cap_hit'")).rowCount === 1, "breaker notified");
+    await new Promise((r) => setTimeout(r, 300));
+    expect((await db.pool.query("select 1 from notifications where event = 'video_failed'")).rowCount).toBe(0);
+    expect((await db.pool.query("select count(*)::int n from stage_runs where video_id = $1", [v.id])).rows[0].n).toBe(1); // held: no retry row yet
+  });
+
+  it("the_retry_sweep_reports_give_ups_and_uses_the_same_decision_readers_as_advance", async () => {
+    const a = await stage();
+    const readers = { approvedGates: async () => new Set<never>(), feedback: async () => null };
+    const advanceAll = vi.fn<(p: unknown, q: unknown, r: unknown) => Promise<void>>(async () => {});
+    const sweepRetries = vi.fn<(p: unknown, q: unknown, r: unknown) => Promise<{ scheduled: string[]; held: string[]; gaveUp: string[] }>>(async () => ({ scheduled: [], held: [], gaveUp: [a] }));
+    const worker = boot({ readers, intervalMs: 20, handlers: { render: async () => ({}) }, hooks: { advanceAll, sweepRetries } }); await worker.ready;
+    await waitFor(async () => (await db.pool.query("select 1 from notifications where event = 'video_failed'")).rowCount === 1, "give-up notified");
+    await new Promise((r) => setTimeout(r, 100));
+    expect((await db.pool.query("select 1 from notifications where event = 'video_failed'")).rowCount).toBe(1); // once
+    expect(advanceAll.mock.calls[0]![2]).toBe(readers);
+    expect(sweepRetries.mock.calls[0]![2]).toBe(readers);
   });
 
   it("an_opening_breaker_tells_the_owner_once", async () => {
@@ -100,7 +124,7 @@ describe("worker runtime with Postgres and Redis", () => {
   });
 
   it("worker_without_handlers_leaves_rows_queued_and_does_not_advance", async () => {
-    const advanceAll = vi.fn(async () => {}); const log = vi.fn();
+    const advanceAll = vi.fn<(p: unknown, q: unknown, r: unknown) => Promise<void>>(async () => {}); const log = vi.fn();
     const worker = boot({ log, intervalMs: 20, hooks: { advanceAll } }); await worker.ready;
     const id = await stage(); await queue.enqueue(id, 0, 0, "h1");
     await waitFor(async () => log.mock.calls.some((c) => c[0] === "reconcile ok"), "loop ran");
