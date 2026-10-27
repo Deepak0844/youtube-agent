@@ -19,6 +19,10 @@ export const AUDIT_EVENTS = {
   // Phase 2 gates (detail: video id, gate, short hash prefix only)
   "gate.approved": "A gate was approved",
   "gate.sent_back": "A gate was sent back",
+  // Phase 2 publish (detail: ids, 12-character hash prefixes, content version ids; never a full hash or a file path)
+  "publish.approved": "A publish was approved and queued for upload",
+  "upload.started": "An approved upload began",
+  "upload.refused": "A queued upload was refused before it began",
   // Phase 2 retries (detail: stage name and session id only)
   "breaker.reset": "A paused stage was released by the owner",
   // Phase 2 notifications (detail: event, channel, error class only)

@@ -21,11 +21,13 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const HASH_RE = /^[0-9a-f]{64}$/;
 const STALE_REASON = "this changed while you were looking; review again";
 
-const refuse = (reason: string): GateResult => ({ ok: false, reason });
+const refuse = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
 
-interface Snapshot {
+export interface Snapshot {
   live: LiveHash;
   versions: ContentVersions;
+  /** The same rows the hash was computed from (and the video's channel), read in the same statement. */
+  inputs: LiveInputs;
   last: { decision: string; hash: string; versions: ContentVersions } | null;
 }
 
@@ -34,7 +36,7 @@ interface Snapshot {
  * gate are read together, so the hash, the version ids and the decision always belong to the same moment. Callers that need
  * more (Task 21 upload) pass a client inside a REPEATABLE READ transaction.
  */
-async function readSnapshot(db: Db, videoId: string, gate: ImplementedGate): Promise<Snapshot | "no_video"> {
+export async function readSnapshot(db: Db, videoId: string, gate: ImplementedGate): Promise<Snapshot | "no_video"> {
   const kinds = GATE_KINDS[gate];
   const r = await db.query<{
     channel_id: string | null;
@@ -58,7 +60,7 @@ async function readSnapshot(db: Db, videoId: string, gate: ImplementedGate): Pro
     inputs.content[c.kind] = { sha256: c.sha256, body: c.body, filePath: c.file_path };
     versions[c.kind] = { id: c.id, version: c.version };
   }
-  return { live: liveHash(gate, inputs), versions, last: row.last ? { decision: row.last.decision, hash: row.last.content_hash, versions: row.last.versions } : null };
+  return { live: liveHash(gate, inputs), versions, inputs, last: row.last ? { decision: row.last.decision, hash: row.last.content_hash, versions: row.last.versions } : null };
 }
 
 /** The hash the owner would be approving right now with the exact content versions it covers, or null when it cannot be approved yet. */
@@ -84,7 +86,17 @@ interface Decision {
   note?: string;
 }
 
-async function decide(db: pg.Pool, d: Decision, decision: "approved" | "sent_back"): Promise<GateResult> {
+type OkSnapshot = Snapshot & { live: { ok: true; hash: string } };
+/** Extra checks and writes that must share the decision's transaction (Task 21 publish: policy checks + the upload row). */
+export interface DecideHooks<T> {
+  /** Runs after the hash matched, before the approval row is written, under the video lock. A string refuses (and rolls back). */
+  guard?(client: pg.PoolClient, snap: OkSnapshot): Promise<string | null>;
+  /** Runs after the approval row is written, in the same transaction. A throw rolls the approval back. */
+  after?(client: pg.PoolClient, done: { approvalId: string; snap: OkSnapshot }): Promise<T>;
+}
+export type GateResultWith<T> = { ok: true; approvalId: string; extra: T } | { ok: false; reason: string };
+
+async function decide<T = undefined>(db: pg.Pool, d: Decision, decision: "approved" | "sent_back", hooks: DecideHooks<T> = {}): Promise<GateResultWith<T>> {
   if (actorProblem(d.actor)) return refuse(ACTOR_REASON);
   if (!isImplementedGate(d.gate)) return refuse("this approval is not available yet");
   if (typeof d.videoId !== "string" || !UUID_RE.test(d.videoId)) return refuse("video not found");
@@ -105,13 +117,19 @@ async function decide(db: pg.Pool, d: Decision, decision: "approved" | "sent_bac
     const live = snap.live;
     if (live.hash !== d.seenHash) return await abort(client, STALE_REASON);
     if (decision === "approved" && snap.last?.decision === "sent_back" && snap.last.hash === live.hash) return await abort(client, "you sent this back; wait for the new version before approving");
+    const okSnap = snap as OkSnapshot;
+    if (hooks.guard) {
+      const refusal = await hooks.guard(client, okSnap);
+      if (refusal) return await abort(client, refusal);
+    }
     const ins = await client.query<{ id: string }>(
       "insert into approvals (video_id, gate, content_hash, content_versions, decision, note, decided_by, session_id) values ($1, $2, $3, $4::jsonb, $5, $6, 'session', $7) returning id",
       [d.videoId, d.gate, live.hash, JSON.stringify(snap.versions), decision, decision === "sent_back" ? d.note!.trim() : null, d.actor.sessionId],
     );
     await recordAudit(client, decision === "approved" ? "gate.approved" : "gate.sent_back", { videoId: d.videoId, gate: d.gate, hashPrefix: live.hash.slice(0, 8), sessionId: d.actor.sessionId });
+    const extra = hooks.after ? await hooks.after(client, { approvalId: ins.rows[0]!.id, snap: okSnap }) : (undefined as T);
     await client.query("commit");
-    return { ok: true, approvalId: ins.rows[0]!.id };
+    return { ok: true, approvalId: ins.rows[0]!.id, extra };
   } catch (e) {
     await client.query("rollback").catch(() => undefined);
     throw e;
@@ -120,19 +138,26 @@ async function decide(db: pg.Pool, d: Decision, decision: "approved" | "sent_bac
   }
 }
 
-async function abort(client: pg.PoolClient, reason: string): Promise<GateResult> {
+async function abort(client: pg.PoolClient, reason: string): Promise<{ ok: false; reason: string }> {
   await client.query("rollback");
   return refuse(reason);
 }
 
 /** Approves exactly the content the owner saw. Refuses (never throws) for a wrong actor, stale hash or missing content; a database fault throws. */
-export function approveGate(db: pg.Pool, a: { videoId: string; gate: GateId; seenHash: string; actor: GateActor }): Promise<GateResult> {
-  return decide(db, a, "approved");
+export async function approveGate(db: pg.Pool, a: { videoId: string; gate: GateId; seenHash: string; actor: GateActor }): Promise<GateResult> {
+  const r = await decide(db, a, "approved");
+  return r.ok ? { ok: true, approvalId: r.approvalId } : r;
+}
+
+/** approveGate plus checks and writes inside the same transaction and video lock (see DecideHooks). */
+export function approveGateWith<T>(db: pg.Pool, a: { videoId: string; gate: GateId; seenHash: string; actor: GateActor }, hooks: DecideHooks<T>): Promise<GateResultWith<T>> {
+  return decide(db, a, "approved", hooks);
 }
 
 /** Sends the content back with a note for the rewrite. Same checks as approveGate. */
-export function sendBack(db: pg.Pool, a: { videoId: string; gate: GateId; seenHash: string; note: string; actor: GateActor }): Promise<GateResult> {
-  return decide(db, a, "sent_back");
+export async function sendBack(db: pg.Pool, a: { videoId: string; gate: GateId; seenHash: string; note: string; actor: GateActor }): Promise<GateResult> {
+  const r = await decide(db, a, "sent_back");
+  return r.ok ? { ok: true, approvalId: r.approvalId } : r;
 }
 
 /** Boolean form of approvalState. */
