@@ -85,6 +85,25 @@ describe("catalog on the app role", () => {
     expect(() => worstCaseMicroUsd(priceCardFor(l, []), { inputTokens: 1, maxOutputTokens: 1 })).toThrow(UnpricedCallError);
   });
 
+  it("a_base_url_on_an_own_service_port_is_refused_even_if_listed_and_a_stored_one_is_unpriced", async () => {
+    for (const url of ["http://localhost:5432/v1", "http://127.0.0.1:6379", "http://[::1]:8888", "http://localhost:3000/v1"]) {
+      await refused(createModel(db.pool, { ...freeLocal, modelId: "own", baseUrl: url }, session));
+    }
+    // a hand-written allow-list row naming an own port changes nothing
+    await db.ownerPool.query(
+      `insert into settings (key, value, updated_by) values ('network.local_services', '["192.168.1.20:5432","localhost:6379"]'::jsonb, 'system')
+       on conflict (key) do update set value = excluded.value`,
+    );
+    await refused(createModel(db.pool, { ...freeLocal, modelId: "own2", baseUrl: "http://192.168.1.20:5432/v1" }, session));
+    await refused(createModel(db.pool, { ...freeLocal, modelId: "own3", baseUrl: "http://localhost:6379" }, session));
+    // an existing free model whose URL later turns out to be an own service is unpriced again, never free
+    const ok = await createModel(db.pool, freeLocal, session);
+    expect(ok.endpointKind).toBe("local");
+    await db.ownerPool.query("update llm_models set base_url = 'http://localhost:5432/v1' where id = $1", [ok.id]);
+    const stored = (await listModels(db.pool))[0]!;
+    expect(priceCardFor(stored, [])).toBeUndefined();
+  });
+
   it("a_duplicate_is_refused_in_words", async () => {
     await createModel(db.pool, paid, session);
     await expect(createModel(db.pool, paid, session)).rejects.toThrow(/already in the catalog/);

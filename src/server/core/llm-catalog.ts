@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ownServicePorts } from "@/server/core/local-services";
 import { classifyAddress } from "@/server/core/net-policy";
 import type { PriceCard } from "@/server/core/spend";
 
@@ -47,8 +48,20 @@ const isIpLiteral = (h: string) => h.includes(":") || /^[0-9.]+$/.test(h);
  * a model endpoint (bad scheme, credentials, query, metadata/link-local/unspecified addresses).
  * DNS names are NOT resolved here: a name that is not on the allow-list is hosted (fail closed, so never free).
  */
-export function deriveEndpointKind(baseUrl: string | null, localServices: readonly string[]): EndpointKind | "invalid" {
+export function deriveEndpointKind(
+  baseUrl: string | null,
+  localServices: readonly string[],
+  ownPorts?: ReadonlySet<number>,
+): EndpointKind | "invalid" {
   if (baseUrl === null) return "hosted";
+  // The app's own services (database, Redis, search, proxy, this app...) are never a model endpoint, whatever is listed.
+  // If the own-service settings cannot be read nothing can be ruled out, so every URL is refused (fail closed).
+  let own: ReadonlySet<number>;
+  try {
+    own = ownPorts ?? ownServicePorts();
+  } catch {
+    return "invalid";
+  }
   let u: URL;
   try {
     u = new URL(baseUrl);
@@ -59,18 +72,23 @@ export function deriveEndpointKind(baseUrl: string | null, localServices: readon
   if (u.username || u.password || u.search || u.hash || !u.hostname) return "invalid";
   const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
   const port = u.port || (u.protocol === "https:" ? "443" : "80");
+  const onOwnPort = own.has(Number(port));
   const listed = localServices.some((e) => {
     const hp = hostPort(e);
     return hp !== undefined && hp.port !== "" && hp.host === host && hp.port === port;
   });
-  if (!isIpLiteral(host)) return host === "localhost" || host.endsWith(".localhost") ? "local" : listed ? "local" : "hosted";
+  if (!isIpLiteral(host)) {
+    const loopbackName = host === "localhost" || host.endsWith(".localhost");
+    if ((loopbackName || listed) && onOwnPort) return "invalid";
+    return loopbackName || listed ? "local" : "hosted";
+  }
   switch (classifyAddress(host)) {
     case "loopback":
-      return "local";
+      return onOwnPort ? "invalid" : "local";
     case "private":
     case "docker":
     case "cgnat":
-      return listed ? "local" : "hosted";
+      return onOwnPort ? "invalid" : listed ? "local" : "hosted";
     case "public":
       return "hosted";
     default:
