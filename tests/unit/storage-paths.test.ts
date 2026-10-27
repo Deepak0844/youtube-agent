@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { attemptDir, normalizeRelPath, safeJoin, storageRoot, videoPath } from "@/server/storage/paths";
 
 const VID = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
+const RUN = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c";
 let base: string;
 let root: string;
 let outside: string;
@@ -26,7 +27,7 @@ describe("layout", () => {
   it("videoPath_and_attemptDir_follow_the_documented_layout", () => {
     expect(videoPath(root, VID)).toBe(path.join(root, "videos", VID));
     expect(videoPath(root, VID, "final.mp4")).toBe(path.join(root, "videos", VID, "final.mp4"));
-    expect(attemptDir(root, VID, "render", 3)).toBe(path.join(root, "videos", VID, "attempt-render-3"));
+    expect(attemptDir(root, VID, RUN, 3)).toBe(path.join(root, "videos", VID, `attempt-${RUN}-3`));
   });
   it("layout_helpers_refuse_bad_ids_stage_names_and_fences", () => {
     expect(() => videoPath(root, "../x")).toThrow();
@@ -35,9 +36,10 @@ describe("layout", () => {
     expect(() => attemptDir(root, VID, "../x", 1)).toThrow();
     expect(() => attemptDir(root, VID, "a/b", 1)).toThrow();
     expect(() => attemptDir(root, VID, "", 1)).toThrow();
-    expect(() => attemptDir(root, VID, "render", 0)).toThrow();
-    expect(() => attemptDir(root, VID, "render", 1.5)).toThrow();
-    expect(() => attemptDir(root, VID, "render", -1)).toThrow();
+    expect(() => attemptDir(root, VID, "render", 1)).toThrow(); // a stage name is not a stage run id
+    expect(() => attemptDir(root, VID, RUN, 0)).toThrow();
+    expect(() => attemptDir(root, VID, RUN, 1.5)).toThrow();
+    expect(() => attemptDir(root, VID, RUN, -1)).toThrow();
   });
   it("storageRoot_is_absolute_and_honours_STORAGE_ROOT", () => {
     const old = process.env.STORAGE_ROOT;

@@ -3,16 +3,16 @@ import { open, realpath } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { assertAllowedHost } from "@/lib/auth/origin";
-import { getMediaKey } from "@/server/db/media-key";
+import { getCachedMediaKey } from "@/server/db/media-key";
 import { getPool } from "@/server/db/pool";
 import { safeJoin, storageRoot } from "@/server/storage/paths";
-import { verifyMediaUrl } from "@/server/storage/sign";
+import { precheckMediaUrl, verifyMediaUrl } from "@/server/storage/sign";
 
 // GET/HEAD /api/media/<path relative to the storage root>?e=<unix seconds>&s=<HMAC>
 //
 // Public on purpose and OUTSIDE proxy.ts (it streams large files): the signed URL is the only credential. No cookie is
 // read, so a session neither helps nor hurts. Order of work, which tests/unit/route-inventory.test.ts pins:
-//   1. Host allow-list.  2. Verify the signature and expiry (nothing on disk is touched before this succeeds).
+//   1. Host allow-list.  2. Key-free precheck (shapes, path format, expiry), then verify the signature (nothing on disk is touched before this succeeds).
 //   3. Only then resolve the file. Every failure before step 3 is the same 403, so a caller learns nothing about which
 //   files exist. The query string (it carries the signature) and the key are never logged.
 // Only the exported GET and HEAD may live here (the route checker enforces it); helpers sit below.
@@ -43,14 +43,18 @@ async function serve(request: Request, ctx: Ctx, head: boolean): Promise<Respons
   const s = q.getAll("s");
   if (e.length !== 1 || s.length !== 1 || [...q.keys()].some((k) => k !== "e" && k !== "s")) return forbidden();
 
+  // Cheap, key-free checks first: junk and expired URLs never cost a database read or a vault decrypt.
+  const input = { path: rel, e: e[0]!, s: s[0]! };
+  if (!precheckMediaUrl(input, Math.floor(Date.now() / 1000)).ok) return forbidden();
+
   let key: Buffer | null;
   try {
-    key = await getMediaKey(getPool());
+    key = await getCachedMediaKey(getPool());
   } catch {
     return unavailable(); // wrong/missing vault key or DB down: say so, never fall back to unsigned serving
   }
   if (!key) return forbidden(); // no key yet means no URL was ever signed
-  const v = verifyMediaUrl({ path: rel, e: e[0]!, s: s[0]! }, key, Math.floor(Date.now() / 1000));
+  const v = verifyMediaUrl(input, key, Math.floor(Date.now() / 1000));
   if (!v.ok) return forbidden();
   const parts = v.path.split("/");
   const type = SERVED_ROOTS.has(parts[0]!) ? TYPES[path.extname(parts[parts.length - 1]!).toLowerCase()] : undefined;

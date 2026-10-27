@@ -5,9 +5,9 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { uuidv7 } from "@/server/core/ids";
 import { makeKeyring } from "@/server/core/vault-crypto";
-import { getMediaKey, getOrCreateMediaKey, MediaKeyError, MEDIA_KEY_SECRET } from "@/server/db/media-key";
+import { clearMediaKeyCache, getCachedMediaKey, getMediaKey, getOrCreateMediaKey, MediaKeyError, MEDIA_KEY_SECRET } from "@/server/db/media-key";
 import { claimStage, commitStage, insertQueuedStage, type Claim } from "@/server/db/stages";
-import { promoteAttempt, sweepLostAttempts } from "@/server/storage/store";
+import { promoteAttempt, PROMOTE_MARKER, sweepLostAttempts } from "@/server/storage/store";
 import { attemptDir, videoPath } from "@/server/storage/paths";
 import { withTestDb, type TestDb } from "../support/db";
 
@@ -45,8 +45,8 @@ async function reclaim(stageId: string, workerId = "w1"): Promise<Claim> {
 
 describe("promoteAttempt", () => {
   it("promote_is_atomic_and_idempotent", async () => {
-    const { claim, videoId } = await claimed();
-    const dir = attemptDir(root, videoId, "render", claim.fence);
+    const { claim, videoId, stageId } = await claimed();
+    const dir = attemptDir(root, videoId, stageId, claim.fence);
     put(dir, "final.mp4", "VIDEO");
     put(dir, "thumb.png", "PNG");
     expect(await promoteAttempt(db.pool, claim, ["final.mp4", "thumb.png"], { root })).toBe(true);
@@ -59,8 +59,8 @@ describe("promoteAttempt", () => {
   });
 
   it("a_missing_file_fails_the_whole_promotion_and_moves_nothing", async () => {
-    const { claim, videoId } = await claimed();
-    const dir = attemptDir(root, videoId, "render", claim.fence);
+    const { claim, videoId, stageId } = await claimed();
+    const dir = attemptDir(root, videoId, stageId, claim.fence);
     put(dir, "a.mp4", "A");
     await expect(promoteAttempt(db.pool, claim, ["a.mp4", "missing.png"], { root })).rejects.toThrow();
     expect(existsSync(path.join(dir, "a.mp4"))).toBe(true);
@@ -69,7 +69,7 @@ describe("promoteAttempt", () => {
 
   it("stale_attempt_dir_is_never_promoted", async () => {
     const { claim: old, videoId, stageId } = await claimed();
-    const oldDir = attemptDir(root, videoId, "render", old.fence);
+    const oldDir = attemptDir(root, videoId, stageId, old.fence);
     put(oldDir, "final.mp4", "STALE");
     const fresh = await reclaim(stageId);
     expect(fresh.fence).toBeGreaterThan(old.fence);
@@ -78,14 +78,14 @@ describe("promoteAttempt", () => {
     expect(existsSync(videoPath(root, videoId, "final.mp4"))).toBe(false);
     expect(readFileSync(path.join(oldDir, "final.mp4"), "utf8")).toBe("STALE"); // untouched; the sweep removes it later
     // the new worker promotes its own files
-    put(attemptDir(root, videoId, "render", fresh.fence), "final.mp4", "FRESH");
+    put(attemptDir(root, videoId, stageId, fresh.fence), "final.mp4", "FRESH");
     expect(await promoteAttempt(db.pool, fresh, ["final.mp4"], { root })).toBe(true);
     expect(readFileSync(videoPath(root, videoId, "final.mp4"), "utf8")).toBe("FRESH");
   });
 
   it("a_stage_that_is_no_longer_running_or_belongs_to_another_worker_is_not_promoted", async () => {
     const a = await claimed();
-    put(attemptDir(root, a.videoId, "render", a.claim.fence), "x.mp4");
+    put(attemptDir(root, a.videoId, a.stageId, a.claim.fence), "x.mp4");
     expect(await promoteAttempt(db.pool, { ...a.claim, workerId: "someone-else" }, ["x.mp4"], { root })).toBe(false);
     expect(await commitStage(db.pool, a.claim, {})).toBe(true);
     expect(await promoteAttempt(db.pool, a.claim, ["x.mp4"], { root })).toBe(false);
@@ -95,8 +95,8 @@ describe("promoteAttempt", () => {
   });
 
   it("hostile_file_names_and_symlinks_are_refused_and_nothing_moves", async () => {
-    const { claim, videoId } = await claimed();
-    const dir = attemptDir(root, videoId, "render", claim.fence);
+    const { claim, videoId, stageId } = await claimed();
+    const dir = attemptDir(root, videoId, stageId, claim.fence);
     put(dir, "good.mp4");
     const secret = path.join(root, "secret.txt");
     writeFileSync(secret, "S");
@@ -111,8 +111,8 @@ describe("promoteAttempt", () => {
   });
 
   it("a_symlinked_video_folder_cannot_redirect_promoted_files_outside_the_root", async () => {
-    const { claim, videoId } = await claimed();
-    const dir = attemptDir(root, videoId, "render", claim.fence);
+    const { claim, videoId, stageId } = await claimed();
+    const dir = attemptDir(root, videoId, stageId, claim.fence);
     put(dir, "final.mp4", "X");
     const outside = mkdtempSync(path.join(tmpdir(), "ytstudio-outside-"));
     try {
@@ -128,24 +128,107 @@ describe("promoteAttempt", () => {
   });
 
   it("nested_names_are_promoted_with_their_folders", async () => {
-    const { claim, videoId } = await claimed();
-    const dir = attemptDir(root, videoId, "render", claim.fence);
+    const { claim, videoId, stageId } = await claimed();
+    const dir = attemptDir(root, videoId, stageId, claim.fence);
     put(dir, "frames/001.png", "F1");
     expect(await promoteAttempt(db.pool, claim, ["frames/001.png"], { root })).toBe(true);
     expect(readFileSync(videoPath(root, videoId, "frames", "001.png"), "utf8")).toBe("F1");
   });
 });
 
+describe("promoteAttempt hardening", () => {
+  it("a_symlinked_subfolder_in_the_attempt_dir_cannot_pull_another_videos_files", async () => {
+    const victim = await claimed();
+    const vDir = videoPath(root, victim.videoId);
+    put(vDir, "final.mp4", "VICTIM");
+    const { claim, videoId, stageId } = await claimed();
+    const dir = attemptDir(root, videoId, stageId, claim.fence);
+    put(dir, "ok.mp4", "OK");
+    symlinkSync(vDir, path.join(dir, "frames")); // a render container planted this
+    await expect(promoteAttempt(db.pool, claim, ["ok.mp4", "frames/final.mp4"], { root })).rejects.toThrow();
+    expect(readFileSync(path.join(vDir, "final.mp4"), "utf8")).toBe("VICTIM");
+    expect(existsSync(videoPath(root, videoId, "frames"))).toBe(false);
+    expect(existsSync(path.join(dir, "ok.mp4"))).toBe(true); // nothing moved
+  });
+
+  it("an_attempt_dir_that_is_itself_a_symlink_is_refused", async () => {
+    const { claim, videoId, stageId } = await claimed();
+    const elsewhere = path.join(root, "elsewhere");
+    put(elsewhere, "final.mp4", "E");
+    mkdirSync(path.join(root, "videos", videoId), { recursive: true });
+    symlinkSync(elsewhere, attemptDir(root, videoId, stageId, claim.fence));
+    await expect(promoteAttempt(db.pool, claim, ["final.mp4"], { root })).rejects.toThrow();
+    expect(existsSync(path.join(elsewhere, "final.mp4"))).toBe(true);
+  });
+
+  it("an_old_runs_file_at_the_destination_is_not_accepted_as_already_promoted", async () => {
+    const { claim, videoId, stageId } = await claimed();
+    put(videoPath(root, videoId), "final.mp4", "OLD RUN"); // left by an earlier run, no marker from this claim
+    mkdirSync(attemptDir(root, videoId, stageId, claim.fence), { recursive: true });
+    await expect(promoteAttempt(db.pool, claim, ["final.mp4"], { root })).rejects.toThrow();
+  });
+
+  it("the_marker_of_another_claim_does_not_make_a_file_look_promoted", async () => {
+    const { claim, videoId, stageId } = await claimed();
+    const dir = attemptDir(root, videoId, stageId, claim.fence);
+    put(videoPath(root, videoId), "final.mp4", "OLD RUN");
+    put(dir, PROMOTE_MARKER, JSON.stringify({ stageRunId: stageId, fence: claim.fence + 1, files: ["final.mp4"] }));
+    await expect(promoteAttempt(db.pool, claim, ["final.mp4"], { root })).rejects.toThrow();
+  });
+
+  it("an_expired_lease_or_a_cancel_request_blocks_promotion", async () => {
+    const a = await claimed();
+    put(attemptDir(root, a.videoId, a.stageId, a.claim.fence), "x.mp4");
+    await db.pool.query("update stage_runs set cancel_requested = true where id = $1", [a.stageId]);
+    expect(await promoteAttempt(db.pool, a.claim, ["x.mp4"], { root })).toBe(false);
+    await db.pool.query("update stage_runs set cancel_requested = false, lease_until = now() - interval '1 second' where id = $1", [a.stageId]);
+    expect(await promoteAttempt(db.pool, a.claim, ["x.mp4"], { root })).toBe(false);
+    expect(existsSync(videoPath(root, a.videoId, "x.mp4"))).toBe(false);
+    await db.pool.query("update stage_runs set lease_until = now() + interval '1 minute' where id = $1", [a.stageId]);
+    expect(await promoteAttempt(db.pool, a.claim, ["x.mp4"], { root })).toBe(true);
+  });
+
+  it("a_failure_half_way_restores_moved_files_and_the_files_they_overwrote", async () => {
+    const { claim, videoId, stageId } = await claimed();
+    const dir = attemptDir(root, videoId, stageId, claim.fence);
+    put(dir, "a.mp4", "NEW A");
+    put(dir, "sub/b.mp4", "NEW B");
+    put(videoPath(root, videoId), "a.mp4", "OLD A"); // will be overwritten, then must come back
+    put(videoPath(root, videoId), "sub", "i am a file, so sub/b.mp4 cannot be created");
+    await expect(promoteAttempt(db.pool, claim, ["a.mp4", "sub/b.mp4"], { root })).rejects.toThrow();
+    expect(readFileSync(videoPath(root, videoId, "a.mp4"), "utf8")).toBe("OLD A");
+    expect(readFileSync(path.join(dir, "a.mp4"), "utf8")).toBe("NEW A");
+    expect(readFileSync(path.join(dir, "sub", "b.mp4"), "utf8")).toBe("NEW B");
+  });
+
+  it("an_overwrite_leaves_no_backup_litter_and_a_marker_records_the_promotion", async () => {
+    const { claim, videoId, stageId } = await claimed();
+    const dir = attemptDir(root, videoId, stageId, claim.fence);
+    put(dir, "a.mp4", "NEW");
+    put(videoPath(root, videoId), "a.mp4", "OLD");
+    expect(await promoteAttempt(db.pool, claim, ["a.mp4"], { root })).toBe(true);
+    expect(readFileSync(videoPath(root, videoId, "a.mp4"), "utf8")).toBe("NEW");
+    expect(readdirSync(dir).sort()).toEqual([PROMOTE_MARKER]);
+    expect(JSON.parse(readFileSync(path.join(dir, PROMOTE_MARKER), "utf8"))).toMatchObject({ stageRunId: stageId, fence: claim.fence, files: ["a.mp4"] });
+  });
+
+  it("the_marker_name_cannot_be_promoted", async () => {
+    const { claim, videoId, stageId } = await claimed();
+    put(attemptDir(root, videoId, stageId, claim.fence), PROMOTE_MARKER);
+    await expect(promoteAttempt(db.pool, claim, [PROMOTE_MARKER], { root })).rejects.toThrow();
+  });
+});
+
 describe("sweepLostAttempts", () => {
   it("removes_attempt_dirs_of_lost_fences_and_keeps_the_current_and_unknown_ones", async () => {
     const { claim: old, videoId, stageId } = await claimed();
-    const oldDir = attemptDir(root, videoId, "render", old.fence);
+    const oldDir = attemptDir(root, videoId, stageId, old.fence);
     put(oldDir, "partial.mp4");
     const fresh = await reclaim(stageId);
-    const freshDir = attemptDir(root, videoId, "render", fresh.fence);
+    const freshDir = attemptDir(root, videoId, stageId, fresh.fence);
     put(freshDir, "wip.mp4");
     const unknownVideo = uuidv7();
-    const unknownDir = attemptDir(root, unknownVideo, "render", 1);
+    const unknownDir = attemptDir(root, unknownVideo, uuidv7(), 1);
     put(unknownDir, "keep.mp4");
     put(videoPath(root, videoId), "final.mp4", "PROMOTED"); // promoted files are never touched
     const removed = await sweepLostAttempts(db.pool, { root });
@@ -160,12 +243,12 @@ describe("sweepLostAttempts", () => {
     const videoId = uuidv7();
     const outside = mkdtempSync(path.join(tmpdir(), "ytstudio-outside-"));
     try {
+      const stageId = await insertQueuedStage(db.pool, { videoId, name: "render", inputHash: "h" });
       writeFileSync(path.join(outside, "precious.txt"), "P");
       mkdirSync(path.join(root, "videos", videoId), { recursive: true });
-      symlinkSync(outside, path.join(root, "videos", videoId, "attempt-render-1"));
+      symlinkSync(outside, path.join(root, "videos", videoId, `attempt-${stageId}-1`));
       mkdirSync(path.join(root, "videos", videoId, "attempt-weird"));
-      mkdirSync(path.join(root, "videos", "not-a-uuid", "attempt-render-1"), { recursive: true });
-      await insertQueuedStage(db.pool, { videoId, name: "render", inputHash: "h" });
+      mkdirSync(path.join(root, "videos", "not-a-uuid", `attempt-${stageId}-1`), { recursive: true });
       await db.pool.query("update stage_runs set fence = 5 where video_id = $1", [videoId]);
       expect(await sweepLostAttempts(db.pool, { root })).toBe(0);
       expect(readFileSync(path.join(outside, "precious.txt"), "utf8")).toBe("P");
@@ -235,5 +318,34 @@ describe("media signing key", () => {
     } catch (e) {
       expect(String(e) + JSON.stringify(e)).not.toContain(key.toString("base64"));
     }
+  });
+
+  it("the_cached_reader_hits_the_database_once_per_short_window_and_never_serves_a_deleted_key_for_long", async () => {
+    clearMediaKeyCache();
+    const r = ring();
+    const key = await getOrCreateMediaKey(db.pool, r);
+    let queries = 0;
+    const counting = { query: ((...a: unknown[]) => (queries++, (db.pool.query as (...x: unknown[]) => unknown)(...a))) as typeof db.pool.query };
+    let t = 1_000_000;
+    const now = () => t;
+    expect((await getCachedMediaKey(counting, r, now))!.equals(key)).toBe(true);
+    expect((await getCachedMediaKey(counting, r, now))!.equals(key)).toBe(true);
+    t += 10_000;
+    expect((await getCachedMediaKey(counting, r, now))!.equals(key)).toBe(true);
+    expect(queries).toBe(1);
+    await db.ownerPool.query("delete from secrets where name = $1", [MEDIA_KEY_SECRET]); // rotation: every URL must die
+    t += 30_000;
+    expect(await getCachedMediaKey(counting, r, now)).toBeNull();
+    expect(queries).toBe(2);
+    clearMediaKeyCache();
+  });
+
+  it("the_cached_reader_does_not_cache_errors", async () => {
+    clearMediaKeyCache();
+    const good = ring();
+    await getOrCreateMediaKey(db.pool, good);
+    await expect(getCachedMediaKey(db.pool, ring())).rejects.toBeInstanceOf(MediaKeyError);
+    expect(await getCachedMediaKey(db.pool, good)).not.toBeNull();
+    clearMediaKeyCache();
   });
 });

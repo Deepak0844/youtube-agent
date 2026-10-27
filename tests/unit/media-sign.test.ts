@@ -1,7 +1,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LIFETIME_SEC, resignIfNear, signMediaUrl, verifyMediaUrl } from "@/server/storage/sign";
+import { DEFAULT_LIFETIME_SEC, precheckMediaUrl, resignIfNear, signMediaUrl, verifyMediaUrl } from "@/server/storage/sign";
 
 const key = randomBytes(32);
 const other = randomBytes(32);
@@ -108,4 +108,17 @@ describe("resignIfNear", () => {
     expect(resignIfNear("/elsewhere/x?e=1&s=2", NOW, 600, key)).toBeNull();
   });
   it("the_default_lifetime_is_four_hours", () => expect(DEFAULT_LIFETIME_SEC).toBe(4 * 3600));
+});
+
+describe("precheckMediaUrl (no key needed, runs before any DB or vault work)", () => {
+  const good = parse(signMediaUrl("videos/abc/a.mp4", NOW + 100, key));
+  it("passes_a_well_formed_unexpired_request", () => {
+    expect(precheckMediaUrl({ path: "videos/abc/a.mp4", e: good.e, s: good.s }, NOW)).toEqual({ ok: true, path: "videos/abc/a.mp4", exp: NOW + 100 });
+  });
+  it("rejects_bad_shapes_bad_paths_and_expired_urls_without_a_key", () => {
+    expect(precheckMediaUrl({ path: "videos/abc/a.mp4", e: good.e, s: "short" }, NOW).ok).toBe(false);
+    expect(precheckMediaUrl({ path: "videos/abc/a.mp4", e: "x", s: good.s }, NOW).ok).toBe(false);
+    expect(precheckMediaUrl({ path: "../a.mp4", e: good.e, s: good.s }, NOW).ok).toBe(false);
+    expect(precheckMediaUrl({ path: "videos/abc/a.mp4", e: good.e, s: good.s }, NOW + 100)).toMatchObject({ ok: false, reason: "expired" });
+  });
 });

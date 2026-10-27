@@ -68,6 +68,7 @@ test("valid_signature_serves_the_file", async ({ request }) => {
   expect(h["cache-control"]).toBe("private, no-store");
   expect(h["accept-ranges"]).toBe("bytes");
   expect(h["content-disposition"]).toBeUndefined();
+  expect(h["content-security-policy"]).toBe("default-src 'none'; sandbox");
   expect(h["set-cookie"]).toBeUndefined();
 });
 

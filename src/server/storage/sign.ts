@@ -31,6 +31,21 @@ export function signMediaUrl(relPath: string, expiresAtSec: number, key: Buffer)
 export type VerifyResult = { ok: true; path: string; exp: number } | { ok: false; reason: "malformed" | "bad_signature" | "expired" };
 
 /**
+ * Everything that can be decided WITHOUT the key: query shapes, path format, and expiry on the caller's clock. The route
+ * runs this first so junk and expired requests never cost a database read or a vault decrypt. Expiry here is not an
+ * oracle: every failure is answered alike.
+ */
+export function precheckMediaUrl(input: { path: string; e: string | null; s: string | null }, nowSec: number): { ok: true; path: string; exp: number } | { ok: false; reason: "malformed" | "expired" } {
+  const { path: relPath, e, s } = input;
+  if (typeof e !== "string" || !EXP_RE.test(e) || typeof s !== "string" || !SIG_RE.test(s)) return { ok: false, reason: "malformed" };
+  if (normalizeRelPath(relPath) === null) return { ok: false, reason: "malformed" };
+  const exp = Number(e);
+  if (!Number.isSafeInteger(exp)) return { ok: false, reason: "malformed" };
+  if (nowSec >= exp) return { ok: false, reason: "expired" };
+  return { ok: true, path: relPath, exp };
+}
+
+/**
  * Order matters: shape checks, then the MAC (constant time), then expiry on the caller's clock (`nowSec`). A URL is dead
  * AT its expiry second (`now >= exp`). Failure reasons are for tests and logs only; callers must answer all of them alike.
  */

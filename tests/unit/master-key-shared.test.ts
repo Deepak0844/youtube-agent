@@ -23,4 +23,18 @@ describe("loadKeyring across module copies", () => {
     expect(b).not.toBe(a);
     expect(b.loadKeyring()).toBe(ringA);
   });
+
+  it("the_keyring_and_its_key_objects_are_frozen", async () => {
+    const m = await import("@/server/db/master-key");
+    const ring = m.loadKeyring({ VAULT_MASTER_KEY: randomBytes(32).toString("base64"), VAULT_MASTER_KEY_PREVIOUS: randomBytes(32).toString("base64") });
+    expect(Object.isFrozen(ring)).toBe(true);
+    expect(Object.isFrozen(ring.current)).toBe(true);
+    for (const k of ring.byId.values()) expect(Object.isFrozen(k)).toBe(true);
+    expect(() => {
+      (ring as { current: unknown }).current = null;
+    }).toThrow();
+    expect(() => (ring.byId as Map<string, unknown>).set("x", {})).toThrow();
+    expect(() => (ring.byId as Map<string, unknown>).delete(ring.current.id)).toThrow();
+    expect(() => (ring.byId as Map<string, unknown>).clear()).toThrow();
+  });
 });

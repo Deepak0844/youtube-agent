@@ -5,18 +5,17 @@ import path from "node:path";
 // bind-mounted at that path into render containers), so it is always resolved to an absolute path and never rewritten.
 //
 //   <root>/videos/<videoId>/                       promoted (final) files of one video
-//   <root>/videos/<videoId>/attempt-<stage>-<fence>/   scratch for ONE claimed attempt of one stage
+//   <root>/videos/<videoId>/attempt-<stageRunId>-<fence>/   scratch for ONE claimed attempt of one stage run
 //   <root>/assets/                                 shared read-only assets
 //
-// The stage name is part of the attempt folder because the fence counts per stage run, so two stages of one video can
-// both be on fence 1.
+// The stage RUN id is part of the attempt folder because the fence counts per stage run: two runs of one video (other
+// stage, or the same stage with another input_hash) can both be on fence 1. Task 11's log sink uses the same ids.
 
 export function storageRoot(): string {
   return path.resolve(process.env.STORAGE_ROOT ?? ".data");
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const STAGE = /^[a-z][a-z0-9_]{0,63}$/;
 const MAX_PATH = 1024;
 const MAX_SEGMENT = 255;
 
@@ -55,10 +54,10 @@ export function videoPath(root: string, videoId: string, ...parts: string[]): st
   return path.join(root, "videos", videoId, ...parts);
 }
 
-export function attemptDir(root: string, videoId: string, stage: string, fence: number): string {
-  if (typeof stage !== "string" || !STAGE.test(stage)) throw new Error("invalid stage name");
+export function attemptDir(root: string, videoId: string, stageRunId: string, fence: number): string {
+  if (typeof stageRunId !== "string" || !UUID.test(stageRunId)) throw new Error("invalid stage run id");
   if (!Number.isSafeInteger(fence) || fence < 1) throw new Error("invalid fence");
-  return videoPath(root, videoId, `attempt-${stage}-${fence}`);
+  return videoPath(root, videoId, `attempt-${stageRunId}-${fence}`);
 }
 
 function inside(parent: string, child: string): boolean {

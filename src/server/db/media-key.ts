@@ -77,3 +77,23 @@ export async function getOrCreateMediaKey(db: Db, ring?: Keyring): Promise<Buffe
   if (!winner) throw new MediaKeyError("vault_unreadable"); // row vanished between insert and read (deleted concurrently)
   return winner;
 }
+
+// Short-lived copy for the media route, which would otherwise read and decrypt on every Range request. This is the one
+// deliberate exception to "decrypt per call": 30 s for a found key (deleting the secret still kills every URL within that
+// window), 5 s for "no key yet" so a key created by another process is picked up quickly. Errors are never cached.
+// clearMediaKeyCache() wipes it (tests, rotation tooling).
+const HIT_TTL_MS = 30_000;
+const MISS_TTL_MS = 5_000;
+let cache: { key: Buffer | null; until: number } | undefined;
+
+export function clearMediaKeyCache(): void {
+  cache = undefined;
+}
+
+export async function getCachedMediaKey(db: Db, ring?: Keyring, now: () => number = Date.now): Promise<Buffer | null> {
+  const t = now();
+  if (cache && t < cache.until) return cache.key;
+  const key = await getMediaKey(db, ring);
+  cache = { key, until: t + (key ? HIT_TTL_MS : MISS_TTL_MS) };
+  return key;
+}

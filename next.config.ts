@@ -28,6 +28,11 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "same-origin" },
         ],
       },
+      {
+        // Signed media files are data, never pages: nothing in them may run or load anything (later entry wins over the one above).
+        source: "/api/media/:path*",
+        headers: [{ key: "Content-Security-Policy", value: "default-src 'none'; sandbox" }],
+      },
     ];
   },
   /* config options here */

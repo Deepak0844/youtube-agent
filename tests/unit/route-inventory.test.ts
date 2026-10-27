@@ -224,7 +224,11 @@ function checkSignedRoute(src: string): string[] {
   const verify = src.search(/\bverifyMediaUrl\s*\(/);
   const io = src.search(/\b(safeJoin|createReadStream|readFile|open|stat|lstat|realpath|access)\s*\(/);
   if (host < 0) out.push("no assertAllowedHost( call");
+  const pre = src.search(/\bprecheckMediaUrl\s*\(/);
+  const keyRead = src.search(/\bget(Cached)?MediaKey\s*\(/);
   if (verify < 0) out.push("no verifyMediaUrl( call");
+  if (pre < 0) out.push("no precheckMediaUrl( call");
+  if (pre >= 0 && keyRead >= 0 && keyRead < pre) out.push("reads the signing key before precheckMediaUrl(");
   if (verify >= 0 && io >= 0 && io < verify) out.push("touches the filesystem before verifyMediaUrl(");
   if (host >= 0 && verify >= 0 && verify < host) out.push("verifies before the Host check");
   if (/\b(readSessionCookie|requireOwner(Api)?|cookies)\b/.test(src)) out.push("reads a session: the signature must be the only credential");
@@ -245,9 +249,11 @@ describe("signed media route", () => {
     expect(checkSignedRoute(readFileSync(file, "utf8")), file).toEqual([]);
   });
   it("the checker itself catches the mistakes it exists for", () => {
-    const ok = "export async function GET(r){ assertAllowedHost(r); verifyMediaUrl(a,b,c); await open(p) }\nexport async function HEAD(r){ assertAllowedHost(r); verifyMediaUrl(a,b,c) }";
+    const ok = "export async function GET(r){ assertAllowedHost(r); precheckMediaUrl(a); getCachedMediaKey(d); verifyMediaUrl(a,b,c); await open(p) }\nexport async function HEAD(r){ assertAllowedHost(r); precheckMediaUrl(a); verifyMediaUrl(a,b,c) }";
     expect(checkSignedRoute(ok)).toEqual([]);
     expect(checkSignedRoute(ok.replace("verifyMediaUrl(a,b,c); await open(p)", "await open(p); verifyMediaUrl(a,b,c)"))).not.toEqual([]);
+    expect(checkSignedRoute(ok.replace("precheckMediaUrl(a); getCachedMediaKey(d);", "getCachedMediaKey(d); precheckMediaUrl(a);"))).not.toEqual([]);
+    expect(checkSignedRoute(ok.replace(/precheckMediaUrl\(a\); /g, ""))).not.toEqual([]);
     expect(checkSignedRoute(ok.replace(/verifyMediaUrl\(a,b,c\); /g, ""))).not.toEqual([]);
     expect(checkSignedRoute(ok.replace(/assertAllowedHost\(r\); /g, ""))).not.toEqual([]);
     expect(checkSignedRoute(ok + "\nexport async function POST(r){}")).not.toEqual([]);

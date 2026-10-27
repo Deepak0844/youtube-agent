@@ -25,7 +25,19 @@ export function loadKeyring(env?: Record<string, string | undefined>): Keyring {
 
 // Empty string is treated as missing; makeKeyring throws a generic VaultError("bad_key") and never echoes the value.
 function build(env: Record<string, string | undefined>): Keyring {
-  return makeKeyring(env.VAULT_MASTER_KEY ?? "", env.VAULT_MASTER_KEY_PREVIOUS || undefined);
+  return freezeRing(makeKeyring(env.VAULT_MASTER_KEY ?? "", env.VAULT_MASTER_KEY_PREVIOUS || undefined));
+}
+
+// The ring is shared process-wide: nothing may swap the current key or edit the key map. (The key Buffers themselves
+// cannot be frozen in JS; they are never handed out except to the crypto calls.)
+function freezeRing(ring: Keyring): Keyring {
+  const refuse = (): never => {
+    throw new TypeError("the keyring is read-only");
+  };
+  for (const k of ring.byId.values()) Object.freeze(k);
+  const byId = new Map(ring.byId);
+  Object.defineProperties(byId, { set: { value: refuse }, delete: { value: refuse }, clear: { value: refuse } });
+  return Object.freeze({ current: ring.current, byId });
 }
 
 export function resetKeyringCacheForTests(): void {
