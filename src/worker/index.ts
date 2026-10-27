@@ -1,4 +1,6 @@
 import { fileURLToPath } from "node:url";
+import { createPool } from "@/server/db/pool";
+import { productionHandlers } from "./handlers";
 import { startRuntime, type WorkerOptions } from "./runtime";
 
 // Retain startWorker(log) for existing callers, alongside the runtime options interface.
@@ -13,7 +15,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.stderr.write(`${missing} is not set; configure .env.local before starting the worker\n`);
     process.exitCode = 1;
   } else {
-    const worker = startWorker({ log });
+    const pool = createPool(process.env.DATABASE_URL);
+    const worker = startWorker({ log, pool, handlers: productionHandlers(pool) });
     let exiting = false;
     const shutdown = () => {
       if (exiting) return;

@@ -1,14 +1,21 @@
-// Spike A live check: can a model produce valid, really-sourced evidence with webSearch/fetchPage?
-// Provider via DRAFT_PROVIDER: "openai-compatible" (Ollama / LM Studio / any; needs DRAFT_BASE_URL, e.g.
-// http://127.0.0.1:11434/v1, local = set both prices to 0) or "anthropic" (needs ANTHROPIC_API_KEY).
-// Always needs DRAFT_MODEL, DRAFT_IN_PER_M_USD, DRAFT_OUT_PER_M_USD (no price = refused)
-// and SearXNG at SEARXNG_URL (default http://127.0.0.1:8888). Spend is tracked in memory only.
+// Manual check (not CI): runs the real Draft (runDraft) against your local Ollama / LM Studio (or Anthropic) and SearXNG.
+// Output goes to the terminal only; nothing is written to the database and nothing is checkpointed.
+//
+//   DRAFT_PROVIDER=openai-compatible DRAFT_BASE_URL=http://127.0.0.1:11434/v1 DRAFT_MODEL=qwen2.5:7b \
+//   SEARXNG_URL=http://127.0.0.1:8888 npx tsx scripts/draft-spike.ts "Why do octopuses have three hearts?"
+//
+// DRAFT_PROVIDER: "openai-compatible" (free local model, price 0) or "anthropic" (needs ANTHROPIC_API_KEY and
+// DRAFT_IN_PER_M_USD / DRAFT_OUT_PER_M_USD: no price = refused). DRAFT_MODE: "search_then_write" (default) or "agent".
+// DRAFT_LANG (default en), DRAFT_CAP_USD (default 0.5; spend is tracked in memory only).
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { z } from "zod";
-import { runAgent } from "@/server/core/agent-loop";
+import { runDraft } from "@/server/authoring/draft";
+import { buildEngineConfig } from "@/server/core/engine-config";
+import { isLang } from "@/server/core/lang";
+import type { ModelRow } from "@/server/core/llm-catalog";
 import type { PaidCallPorts } from "@/server/core/paid-call";
-import { createAiSdkStep } from "@/server/llm/ai-sdk-step";
+import { createStageContext } from "@/server/core/stage-handler";
+import { createLlmClient } from "@/server/llm/client";
 import { createWebTools } from "@/server/llm/web-tools";
 
 const need = (k: string): string => {
@@ -16,58 +23,66 @@ const need = (k: string): string => {
   if (!v) throw new Error(`set ${k}`);
   return v;
 };
-const usd = (k: string): number => Math.round(Number(need(k)) * 1_000_000);
-
-const Evidence = z.object({
-  claims: z.array(z.object({ claim: z.string().min(10), sourceUrl: z.url(), quote: z.string().min(10) })).min(3),
-});
+const usdMicro = (k: string): number => Math.round(Number(need(k)) * 1_000_000);
 
 async function main() {
   const topic = process.argv[2] ?? "Why do octopuses have three hearts?";
-  const { tools, seen } = createWebTools({ searxUrl: process.env.SEARXNG_URL ?? "http://127.0.0.1:8888" });
-  const capUsd = Number(process.env.DRAFT_CAP_USD ?? "0.5");
+  const lang = process.env.DRAFT_LANG ?? "en";
+  if (!isLang(lang)) throw new Error("DRAFT_LANG must be one of en hi ta te ml kn");
+  const mode = process.env.DRAFT_MODE === "agent" ? "agent" : "search_then_write";
+  const anthropic = (process.env.DRAFT_PROVIDER ?? "openai-compatible") === "anthropic";
+  const baseUrl = anthropic ? null : need("DRAFT_BASE_URL");
+  const localHost = baseUrl ? new URL(baseUrl) : null;
+
+  const caps = { structuredOutput: true, toolUse: true, vision: false, nativeWebSearch: false, contextWindow: 128000 };
+  const row: ModelRow = {
+    id: "00000000-0000-4000-8000-000000000000",
+    provider: anthropic ? "anthropic" : "ollama",
+    modelId: need("DRAFT_MODEL"),
+    label: need("DRAFT_MODEL"),
+    baseUrl,
+    prices: anthropic ? { inputPerMTokMicro: usdMicro("DRAFT_IN_PER_M_USD"), outputPerMTokMicro: usdMicro("DRAFT_OUT_PER_M_USD") } : null,
+    isFree: !anthropic,
+    capabilities: caps,
+    enabled: true,
+    endpointKind: anthropic ? "hosted" : "local",
+  };
+  const llm = createLlmClient({
+    db: undefined as never,
+    catalog: { route: async () => row, localServices: async () => (localHost ? [`${localHost.hostname}:${localHost.port || "80"}`] : []) },
+    getKey: async () => process.env.ANTHROPIC_API_KEY ?? null,
+    buildModel: () =>
+      anthropic
+        ? createAnthropic({ apiKey: need("ANTHROPIC_API_KEY") })(row.modelId)
+        : createOpenAICompatible({ name: "local", baseURL: baseUrl!, apiKey: process.env.DRAFT_API_KEY })(row.modelId),
+    budgetScopes: () => ["spike"],
+  });
+
+  const capMicro = Number(process.env.DRAFT_CAP_USD ?? "0.5") * 1e6;
   let spentMicro = 0;
   let n = 0;
   const ports: PaidCallPorts = {
-    reserve: async (_c, a) => (spentMicro + a.reserveMicroUsd > capUsd * 1e6 ? { kind: "refused", reason: "cap" } : { kind: "new", intentId: String(++n) }),
+    reserve: async (_c, a) => (spentMicro + a.reserveMicroUsd > capMicro ? { kind: "refused", reason: "cap" } : { kind: "new", intentId: String(++n) }),
     settle: async (_id, a) => void (spentMicro += a.actualMicroUsd),
     failKnown: async () => {},
     markUnknown: async () => {},
     markStageNeedsDecision: async () => {},
     warn: (e, d) => console.warn(e, d),
   };
-  const model =
-    (process.env.DRAFT_PROVIDER ?? "openai-compatible") === "anthropic"
-      ? createAnthropic({ apiKey: need("ANTHROPIC_API_KEY") })(need("DRAFT_MODEL"))
-      : createOpenAICompatible({ name: "local", baseURL: need("DRAFT_BASE_URL"), apiKey: process.env.DRAFT_API_KEY })(need("DRAFT_MODEL"));
-  const decls = [
-    { name: "webSearch", description: "Search the web. Returns titles, URLs, snippets.", inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } },
-    { name: "fetchPage", description: "Fetch text of a URL previously returned by webSearch.", inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } },
-  ];
-  const out = await runAgent({
-    claim: { stageRunId: "spike-a" } as never,
-    ports,
-    price: { inputPerMTokMicro: usd("DRAFT_IN_PER_M_USD"), outputPerMTokMicro: usd("DRAFT_OUT_PER_M_USD") },
-    budgetScopes: ["spike"],
-    maxOutputTokens: 2000,
-    maxSteps: 10,
-    step: createAiSdkStep(model, decls, 2000),
-    tools,
-    messages: [
-      { role: "system", content: 'You research facts for a short video. Use webSearch (and fetchPage) to find real sources. Finish with ONLY JSON: {"claims":[{"claim":"...","sourceUrl":"<url returned by webSearch>","quote":"<exact words from the source>"}]} with at least 3 claims.' },
-      { role: "user", content: `Topic: ${topic}` },
-    ],
-  });
-  const json = out.text.match(/\{[\s\S]*\}/)?.[0] ?? "";
-  let raw: unknown = null;
-  try {
-    raw = JSON.parse(json);
-  } catch {
-    console.log("model output was not valid JSON:", out.text.slice(0, 300));
-  }
-  const parsed = Evidence.safeParse(raw);
-  const fake = parsed.success ? parsed.data.claims.filter((c) => !seen.has(c.sourceUrl)) : [];
-  console.log({ topic, steps: out.steps, spentUsd: spentMicro / 1e6, contractOk: parsed.success, invented: fake.length });
-  process.exitCode = parsed.success && fake.length === 0 ? 0 : 1;
+  const ctx = createStageContext({
+    stage: { id: "draft-spike", name: "draft", inputHash: "spike" },
+    claim: { stageRunId: "draft-spike", fence: 1, workerId: "spike", leaseUntil: new Date(Date.now() + 3_600_000), jobId: "spike" },
+    config: buildEngineConfig(new Map()),
+    signal: new AbortController().signal,
+    paid: ports,
+  }).ctx;
+  const web = createWebTools({ searxUrl: process.env.SEARXNG_URL ?? "http://127.0.0.1:8888" });
+
+  const out = await runDraft(ctx, { llm, web, db: undefined as never, mode, store: null }, { topic, lang, kind: "scene_kit" });
+  console.log(JSON.stringify(out.script, null, 2));
+  console.log({ topic, mode, spentUsd: spentMicro / 1e6, evidenceClaims: out.script.evidence.length });
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e instanceof Error ? `${e.name}: ${e.message}` : e);
+  process.exit(1);
+});
