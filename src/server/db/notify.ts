@@ -25,7 +25,7 @@ export interface TransitionInput {
   from: string;
   to: string;
   /** Identifies this one transition (for example the stage run id). A redelivered job reuses it and so notifies once. */
-  transitionId: string;
+  transitionId: string; // internal id, stored as given (scrubbing would turn a uuid into "[redacted]" and merge distinct transitions)
   /** Extra text; scrubbed of anything credential-shaped before it is stored or sent. */
   detail?: string;
 }
@@ -57,7 +57,7 @@ export async function notifyTransition(db: pg.Pool, ports: NotifyPorts, e: Trans
   const ins = await db.query<{ id: string }>(
     `insert into notifications (event, video_id, to_state, transition_id, title, text) values ($1, $2, $3, $4, $5, $6)
      on conflict do nothing returning id`,
-    [e.event, e.videoId ?? null, e.to, scrubText(e.transitionId).slice(0, 200), title, text],
+    [e.event, e.videoId ?? null, e.to, e.transitionId.slice(0, 200), title, text],
   );
   if (ins.rows.length === 0) return { fired: false };
   const id = ins.rows[0]!.id;

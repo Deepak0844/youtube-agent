@@ -9,6 +9,10 @@ import { loadKeyring } from "@/server/db/master-key";
 import { vaultStatus } from "@/server/db/vault";
 import { reconcile } from "@/server/db/reconciler";
 import { advanceAll } from "@/server/db/pipeline";
+import { notifyTransition, type NotifyPorts } from "@/server/db/notify";
+import { getStage } from "@/server/db/stages";
+import type { StageOutcome } from "@/server/core/stage-runner";
+import type { NotifyEventId } from "@/server/core/notify";
 import { markStalled } from "@/server/db/uploads";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { createJobQueue, type StageQueue } from "@/server/queue/job-queue";
@@ -25,6 +29,8 @@ export interface WorkerHooks {
   markStalled(pool: pg.Pool): Promise<unknown>;
   prune(pool: pg.Pool): Promise<void>;
   runStage: typeof runStage;
+  /** Called after a stage ends in a state the owner must hear about. Best-effort: never throws into the job. */
+  notify(pool: pg.Pool, ports: NotifyPorts, e: Parameters<typeof notifyTransition>[2]): Promise<unknown>;
   beforeStart(pool: pg.Pool): Promise<void>;
 }
 export interface WorkerOptions {
@@ -54,10 +60,20 @@ const defaults: WorkerHooks = {
   reconcile: (pool, queue, config) => reconcile(pool, queue, { maxAttempts: config.retryAttempts - 1, attemptBasis: "claim" }),
   advanceAll,
   runStage,
+  notify: notifyTransition,
   markStalled: (pool) => markStalled(pool, 60_000),
   // Event storage is introduced by Task 11. Never invent a table or use an owner pool here.
   prune: async () => {},
   beforeStart: async () => {},
+};
+
+// Stage outcomes the owner must hear about. A redelivered job reuses (stage id, fence), so it notifies once.
+const NOTIFY_OUTCOMES: Partial<Record<StageOutcome["kind"], { event: NotifyEventId; to: string }>> = {
+  needs_decision: { event: "needs_decision", to: "needs_decision" },
+  budget_refused: { event: "needs_decision", to: "needs_decision" },
+  known_failure_release_failed: { event: "needs_decision", to: "needs_decision" },
+  known_failure: { event: "video_failed", to: "failed" },
+  timed_out: { event: "video_failed", to: "failed" },
 };
 
 export function startRuntime(opts: WorkerOptions = {}) {
@@ -133,8 +149,19 @@ export function startRuntime(opts: WorkerOptions = {}) {
               provider: { call: async () => { throw new Error("runtime requires a stage handler"); } },
             }, job);
             active.add(attempt);
-            try { await attempt; }
-            finally { active.delete(attempt); }
+            try {
+              const outcome = await attempt;
+              const hit = outcome && "claim" in outcome ? NOTIFY_OUTCOMES[outcome.kind] : undefined;
+              if (hit && "claim" in outcome) {
+                try {
+                  const row = await getStage(db, outcome.claim.stageRunId);
+                  await hooks.notify(db, { channels: {} }, {
+                    event: hit.event, videoId: row?.videoId, from: "running", to: hit.to,
+                    transitionId: `${outcome.claim.stageRunId}.${outcome.claim.fence}`, detail: row?.name,
+                  });
+                } catch { log("notify failed"); }
+              }
+            } finally { active.delete(attempt); }
           }, { concurrency: settings.concurrentJobs, onError: () => log("waiting for Redis") });
           await loop?.runNow();
         } catch {

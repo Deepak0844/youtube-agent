@@ -52,6 +52,19 @@ describe("worker runtime with Postgres and Redis", () => {
     expect((await db.pool.query("select * from spend_intents")).rows).toEqual([]);
   });
 
+  it("failed_stage_writes_one_in_app_notification_and_a_throwing_notifier_does_not_break_the_job", async () => {
+    const worker = boot(); await worker.ready;
+    const id = await stage(); await queue.enqueue(id, 0, 0, "h1");
+    await waitFor(async () => (await db.pool.query("select 1 from notifications")).rowCount === 1, "failure notified");
+    const rows = (await db.pool.query("select event, to_state, video_id, transition_id from notifications")).rows;
+    expect(rows).toEqual([{ event: "video_failed", to_state: "failed", video_id: (await getStage(db.pool, id))!.videoId, transition_id: expect.stringMatching(new RegExp(`^${id}\\.\\d+$`)) }]);
+    // A notifier that throws must not change the stage outcome.
+    const id2 = await stage();
+    const bad = boot({ hooks: { notify: async () => { throw new Error("boom"); } } }); await bad.ready;
+    await queue.enqueue(id2, 0, 0, "h1");
+    await waitFor(async () => (await getStage(db.pool, id2))?.status === "failed", "still failed");
+  });
+
   it("worker_starts_stops_and_logs_without_redis_when_redis_is_down", async () => {
     const log = vi.fn();
     const worker = startWorker({ pool: createPool(db.pool.options.connectionString!), redisUrl: "redis://127.0.0.1:1", log, retryMs: 20 });
