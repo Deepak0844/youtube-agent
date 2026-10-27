@@ -24,7 +24,7 @@ export function runStage(
       },
       commit: (claim, result) => commitStage(db, claim as Claim, result),
       markNeedsDecision: (claim, reason) => markStageNeedsDecision(db, claim as Claim, reason),
-      fail: (claim, reason) => failStage(db, claim as Claim, reason),
+      fail: (claim, reason, errorClass) => failStage(db, claim as Claim, reason, errorClass),
       cancel: (claim) => cancelStage(db, claim as Claim),
       timeOut: (claim, reason) => timeoutStage(db, claim as Claim, reason),
     },

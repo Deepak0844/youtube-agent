@@ -46,7 +46,7 @@ export const SETTINGS = {
   // Engine numbers (Doc 02 4.7, agent gap G5). All safety: they bound retries, spend exposure and what counts as a good video.
   // Defaults come from the old agent/config.py and agent/qa.py (docs/spec/old-app-snapshot-2026-10-26); where the plan and
   // the old code differ the old number wins (log_cap_bytes: config.py line 31 is 5_000_000, not 5 MiB).
-  "engine.retry_attempts": { schema: posInt.max(10), default: 3, safety: true, label: "Stage attempts (config.py:27)" },
+  "engine.retry_attempts": { schema: posInt.max(10), default: 3, safety: true, label: "Stage tries in total, first try included (config.py:27). Default 3 = waits of 30 and 120 s (the 480 s wait is used only if set to 4). Also the crash re-claim limit" },
   "engine.retry_backoff_seconds": { schema: z.array(posInt).min(1).max(10), default: [30, 120, 480], safety: true, label: "Retry back-off seconds (config.py:28)" },
   "engine.timeout_stage_s": { schema: posInt, default: 1800, safety: true, label: "Stage timeout, seconds (config.py:26)" },
   "engine.timeout_author_s": { schema: posInt, default: 2400, safety: true, label: "Author stage timeout, seconds (config.py:58)" },

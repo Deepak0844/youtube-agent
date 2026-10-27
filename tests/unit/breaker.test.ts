@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { breakerAllows, breakerStep, CLOSED, type BreakerState } from "@/server/core/breaker";
+import { admitBreaker, breakerAllows, breakerStep, CLOSED, holdUntilMs, type BreakerState } from "@/server/core/breaker";
 
 const cfg = { threshold: 3, cooldownMs: 900_000 };
 const run = (events: Array<"failure" | "success" | "reset">, t = 0, s: BreakerState = CLOSED) => events.reduce((st, e) => breakerStep(st, e, t, cfg), s);
@@ -38,5 +38,27 @@ describe("breaker rules", () => {
     const off = { threshold: 0, cooldownMs: 1 };
     const s = ["failure", "failure", "failure", "failure"].reduce((st) => breakerStep(st, "failure", 0, off), CLOSED as BreakerState);
     expect(breakerAllows(s, 0, off)).toBe(true);
+  });
+});
+
+describe("breaker admission (half open lets exactly one through)", () => {
+  const open = run(["failure", "failure", "failure"], 0);
+  it("closed admits without taking a probe; open holds", () => {
+    expect(admitBreaker(CLOSED, null, 5, cfg)).toEqual({ allowed: true, takesProbe: false });
+    expect(admitBreaker(open, null, 899_999, cfg)).toEqual({ allowed: false, takesProbe: false });
+  });
+  it("half open admits one probe, then holds until the probe ages out", () => {
+    expect(admitBreaker(open, null, 900_000, cfg)).toEqual({ allowed: true, takesProbe: true });
+    expect(admitBreaker(open, 900_000, 900_001, cfg)).toEqual({ allowed: false, takesProbe: false });
+    expect(admitBreaker(open, 900_000, 1_800_000, cfg)).toEqual({ allowed: true, takesProbe: true });
+  });
+  it("threshold 0 always admits", () => {
+    expect(admitBreaker(open, null, 1, { threshold: 0, cooldownMs: 1 })).toEqual({ allowed: true, takesProbe: false });
+  });
+  it("holdUntilMs says when the next stage may pass, or null", () => {
+    expect(holdUntilMs(CLOSED, null, 0, cfg)).toBeNull();
+    expect(holdUntilMs(open, null, 10, cfg)).toBe(900_000);
+    expect(holdUntilMs(open, null, 900_000, cfg)).toBeNull();
+    expect(holdUntilMs(open, 900_000, 900_100, cfg)).toBe(1_800_000);
   });
 });

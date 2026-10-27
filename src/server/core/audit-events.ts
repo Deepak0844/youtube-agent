@@ -19,6 +19,8 @@ export const AUDIT_EVENTS = {
   // Phase 2 gates (detail: video id, gate, short hash prefix only)
   "gate.approved": "A gate was approved",
   "gate.sent_back": "A gate was sent back",
+  // Phase 2 retries (detail: stage name and session id only)
+  "breaker.reset": "A paused stage was released by the owner",
   // Phase 2 notifications (detail: event, channel, error class only)
   "notify.delivery_failed": "A notification channel failed to deliver",
   // Already written by owner setup, login and TOTP code
