@@ -3,7 +3,8 @@ import { MockLanguageModelV4 } from "ai/test";
 import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { CatalogError, createModel } from "@/server/db/llm-models";
-import { getLastTests, testModel, type TestDeps } from "@/server/db/llm-test";
+import { getLastTests, openTestStage, testModel, type TestDeps } from "@/server/db/llm-test";
+import { reconcile } from "@/server/db/reconciler";
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;
@@ -320,5 +321,45 @@ describe("hosted Test button", () => {
     await testModel(db.pool, id, session, depsFor(okModel()));
     const s = await one<{ status: string }>("select status from stage_runs");
     expect(["succeeded", "failed", "needs_decision"]).toContain(s.status); // never left queued or running
+  });
+
+  const idle = { enqueue: async () => undefined, liveJobIds: async () => new Set<string>() };
+
+  it("crash_between_opening_the_test_stage_and_reserving_never_gets_requeued", async () => {
+    const claim = await openTestStage(db.pool); // process dies here: running, no intent
+    await db.ownerPool.query("update stage_runs set lease_until = clock_timestamp() - interval '1 second' where id = $1", [claim.stageRunId]);
+    const enqueued: string[] = [];
+    const out = await reconcile(db.pool, { ...idle, enqueue: async (id: string) => void enqueued.push(id) } as never, { graceMs: 0 });
+    expect(enqueued).toEqual([]);
+    expect(out.requeued).toEqual([]);
+    expect((await one<{ status: string }>("select status from stage_runs where id = $1", [claim.stageRunId])).status).toBe("failed");
+  });
+
+  it("a_queued_model_test_row_is_never_enqueued_by_the_reconciler", async () => {
+    const claim = await openTestStage(db.pool);
+    await db.ownerPool.query("update stage_runs set status = 'queued', lease_owner = null, lease_until = null, updated_at = now() - interval '1 hour' where id = $1", [claim.stageRunId]);
+    const enqueued: string[] = [];
+    await reconcile(db.pool, { ...idle, enqueue: async (id: string) => void enqueued.push(id) } as never, { graceMs: 0 });
+    expect(enqueued).toEqual([]);
+  });
+
+  it("an_unconfirmed_release_is_not_reported_as_nothing_charged", async () => {
+    const id = await add(hosted("A"));
+    const bad = new MockLanguageModelV4({ doGenerate: async () => Promise.reject(new APICallError({ message: "x", url: "https://a.b/c", requestBodyValues: {}, statusCode: 401 })) });
+    const wrapPorts: TestDeps["wrapPorts"] = (p) => ({ ...p, failKnown: async () => { throw new Error("db down"); }, warn: () => {} });
+    const r = await testModel(db.pool, id, session, depsFor(bad, { wrapPorts }));
+    expect(r.ok).toBe(false);
+    expect(r.message).not.toMatch(/nothing was charged/i);
+    expect(r.message).toMatch(/may have|reserved/i);
+    expect((await one<{ status: string }>("select status from stage_runs")).status).toBe("needs_decision");
+    expect((await one<{ status: string }>("select status from spend_intents")).status).toBe("pending");
+  });
+
+  it("a_last_test_without_a_usable_time_does_not_lock_the_model_out", async () => {
+    const id = await add(hosted("A"));
+    for (const bad of ['{"ok":true}', '{"ok":true,"at":"garbage"}', '{"ok":true,"at":5}', '{"at":null}']) {
+      await db.ownerPool.query("update llm_models set last_test = $2::jsonb where id = $1", [id, bad]);
+      expect((await testModel(db.pool, id, session, depsFor(okModel(), { cooldownMs: 30_000 }))).ok, bad).toBe(true);
+    }
   });
 });

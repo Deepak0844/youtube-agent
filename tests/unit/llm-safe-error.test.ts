@@ -76,7 +76,7 @@ describe("model errors are redacted", () => {
   });
 
   it("server_errors_and_unknown_failures_are_unclear_outcomes_never_known", async () => {
-    for (const status of [408, 500, 502, 503, 529, undefined]) {
+    for (const status of [408, 499, 500, 502, 503, 529, undefined]) {
       const e = await run(apiError(status));
       expect(e).not.toBeInstanceOf(KnownFailure);
       expect(classifyError(e)).toBe("unknown");

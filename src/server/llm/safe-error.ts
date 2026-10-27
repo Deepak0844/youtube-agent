@@ -53,7 +53,7 @@ export function toSafeModelError(err: unknown): Error {
     const api = links.find((e) => APICallError.isInstance(e)) as APICallError | undefined;
     const status = api?.statusCode;
     if (status !== undefined) {
-      if (status >= 400 && status <= 499 && status !== 408) {
+      if (status >= 400 && status <= 498 && status !== 408) { // 499 (client closed request) says nothing about the work done
         return new NotProcessedError(STATUS_TEXT[status] ?? `The provider rejected the request (${status}).`, { status });
       }
       return new Error(`The provider answered with an error (${status}). It may or may not have charged for the call.`);

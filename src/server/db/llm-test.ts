@@ -5,7 +5,7 @@ import { z } from "zod";
 import { estimateInputTokens, type Message, type ModelStep } from "@/server/core/agent-loop";
 import { microToUsd, priceCardFor, type ModelRow } from "@/server/core/llm-catalog";
 import { uuidv7 } from "@/server/core/ids";
-import { BudgetRefusedError, KnownFailure, runPaidCall, safeReason, type ClaimLike } from "@/server/core/paid-call";
+import { BudgetRefusedError, KnownFailure, runPaidCall, safeReason, type ClaimLike, type PaidCallPorts } from "@/server/core/paid-call";
 import { worstCaseMicroUsd } from "@/server/core/spend";
 import { recordAudit } from "@/server/db/audit";
 import { CatalogError, getModel, localServices } from "@/server/db/llm-models";
@@ -42,6 +42,8 @@ export interface TestDeps {
   makeStep?(model: LanguageModel, decls: ToolDecl[], maxOutputTokens: number): ModelStep;
   cooldownMs?: number;
   timeoutMs?: number;
+  /** Tests only: wraps the spend ports (e.g. to make the release fail). */
+  wrapPorts?(ports: PaidCallPorts): PaidCallPorts;
 }
 
 export const TEST_MAX_OUTPUT_TOKENS = 64;
@@ -82,14 +84,18 @@ async function claimCooldown(db: pg.Pool, id: string, cooldownMs: number): Promi
     `update llm_models
         set last_test = $2::jsonb || jsonb_build_object('at', to_jsonb(clock_timestamp()))
       where id = $1
-        and (last_test is null or (last_test->>'at')::timestamptz <= clock_timestamp() - ($3::double precision * interval '1 millisecond'))`,
+        and (last_test is null
+             or case when jsonb_typeof(last_test->'at') = 'string'
+                          and last_test->>'at' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9:.]+(Z|[+-][0-9:]+)?$'
+                     then (last_test->>'at')::timestamptz <= clock_timestamp() - ($3::double precision * interval '1 millisecond')
+                     else true end)`,
     [id, JSON.stringify(placeholder), cooldownMs],
   );
   if (r.rowCount !== 1) throw new CatalogError("This model was tested a moment ago. Try again shortly.");
 }
 
 /** The synthetic stage the call is booked under: running, fence 1, its own lease owner. Nothing else ever claims it. */
-async function openTestStage(db: pg.Pool): Promise<Claim> {
+export async function openTestStage(db: pg.Pool): Promise<Claim> {
   const id = uuidv7();
   const workerId = `model-test:${uuidv7()}`;
   const hash = createHash("sha256").update(`model_test:${id}`).digest("hex");
@@ -119,11 +125,30 @@ export async function testModel(db: pg.Pool, modelId: string, actor: { kind: str
   }
   const reserveMicroUsd = worstCaseMicroUsd(price, { inputTokens: estimateInputTokens(PROMPT), maxOutputTokens: TEST_MAX_OUTPUT_TOKENS });
 
+  // The day row is chosen ONCE here and that exact scope string is what gets reserved and settled. A click that starts just
+  // before midnight UTC is booked, start to finish, on the day it started; it can never reserve on one row and settle on another.
   const scope = await dayScope(db);
   await claimCooldown(db, modelId, deps.cooldownMs ?? DEFAULT_COOLDOWN_MS);
   const claim = await openTestStage(db);
-  const ports = createPgPaidCallPorts(db);
+  const basePorts = createPgPaidCallPorts(db);
+  const ports = deps.wrapPorts ? deps.wrapPorts(basePorts) : basePorts;
   const step = (deps.makeStep ?? createAiSdkStep)(model, [], TEST_MAX_OUTPUT_TOKENS);
+
+  // Every path below ends the synthetic stage in a terminal state. If that write itself fails (database blip) the row is left
+  // running with a short lease, and the reconciler fails it instead of requeueing (it never requeues "model_test" rows).
+  const end = async (fn: () => Promise<boolean>): Promise<void> => {
+    for (let i = 0; i < 2; i++) {
+      try {
+        if (await fn()) return;
+      } catch {
+        // retry once, then leave it to the reconciler
+      }
+    }
+  };
+  const unclear = async (): Promise<TestResult> => {
+    await end(() => markStageNeedsDecision(db, claim, "model test: unclear outcome"));
+    return { ok: false, latencyMs: 0, structuredOutput: false, costMicroUsd: 0, message: `The test did not finish. The provider may have charged up to ${usdTail(reserveMicroUsd)} for it; that amount stays reserved until it is looked at.` };
+  };
 
   let result: TestResult;
   try {
@@ -139,7 +164,7 @@ export async function testModel(db: pg.Pool, modelId: string, actor: { kind: str
         return { result: { latencyMs, structured: parseAnswer(r.text, answerSchema).ok, actualMicroUsd }, actualMicroUsd };
       },
     );
-    await commitStage(db, claim, { tested: true });
+    await end(() => commitStage(db, claim, { tested: true }));
     result = {
       ok: true,
       latencyMs: out.latencyMs,
@@ -150,18 +175,30 @@ export async function testModel(db: pg.Pool, modelId: string, actor: { kind: str
   } catch (err) {
     const base = { ok: false, latencyMs: 0, structuredOutput: false, costMicroUsd: 0 };
     if (err instanceof BudgetRefusedError) {
-      await failStage(db, claim, "budget_refused").catch(() => false);
+      await end(() => failStage(db, claim, "budget_refused"));
       result = { ...base, message: "Today's Test budget is used up. Nothing was sent. Try again tomorrow." };
     } else if (err instanceof KnownFailure) {
-      // Cleared by the LLM layer (fixed sentences, no provider text). The reservation was released: nothing was charged.
-      await failStage(db, claim, safeReason(err)).catch(() => false);
-      const why = safeReason(err);
-      result = { ...base, message: `${why}${/[.!?]$/.test(why) ? "" : "."} Nothing was charged.` };
+      // "Nothing was charged" is said only when the release is CONFIRMED in the database (the intent is failed_known).
+      // If releasing the reservation failed, the money is still held and the outcome is reported as unclear.
+      let released = false;
+      try {
+        const { rows } = await db.query<{ status: string }>("select status from spend_intents where stage_run_id = $1", [claim.stageRunId]);
+        released = rows.length === 1 && rows[0]!.status === "failed_known";
+      } catch {
+        released = false;
+      }
+      if (released) {
+        const why = safeReason(err);
+        await end(() => failStage(db, claim, why));
+        result = { ...base, message: `${why}${/[.!?]$/.test(why) ? "" : "."} Nothing was charged.` };
+      } else {
+        console.error(JSON.stringify({ event: "model_test.release_unconfirmed" }));
+        result = await unclear();
+      }
     } else {
       // Unclear: the call may have been charged. Never retried. The reservation stays held and the stage is parked.
       console.error(JSON.stringify({ event: "model_test.unclear_outcome", name: err instanceof Error ? err.name : "unknown" }));
-      await markStageNeedsDecision(db, claim, "model test: unclear outcome").catch(() => false);
-      result = { ...base, message: `The test did not finish. The provider may have charged up to ${usdTail(reserveMicroUsd)} for it; that amount stays reserved until it is looked at.` };
+      result = await unclear();
     }
   }
 

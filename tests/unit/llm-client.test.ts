@@ -207,6 +207,14 @@ describe("LlmClient.generate paid steps", () => {
     expect(feedback).not.toContain("SECRET-VALUE");
   });
 
+  it("model_chosen_key_names_and_values_are_never_echoed_in_feedback", async () => {
+    const s = setup({ script: [answer(JSON.stringify({ title: "x", n: 1, "IGNORE-PREVIOUS-RULES": "y" })), answer(good)] });
+    await gen(s.client, ctxOn(newLedger()));
+    const feedback = s.seen[1]!.messages.at(-1)!.content;
+    expect(feedback).not.toContain("IGNORE-PREVIOUS-RULES");
+    expect(feedback).toMatch(/not allowed/i);
+  });
+
   it("retry_cap_two_then_known_failure_with_spend_counted", async () => {
     const s = setup({ script: [answer("ZZQ1", 10, 1), answer("ZZQ2", 20, 1), answer("ZZQ3", 30, 1), answer(good)] });
     const l = newLedger();

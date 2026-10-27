@@ -65,8 +65,8 @@ async function decideExpired(pool: pg.Pool, id: string, maxAttempts: number): Pr
   try {
     await client.query("begin");
     try {
-      const { rows } = await client.query<{ fence: string; attempt_seq: number; expired: boolean }>(
-        `select fence, attempt_seq, (status = 'running' and lease_until < clock_timestamp()) as expired
+      const { rows } = await client.query<{ fence: string; attempt_seq: number; name: string; expired: boolean }>(
+        `select fence, attempt_seq, name, (status = 'running' and lease_until < clock_timestamp()) as expired
            from stage_runs where id = $1 for update`,
         [id],
       );
@@ -94,6 +94,14 @@ async function decideExpired(pool: pg.Pool, id: string, maxAttempts: number): Pr
           [id, JSON.stringify({ needsDecision: "reconciler: lease expired with a paid call of unknown outcome" })],
         );
         decision = parked.rowCount === 1 ? { kind: "needs_decision" } : { kind: "skip" };
+      } else if (stage.name === "model_test") {
+        // The Test button's synthetic stage (db/llm-test.ts) has no handler and must never be queued: end it.
+        const failed = await client.query(
+          `update stage_runs set status = 'failed', result = $2::jsonb, updated_at = clock_timestamp()
+            where id = $1 and status = 'running' and lease_until < clock_timestamp()`,
+          [id, JSON.stringify({ error: "model test abandoned" })],
+        );
+        decision = failed.rowCount === 1 ? { kind: "failed" } : { kind: "skip" };
       } else if (stage.attempt_seq >= maxAttempts) {
         const failed = await client.query(
           `update stage_runs set status = 'failed', result = $2::jsonb, updated_at = clock_timestamp()
@@ -236,7 +244,8 @@ export async function reconcile(
   //    unless graceMs is 0, in which case their fresh job is live and they are skipped)
   const queued = await pool.query<{ id: string; fence: string; attempt_seq: number }>(
     `select id, fence, attempt_seq from stage_runs
-      where status = 'queued' and not cancel_requested and updated_at < clock_timestamp() - ($1::bigint * interval '1 millisecond')
+      where status = 'queued' and not cancel_requested and name <> 'model_test'
+        and updated_at < clock_timestamp() - ($1::bigint * interval '1 millisecond')
       order by id`,
     [graceMs],
   );

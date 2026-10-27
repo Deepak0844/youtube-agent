@@ -96,7 +96,7 @@ function jsonText(answer: string): string {
   return fenced ? fenced[1]! : t;
 }
 
-/** Parses and validates an answer. On failure the reason names paths and rules only, never the values the model wrote. */
+/** Parses and validates an answer. On failure the reason names schema paths and rules only, never text the model wrote (values or key names). */
 export function parseAnswer<T>(answer: string, schema: z.ZodType<T>): { ok: true; value: T } | { ok: false; reason: string } {
   let raw: unknown;
   try {
@@ -106,7 +106,12 @@ export function parseAnswer<T>(answer: string, schema: z.ZodType<T>): { ok: true
   }
   const r = schema.safeParse(raw);
   if (r.success) return { ok: true, value: r.data };
-  const lines = r.error.issues.slice(0, MAX_ISSUES).map((i) => `${i.path.length ? i.path.join(".") : "(root)"}: ${i.message}`);
+  // Fed back to the model, so nothing the model wrote may come back out: an unrecognised key is reported without its name
+  // (zod's own message quotes it), and only schema-defined paths and messages are used.
+  const lines = r.error.issues.slice(0, MAX_ISSUES).map((i) => {
+    const where = i.path.length ? i.path.join(".") : "(root)";
+    return i.code === "unrecognized_keys" ? `${where}: has a field that is not allowed` : `${where}: ${i.message.slice(0, 120)}`;
+  });
   return { ok: false, reason: `The JSON did not match the required shape. ${lines.join("; ")}` };
 }
 
