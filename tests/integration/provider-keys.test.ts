@@ -195,3 +195,32 @@ describe("test cooldown (server side)", () => {
     expect(r).toEqual({ ok: true, result: "ok" });
   });
 });
+
+describe("language-model key slots added in Phase 2 task 13", () => {
+  const NEW: Array<[string, string]> = [
+    ["groq", "gsk_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH"],
+    ["mistral", "abcdefghijklmnopqrstuvwxyz012345"],
+    ["xai", "xai-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH"],
+    ["moonshot", "sk-abcdefghijklmnopqrstuvwxyz0123456789ABCD"],
+    ["qwen", "sk-abcdefghijklmnopqrstuvwxyz0123456789"],
+    ["together", "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"],
+    ["siliconflow", "sk-abcdefghijklmnopqrstuvwxyz0123456789abcdef"],
+    ["custom", "my-local-proxy-key-0123456789"],
+  ];
+  it.each(NEW)("%s: saved sealed, listed with the last four only, key text nowhere in the database or audit", async (id, key) => {
+    expect(await saveProviderKey(db.pool, loader, id, key)).toEqual({ ok: true });
+    const row = (await listProviderKeys(db.pool)).find((r) => r.id === id)!;
+    expect(row.isSet).toBe(true);
+    expect(row.tail).toBe(key.slice(-4));
+    expect(await everything()).not.toContain(key);
+    expect(await getSecret(db.pool, loader(), `provider.${id}.api_key`)).toBe(key);
+  });
+  it("a custom key is not tested here: nothing is sent and the answer says where to test it", async () => {
+    await saveProviderKey(db.pool, loader, "custom", NEW[7]![1]);
+    let called = 0;
+    const r = await testProviderKey(db.pool, loader, "custom", { fetcher: async () => (called++, new Response("{}")) });
+    expect(r.ok).toBe(false);
+    expect(called).toBe(0);
+    expect((await audit()).some((a) => a.event === "key.tested")).toBe(false);
+  });
+});

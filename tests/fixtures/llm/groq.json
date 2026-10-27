@@ -1,0 +1,95 @@
+{
+  "provider": "groq",
+  "adapter": "openai-compatible",
+  "modelId": "groq-fixture",
+  "note": "Canned responses in the provider's documented wire format. Invented content, no real data.",
+  "completion": {
+    "id": "chatcmpl-groq-1",
+    "object": "chat.completion",
+    "created": 1761500000,
+    "model": "groq-fixture",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Hello from the fixture."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 9,
+      "total_tokens": 30
+    }
+  },
+  "toolCall": {
+    "id": "chatcmpl-groq-1",
+    "object": "chat.completion",
+    "created": 1761500000,
+    "model": "groq-fixture",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_1",
+              "type": "function",
+              "function": {
+                "name": "webSearch",
+                "arguments": "{\"query\":\"fixture\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 9,
+      "total_tokens": 30
+    }
+  },
+  "structured": {
+    "id": "chatcmpl-groq-1",
+    "object": "chat.completion",
+    "created": 1761500000,
+    "model": "groq-fixture",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\"title\":\"Fixture\",\"beats\":[\"a\",\"b\"]}"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 21,
+      "completion_tokens": 9,
+      "total_tokens": 30
+    }
+  },
+  "noUsage": {
+    "id": "chatcmpl-groq-1",
+    "object": "chat.completion",
+    "created": 1761500000,
+    "model": "groq-fixture",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "No usage here."
+        },
+        "finish_reason": "stop"
+      }
+    ]
+  }
+}

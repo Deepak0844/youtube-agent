@@ -6,6 +6,9 @@ import { requireOwner } from "@/lib/auth/require-owner";
 import { InputTooLongError, boundedText, usdToMicro } from "@/server/core/llm-catalog";
 import { CatalogError, copyDefault, createModel, deleteModel, setRoute, updateModel } from "@/server/db/llm-models";
 import { getPool } from "@/server/db/pool";
+import { loadKeyring } from "@/server/db/master-key";
+import { testModel } from "@/server/db/llm-test";
+import { defaultModelDeps } from "@/server/llm/default-deps";
 
 // Every action: requireOwner() first, zod parse, db function (session actor), one audit row inside it, then refresh().
 // Errors the owner can act on (CatalogError) are shown as written; everything else is one generic sentence, so no SQL,
@@ -14,6 +17,8 @@ import { getPool } from "@/server/db/pool";
 export interface FormState {
   ok?: boolean;
   error?: string;
+  /** A short result line to show (the Test button); fixed sentences only. */
+  note?: string;
   /** What the owner typed, handed back on error so React's form reset does not wipe it. Nothing secret lives on this page. */
   fields?: Record<string, string>;
 }
@@ -118,4 +123,20 @@ export async function setRouteAction(_prev: FormState, form: FormData): Promise<
   }
   refresh();
   return { ok: true };
+}
+
+// The Test button. It can spend real money (a fraction of a cent, capped per day), so everything that limits it lives in
+// testModel (session check, price check, reservation, daily cap, cooldown, audit). This action only authenticates first,
+// wires the vault and the model factory, and shows the fixed result sentence.
+export async function testModelAction(_prev: FormState, form: FormData): Promise<FormState> {
+  await requireOwner();
+  try {
+    const id = idField.parse(text(form.get("rowId"), 64));
+    const db = getPool();
+    const r = await testModel(db, id, { kind: "session" }, await defaultModelDeps(db, loadKeyring));
+    refresh();
+    return r.ok ? { ok: true, note: r.message } : { ok: false, error: r.message };
+  } catch (err) {
+    return fail(err, form);
+  }
 }

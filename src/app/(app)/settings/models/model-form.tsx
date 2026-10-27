@@ -4,7 +4,7 @@ import { useActionState, type ReactNode } from "react";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
 import { cn, control, focusRing } from "@/ui/lib/cn";
-import { copyDefaultAction, deleteModelAction, saveModelAction, setRouteAction, type FormState } from "./actions";
+import { copyDefaultAction, deleteModelAction, saveModelAction, setRouteAction, testModelAction, type FormState } from "./actions";
 
 // Plain forms on purpose: they work before hydration and on a phone keyboard. Values are never echoed back from the server
 // beyond what the owner typed; there are no secrets on this page.
@@ -223,6 +223,23 @@ export function IdButton({ kind, id, label, variant = "secondary" }: { kind: "co
       </Button>
       <p role="status" aria-live="polite" className={cn("text-small", state.error ? "text-negative" : "text-positive")}>
         {state.error ?? (state.ok ? "Done." : "")}
+      </p>
+    </form>
+  );
+}
+
+/** The Test button: one tiny real request. Hosted models are billed (a fraction of a cent) and capped per day. */
+export function TestModelButton({ id, label, free }: { id: string; label: string; free: boolean }) {
+  const [state, action, pending] = useActionState(testModelAction, idle);
+  return (
+    <form action={action} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+      <input type="hidden" name="rowId" value={id} />
+      <Button type="submit" variant="secondary" disabled={pending} aria-label={`Test ${label}`}>
+        {pending ? "Testing" : "Test"}
+      </Button>
+      <span className="text-small text-faint">{free ? "Sends one tiny request to this machine. Free." : "Sends one tiny request. Costs a fraction of a cent, capped per day."}</span>
+      <p role="status" aria-live="polite" className={cn("text-small", state.error ? "text-negative" : "text-positive")}>
+        {state.error ?? state.note ?? ""}
       </p>
     </form>
   );
