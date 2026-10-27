@@ -215,3 +215,43 @@ describe("checkers (synthetic sources)", () => {
     });
   });
 });
+
+// The signed media route is public on purpose: its credential is an HMAC in the URL. The generic guard checker cannot
+// tell "public and checked" from "public and forgotten", so this one pins what that route must do, in order.
+function checkSignedRoute(src: string): string[] {
+  const out: string[] = [];
+  const host = src.search(/\bassertAllowedHost\s*\(/);
+  const verify = src.search(/\bverifyMediaUrl\s*\(/);
+  const io = src.search(/\b(safeJoin|createReadStream|readFile|open|stat|lstat|realpath|access)\s*\(/);
+  if (host < 0) out.push("no assertAllowedHost( call");
+  if (verify < 0) out.push("no verifyMediaUrl( call");
+  if (verify >= 0 && io >= 0 && io < verify) out.push("touches the filesystem before verifyMediaUrl(");
+  if (host >= 0 && verify >= 0 && verify < host) out.push("verifies before the Host check");
+  if (/\b(readSessionCookie|requireOwner(Api)?|cookies)\b/.test(src)) out.push("reads a session: the signature must be the only credential");
+  if (/console\.\w+\([^)]*(request\.url|\.search|searchParams)/.test(src)) out.push("logs the URL or query string");
+  const exported = [...src.matchAll(/export\s+(?:async\s+)?function\s+(\w+)/g)].map((m) => m[1]).sort();
+  if (exported.join() !== "GET,HEAD") out.push(`exports ${exported.join() || "nothing"}; expected exactly GET,HEAD`);
+  return out;
+}
+
+describe("signed media route", () => {
+  const file = "src/app/api/media/[...path]/route.ts";
+  it("is listed public in the policy", () => {
+    expect(isPublicPath("/api/media/videos/a/b.mp4")).toBe(true);
+    expect(isPublicPath("/api/mediax")).toBe(false);
+  });
+  it("route_is_listed_public_in_policy_and_has_a_signature_check", () => {
+    expect(existsSync(file)).toBe(true);
+    expect(checkSignedRoute(readFileSync(file, "utf8")), file).toEqual([]);
+  });
+  it("the checker itself catches the mistakes it exists for", () => {
+    const ok = "export async function GET(r){ assertAllowedHost(r); verifyMediaUrl(a,b,c); await open(p) }\nexport async function HEAD(r){ assertAllowedHost(r); verifyMediaUrl(a,b,c) }";
+    expect(checkSignedRoute(ok)).toEqual([]);
+    expect(checkSignedRoute(ok.replace("verifyMediaUrl(a,b,c); await open(p)", "await open(p); verifyMediaUrl(a,b,c)"))).not.toEqual([]);
+    expect(checkSignedRoute(ok.replace(/verifyMediaUrl\(a,b,c\); /g, ""))).not.toEqual([]);
+    expect(checkSignedRoute(ok.replace(/assertAllowedHost\(r\); /g, ""))).not.toEqual([]);
+    expect(checkSignedRoute(ok + "\nexport async function POST(r){}")).not.toEqual([]);
+    expect(checkSignedRoute("const c = readSessionCookie(r);\n" + ok)).not.toEqual([]);
+    expect(checkSignedRoute(ok + "\nconsole.error(request.url)")).not.toEqual([]);
+  });
+});

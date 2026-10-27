@@ -5,6 +5,7 @@ import type pg from "pg";
 import appPkg from "../../../package.json";
 import { loadKeyring } from "@/server/db/master-key";
 import { vaultStatus, type VaultStatus } from "@/server/db/vault";
+import { storageRoot } from "@/server/storage/paths";
 
 // Read-only facts for /settings/system. Nothing returned here is a secret: no connection strings, no key material, no
 // error text from the drivers (they can echo hosts and credentials). Failures become a plain "down".
@@ -55,9 +56,8 @@ async function nextVersion(): Promise<string> {
   }
 }
 
-export function storageRoot(): string {
-  return path.resolve(process.env.STORAGE_ROOT ?? ".data");
-}
+// Moved to storage/paths.ts (Task 10); re-exported so existing imports keep working.
+export { storageRoot };
 
 /** What the page shows for a folder: relative to the app when inside it, otherwise only the last two segments. Never a home directory. */
 export function displayPath(abs: string, cwd: string = process.cwd()): string {
