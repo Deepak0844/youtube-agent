@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
 import { Redis } from "ioredis";
+import { stagePlan } from "@/server/core/pipeline-plan";
 import type { EngineConfig } from "@/server/core/engine-config";
-import { createPool } from "@/server/db/pool";
+import { createPool, forceClosePool } from "@/server/db/pool";
 import { getWorkerSettings, type WorkerSettings } from "@/server/db/engine-config";
 import { loadKeyring } from "@/server/db/master-key";
 import { vaultStatus } from "@/server/db/vault";
@@ -50,7 +51,7 @@ const defaults: WorkerHooks = {
   connectQueue,
   loadSettings: getWorkerSettings,
   checkVault: async (pool) => (await vaultStatus(pool, loadKeyring)).status,
-  reconcile: (pool, queue, config) => reconcile(pool, queue, { maxAttempts: config.retryAttempts - 1 }),
+  reconcile: (pool, queue, config) => reconcile(pool, queue, { maxAttempts: config.retryAttempts - 1, attemptBasis: "claim" }),
   advanceAll,
   runStage,
   markStalled: (pool) => markStalled(pool, 60_000),
@@ -90,17 +91,44 @@ export function startRuntime(opts: WorkerOptions = {}) {
     await hooks.beforeStart(db);
     if (stopping) return;
     const dispatch = createStageDispatcher(opts.handlers ?? {}, settings.concurrentRenders);
+    const renderStageNames = stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }).filter((s) => s.resource === "render").map((s) => s.stage);
+    // DB-only upkeep starts before Redis and continues through outages. Queue-dependent transitions require
+    // a successful availability check; one single-flight loop owns both halves.
+    loop = startReconcileLoop({
+      intervalMs: opts.intervalMs, log,
+      async run() {
+        const connected = queue;
+        const results = await Promise.allSettled([
+          (async () => {
+            if (!connected || stopping) return;
+            try {
+              await connected.liveJobIds?.();
+              await hooks.reconcile(db, connected, settings.config);
+              if (!stopping) await hooks.advanceAll(db, connected);
+              log("reconcile ok");
+            } catch { log("waiting for Redis"); throw new Error("queue maintenance unavailable"); }
+          })(),
+          hooks.markStalled(db), hooks.prune(db),
+        ]);
+        if (results.some((r) => r.status === "rejected")) throw new Error("maintenance failed");
+      },
+    });
     const connect = (): Promise<void> => {
       connecting = (async () => {
         try {
           const connected = await hooks.connectQueue(redisUrl, log);
-          if (stopping) { await connected.close(true); return; }
+          if (stopping) {
+            void Promise.resolve().then(() => connected.close(true)).catch(() => {});
+            void Promise.resolve().then(() => connected.disconnect?.()).catch(() => {});
+            return;
+          }
           queue = connected;
           consumer = queue.startWorker(async (job) => {
             if (stopping) return;
             const attempt = hooks.runStage(db, {
               workerId, ttlMs: settings.config.leaseS * 1000, config: settings.config,
               concurrencyLimit: settings.concurrentJobs,
+              renderConcurrencyLimit: settings.concurrentRenders, renderStageNames,
               handler: dispatch, shutdownSignal: shutdown.signal,
               provider: { call: async () => { throw new Error("runtime requires a stage handler"); } },
             }, job);
@@ -108,18 +136,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
             try { await attempt; }
             finally { active.delete(attempt); }
           }, { concurrency: settings.concurrentJobs, onError: () => log("waiting for Redis") });
-          loop = startReconcileLoop({
-            intervalMs: opts.intervalMs, log,
-            async run() {
-              // A Redis failure must not prevent upload liveness and retention maintenance.
-              const results = await Promise.allSettled([
-                (async () => { await hooks.reconcile(db, connected, settings.config); if (!stopping) await hooks.advanceAll(db, connected); })(),
-                hooks.markStalled(db), hooks.prune(db),
-              ]);
-              if (results.some((r) => r.status === "rejected")) throw new Error("maintenance failed");
-              log("reconcile ok");
-            },
-          });
+          await loop?.runNow();
         } catch {
           if (!stopping) {
             log("waiting for Redis");
@@ -141,17 +158,28 @@ export function startRuntime(opts: WorkerOptions = {}) {
       stopping = true;
       clearTimeout(retry);
       // pause(true) stops fetching without waiting on active handlers. Abort only after consumption is paused.
-      const pause = consumer?.pause?.();
+      const safely = (fn: () => unknown) => { try { return Promise.resolve(fn()); } catch (err) { return Promise.reject(err); } };
+      const pause = safely(() => consumer?.pause?.());
       shutdown.abort();
       stopPromise = (async () => {
         let timer: ReturnType<typeof setTimeout> | undefined;
+        let expired = false;
+        const deadline = new Promise<void>((resolve) => {
+          timer = setTimeout(() => { expired = true; resolve(); }, opts.shutdownTimeoutMs ?? 10_000);
+        });
         const draining = Promise.allSettled([ready, connecting, pause, loop?.stop(), ...active]);
-        try {
-          await Promise.race([draining, new Promise<void>((r) => { timer = setTimeout(r, opts.shutdownTimeoutMs ?? 10_000); })]);
-        } finally { clearTimeout(timer); }
-        await consumer?.close(true);
-        await queue?.close(true);
-        await pool?.end();
+        await Promise.race([draining, deadline]);
+        // Start every cleanup even if another one throws. The same deadline bounds drain AND teardown.
+        const cleanup = Promise.allSettled([
+          safely(() => consumer?.close(true)), safely(() => queue?.close(true)), safely(() => pool?.end()),
+        ]);
+        await Promise.race([cleanup, deadline]);
+        if (expired) {
+          if (pool) forceClosePool(pool);
+          void safely(() => queue?.disconnect?.()).catch(() => {});
+          log("worker shutdown deadline reached; connections terminated");
+        }
+        clearTimeout(timer);
         log("worker stopped");
       })();
       return stopPromise;

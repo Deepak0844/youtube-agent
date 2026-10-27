@@ -66,8 +66,11 @@ describe("worker runtime with Postgres and Redis", () => {
     const worker = boot({ handlers: { render } }); await worker.ready;
     const ids = await Promise.all([stage("render"), stage("render")]);
     await Promise.all(ids.map((id) => queue.enqueue(id, 0, 0, "h1")));
-    await waitFor(async () => (await Promise.all(ids.map((id) => getStage(db.pool, id)))).every((r) => r?.status === "running"), "both render attempts claimed");
+    await waitFor(() => render.mock.calls.length === 1, "first render started");
+    await waitFor(async () => (await queue.liveJobIds()).size === 1, "second render deferred by shared admission");
     expect(render).toHaveBeenCalledTimes(1); hold.resolve();
+    await waitFor(async () => (await Promise.all(ids.map((id) => getStage(db.pool, id)))).some((r) => r?.status === "succeeded"), "first render completed");
+    await reconcile(db.pool, queue, { graceMs: 0 });
     await waitFor(async () => (await Promise.all(ids.map((id) => getStage(db.pool, id)))).every((r) => r?.status === "succeeded"), "both renders completed");
     expect(render).toHaveBeenCalledTimes(2); expect(peak).toBe(1);
   });
@@ -106,6 +109,82 @@ describe("worker runtime with Postgres and Redis", () => {
     await reconcile(db.pool, queue, { graceMs: 0 });
     await waitFor(async () => (await Promise.all(ids.map((id) => getStage(db.pool, id)))).every((r) => r?.status === "succeeded"), "refused stage recovered");
     expect(peak).toBe(1);
+  });
+
+  it("saturation_over_more_ticks_than_retry_cap_never_fails_unstarted_work", async () => {
+    await setSetting(db.pool, "jobs.concurrent_jobs", 1, { actor: "session" });
+    await setSetting(db.pool, "engine.retry_attempts", 2, { actor: "session" });
+    const hold = deferred(); const draft = vi.fn(async () => { await hold.promise; return {}; });
+    const a = boot({ handlers: { draft }, workerId: "saturation-a", intervalMs: 20 });
+    const b = boot({ handlers: { draft }, workerId: "saturation-b", intervalMs: 20,
+      hooks: { connectQueue: async () => createJobQueue(db.redisUrl, "stages", queue.name.slice(7)) } });
+    await Promise.all([a.ready, b.ready]);
+    const first = await stage(); await queue.enqueue(first, 0, 0, "h1");
+    await waitFor(() => draft.mock.calls.length === 1, "first occupies capacity");
+    const waiting = await stage(); await queue.enqueue(waiting, 0, 0, "h1");
+    for (let tick = 0; tick < 6; tick++) {
+      await waitFor(async () => (await queue.liveJobIds()).size === 1, "refused delivery finished");
+      const before = (await getStage(db.pool, waiting))!.attemptSeq;
+      await db.pool.query("update stage_runs set updated_at = clock_timestamp() - interval '1 minute' where id = $1", [waiting]);
+      await waitFor(async () => { const row = await getStage(db.pool, waiting); return row!.attemptSeq > before || row!.status === "failed"; }, "maintenance tick delivered again");
+      expect(await getStage(db.pool, waiting)).toMatchObject({ status: "queued", fence: 0 });
+    }
+    hold.resolve();
+    await waitFor(async () => (await getStage(db.pool, first))?.status === "succeeded", "capacity released");
+    await waitFor(async () => (await queue.liveJobIds()).size === 0, "previous delivery settled");
+    await db.pool.query("update stage_runs set updated_at = clock_timestamp() - interval '1 minute' where id = $1", [waiting]);
+    await waitFor(async () => (await getStage(db.pool, waiting))?.status === "succeeded", "never-started stage eventually ran");
+    expect(draft).toHaveBeenCalledTimes(2);
+  });
+
+  it("claim_based_runtime_budget_still_caps_started_execution_failures", async () => {
+    await setSetting(db.pool, "engine.retry_attempts", 2, { actor: "session" });
+    const draft = vi.fn(async () => { throw new Error("execution failed before any paid intent"); });
+    const worker = boot({ handlers: { draft }, intervalMs: 20 }); await worker.ready;
+    const id = await stage(); await queue.enqueue(id, 0, 0, "h1");
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await waitFor(() => draft.mock.calls.length === attempt, "execution started");
+      await waitFor(async () => (await queue.liveJobIds()).size === 0, "failed delivery settled");
+      await db.pool.query("update stage_runs set lease_until = clock_timestamp() - interval '1 second' where id = $1", [id]);
+    }
+    await waitFor(async () => (await getStage(db.pool, id))?.status === "failed", "execution retry budget exhausted");
+    expect(draft).toHaveBeenCalledTimes(2); expect((await getStage(db.pool, id))?.fence).toBe(2);
+    expect((await db.pool.query("select * from spend_intents")).rows).toEqual([]);
+  });
+
+  it("render_limit_is_shared_across_two_worker_runtimes", async () => {
+    const hold = deferred(); let active = 0; let peak = 0;
+    const render = vi.fn(async () => { peak = Math.max(peak, ++active); await hold.promise; active--; return {}; });
+    const a = boot({ handlers: { render }, workerId: "render-a" });
+    const b = boot({ handlers: { render }, workerId: "render-b", hooks: { connectQueue: async () => createJobQueue(db.redisUrl, "stages", queue.name.slice(7)) } });
+    await Promise.all([a.ready, b.ready]);
+    const ids = await Promise.all([stage("render"), stage("render")]);
+    await Promise.all(ids.map((id) => queue.enqueue(id, 0, 0, "h1")));
+    try {
+      await waitFor(async () => {
+        if (render.mock.calls.length === 0) return false;
+        const rows = await Promise.all(ids.map((id) => getStage(db.pool, id)));
+        return rows.every((r) => r?.status === "running") || (await queue.liveJobIds()).size === 1;
+      }, "both render deliveries decided");
+      expect(render).toHaveBeenCalledTimes(1);
+      expect((await Promise.all(ids.map((id) => getStage(db.pool, id)))).map((r) => r!.status).sort()).toEqual(["queued", "running"]);
+    } finally { hold.resolve(); }
+    await waitFor(async () => (await Promise.all(ids.map((id) => getStage(db.pool, id)))).some((r) => r?.status === "succeeded"), "render capacity released");
+    await reconcile(db.pool, queue, { graceMs: 0 });
+    await waitFor(async () => (await Promise.all(ids.map((id) => getStage(db.pool, id)))).every((r) => r?.status === "succeeded"), "second render recovered");
+    expect(peak).toBe(1);
+  });
+
+  it("shutdown_deadline_terminates_a_blocked_owned_database_query", async () => {
+    const pool = createPool(db.pool.options.connectionString!);
+    const query = pool.query("select pg_sleep(60)").catch(() => undefined);
+    await waitFor(() => pool.totalCount > 0, "worker pool connected");
+    const worker = boot({ pool, shutdownTimeoutMs: 100 }); await worker.ready;
+    const before = Date.now();
+    await Promise.race([worker.stop(), new Promise<never>((_, reject) => { const t = setTimeout(() => reject(new Error("shutdown hung")), 2000); t.unref(); })]);
+    expect(Date.now() - before).toBeLessThan(1500);
+    await query;
+    await waitFor(() => pool.totalCount === 0, "owned pool fully closed");
   });
 
   it("worker_that_dies_is_replaced_by_the_supervisor", async () => {

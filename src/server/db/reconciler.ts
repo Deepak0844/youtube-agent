@@ -23,7 +23,9 @@ import { cancelQueuedStage, toNumber } from "./stages";
 // Attempt cap (maxAttempts, default 5): where A would requeue or B would re-enqueue a row whose
 // attempt_seq >= maxAttempts, the SAME conditional statement (same locks, same WHERE) instead sets
 // status='failed', result {"reason":"too_many_attempts","attempts":attempt_seq}. attempt_seq counts re-enqueues, so a
-// stage gets at most 1 + maxAttempts deliveries. It bounds errors that leave no open intent (a throwing stepsFor,
+// stage gets at most 1 + maxAttempts deliveries. Runtime selects attemptBasis="claim" instead, budgeting actual
+// execution starts (fence > maxAttempts) while capacity deferrals and queue repairs only advance delivery ids.
+// This bounds errors that leave no open intent (a throwing stepsFor,
 // bugs); an open intent always wins (needs_decision), and needs_decision rows are never touched.
 // Branch B at the cap checks for an open intent exactly like A (stage lock, then intents lock, separate statements):
 // an open intent parks the row (pending -> unknown, needs_decision) instead of failing it.
@@ -52,6 +54,12 @@ export interface ReconcileResult {
   enqueueFailed: string[];
 }
 
+type AttemptBasis = "delivery" | "claim";
+// Delivery ids also advance when capacity is refused or Redis loses a job. Runtime budgets execution starts
+// instead: fence increments only on a successful claim, so never-started work cannot exhaust its retry budget.
+const overCap = (fence: number, sequence: number, maxRetries: number, basis: AttemptBasis) =>
+  basis === "claim" ? fence > maxRetries : sequence >= maxRetries;
+
 type Enqueuer = Pick<JobQueue, "enqueue" | "liveJobIds">;
 
 type Decision =
@@ -60,7 +68,7 @@ type Decision =
   | { kind: "failed" }
   | { kind: "requeued"; fence: number; attemptSeq: number; inputHash: string };
 
-async function decideExpired(pool: pg.Pool, id: string, maxAttempts: number): Promise<Decision> {
+async function decideExpired(pool: pg.Pool, id: string, maxAttempts: number, basis: AttemptBasis): Promise<Decision> {
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -102,12 +110,12 @@ async function decideExpired(pool: pg.Pool, id: string, maxAttempts: number): Pr
           [id, JSON.stringify({ error: "model test abandoned" })],
         );
         decision = failed.rowCount === 1 ? { kind: "failed" } : { kind: "skip" };
-      } else if (stage.attempt_seq >= maxAttempts) {
+      } else if (overCap(toNumber(stage.fence), stage.attempt_seq, maxAttempts, basis)) {
         const failed = await client.query(
           `update stage_runs set status = 'failed', result = $2::jsonb, updated_at = clock_timestamp()
             where id = $1 and status = 'running' and lease_until < clock_timestamp()
               and fence = $3 and attempt_seq = $4`,
-          [id, tooMany(stage.attempt_seq), toNumber(stage.fence), stage.attempt_seq],
+          [id, tooMany(basis === "claim" ? toNumber(stage.fence) : stage.attempt_seq), toNumber(stage.fence), stage.attempt_seq],
         );
         decision = failed.rowCount === 1 ? { kind: "failed" } : { kind: "skip" };
       } else {
@@ -198,10 +206,11 @@ async function decideQueuedOverCap(
 export async function reconcile(
   pool: pg.Pool,
   queue: Enqueuer,
-  opts: { graceMs?: number; maxAttempts?: number } = {},
+  opts: { graceMs?: number; maxAttempts?: number; attemptBasis?: AttemptBasis } = {},
 ): Promise<ReconcileResult> {
   const graceMs = opts.graceMs ?? DEFAULT_GRACE_MS;
   const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  const basis = opts.attemptBasis ?? "delivery";
   if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 0) throw new RangeError(`maxAttempts must be a non-negative integer, got ${maxAttempts}`);
   if (!Number.isSafeInteger(graceMs) || graceMs < 0) throw new RangeError(`graceMs must be a non-negative integer, got ${graceMs}`);
   const out: ReconcileResult = { requeued: [], reenqueued: [], needsDecision: [], failed: [], cancelled: [], enqueueFailed: [] };
@@ -221,7 +230,7 @@ export async function reconcile(
     "select id from stage_runs where status = 'running' and lease_until < clock_timestamp() order by id",
   );
   for (const { id } of expired.rows) {
-    const d = await decideExpired(pool, id, maxAttempts);
+    const d = await decideExpired(pool, id, maxAttempts, basis);
     if (d.kind === "needs_decision") out.needsDecision.push(id);
     if (d.kind === "failed") out.failed.push(id);
     if (d.kind === "requeued") {
@@ -254,7 +263,7 @@ export async function reconcile(
   for (const r of queued.rows) {
     const fence = toNumber(r.fence);
     if (live.has(stageJobId(r.id, fence, r.attempt_seq))) continue;
-    if (r.attempt_seq >= maxAttempts) {
+    if (overCap(fence, r.attempt_seq, maxAttempts, basis)) {
       const d = await decideQueuedOverCap(pool, r.id, fence, r.attempt_seq, graceMs);
       if (d === "failed") out.failed.push(r.id);
       if (d === "needs_decision") out.needsDecision.push(r.id);

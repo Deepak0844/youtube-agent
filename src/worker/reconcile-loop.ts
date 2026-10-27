@@ -8,5 +8,5 @@ export function startReconcileLoop(opts: { run(): Promise<void>; intervalMs?: nu
   };
   tick();
   const timer = setInterval(tick, opts.intervalMs ?? 15_000);
-  return { async stop() { stopped = true; clearInterval(timer); await pending; } };
+  return { async runNow() { await pending; tick(); await pending; }, async stop() { stopped = true; clearInterval(timer); await pending; } };
 }

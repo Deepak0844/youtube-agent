@@ -100,19 +100,27 @@ export async function insertQueuedStage(
 // spending until its worker honours the flag (later task).
 export async function claimStage(
   db: Db,
-  args: { id: string; inputHash: string; workerId: string; ttlMs: number; maxConcurrent?: number },
+  args: { id: string; inputHash: string; workerId: string; ttlMs: number; maxConcurrent?: number; maxRenders?: number; renderStageNames?: readonly string[] },
 ): Promise<Claim | null> {
   assertTtl(args.ttlMs);
   if (args.maxConcurrent !== undefined && (!Number.isSafeInteger(args.maxConcurrent) || args.maxConcurrent < 1)) throw new RangeError("maxConcurrent must be a positive integer");
+  if (args.maxRenders !== undefined && (!Number.isSafeInteger(args.maxRenders) || args.maxRenders < 1)) throw new RangeError("maxRenders must be a positive integer");
   // One conditional UPDATE; the conversion check runs inside the same transaction, so a value that
   // cannot be represented rolls the claim back instead of leaving a committed-but-unreported lease.
   return atomic(db, async (q) => {
-    if (args.maxConcurrent !== undefined) {
+    if (args.maxConcurrent !== undefined || args.maxRenders !== undefined) {
       // Serialise admission across worker processes. Do not claim/refence a refused row: reconciliation delivers
       // a new attempt after capacity returns. Expired leases do not consume capacity (DB clock remains truth).
       await q.query("select pg_advisory_xact_lock(hashtext('ytstudio.stage-admission'))");
-      const count = await q.query<{ n: number }>("select count(*)::int as n from stage_runs where status = 'running' and lease_until > clock_timestamp()");
-      if (count.rows[0]!.n >= args.maxConcurrent) return null;
+      const renders = args.renderStageNames ?? ["render"];
+      const count = await q.query<{ n: number; renders: number }>(
+        "select count(*)::int as n, count(*) filter (where name = any($1::text[]))::int as renders from stage_runs where status = 'running' and lease_until > clock_timestamp()", [renders],
+      );
+      if (args.maxConcurrent !== undefined && count.rows[0]!.n >= args.maxConcurrent) return null;
+      if (args.maxRenders !== undefined && count.rows[0]!.renders >= args.maxRenders) {
+        const target = await q.query<{ name: string }>("select name from stage_runs where id = $1", [args.id]);
+        if (target.rows[0] && renders.includes(target.rows[0].name)) return null;
+      }
     }
     const { rows } = await q.query<{ fence: string; lease_until: Date; attempt_seq: number }>(
       `update stage_runs

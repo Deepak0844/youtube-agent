@@ -35,6 +35,7 @@ export interface StageQueue {
   // Ids of jobs that may still be delivered or are being processed (not completed/failed). One atomic Redis script.
   liveJobIds(): Promise<Set<string>>;
   close(force?: boolean): Promise<void>;
+  disconnect?(): Promise<void>;
 }
 export type JobQueue = StageQueue;
 
@@ -48,6 +49,7 @@ export interface UploadQueue {
     opts?: { concurrency?: number; onError?: (err: Error) => void },
   ): { close(force?: boolean): Promise<void>; pause?(): Promise<void> };
   close(force?: boolean): Promise<void>;
+  disconnect?(): Promise<void>;
 }
 
 const LIVE: JobType[] = ["waiting", "active", "delayed", "prioritized", "waiting-children"];
@@ -81,11 +83,13 @@ export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: strin
     return {
       pause: () => worker.pause(true),
       async close(force = false) {
-        workers.delete(worker);
         await worker.close(force);
+        workers.delete(worker);
       },
     };
   }
+
+  const disconnect = async () => { await Promise.allSettled([...workers].map((w) => w.disconnect()).concat(queue.disconnect())); };
 
   const close = async (force = false) => {
     await Promise.all([...workers].map((w) => w.close(force)));
@@ -113,7 +117,7 @@ export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: strin
       async liveJobIds() {
         return new Set(await queue.getRanges(LIVE, 0, -1));
       },
-      close,
+      close, disconnect,
     };
     q.enqueueUpload = () => wrong("enqueueUpload");
     return q;
@@ -134,7 +138,7 @@ export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: strin
         await handler((job.data as { uploadId: string }).uploadId, job.id!);
       }, opts);
     },
-    close,
+    close, disconnect,
   };
   u.enqueue = () => wrong("enqueue");
   u.liveJobIds = () => wrong("liveJobIds");

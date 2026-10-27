@@ -106,6 +106,48 @@ describe("worker runtime", () => {
     expect(end).toHaveBeenCalledTimes(1);
   });
 
+  it("database_maintenance_runs_immediately_and_each_tick_while_redis_is_down", async () => {
+    vi.useFakeTimers();
+    const markStalled = vi.fn().mockResolvedValue([]); const prune = vi.fn().mockResolvedValue(undefined);
+    const reconcile = vi.fn(); const advanceAll = vi.fn();
+    const worker = startWorker({
+      pool: { end: vi.fn().mockResolvedValue(undefined) } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log: vi.fn(),
+      intervalMs: 100, retryMs: 100,
+      hooks: {
+        loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
+        checkVault: async () => "missing_key", connectQueue: async () => { throw new Error("offline"); },
+        markStalled, prune, reconcile, advanceAll,
+      },
+    });
+    await worker.ready; expect(markStalled).toHaveBeenCalledTimes(1); expect(prune).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(markStalled.mock.calls.length).toBeGreaterThan(3); expect(prune.mock.calls.length).toBeGreaterThan(3);
+    expect(reconcile).not.toHaveBeenCalled(); expect(advanceAll).not.toHaveBeenCalled(); await worker.stop();
+  });
+
+  it("shutdown_deadline_bounds_blocked_teardown_and_cleanup_failures_are_independent", async () => {
+    vi.useFakeTimers();
+    const closeConsumer = vi.fn().mockRejectedValue(new Error("close failed"));
+    const closeQueue = vi.fn(() => new Promise<void>(() => {}));
+    const end = vi.fn(() => new Promise<void>(() => {}));
+    const queue = { startWorker: () => ({ pause: async () => {}, close: closeConsumer }), close: closeQueue } as unknown as StageQueue;
+    const worker = startWorker({
+      pool: { end } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log: vi.fn(), shutdownTimeoutMs: 100,
+      hooks: {
+        connectQueue: async () => queue,
+        loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
+        checkVault: async () => "missing_key", reconcile: async () => {}, advanceAll: async () => {}, markStalled: async () => {},
+      },
+    });
+    await worker.ready;
+    const stopped = worker.stop();
+    // Observe a rejection immediately so RED does not create an unhandled rejection.
+    const result = stopped.then(() => "stopped", () => "rejected");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await Promise.race([result, Promise.resolve("still pending")])).toBe("stopped");
+    expect(closeConsumer).toHaveBeenCalledTimes(1); expect(closeQueue).toHaveBeenCalledTimes(1); expect(end).toHaveBeenCalledTimes(1);
+  });
+
   it("env_file_missing_gives_a_plain_error", () => {
     const env = { ...process.env }; delete env.DATABASE_URL; delete env.REDIS_URL;
     const result = spawnSync(process.execPath, ["--import", "tsx", "src/worker/index.ts"], { env, encoding: "utf8" });
