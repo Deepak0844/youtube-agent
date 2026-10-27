@@ -33,7 +33,7 @@ test("a refused save (bad client id, real-looking secret) never shows the secret
   await page.getByLabel("Client secret").fill(SECRET);
   await page.getByRole("button", { name: "Save to vault" }).click();
   await expect(page.getByText("does not look like a Google client ID")).toBeVisible();
-  await expect(page.getByText("Saved.")).toHaveCount(0);
+  await expect(page.getByText("Saved. The secret is in the vault")).toHaveCount(0);
   // the secret is not in the DOM (markup or any field value), any response body, or the server log
   expect(await page.content()).not.toContain(SECRET);
   const values = await page.locator("input, textarea").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
