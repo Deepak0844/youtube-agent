@@ -16,6 +16,9 @@ export const AUDIT_EVENTS = {
   "google_app.tested": "The Google app details were format-checked",
   "vault.init": "The vault master key was initialised",
   "vault.unreadable": "A vault entry could not be decrypted",
+  // Phase 2 gates (detail: video id, gate, short hash prefix only)
+  "gate.approved": "A gate was approved",
+  "gate.sent_back": "A gate was sent back",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",
