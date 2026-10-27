@@ -6,7 +6,7 @@ const TOKEN = "Zx9_Qw3-Er5TyUi7OpAsDfGhJkLzXcVbNm12";
 
 describe("audit event catalogue", () => {
   it("has_the_phase_1_events", () => {
-    for (const e of ["setting.changed", "key.set", "key.removed", "key.tested", "model.added", "model.changed", "model.removed", "route.changed", "google_app.saved", "vault.init", "vault.unreadable"]) {
+    for (const e of ["setting.changed", "key.set", "key.removed", "key.tested", "model.added", "model.changed", "model.removed", "route.changed", "google_app.saved", "google_app.tested", "vault.init", "vault.unreadable"]) {
       expect(isAuditEvent(e)).toBe(true);
     }
   });

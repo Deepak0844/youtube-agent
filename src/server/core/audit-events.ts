@@ -12,6 +12,7 @@ export const AUDIT_EVENTS = {
   "model.removed": "A model was removed from the catalog",
   "route.changed": "A model route changed",
   "google_app.saved": "The Google app details were saved",
+  "google_app.tested": "The Google app details were format-checked",
   "vault.init": "The vault master key was initialised",
   "vault.unreadable": "A vault entry could not be decrypted",
   // Already written by owner setup, login and TOTP code

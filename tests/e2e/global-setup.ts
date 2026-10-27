@@ -52,6 +52,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     UPLOAD_MAX_BYTES: String(50 * 1024 * 1024), // lets the oversize test stay small
     UPLOAD_DIR: path.join(os.tmpdir(), `ytstudio-e2e-uploads-${port}`),
   };
+  process.env.E2E_SERVER_LOG = path.join(os.tmpdir(), `ytstudio-e2e-server-${port}.log`);
   process.env.E2E_DATABASE_URL = appUrl; // workers inherit it (tests/e2e/fixtures/sessions.ts)
 
   try {
@@ -63,6 +64,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       env,
       url: `http://127.0.0.1:${port}/healthz`,
       timeoutMs: 60_000,
+      logFile: process.env.E2E_SERVER_LOG,
     });
     return async () => {
       await server.stop();
