@@ -162,7 +162,7 @@ describe("runKeyTest against a fake provider", () => {
   const fetcher = (url: string, init: RequestInit, o: { timeoutMs: number; maxRedirects: number }) => {
     const u = new URL(url);
     seen.length = 0;
-    return safeFetch(`http://127.0.0.1:${port}${u.pathname}${u.search}`, init, { mode: "typed", ...o });
+    return safeFetch(`http://127.0.0.1:${port}${u.pathname}${u.search}`, init, { mode: "typed", localServices: [`127.0.0.1:${port}`], ...o });
   };
 
   it("ok: sends the key to the provider once and returns only a verdict", async () => {
