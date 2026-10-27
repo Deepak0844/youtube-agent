@@ -20,7 +20,7 @@ export function runStage(
       cancelRequested: async (claim) => (await getStage(db, claim.stageRunId))?.cancelRequested === true,
       getStage: async (id) => {
         const row = await getStage(db, id);
-        return row && { id: row.id, name: row.name, inputHash: row.inputHash };
+        return row && { id: row.id, name: row.name, inputHash: row.inputHash, videoId: row.videoId };
       },
       commit: (claim, result) => commitStage(db, claim as Claim, result),
       markNeedsDecision: (claim, reason) => markStageNeedsDecision(db, claim as Claim, reason),

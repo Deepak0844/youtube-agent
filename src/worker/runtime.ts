@@ -18,6 +18,10 @@ import type { ChildRegistry } from "@/server/render/child";
 import { markStalled } from "@/server/db/uploads";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { createJobQueue, type StageQueue } from "@/server/queue/job-queue";
+import { createEventBus, type EventBus } from "@/server/queue/event-bus";
+import { emitEvent, pruneEvents, type EventType } from "@/server/db/events";
+import { openStageLog } from "@/server/logs/stage-log";
+import { storageRoot } from "@/server/db/system-status";
 import { createStageDispatcher, type StageHandlers } from "./handlers";
 import { startReconcileLoop } from "./reconcile-loop";
 
@@ -33,6 +37,9 @@ export interface WorkerHooks {
   runStage: typeof runStage;
   /** Called after a stage ends in a state the owner must hear about. Best-effort: never throws into the job. */
   notify(pool: pg.Pool, ports: NotifyPorts, e: Parameters<typeof notifyTransition>[2]): Promise<unknown>;
+  /** Live feed row + best-effort wake-up. Failures are caught by the caller: the feed never blocks a stage. */
+  emitEvent: typeof emitEvent;
+  createEventBus(redisUrl: string): EventBus;
   beforeStart(pool: pg.Pool): Promise<void>;
   /** Boot order matters: sweep children left by dead workers first, then claim this worker id. */
   sweepOrphans(pool: pg.Pool, workerId: string): Promise<number>;
@@ -69,8 +76,10 @@ const defaults: WorkerHooks = {
   runStage,
   notify: notifyTransition,
   markStalled: (pool) => markStalled(pool, 60_000),
-  // Event storage is introduced by Task 11. Never invent a table or use an owner pool here.
-  prune: async () => {},
+  // Retention for the events table through the owner-granted prune_events() (the app role cannot delete). One indexed
+  // DELETE per loop tick.
+  prune: async (pool) => { await pruneEvents(pool); },
+  emitEvent, createEventBus,
   beforeStart: async () => {},
   sweepOrphans, holdWorkerLock, createChildRegistry,
 };
@@ -82,6 +91,18 @@ const NOTIFY_OUTCOMES: Partial<Record<StageOutcome["kind"], { event: NotifyEvent
   known_failure_release_failed: { event: "needs_decision", to: "needs_decision" },
   known_failure: { event: "video_failed", to: "failed" },
   timed_out: { event: "video_failed", to: "failed" },
+};
+
+// Stage outcomes that end a stage as seen by the live feed. lease_lost / commit_rejected / noop say nothing: another
+// attempt owns the stage now.
+const OUTCOME_EVENTS: Partial<Record<StageOutcome["kind"], EventType>> = {
+  committed: "stage.succeeded",
+  known_failure: "stage.failed",
+  timed_out: "stage.failed",
+  needs_decision: "stage.needs_decision",
+  budget_refused: "stage.needs_decision",
+  known_failure_release_failed: "stage.needs_decision",
+  cancelled: "stage.cancelled",
 };
 
 const describe = (err: unknown) => (err instanceof Error ? `${err.name}: ${err.message}` : String(err)).slice(0, 300);
@@ -105,6 +126,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
   let pool = opts.pool;
   let workerLock: WorkerLock | undefined;
   let queue: StageQueue | undefined;
+  let bus: EventBus | undefined;
   let consumer: ReturnType<StageQueue["startWorker"]> | undefined;
   let loop: ReturnType<typeof startReconcileLoop> | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
@@ -124,6 +146,10 @@ export function startRuntime(opts: WorkerOptions = {}) {
     if (!redisUrl) throw new Error("REDIS_URL is not set; configure .env.local before starting the worker");
     const settings = await hooks.loadSettings(db);
     if (stopping) return;
+    try { bus = hooks.createEventBus(redisUrl); } catch { bus = undefined; }
+    const emit = async (e: Parameters<typeof emitEvent>[2]) => {
+      try { await hooks.emitEvent(db, bus, e); } catch { log("event emit failed"); }
+    };
     try { log(`vault ${await hooks.checkVault(db)}`); }
     catch { log("vault unreadable"); }
     await hooks.beforeStart(db);
@@ -199,8 +225,22 @@ export function startRuntime(opts: WorkerOptions = {}) {
                 concurrencyLimit: settings.concurrentJobs,
                 renderConcurrencyLimit: settings.concurrentRenders, renderStageNames,
                 handler: dispatch, shutdownSignal: shutdown.signal,
+                openLog: (stage, claim) => {
+                  const started = emit({ type: "stage.started", videoId: stage.videoId, stageRunId: stage.id, payload: { stage: stage.name, fence: claim.fence } });
+                  return openStageLog(
+                    { db, bus, storageRoot: storageRoot(), capBytes: settings.config.logCapBytes, after: started },
+                    { videoId: stage.videoId, stageRunId: stage.id, stageName: stage.name, fence: claim.fence },
+                  );
+                },
                 provider: { call: async () => { throw new Error("runtime requires a stage handler"); } },
               }, job);
+              const evType = outcome && "claim" in outcome ? OUTCOME_EVENTS[outcome.kind] : undefined;
+              if (evType && "claim" in outcome) {
+                try {
+                  const row = await getStage(db, outcome.claim.stageRunId);
+                  await emit({ type: evType, videoId: row?.videoId, stageRunId: outcome.claim.stageRunId, payload: { stage: row?.name, fence: outcome.claim.fence, outcome: outcome.kind } });
+                } catch { log("event emit failed"); }
+              }
               const hit = outcome && "claim" in outcome ? NOTIFY_OUTCOMES[outcome.kind] : undefined;
               if (hit && "claim" in outcome) {
                 try {
@@ -261,7 +301,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
         }
         // Teardown has its own fresh limit, so a slow drain cannot starve closing connections.
         const teardownExpired = await within(Promise.allSettled([
-          safely(() => consumer?.close(true)), safely(() => queue?.close(true)), safely(async () => { await workerLock?.release(); await pool?.end(); }),
+          safely(() => consumer?.close(true)), safely(() => queue?.close(true)), safely(() => bus?.close()), safely(async () => { await workerLock?.release(); await pool?.end(); }),
         ]));
         if (teardownExpired) {
           if (pool) forceClosePool(pool);

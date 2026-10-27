@@ -32,13 +32,19 @@ export interface PaidStep {
   timeoutMs?: number;
 }
 
+// Where ctx.log lines go (redacted file + live feed). Supplied by the worker; write never throws, close flushes.
+export interface StageLogHandle {
+  write(line: string): void;
+  close(): Promise<void>;
+}
+
 export interface StageContext {
   stage: StageLike;
   claim: StageClaim;
   config: EngineConfig;
   signal: AbortSignal;
   attemptDir: string; // set by Task 10; "" until then
-  log(line: string): void; // Task 11; no-op until then
+  log(line: string): void; // redacted, compacted, capped; a no-op when the worker gives no log sink
   nextStep(): number;
   paid<T>(step: PaidStep, call: (key: string, signal: AbortSignal) => Promise<PaidCallOutput<T>>): Promise<T>;
 }
@@ -58,6 +64,7 @@ export function createStageContext(args: {
   signal: AbortSignal;
   paid: PaidCallPorts;
   beforeCall?: () => Promise<void>;
+  log?: (line: string) => void;
 }): ContextInternals {
   const { stage, claim, config, signal } = args;
   let step = 0;
@@ -69,7 +76,7 @@ export function createStageContext(args: {
     config,
     signal,
     attemptDir: "",
-    log: () => {},
+    log: (line) => { try { args.log?.(line); } catch { /* a log must never fail the stage */ } },
     nextStep: () => step++,
     async paid<T>(s: PaidStep, call: (key: string, signal: AbortSignal) => Promise<PaidCallOutput<T>>): Promise<T> {
       if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : new StageAbort("cancel");

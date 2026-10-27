@@ -88,6 +88,14 @@ describe("advanceVideo", () => {
     expect(r.enqueued).toHaveLength(1);
     expect((await stages(v.id)).map((s) => s.name)).toEqual(["draft", "build"]);
   });
+  it("gate_waiting_is_emitted_once_when_the_video_parks_at_a_gate", async () => {
+    const v = await createVideoRow(db.pool, input);
+    const q = fakeQueue();
+    await draftDone(v.id, q);
+    for (let i = 0; i < 3; i++) await advanceVideo(db.pool, q, v.id, readers()); // repeated sweeps over a parked video stay quiet
+    const rows = (await db.pool.query("select type, video_id, payload from events order by id")).rows;
+    expect(rows).toEqual([{ type: "gate.waiting", video_id: v.id, payload: { gate: "script" } }]);
+  });
   it("two_concurrent_advances_create_one_stage_row", async () => {
     const v = await createVideoRow(db.pool, input);
     const q = fakeQueue();
