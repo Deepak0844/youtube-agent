@@ -14,9 +14,9 @@ import { OWNER_PASSWORD, OWNER_USERNAME, SEED_IP, STORAGE_STATE } from "./fixtur
 
 const run = promisify(execFile);
 const E2E_OWNER_PW = "e2e-owner-pw";
-const E2E_APP_PW = "e2e-app-pw";
+export const E2E_APP_PW = "e2e-app-pw";
 
-function withRole(url: string, user: string, password: string): string {
+export function withRole(url: string, user: string, password: string): string {
   const u = new URL(url);
   u.username = user;
   u.password = password;
@@ -78,7 +78,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
 // Migrate, create the fixed owner through the real setup-link path, log in once through the real login() and save the
 // session as a Playwright storageState for the ui-* projects.
-async function seedOwner(superUrl: string, appUrl: string): Promise<void> {
+export async function seedOwner(superUrl: string, appUrl: string): Promise<void> {
   const pool = createPool(appUrl);
   try {
     await run("npx", ["tsx", "tests/e2e/fixtures/migrate-cli.mts"], {

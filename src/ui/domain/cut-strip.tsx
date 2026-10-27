@@ -48,7 +48,7 @@ function Cross() {
   );
 }
 
-function Segment({ stage }: { stage: CutStage }) {
+function Segment({ stage, labels }: { stage: CutStage; labels: boolean }) {
   const pct = clamp(stage.progress ?? 0);
   const chapters = stage.chapters ?? [];
   return (
@@ -67,7 +67,7 @@ function Segment({ stage }: { stage: CutStage }) {
         )}
         {stage.state === "failed" && <Cross />}
       </span>
-      <span className={cn("min-w-0 text-[11px] leading-tight text-muted", WRAP)}>{stage.label}</span>
+      <span className={cn("min-w-0 text-[11px] leading-tight text-muted", WRAP, !labels && "sr-only")}>{stage.label}</span>
       <span className={cn("sr-only", WRAP)}>{stateWord(stage)}</span>
       {chapters.length > 0 && (
         <span role="img" aria-label={`${chapters.length} chapters, ${chapters.filter((c) => c === "done").length} done`} className="flex gap-px">
@@ -95,6 +95,7 @@ export interface CutStripProps {
   className?: string;
 }
 
+/** In list rows ("inline") the strip is too narrow for eight words, so the stage names are screen-reader only and the line beneath names the stage that matters. */
 /** The signature element: one video as the stages that apply to it. Server-rendered, no chart library. */
 export function CutStrip({ format, stages, aspect, thumbnail, layout = "stack", className }: CutStripProps) {
   const portrait = aspect === "9:16";
@@ -111,7 +112,7 @@ export function CutStrip({ format, stages, aspect, thumbnail, layout = "stack", 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <ol aria-label="Stages" className="flex min-w-0 items-end gap-1">
           {stages.map((s) => (
-            <Segment key={s.key} stage={s} />
+            <Segment key={s.key} stage={s} labels={layout === "stack"} />
           ))}
         </ol>
         <p className={cn("min-w-0 text-small text-muted", WRAP)}>{summarise(stages)}</p>

@@ -177,7 +177,7 @@ function Entry({ row, now }: { row: AuditRow; now: Date }) {
       data-testid="audit-row"
       data-audit-id={row.id}
       data-event={truncateText(row.event, 80)}
-      className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-2 border-b border-rule py-4 last:border-b-0 md:grid-cols-[12.5rem_14rem_minmax(0,1fr)]"
+      className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-2 border-b border-rule py-4 last:border-b-0 lg:grid-cols-[12.5rem_14rem_minmax(0,1fr)]"
     >
       <div className="min-w-0">
         <time dateTime={iso} className="block text-body font-medium">
