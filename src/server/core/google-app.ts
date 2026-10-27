@@ -14,6 +14,11 @@ export function validateClientId(raw: string): Checked {
   return CLIENT_ID_RE.test(v) ? { ok: true, value: v } : { ok: false, error: "That does not look like a Google client ID. It ends in .apps.googleusercontent.com." };
 }
 
+/** A paste usually brings ONE trailing newline or space; drop exactly that. Anything else is the owner's to fix. */
+export const stripPastedTail = (raw: string): string => raw.replace(/(?:\r?\n| )$/, "");
+
+// Phase 5 note: the token request must send this secret form-encoded (URLSearchParams). It may contain & " % + and must
+// never be concatenated into a body or URL by hand.
 export function validateClientSecret(raw: string): Checked {
   return SECRET_RE.test(raw) ? { ok: true, value: raw } : { ok: false, error: "The client secret should be 8 to 256 visible characters with no spaces." };
 }
@@ -65,8 +70,9 @@ export function googleAppInput(raw: { clientId: string; clientSecret: string }, 
     if (r.ok) out.clientId = r.value;
     else fieldErrors.clientId = r.error;
   } else if (!stored.hasId) fieldErrors.clientId = "Enter the client ID from Google.";
-  if (raw.clientSecret !== "") {
-    const r = validateClientSecret(raw.clientSecret);
+  const secret = stripPastedTail(raw.clientSecret);
+  if (secret !== "") {
+    const r = validateClientSecret(secret);
     if (r.ok) out.clientSecret = r.value;
     else fieldErrors.clientSecret = r.error;
   } else if (!stored.hasSecret) fieldErrors.clientSecret = "Enter the client secret from Google.";

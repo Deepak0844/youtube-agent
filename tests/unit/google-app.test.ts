@@ -58,3 +58,28 @@ describe("googleAppInput", () => {
     }
   });
 });
+
+describe("pasted input", () => {
+  const SEC = "GOCSPX-abcdefghijklmnop12345678901";
+  const stored = { hasId: true, hasSecret: true };
+  it("strips ONE trailing newline or space from a pasted secret, nothing else", () => {
+    for (const t of [`${SEC}\n`, `${SEC}\r\n`, `${SEC} `]) expect(googleAppInput({ clientId: "", clientSecret: t }, stored)).toEqual({ ok: true, clientSecret: SEC });
+    expect(googleAppInput({ clientId: "", clientSecret: `${SEC}\n\n` }, stored).ok).toBe(false);
+    expect(googleAppInput({ clientId: "", clientSecret: `${SEC}  ` }, stored).ok).toBe(false);
+    expect(googleAppInput({ clientId: "", clientSecret: ` ${SEC}` }, stored).ok).toBe(false);
+  });
+  it("a lone newline in the secret box counts as empty", () => {
+    expect(googleAppInput({ clientId: "", clientSecret: "\n" }, stored)).toMatchObject({ ok: false, fieldErrors: { form: expect.any(String) } });
+  });
+  it("an over-long secret or id is a field error, never a silent keep", () => {
+    const r = googleAppInput({ clientId: "a".repeat(400), clientSecret: "s".repeat(400) }, stored);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(Object.keys(r.fieldErrors).sort()).toEqual(["clientId", "clientSecret"]);
+    expect(googleAppInput({ clientId: `${"a".repeat(101)}.apps.googleusercontent.com`, clientSecret: "" }, stored).ok).toBe(false);
+  });
+  it("a secret with & \" % is accepted as is (Phase 5 must form-encode it)", () => {
+    const odd = 'GOCSPX-a&b"c%d+e/f=g12345678901';
+    expect(googleAppInput({ clientId: "", clientSecret: odd }, stored)).toEqual({ ok: true, clientSecret: odd });
+  });
+});
+
