@@ -61,6 +61,23 @@ for (const evil of ["//evil.test", "https://evil.test", "/\\evil.test", "javascr
   });
 }
 
+// Layout and accessibility of the public sign-in page at desktop and phone width (no shell, 44 px targets, no sideways scroll).
+for (const width of [1440, 390]) {
+  test(`login page layout at ${width}px: labelled fields, 44 px targets, no horizontal scroll`, async ({ browser }) => {
+    const { context, page } = await fresh(browser);
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.goto("/login");
+    await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
+    await expect(page.getByRole("navigation")).toHaveCount(0); // public page: no app shell
+    for (const target of [page.getByLabel("Username"), page.getByLabel("Password"), page.getByRole("button", { name: "Sign in" })]) {
+      await expect(target).toBeVisible();
+      expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    await context.close();
+  });
+}
+
 // Runs last in this file: 5 failures lock this test's own (username, address) pair only.
 test("lockout message appears after 5 failures", async ({ browser }) => {
   const { context, page } = await fresh(browser);
