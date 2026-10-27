@@ -26,6 +26,13 @@ function redactText(s: string): string {
   return out;
 }
 
+/** Same rules as redactLine for plain text, minus the generic "32+ url-safe characters" rule that mangles ordinary URLs. */
+export function redactSecretShapes(s: string): string {
+  let out = s;
+  for (const [re, to] of TEXT_RULES.slice(0, -1)) out = out.replace(re, to as string);
+  return out;
+}
+
 function redactValue(v: unknown, key?: string): unknown {
   if (key !== undefined && SENSITIVE_NAME.test(key) && v !== null && v !== "") return REDACTED;
   if (typeof v === "string") return redactText(v);
