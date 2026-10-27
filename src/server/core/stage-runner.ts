@@ -64,6 +64,7 @@ export interface StageRunnerDeps {
   provider: StageProvider;
   ttlMs: number;
   workerId: string;
+  concurrencyLimit?: number;
   stepsFor?: (stage: StageLike) => StageStep[];
   handler?: StageHandler;
   config?: EngineConfig;

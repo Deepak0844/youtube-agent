@@ -100,12 +100,20 @@ export async function insertQueuedStage(
 // spending until its worker honours the flag (later task).
 export async function claimStage(
   db: Db,
-  args: { id: string; inputHash: string; workerId: string; ttlMs: number },
+  args: { id: string; inputHash: string; workerId: string; ttlMs: number; maxConcurrent?: number },
 ): Promise<Claim | null> {
   assertTtl(args.ttlMs);
+  if (args.maxConcurrent !== undefined && (!Number.isSafeInteger(args.maxConcurrent) || args.maxConcurrent < 1)) throw new RangeError("maxConcurrent must be a positive integer");
   // One conditional UPDATE; the conversion check runs inside the same transaction, so a value that
   // cannot be represented rolls the claim back instead of leaving a committed-but-unreported lease.
   return atomic(db, async (q) => {
+    if (args.maxConcurrent !== undefined) {
+      // Serialise admission across worker processes. Do not claim/refence a refused row: reconciliation delivers
+      // a new attempt after capacity returns. Expired leases do not consume capacity (DB clock remains truth).
+      await q.query("select pg_advisory_xact_lock(hashtext('ytstudio.stage-admission'))");
+      const count = await q.query<{ n: number }>("select count(*)::int as n from stage_runs where status = 'running' and lease_until > clock_timestamp()");
+      if (count.rows[0]!.n >= args.maxConcurrent) return null;
+    }
     const { rows } = await q.query<{ fence: string; lease_until: Date; attempt_seq: number }>(
       `update stage_runs
           set status = 'running',
