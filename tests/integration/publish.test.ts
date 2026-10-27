@@ -402,7 +402,7 @@ describe("handlePublishUpload", () => {
     const gate = new Promise<void>((r) => (release = r));
     const slow: Uploader = { upload: async (id, onProgress) => { await onProgress(5); await gate; return { kind: "uploaded", youtubeId: `late-${id}` }; } };
     const pending = run(uploadId, slow);
-    await waitFor(async () => (await row(uploadId))?.status === "uploading", "uploading");
+    await waitFor(async () => Number((await row(uploadId))?.bytes_sent) === 5, "first progress reported");
     await db.ownerPool.query("update uploads set last_progress_at = clock_timestamp() - interval '10 minutes' where id = $1", [uploadId]);
     expect(await markStalled(db.pool, 1000)).toEqual([uploadId]);
     release();
