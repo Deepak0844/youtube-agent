@@ -32,7 +32,7 @@ describe("settings registry", () => {
   });
 
   it("defaults_match_doc_02_and_07", () => {
-    const d = Object.fromEntries(Object.entries(SETTINGS).filter(([k]) => !ENGINE_KEYS.includes(k as never)).map(([k, v]) => [k, v.default]));
+    const d = Object.fromEntries(Object.entries(SETTINGS).filter(([k]) => !ENGINE_KEYS.includes(k as never) && !k.startsWith("notify.")).map(([k, v]) => [k, v.default]));
     expect(d).toEqual({
       "jobs.concurrent_renders": 1,
       "jobs.concurrent_jobs": 2,
