@@ -15,6 +15,9 @@ import { Pill } from "@/ui/primitives/pill";
 import { EmptyFrame } from "@/ui/domain/empty-frame";
 import { getLastTests, type LastTest } from "@/server/db/llm-test";
 import { LastTestLine } from "./last-test";
+import { getEvalBadges } from "@/server/db/llm-eval";
+import type { Badge } from "@/server/core/eval-rules";
+import { EvalBadge } from "./eval-badge";
 import { EMPTY_MODEL, IdButton, ModelForm, RouteForm, TestModelButton, type ModelFormValues } from "./model-form";
 
 // The model catalog is the owner's: ids and prices are data. Page and actions are session-only (requireOwner first).
@@ -31,8 +34,8 @@ export default function ModelsPage() {
 async function Owned() {
   await requireOwner();
   const db = getPool();
-  const [models, routes, defaults, local, tests] = await Promise.all([listModels(db), listRoutes(db), listDefaults(db), localServices(db), getLastTests(db)]);
-  return <Models models={models} routes={routes} defaults={defaults} local={local} tests={tests} />;
+  const [models, routes, defaults, local, tests, badges] = await Promise.all([listModels(db), listRoutes(db), listDefaults(db), localServices(db), getLastTests(db), getEvalBadges(db)]);
+  return <Models models={models} routes={routes} defaults={defaults} local={local} tests={tests} badges={badges} />;
 }
 
 const usd = (micro: number) => `$${microToUsd(micro)}`;
@@ -93,7 +96,7 @@ function Money({ m, local }: { m: ModelRow; local: string[] }) {
   );
 }
 
-function Models({ models, routes, defaults, local, tests }: { models: ModelRow[]; routes: Record<string, string>; defaults: CatalogDefault[]; local: string[]; tests: Map<string, LastTest> }) {
+function Models({ models, routes, defaults, local, tests, badges }: { models: ModelRow[]; routes: Record<string, string>; defaults: CatalogDefault[]; local: string[]; tests: Map<string, LastTest>; badges: Map<string, Badge> }) {
   const providers = PROVIDERS.map((p) => ({ id: p.id, label: p.label }));
   const byId = new Map(models.map((m) => [m.id, m]));
   return (
@@ -158,6 +161,7 @@ function Models({ models, routes, defaults, local, tests }: { models: ModelRow[]
                     {routed.length > 0 ? <p className="text-small text-muted">Used by: {routed.join(", ")}</p> : null}
                     {m.isFree || m.prices ? <TestModelButton id={m.id} label={m.label} free={m.isFree} /> : <p className="text-small text-faint">Add a price to test this model.</p>}
                     <LastTestLine test={tests.get(m.id)} />
+                    <EvalBadge badge={badges.get(m.id)} />
                   </div>
                   <details className="group mt-3">
                     <summary className="inline-flex min-h-11 cursor-pointer items-center text-body font-medium text-text underline underline-offset-4 sm:min-h-9">Edit {m.label}</summary>
