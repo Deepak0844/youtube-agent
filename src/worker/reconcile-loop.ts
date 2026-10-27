@@ -1,0 +1,12 @@
+// A single-flight maintenance loop. stop() prevents another tick and drains the current one.
+export function startReconcileLoop(opts: { run(): Promise<void>; intervalMs?: number; log(message: string): void }) {
+  let stopped = false;
+  let pending: Promise<void> | undefined;
+  const tick = () => {
+    if (stopped || pending) return;
+    pending = opts.run().catch((err) => opts.log(`reconcile failed; will retry: ${String(err instanceof Error ? err.message : err).slice(0, 400)}`)).finally(() => { pending = undefined; });
+  };
+  tick();
+  const timer = setInterval(tick, opts.intervalMs ?? 15_000);
+  return { async runNow() { await pending; tick(); await pending; }, async stop() { stopped = true; clearInterval(timer); await pending; } };
+}

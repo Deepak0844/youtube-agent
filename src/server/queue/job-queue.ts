@@ -31,10 +31,11 @@ export interface StageQueue {
       // Test knobs only (lock/stall timing). maxStalledCount is always forced to 0.
       bullmq?: Pick<WorkerOptions, "lockDuration" | "stalledInterval" | "skipLockRenewal">;
     },
-  ): { close(): Promise<void> };
+  ): { close(force?: boolean): Promise<void>; pause?(): Promise<void> };
   // Ids of jobs that may still be delivered or are being processed (not completed/failed). One atomic Redis script.
   liveJobIds(): Promise<Set<string>>;
-  close(): Promise<void>;
+  close(force?: boolean): Promise<void>;
+  disconnect?(): Promise<void>;
 }
 export type JobQueue = StageQueue;
 
@@ -46,8 +47,9 @@ export interface UploadQueue {
   startWorker(
     handler: (uploadId: string, jobId: string) => Promise<void>,
     opts?: { concurrency?: number; onError?: (err: Error) => void },
-  ): { close(): Promise<void> };
-  close(): Promise<void>;
+  ): { close(force?: boolean): Promise<void>; pause?(): Promise<void> };
+  close(force?: boolean): Promise<void>;
+  disconnect?(): Promise<void>;
 }
 
 const LIVE: JobType[] = ["waiting", "active", "delayed", "prioritized", "waiting-children"];
@@ -56,15 +58,16 @@ export const DEFAULT_KEEP_FAILED = 1000;
 
 const SUFFIX = /^[a-z0-9-]{1,40}$/;
 
-export function createJobQueue(redisUrl: string, kind: "stages", suffix?: string, opts?: { keepFailed?: number }): StageQueue;
-export function createJobQueue(redisUrl: string, kind: "uploads", suffix?: string, opts?: { keepFailed?: number }): UploadQueue;
-export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: string, opts: { keepFailed?: number } = {}): StageQueue | UploadQueue {
+export function createJobQueue(redisUrl: string, kind: "stages", suffix?: string, opts?: { keepFailed?: number; onError?: (err: Error) => void }): StageQueue;
+export function createJobQueue(redisUrl: string, kind: "uploads", suffix?: string, opts?: { keepFailed?: number; onError?: (err: Error) => void }): UploadQueue;
+export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: string, opts: { keepFailed?: number; onError?: (err: Error) => void } = {}): StageQueue | UploadQueue {
   if (kind !== "stages" && kind !== "uploads") throw new RangeError(`unknown queue kind: ${String(kind)}`);
   if (suffix !== undefined && !SUFFIX.test(suffix)) throw new RangeError(`invalid queue suffix: ${String(suffix)}`);
   const name = suffix === undefined ? kind : `${kind}-${suffix}`;
   const keepFailed = opts.keepFailed ?? DEFAULT_KEEP_FAILED;
-  const connection = { url: redisUrl, maxRetriesPerRequest: null };
+  const connection = { url: redisUrl, maxRetriesPerRequest: null, enableOfflineQueue: false, connectTimeout: 1000 };
   const queue = new Queue(name, { connection });
+  queue.on("error", opts.onError ?? (() => {}));
   const workers = new Set<Worker>();
   const wrong = (what: string): never => {
     throw new Error(`${what} is not available on a '${kind}' queue (${name})`);
@@ -73,20 +76,23 @@ export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: strin
   function makeWorker(
     processor: (job: Job) => Promise<void>,
     opts: { concurrency?: number; onError?: (err: Error) => void; bullmq?: Pick<WorkerOptions, "lockDuration" | "stalledInterval" | "skipLockRenewal"> },
-  ): { close(): Promise<void> } {
+  ): { close(force?: boolean): Promise<void>; pause(): Promise<void> } {
     const worker = new Worker(name, processor, { ...opts.bullmq, connection, concurrency: opts.concurrency ?? 1, maxStalledCount: 0 });
     worker.on("error", opts.onError ?? ((err: Error) => console.error(`queue ${name} worker error:`, err)));
     workers.add(worker);
     return {
-      async close() {
+      pause: () => worker.pause(true),
+      async close(force = false) {
+        await worker.close(force);
         workers.delete(worker);
-        await worker.close();
       },
     };
   }
 
-  const close = async () => {
-    await Promise.all([...workers].map((w) => w.close()));
+  const disconnect = async () => { await Promise.allSettled([...workers].map((w) => w.disconnect()).concat(queue.disconnect())); };
+
+  const close = async (force = false) => {
+    await Promise.all([...workers].map((w) => w.close(force)));
     workers.clear();
     await queue.close();
   };
@@ -111,7 +117,7 @@ export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: strin
       async liveJobIds() {
         return new Set(await queue.getRanges(LIVE, 0, -1));
       },
-      close,
+      close, disconnect,
     };
     q.enqueueUpload = () => wrong("enqueueUpload");
     return q;
@@ -132,7 +138,7 @@ export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: strin
         await handler((job.data as { uploadId: string }).uploadId, job.id!);
       }, opts);
     },
-    close,
+    close, disconnect,
   };
   u.enqueue = () => wrong("enqueue");
   u.liveJobIds = () => wrong("liveJobIds");

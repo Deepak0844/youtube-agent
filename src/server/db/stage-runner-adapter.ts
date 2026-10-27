@@ -15,7 +15,7 @@ export function runStage(
   return runStageWith(
     {
       paid: opts.paid ? opts.paid(base) : base,
-      claim: (args) => claimStage(db, args),
+      claim: (args) => claimStage(db, { ...args, maxConcurrent: deps.concurrencyLimit, maxRenders: deps.renderConcurrencyLimit, renderStageNames: deps.renderStageNames }),
       heartbeat: (claim, ttlMs) => heartbeat(db, claim as Claim, ttlMs),
       cancelRequested: async (claim) => (await getStage(db, claim.stageRunId))?.cancelRequested === true,
       getStage: async (id) => {
