@@ -1,5 +1,6 @@
 import { generateText, jsonSchema, tool, type LanguageModel, type ModelMessage, type ToolSet } from "ai";
 import type { Message, ModelStep, StepResult } from "@/server/core/agent-loop";
+import { toSafeModelError } from "./safe-error";
 
 // Adapter: one model call = one agent-loop step, on the Vercel AI SDK. Tools are declared WITHOUT `execute`, so the
 // SDK never runs them: our loop does, jailed. The rest of the code never imports a provider package.
@@ -47,15 +48,20 @@ export function createAiSdkStep(model: LanguageModel, decls: ToolDecl[], maxOutp
     decls.map((d) => [d.name, tool({ description: d.description, inputSchema: jsonSchema(d.inputSchema) })]),
   );
   return async (messages, _idempotencyKey, signal): Promise<StepResult> => {
-    const r = await generateText({
-      model,
-      instructions: messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n") || undefined,
-      messages: toModelMessages(messages),
-      tools,
-      maxOutputTokens,
-      abortSignal: signal,
-      maxRetries: 0, // retries would be hidden paid calls; the caller decides
-    });
+    let r;
+    try {
+      r = await generateText({
+        model,
+        instructions: messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n") || undefined,
+        messages: toModelMessages(messages),
+        tools,
+        maxOutputTokens,
+        abortSignal: signal,
+        maxRetries: 0, // retries would be hidden paid calls; the caller decides
+      });
+    } catch (err) {
+      throw toSafeModelError(err); // SDK errors carry the URL, request body and provider response: none of it may leave
+    }
     const { inputTokens, outputTokens } = r.usage;
     // Fail closed: unknown usage cannot be settled honestly; the intent stays pending and the stage parks.
     if (inputTokens === undefined || outputTokens === undefined) throw new Error("provider returned no token usage");

@@ -62,8 +62,9 @@ describe("model factory contract, one fixture per provider", () => {
       expect(JSON.parse(r.text)).toEqual({ title: "Fixture", beats: ["a", "b"] });
     });
     it("usage_missing_from_a_response_fails_closed", async () => {
-      // The Anthropic package rejects a body without usage on its own ("Invalid JSON response"); the others reach our rule.
-      await expect(modelFor(fx, fx.noUsage)(ask, "k")).rejects.toThrow(fx.adapter === "anthropic" ? /Invalid JSON response/ : /no token usage/);
+      // The Anthropic package rejects a body without usage on its own; the step now redacts that SDK error into a fixed
+      // "unclear outcome" sentence (it never forwards SDK text). The others reach our own rule.
+      await expect(modelFor(fx, fx.noUsage)(ask, "k")).rejects.toThrow(fx.adapter === "anthropic" ? /It may or may not have charged|The model call failed/ : /no token usage/);
     });
   });
 });

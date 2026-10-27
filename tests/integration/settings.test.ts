@@ -25,7 +25,7 @@ describe("settings table and seed", () => {
 
   it("seeds_budget_caps_equal_doc_values", async () => {
     const r = await db.pool.query("select scope, cap_micro_usd::text c from budgets");
-    expect(Object.fromEntries(r.rows.map((x) => [x.scope, Number(x.c)]))).toEqual(BUDGET_DEFAULTS);
+    expect(Object.fromEntries(r.rows.map((x) => [x.scope, Number(x.c)]))).toEqual({ ...BUDGET_DEFAULTS, llm_test: 500_000, eval: 2_000_000 }); // the last two come from migration 0018
   });
 
   it("reseed_is_idempotent_and_keeps_owner_edits", async () => {

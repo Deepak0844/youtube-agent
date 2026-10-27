@@ -8,11 +8,10 @@ async function openAdd(page: Page) {
   return page.getByRole("form", { name: "Add a model" });
 }
 
-test("page renders with no horizontal scroll and no Test button", async ({ page }) => {
+test("page renders with no horizontal scroll", async ({ page }) => {
   await page.goto("/settings/models");
   await expect(page.getByRole("heading", { level: 1, name: "Models" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Stage routing" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /test/i })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

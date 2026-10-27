@@ -11,6 +11,7 @@ export const AUDIT_EVENTS = {
   "model.changed": "A model in the catalog changed",
   "model.removed": "A model was removed from the catalog",
   "route.changed": "A model route changed",
+  "model.tested": "A model was tested with one small call",
   "google_app.saved": "The Google app details were saved",
   "google_app.tested": "The Google app details were format-checked",
   "vault.init": "The vault master key was initialised",
