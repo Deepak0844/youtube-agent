@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
 import { Label } from "@/ui/primitives/label";
@@ -71,6 +71,16 @@ export function LimitsForm(props: { renders: number; jobs: number; warnGb: numbe
 
 export function LocalServicesForm({ entries, max }: { entries: string[]; max: number }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveLocalServicesAction, {});
+  // Controlled on purpose: React resets uncontrolled fields after every form action, which would wipe what was typed
+  // when the server refuses it (the messages name its line numbers). The saved list from the server replaces the text
+  // whenever it changes (after a successful save it comes back normalised).
+  const saved = entries.join("\n");
+  const [text, setText] = useState(saved);
+  const [seen, setSeen] = useState(saved);
+  if (seen !== saved) {
+    setSeen(saved);
+    setText(saved);
+  }
   return (
     <form action={action} className="flex flex-col gap-4">
       <div className={field}>
@@ -79,7 +89,8 @@ export function LocalServicesForm({ entries, max }: { entries: string[]; max: nu
           id="services"
           name="services"
           rows={Math.max(4, Math.min(entries.length + 2, 10))}
-          defaultValue={entries.join("\n")}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"

@@ -17,6 +17,9 @@ async function saveServices(page: Page, text: string) {
     page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/settings/system")),
     page.getByRole("button", { name: "Save list" }).click(),
   ]);
+  // the response arrives before React finishes the action (pending, form reset, new props); the button is enabled again only
+  // when it has, so the next fill() cannot be overwritten by a late reset
+  await expect(page.getByRole("button", { name: "Save list" })).toBeEnabled();
 }
 
 test("status shows reachability, vault, disk and versions, and no secrets", async ({ page }) => {
@@ -50,7 +53,10 @@ test("hostile entries are refused line by line and nothing is saved", async ({ p
   await open(page);
   await saveServices(page, "localhost:11434");
   await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
-  await saveServices(page, "localhost:11434\n0.0.0.0:11434\n127.0.0.1:5432\n2130706433:80\n[::ffff:127.0.0.1]:80\n169.254.169.254:80");
+  const typed = "localhost:11434\n0.0.0.0:11434\n127.0.0.1:5432\n2130706433:80\n[::ffff:127.0.0.1]:80\n169.254.169.254:80";
+  await saveServices(page, typed);
+  // a refusal must not wipe what was typed: the line numbers in the message refer to it
+  await expect(services(page)).toHaveValue(typed);
   const alert = page.locator("main [role=alert]");
   await expect(alert).toContainText("Nothing was saved");
   for (const n of [2, 3, 4, 5, 6]) await expect(alert).toContainText(`Line ${n}:`);
