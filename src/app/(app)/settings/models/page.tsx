@@ -13,10 +13,12 @@ import { getPool } from "@/server/db/pool";
 import { listDefaults, listModels, listRoutes, localServices, modelsForStage, type CatalogDefault } from "@/server/db/llm-models";
 import { Pill } from "@/ui/primitives/pill";
 import { EmptyFrame } from "@/ui/domain/empty-frame";
-import { EMPTY_MODEL, IdButton, ModelForm, RouteForm, type ModelFormValues } from "./model-form";
+import { getLastTests, type LastTest } from "@/server/db/llm-test";
+import { LastTestLine } from "./last-test";
+import { EMPTY_MODEL, IdButton, ModelForm, RouteForm, TestModelButton, type ModelFormValues } from "./model-form";
 
 // The model catalog is the owner's: ids and prices are data. Page and actions are session-only (requireOwner first).
-// There is deliberately no Test button here: a hosted test is a paid call and must go through the spend reservation (Phase 2).
+// The Test button is a paid call for hosted models: it goes through the spend reservation, a daily cap and a cooldown (db/llm-test.ts).
 
 export default function ModelsPage() {
   return (
@@ -29,8 +31,8 @@ export default function ModelsPage() {
 async function Owned() {
   await requireOwner();
   const db = getPool();
-  const [models, routes, defaults, local] = await Promise.all([listModels(db), listRoutes(db), listDefaults(db), localServices(db)]);
-  return <Models models={models} routes={routes} defaults={defaults} local={local} />;
+  const [models, routes, defaults, local, tests] = await Promise.all([listModels(db), listRoutes(db), listDefaults(db), localServices(db), getLastTests(db)]);
+  return <Models models={models} routes={routes} defaults={defaults} local={local} tests={tests} />;
 }
 
 const usd = (micro: number) => `$${microToUsd(micro)}`;
@@ -91,7 +93,7 @@ function Money({ m, local }: { m: ModelRow; local: string[] }) {
   );
 }
 
-function Models({ models, routes, defaults, local }: { models: ModelRow[]; routes: Record<string, string>; defaults: CatalogDefault[]; local: string[] }) {
+function Models({ models, routes, defaults, local, tests }: { models: ModelRow[]; routes: Record<string, string>; defaults: CatalogDefault[]; local: string[]; tests: Map<string, LastTest> }) {
   const providers = PROVIDERS.map((p) => ({ id: p.id, label: p.label }));
   const byId = new Map(models.map((m) => [m.id, m]));
   return (
@@ -154,6 +156,8 @@ function Models({ models, routes, defaults, local }: { models: ModelRow[]; route
                     <Money m={m} local={local} />
                     <Caps m={m} />
                     {routed.length > 0 ? <p className="text-small text-muted">Used by: {routed.join(", ")}</p> : null}
+                    {m.isFree || m.prices ? <TestModelButton id={m.id} label={m.label} free={m.isFree} /> : <p className="text-small text-faint">Add a price to test this model.</p>}
+                    <LastTestLine test={tests.get(m.id)} />
                   </div>
                   <details className="group mt-3">
                     <summary className="inline-flex min-h-11 cursor-pointer items-center text-body font-medium text-text underline underline-offset-4 sm:min-h-9">Edit {m.label}</summary>

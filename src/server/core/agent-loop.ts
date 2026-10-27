@@ -1,4 +1,4 @@
-import { runPaidCall, type ClaimLike, type PaidCallPorts } from "./paid-call";
+import { runPaidCall, type ClaimLike, type PaidCallOutput, type PaidCallPorts } from "./paid-call";
 import { worstCaseMicroUsd, type PriceCard } from "./spend";
 
 // Our own agent loop (Doc 8 §2): identical safety rules for every provider. No IO here: the model step and the
@@ -34,9 +34,18 @@ export class MaxStepsError extends Error {
   }
 }
 
+// How a stage pays for one step: the stage context's `paid` (it numbers the step and owns the call timeout). When given,
+// `claim`/`ports` are not used; call keys then come from the stage's own step counter, so an agent run and other paid
+// calls of the same stage can never share a call key.
+export type PayStep = <T>(
+  step: { reserveMicroUsd: number; budgetScopes: string[]; kind: "paid" | "cheap_text" },
+  call: (key: string, signal: AbortSignal) => Promise<PaidCallOutput<T>>,
+) => Promise<T>;
+
 export interface AgentOptions {
-  claim: ClaimLike;
-  ports: PaidCallPorts;
+  claim?: ClaimLike;
+  ports?: PaidCallPorts;
+  paid?: PayStep;
   price: PriceCard | undefined;
   budgetScopes: string[];
   maxOutputTokens: number;
@@ -77,18 +86,24 @@ export async function runAgent(o: AgentOptions): Promise<AgentResult> {
       maxOutputTokens: o.maxOutputTokens,
     });
     const snapshot = [...messages];
-    const res = await runPaidCall(
-      o.ports,
-      { claim: o.claim, stepIndex, toolCallIndex: 0, reserveMicroUsd, budgetScopes: o.budgetScopes, kind: "paid" },
-      async (key) => {
-        const result = await o.step(snapshot, key, o.signal);
-        const actualMicroUsd = worstCaseMicroUsd(o.price, {
-          inputTokens: result.usage.inputTokens,
-          maxOutputTokens: result.usage.outputTokens,
-        });
-        return { result, actualMicroUsd };
-      },
-    );
+    const call = async (key: string, signal?: AbortSignal): Promise<PaidCallOutput<StepResult>> => {
+      const result = await o.step(snapshot, key, signal ?? o.signal);
+      const actualMicroUsd = worstCaseMicroUsd(o.price, {
+        inputTokens: result.usage.inputTokens,
+        maxOutputTokens: result.usage.outputTokens,
+      });
+      return { result, actualMicroUsd };
+    };
+    let res: StepResult;
+    if (o.paid) res = await o.paid({ reserveMicroUsd, budgetScopes: o.budgetScopes, kind: "paid" }, call);
+    else {
+      if (!o.claim || !o.ports) throw new TypeError("runAgent needs either `paid` or `claim` and `ports`");
+      res = await runPaidCall(
+        o.ports,
+        { claim: o.claim, stepIndex, toolCallIndex: 0, reserveMicroUsd, budgetScopes: o.budgetScopes, kind: "paid" },
+        call,
+      );
+    }
     spent += worstCaseMicroUsd(o.price, { inputTokens: res.usage.inputTokens, maxOutputTokens: res.usage.outputTokens });
     messages.push({ role: "assistant", content: res.text, toolCalls: res.toolCalls });
     if (res.toolCalls.length === 0) return { text: res.text, steps: stepIndex + 1, messages, spentMicroUsd: spent };

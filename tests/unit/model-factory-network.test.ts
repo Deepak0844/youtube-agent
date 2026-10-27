@@ -27,7 +27,8 @@ const body = {
 };
 const run = (m: ReturnType<typeof buildModel>) => createAiSdkStep(m, [], 50)([{ role: "user", content: "go" }], "k");
 const getKey = async () => KEY;
-// The SDK wraps transport errors ("Cannot connect to API"), so look for the guard's own error in the cause chain.
+// The step now drops the SDK error and its causes (they can carry URLs and bodies), so the guard's refusal arrives as the
+// redacted known failure with the fixed network-guard sentence, and no address from the request.
 async function refusedByGuard(p: Promise<unknown>, label = ""): Promise<void> {
   let err: unknown;
   try {
@@ -36,9 +37,9 @@ async function refusedByGuard(p: Promise<unknown>, label = ""): Promise<void> {
     err = e;
   }
   expect(err, `${label}: should reject`).toBeDefined();
-  const names: string[] = [];
-  for (let e: unknown = err; e && names.length < 8; e = (e as { cause?: unknown }).cause) names.push((e as Error).name);
-  expect(names, label).toContain("BlockedAddressError");
+  expect((err as Error).name, label).toBe("NotProcessedError");
+  expect((err as Error).message, label).toBe("The model address is not allowed by the network guard.");
+  expect((err as { cause?: unknown }).cause, label).toBeUndefined();
 }
 const never = () => {
   throw new Error("must not be built");
