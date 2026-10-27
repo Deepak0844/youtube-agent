@@ -26,6 +26,7 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
   "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],
   // Reads policy.require_evidence to decide whether the route has an evidence gate; never writes.
   "src/server/db/pipeline.ts": ["getSetting"],
+  "src/server/db/notify.ts": ["getSetting"],
 };
 
 /** The only file(s) that may import the system-settings writers: the guarded server actions (requireOwner first). */
