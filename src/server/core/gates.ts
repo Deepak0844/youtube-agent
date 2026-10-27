@@ -37,13 +37,13 @@ export const GATES: readonly Gate[] = Object.freeze([
 /** Roadmap phase (Doc 05) in which each gate's action ships and its real test suite must replace the registry todo. */
 export const GATE_ROADMAP_PHASE: Readonly<Record<GateId, number>> = Object.freeze({
   outline: 6,
-  script: 4,
-  cost: 4,
+  script: 2,
+  cost: 2,
   chapter: 6,
-  video: 4,
+  video: 2,
   thumbnail: 6,
-  evidence: 5,
-  publish: 5,
+  evidence: 2,
+  publish: 2,
   comment_reply: 8,
   allow_public: 5,
   live_title: 8,
