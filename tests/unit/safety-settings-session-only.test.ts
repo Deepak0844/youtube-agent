@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type pg from "pg";
 import { describe, expect, it } from "vitest";
+import { ENGINE_KEYS } from "@/server/core/engine-config";
 import { SAFETY_KEYS, SETTINGS } from "@/server/core/settings-registry";
 import { setSetting, type Actor } from "@/server/db/settings";
 import { gateById } from "@/server/core/gates";
@@ -47,7 +48,7 @@ describe("allow_public gate (policy.allow_public) through the gate harness", () 
 
 describe("the registry's safety keys", () => {
   it("cannot be silently demoted: the keys Doc 02 names stay safety", () => {
-    for (const k of ["policy.require_evidence", "policy.allow_public", "network.local_services"]) {
+    for (const k of ["policy.require_evidence", "policy.allow_public", "network.local_services", ...ENGINE_KEYS]) {
       expect(SAFETY_KEYS as string[], `${k} must stay a safety key`).toContain(k);
     }
   });
@@ -90,6 +91,7 @@ describe("no code path in src writes a safety setting as anything but a session"
   it("the import allow-lists are explicit maps of file to permitted names (a new importer must be added here on purpose)", () => {
     // file -> the only names it may import. llm-models reads network.local_services (getSetting) and uses the Actor type.
     expect(SETTINGS_IMPORT_ALLOW).toEqual({
+      "src/server/db/engine-config.ts": ["getStoredSettings"],
       "src/server/db/llm-models.ts": ["getSetting", "Actor"],
       "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],
     });
