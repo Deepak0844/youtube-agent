@@ -5,7 +5,10 @@
 import { makeKeyring, type Keyring } from "@/server/core/vault-crypto";
 
 const NAMES = ["VAULT_MASTER_KEY", "VAULT_MASTER_KEY_PREVIOUS"] as const;
-let cached: Keyring | undefined;
+// Shared on globalThis (like the db pool): Next bundles routes and actions as separate module copies, and the env vars are
+// deleted after the first read, so a per-module cache would leave every other copy without a key.
+const CACHE = Symbol.for("ytstudio.keyring");
+const slot = globalThis as unknown as Record<symbol, Keyring | undefined>;
 
 /**
  * With the default (process.env) the key variables are read ONCE, then deleted from process.env so child processes
@@ -14,17 +17,29 @@ let cached: Keyring | undefined;
  */
 export function loadKeyring(env?: Record<string, string | undefined>): Keyring {
   if (env) return build(env);
-  if (cached) return cached;
+  if (slot[CACHE]) return slot[CACHE];
   const taken = { VAULT_MASTER_KEY: process.env.VAULT_MASTER_KEY, VAULT_MASTER_KEY_PREVIOUS: process.env.VAULT_MASTER_KEY_PREVIOUS };
   for (const n of NAMES) delete process.env[n]; // scrub even if parsing fails below
-  return (cached = build(taken));
+  return (slot[CACHE] = build(taken));
 }
 
 // Empty string is treated as missing; makeKeyring throws a generic VaultError("bad_key") and never echoes the value.
 function build(env: Record<string, string | undefined>): Keyring {
-  return makeKeyring(env.VAULT_MASTER_KEY ?? "", env.VAULT_MASTER_KEY_PREVIOUS || undefined);
+  return freezeRing(makeKeyring(env.VAULT_MASTER_KEY ?? "", env.VAULT_MASTER_KEY_PREVIOUS || undefined));
+}
+
+// The ring is shared process-wide: nothing may swap the current key or edit the key map. (The key Buffers themselves
+// cannot be frozen in JS; they are never handed out except to the crypto calls.)
+function freezeRing(ring: Keyring): Keyring {
+  const refuse = (): never => {
+    throw new TypeError("the keyring is read-only");
+  };
+  for (const k of ring.byId.values()) Object.freeze(k);
+  const byId = new Map(ring.byId);
+  Object.defineProperties(byId, { set: { value: refuse }, delete: { value: refuse }, clear: { value: refuse } });
+  return Object.freeze({ current: ring.current, byId });
 }
 
 export function resetKeyringCacheForTests(): void {
-  cached = undefined;
+  slot[CACHE] = undefined;
 }

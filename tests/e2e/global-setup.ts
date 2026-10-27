@@ -1,6 +1,6 @@
 import os from "node:os";
 import { execFile } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { generateMasterKey } from "@/server/core/vault-crypto";
@@ -35,6 +35,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const port = process.env.E2E_PORT!;
   // The server runs as the least-privilege app role; migrations run as the owner (see migrate-cli.mts).
   const appUrl = withRole(infra.databaseUrl, "ytstudio_app", E2E_APP_PW);
+  const storageRoot = path.join(os.tmpdir(), `ytstudio-e2e-storage-${port}`);
+  await rm(storageRoot, { recursive: true, force: true });
+  await mkdir(storageRoot, { recursive: true });
+  process.env.E2E_STORAGE_ROOT = storageRoot; // workers inherit it
   const vaultKey = generateMasterKey(); // throwaway key for the throwaway database (settings/keys page)
   process.env.E2E_VAULT_MASTER_KEY = vaultKey; // workers inherit it so specs can seed real ciphertext
   const env = {
@@ -51,6 +55,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     AUTH_MAX_IN_FLIGHT: "1",
     UPLOAD_MAX_BYTES: String(50 * 1024 * 1024), // lets the oversize test stay small
     UPLOAD_DIR: path.join(os.tmpdir(), `ytstudio-e2e-uploads-${port}`),
+    STORAGE_ROOT: storageRoot, // media route specs write real files here and read them back through signed URLs
   };
   process.env.E2E_SERVER_LOG = path.join(os.tmpdir(), `ytstudio-e2e-server-${port}.log`);
   process.env.E2E_DATABASE_URL = appUrl; // workers inherit it (tests/e2e/fixtures/sessions.ts)
@@ -69,6 +74,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     return async () => {
       await server.stop();
       await infra.stop();
+      await rm(storageRoot, { recursive: true, force: true });
     };
   } catch (error) {
     await infra.stop();
