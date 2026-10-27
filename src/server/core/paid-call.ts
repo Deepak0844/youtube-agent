@@ -5,6 +5,7 @@ import { callKey } from "./spend";
 // Behaviour table (call key = stageRunId:stepIndex:toolCallIndex, also the provider idempotency key):
 //   reserve -> refused "cap"                 : throw BudgetRefusedError; provider NOT called.
 //   reserve -> refused "stale_fence"         : throw LeaseLostError; provider NOT called.
+//   reserve -> refused "cancel_requested"    : throw CancelRequestedError; provider NOT called.
 //   reserve -> new                           : call provider with idempotencyKey = call key.
 //       provider ok                          : settle(actual, result, providerRef), return result.
 //       provider throws KnownFailure         : failKnown(safeReason(err)) (reservation released), rethrow the ORIGINAL
@@ -143,6 +144,13 @@ export class BudgetRefusedError extends Error {
   }
 }
 
+export class CancelRequestedError extends Error {
+  constructor(public readonly callKey: string) {
+    super(`cancel requested; refusing paid call ${callKey}`);
+    this.name = "CancelRequestedError";
+  }
+}
+
 export class LeaseLostError extends Error {
   constructor(public readonly callKey: string) {
     super(`lease lost; refusing paid call ${callKey}`);
@@ -177,7 +185,7 @@ export type ReserveOutcome =
       intentId: string;
       reservedMicroUsd: number;
     }
-  | { kind: "refused"; reason: "cap" | "stale_fence" };
+  | { kind: "refused"; reason: "cap" | "stale_fence" | "cancel_requested" };
 
 export interface PaidCallPorts {
   reserve(
@@ -272,6 +280,7 @@ export async function runPaidCall<T>(
   });
 
   if (r.kind === "refused") {
+    if (r.reason === "cancel_requested") throw new CancelRequestedError(key);
     throw r.reason === "cap" ? new BudgetRefusedError(key) : new LeaseLostError(key);
   }
   if (r.kind === "new") return execute(r.intentId);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildEngineConfig } from "@/server/core/engine-config";
 import type { PaidCallPorts } from "@/server/core/paid-call";
 import { runStageWith, type StageClaim, type StageRunnerDeps, type StageRunnerPorts } from "@/server/core/stage-runner";
@@ -92,7 +92,7 @@ describe("stage handler contract", () => {
 
   it("cancel_during_a_paid_call_returns_promptly_even_if_the_provider_ignores_the_signal", async () => {
     let calls = 0;
-    const { ports, spy } = setup({ cancelRequested: async () => true, cancel: async () => "needs_decision" });
+    const { ports, spy } = setup({ cancelRequested: async () => calls > 0, cancel: async () => "needs_decision" });
     const started = Date.now();
     const o = await runStageWith(
       ports,
@@ -181,6 +181,110 @@ describe("stage handler contract", () => {
     const o = await runStageWith(ports, deps((ctx) => whenAborted(ctx), { config: { ...baseConfig, timeoutStageS: 0.03 } }), job);
     expect(o.kind).toBe("timed_out");
     expect(spy.timeOuts).toEqual(["stage_timeout"]);
+    expect(spy.commits).toEqual([]);
+  });
+
+  it.each(["stage_timeout", "cancel", "lease_lost", "shutdown"] as const)(
+    "abandons_a_handler_that_ignores_%s_and_stops_heartbeats",
+    async (why) => {
+      vi.useFakeTimers();
+      try {
+        const shutdown = new AbortController();
+        let beats = 0;
+        let rejectHandler!: (e: Error) => void;
+        const { ports, spy } = setup({
+          heartbeat: async () => { beats++; return why !== "lease_lost"; },
+          cancelRequested: async () => why === "cancel",
+        });
+        const running = runStageWith(ports, deps(() => new Promise((_, reject) => { rejectHandler = reject; }), {
+          config: { ...baseConfig, timeoutStageS: 0.02 },
+          shutdownSignal: shutdown.signal,
+        }), job);
+        let outcome: string | undefined;
+        void running.then((o) => { outcome = o.kind; });
+        await vi.advanceTimersByTimeAsync(1);
+        if (why === "shutdown") shutdown.abort();
+        await vi.advanceTimersByTimeAsync(40);
+        expect(outcome).toBe(why === "stage_timeout" ? "timed_out" : why === "cancel" ? "cancelled" : "lease_lost");
+        const stoppedAt = beats;
+        await vi.advanceTimersByTimeAsync(100);
+        expect(beats).toBe(stoppedAt);
+        rejectHandler(new Error("late handler failure"));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(spy.commits).toEqual([]);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(["before_claim", "during_claim"])("shutdown_%s_never_invokes_work", async (when) => {
+    const shutdown = new AbortController();
+    let claims = 0;
+    let handlers = 0;
+    let calls = 0;
+    const { ports, spy } = setup({ claim: async () => {
+      claims++;
+      if (when === "during_claim") shutdown.abort();
+      return claim;
+    } });
+    if (when === "before_claim") shutdown.abort();
+    const o = await runStageWith(ports, deps(async (ctx) => {
+      handlers++;
+      return ctx.paid(stepOf(), async () => { calls++; return out(1); });
+    }, { shutdownSignal: shutdown.signal }), job);
+    expect(o.kind).toBe(when === "before_claim" ? "noop" : "lease_lost");
+    expect(claims).toBe(when === "before_claim" ? 0 : 1);
+    expect(handlers).toBe(0);
+    expect(calls).toBe(0);
+    expect(spy.reserves).toEqual([]);
+  });
+
+  it("legacy_steps_stop_after_cancel_and_allow_inflight_spend_to_settle", async () => {
+    let finish!: (value: ReturnType<typeof out>) => void;
+    let calls = 0;
+    let settles = 0;
+    let cancel = false;
+    const { ports, spy } = setup({ cancelRequested: async () => cancel, cancel: async () => "needs_decision" });
+    ports.paid.settle = async () => { settles++; };
+    const running = runStageWith(ports, {
+      ...deps(async () => null), handler: undefined,
+      stepsFor: () => [0, 1].map((stepIndex) => ({ ...stepOf(), stepIndex, toolCallIndex: 0 })),
+      provider: { call: async () => {
+        calls++;
+        if (calls > 1) return out(5);
+        return new Promise((resolve) => { finish = resolve; });
+      } },
+    }, job);
+    while (!calls) await sleep(1);
+    cancel = true;
+    await sleep(30);
+    finish(out(5));
+    const o = await running;
+    await sleep(1);
+    expect(o.kind).toBe("needs_decision");
+    expect(calls).toBe(1);
+    expect(settles).toBe(1);
+    expect(spy.reserves).toHaveLength(1);
+    expect(spy.commits).toEqual([]);
+  }, 1000);
+
+  it.each(["handler", "legacy"])("%s_checks_abort_after_a_delayed_reserve_before_provider", async (mode) => {
+    let calls = 0;
+    const { ports, spy } = setup({ cancelRequested: async () => true, cancel: async () => "needs_decision" });
+    const reserve = ports.paid.reserve;
+    ports.paid.reserve = async (...args) => { await sleep(40); return reserve(...args); };
+    const o = await runStageWith(ports, {
+      ...deps((ctx) => ctx.paid(stepOf(), async () => { calls++; return out(1); })),
+      ...(mode === "legacy" ? {
+        handler: undefined,
+        stepsFor: () => [{ ...stepOf(), stepIndex: 0, toolCallIndex: 0 }],
+      } : {}),
+      provider: { call: async () => { calls++; return out(1); } },
+    }, job);
+    await sleep(60);
+    expect(o.kind).toBe("needs_decision");
+    expect(calls).toBe(0);
     expect(spy.commits).toEqual([]);
   });
 

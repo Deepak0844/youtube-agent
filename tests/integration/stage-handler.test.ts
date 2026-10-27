@@ -140,6 +140,52 @@ describe("stage handler on Postgres", () => {
     expect((await db.pool.query("select count(*)::int n from spend_intents")).rows[0].n).toBe(0);
   });
 
+  it.each(["handler", "legacy"])("%s_cannot_reserve_the_next_call_after_cancel_before_the_next_heartbeat", async (mode) => {
+    const id = await newStage();
+    const handler: StageHandler = async (ctx) => {
+      await ctx.paid(step(), (key) => provider.call(key));
+      await requestCancel(db.pool, id);
+      return ctx.paid(step(), (key) => provider.call(key));
+    };
+    const o = await runStage(db.pool, deps(handler, {
+      ttlMs: 60_000,
+      ...(mode === "legacy" ? {
+        handler: undefined,
+        stepsFor: () => [0, 1].map((stepIndex) => ({ ...step(), stepIndex, toolCallIndex: 0 })),
+        provider: { call: async (key) => {
+          const result = await provider.call(key);
+          await requestCancel(db.pool, id);
+          return result;
+        } },
+      } : {}),
+    }), job(id));
+    expect(o.kind).toBe("cancelled");
+    expect(await statusOf(id)).toBe("cancelled");
+    expect(await provider.dbCalls(callKey(id, 0, 0))).toBe(1);
+    expect(await provider.dbCalls(callKey(id, 1, 0))).toBe(0);
+    expect(await intentStatus(id, 1)).toBeUndefined();
+    expect((await getBudget(db.pool, "g"))?.reservedMicroUsd).toBe(0);
+  });
+
+  it.each(["handler", "legacy"])("%s_checks_cancellation_after_reserve_before_invoking_the_provider", async (mode) => {
+    const id = await newStage();
+    const o = await runStage(db.pool, deps((ctx) => ctx.paid(step(), (key) => provider.call(key)), {
+      ttlMs: 60_000,
+      ...(mode === "legacy" ? {
+        handler: undefined,
+        stepsFor: () => [{ ...step(), stepIndex: 0, toolCallIndex: 0 }],
+      } : {}),
+    }), job(id), { paid: (base) => ({ ...base, reserve: async (...args) => {
+      const reservation = await base.reserve(...args);
+      await requestCancel(db.pool, id);
+      return reservation;
+    } }) });
+    expect(o.kind).toBe("needs_decision");
+    expect(await statusOf(id)).toBe("needs_decision");
+    expect(await intentStatus(id, 0)).toBe("unknown");
+    expect(await provider.dbCalls(callKey(id, 0, 0))).toBe(0);
+  });
+
   it("provider_timeout_aborts_and_parks_needs_decision_never_retries", async () => {
     const id = await newStage();
     const slow = createFakeProvider({ pool: db.pool, script: { [callKey(id, 0, 0)]: hangs(400) } });
@@ -247,6 +293,26 @@ describe("cancelStage / timeoutStage (fenced)", () => {
     expect(await cancelStage(db.pool, { ...claim, fence: claim.fence + 1 })).toBe("rejected");
     expect(await cancelStage(db.pool, { ...claim, workerId: "other" })).toBe("rejected");
     expect(await statusOf(id)).toBe("running");
+  });
+
+  it("reserve_refuses_cancel_requested_under_the_stage_lock_without_changing_budgets", async () => {
+    const { id, claim } = await running();
+    // Hold the cancellation uncommitted: reserve must wait for the stage lock, then see the flag.
+    const canceller = await db.pool.connect();
+    try {
+      await canceller.query("begin");
+      await requestCancel(canceller, id);
+      const reservation = reserveIntent(db.pool, claim, {
+        stepIndex: 0, toolCallIndex: 0, reserveMicroUsd: 1000, budgetScopes: ["g"],
+      });
+      await canceller.query("commit");
+      expect(await reservation).toEqual({ kind: "refused", reason: "cancel_requested" });
+      expect(await intentStatus(id, 0)).toBeUndefined();
+      expect((await getBudget(db.pool, "g"))?.reservedMicroUsd).toBe(0);
+    } finally {
+      await canceller.query("rollback");
+      canceller.release();
+    }
   });
 
   it("an_open_intent_parks_needs_decision_and_keeps_the_reservation", async () => {

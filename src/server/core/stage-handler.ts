@@ -57,6 +57,7 @@ export function createStageContext(args: {
   config: EngineConfig;
   signal: AbortSignal;
   paid: PaidCallPorts;
+  beforeCall?: () => Promise<void>;
 }): ContextInternals {
   const { stage, claim, config, signal } = args;
   let step = 0;
@@ -95,7 +96,8 @@ export function createStageContext(args: {
           budgetScopes: s.budgetScopes,
           kind: s.kind,
         },
-        (key) => {
+        async (key) => {
+          await args.beforeCall?.();
           // The reserve may have outlasted a cancel: never reach the provider with an already-abandoned signal.
           if (callCtl.signal.aborted) return Promise.reject(callCtl.signal.reason);
           timer = setTimeout(() => callCtl.abort(new StageAbort("provider_timeout")), timeoutMs);

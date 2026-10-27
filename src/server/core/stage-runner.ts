@@ -1,5 +1,6 @@
 import {
   BudgetRefusedError,
+  CancelRequestedError,
   KnownFailure,
   LeaseLostError,
   NeedsDecisionError,
@@ -97,6 +98,7 @@ export type StageOutcome =
 
 export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDeps, job: StageJob): Promise<StageOutcome> {
   if (deps.handler && !deps.config) throw new Error("stage handler requires engine config");
+  if (deps.shutdownSignal?.aborted) return { kind: "noop" };
   const handlerConfig = deps.config;
   const claim = await ports.claim({ id: job.stageRunId, inputHash: job.inputHash, workerId: deps.workerId, ttlMs: deps.ttlMs });
   if (!claim) return { kind: "noop" };
@@ -105,9 +107,35 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
   let cancelSeen = false;
   let stopped = false; // set once the attempt has finished its work: a finished attempt must not extend the lease
   let releaseFailed = false;
+  const ctl = new AbortController();
+  const abort = (why: ConstructorParameters<typeof StageAbort>[0]) => {
+    if (!ctl.signal.aborted) ctl.abort(new StageAbort(why));
+    stopped = true;
+    clearInterval(timer);
+  };
+  const checkActive = () => {
+    if (ctl.signal.aborted) throw ctl.signal.reason;
+  };
+  const beforeCall = async () => {
+    checkActive();
+    if (ports.cancelRequested && await ports.cancelRequested(claim)) {
+      cancelSeen = true;
+      abort("cancel");
+    }
+    checkActive();
+  };
   // Observe (never hide) a failed reservation release; the wrapper still warns and rethrows the original error.
   const paid: PaidCallPorts = {
     ...ports.paid,
+    reserve: async (c, args) => {
+      checkActive();
+      const reservation = await ports.paid.reserve(c, args);
+      if (reservation.kind === "refused" && reservation.reason === "cancel_requested") {
+        cancelSeen = true;
+        abort("cancel");
+      }
+      return reservation;
+    },
     failKnown: async (intentId, reason) => {
       try {
         await ports.paid.failKnown(intentId, reason);
@@ -117,24 +145,19 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
       }
     },
   };
-  const ctl = new AbortController();
-  const abort = (why: ConstructorParameters<typeof StageAbort>[0]) => {
-    if (!ctl.signal.aborted) ctl.abort(new StageAbort(why));
-  };
-  const onShutdown = () => abort("shutdown");
-  deps.shutdownSignal?.addEventListener("abort", onShutdown, { once: true });
   let polling = false;
   const timer = setInterval(() => {
     if (stopped || polling) return;
     polling = true;
     ports.heartbeat(claim, deps.ttlMs).then(async (alive) => {
+        if (stopped) return;
         if (!alive) {
           leaseLost = true;
           abort("lease_lost");
           clearInterval(timer);
           return;
         }
-        if (ports.cancelRequested && await ports.cancelRequested(claim)) {
+        if (ports.cancelRequested && await ports.cancelRequested(claim) && !stopped) {
           cancelSeen = true;
           abort("cancel");
           clearInterval(timer);
@@ -147,29 +170,50 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
       }).finally(() => { polling = false; });
   }, Math.max(1, Math.floor(deps.ttlMs / 3)));
 
+  const onShutdown = () => abort("shutdown");
+  deps.shutdownSignal?.addEventListener("abort", onShutdown, { once: true });
+  // AbortSignal does not replay an event that fired while claim was pending.
+  if (deps.shutdownSignal?.aborted) onShutdown();
+
   let stageTimer: ReturnType<typeof setTimeout> | undefined;
   if (deps.handler) {
     stageTimer = setTimeout(() => abort("stage_timeout"), handlerConfig!.timeoutStageS * 1000);
   }
 
+  let onAbandon: (() => void) | undefined;
   try {
-    const stage = await ports.getStage(job.stageRunId);
-    if (!stage) throw new Error(`stage ${job.stageRunId} vanished after claim`);
-    let result: unknown;
+    checkActive();
+    // The handler may ignore its signal forever. Abandon execution promptly, stop the heartbeat, and observe
+    // late rejection. Already-started paid calls keep settling in the background; guards prevent new spend.
+    const abandoned = new Promise<never>((_, reject) => {
+      onAbandon = () => reject(ctl.signal.reason);
+      ctl.signal.addEventListener("abort", onAbandon, { once: true });
+    });
     let providerTimedOut = false;
-    if (deps.handler) {
-      const internals = createStageContext({ stage, claim, config: handlerConfig!, signal: ctl.signal, paid });
-      result = await deps.handler(internals.ctx);
-      providerTimedOut = internals.providerTimedOut();
-    } else {
+    const execution = (async () => {
+      const stage = await ports.getStage(job.stageRunId);
+      checkActive();
+      if (!stage) throw new Error(`stage ${job.stageRunId} vanished after claim`);
+      if (deps.handler) {
+        const internals = createStageContext({ stage, claim, config: handlerConfig!, signal: ctl.signal, paid, beforeCall });
+        const result = await deps.handler(internals.ctx);
+        providerTimedOut = internals.providerTimedOut();
+        return result;
+      }
       if (!deps.stepsFor) throw new Error("stage runner requires handler or stepsFor");
       const results: unknown[] = [];
       for (const step of deps.stepsFor(stage)) {
-        if (leaseLost) return { kind: "lease_lost", claim };
-        results.push(await runPaidCall(paid, { claim, ...step }, (key) => deps.provider.call(key, step)));
+        checkActive();
+        results.push(await runPaidCall(paid, { claim, ...step }, async (key) => {
+          await beforeCall();
+          checkActive();
+          return deps.provider.call(key, step);
+        }));
       }
-      result = { steps: results };
-    }
+      return { steps: results };
+    })();
+    execution.catch(() => {});
+    const result = await Promise.race([execution, abandoned]);
     stopped = true;
     if (providerTimedOut) {
       const outcome = await ports.timeOut!(claim, "provider_timeout");
@@ -182,7 +226,7 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
     stopped = true;
     const why = err instanceof StageAbort ? err.why : ctl.signal.reason instanceof StageAbort ? ctl.signal.reason.why : null;
     if (why === "lease_lost" || leaseLost) return { kind: "lease_lost", claim };
-    if (why === "cancel" || cancelSeen) {
+    if (why === "cancel" || cancelSeen || err instanceof CancelRequestedError) {
       const outcome = await ports.cancel!(claim);
       if (outcome === "rejected") return { kind: "lease_lost", claim };
       return { kind: outcome === "needs_decision" ? "needs_decision" : "cancelled", claim };
@@ -210,5 +254,6 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
     clearInterval(timer);
     if (stageTimer) clearTimeout(stageTimer);
     deps.shutdownSignal?.removeEventListener("abort", onShutdown);
+    if (onAbandon) ctl.signal.removeEventListener("abort", onAbandon);
   }
 }
