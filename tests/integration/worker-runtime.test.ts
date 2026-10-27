@@ -38,14 +38,14 @@ function boot(opts: Partial<WorkerOptions> = {}) {
 
 describe("worker runtime with Postgres and Redis", () => {
   it("job_for_unknown_stage_name_fails_cleanly", async () => {
-    const worker = boot(); await worker.ready;
+    const worker = boot({ handlers: { render: async () => ({}) } }); await worker.ready;
     const id = await stage("unrecognised"); await queue.enqueue(id, 0, 0, "h1");
     await waitFor(async () => (await getStage(db.pool, id))?.status === "failed", "unknown stage failed");
     expect((await getStage(db.pool, id))?.result).toMatchObject({ error: expect.stringContaining("unknown stage") });
   });
 
   it("missing_stage_handler_is_terminal_without_provider_fallback", async () => {
-    const worker = boot(); await worker.ready;
+    const worker = boot({ handlers: { render: async () => ({}) } }); await worker.ready;
     const id = await stage(); await queue.enqueue(id, 0, 0, "h1");
     await waitFor(async () => (await getStage(db.pool, id))?.status === "failed", "missing handler failed");
     expect((await getStage(db.pool, id))?.result).toEqual({ error: "known_failure: missing stage handler: draft" });
@@ -53,16 +53,45 @@ describe("worker runtime with Postgres and Redis", () => {
   });
 
   it("failed_stage_writes_one_in_app_notification_and_a_throwing_notifier_does_not_break_the_job", async () => {
-    const worker = boot(); await worker.ready;
+    const worker = boot({ handlers: { render: async () => ({}) } }); await worker.ready;
     const id = await stage(); await queue.enqueue(id, 0, 0, "h1");
     await waitFor(async () => (await db.pool.query("select 1 from notifications")).rowCount === 1, "failure notified");
     const rows = (await db.pool.query("select event, to_state, video_id, transition_id from notifications")).rows;
     expect(rows).toEqual([{ event: "video_failed", to_state: "failed", video_id: (await getStage(db.pool, id))!.videoId, transition_id: expect.stringMatching(new RegExp(`^${id}\\.\\d+$`)) }]);
     // A notifier that throws must not change the stage outcome.
     const id2 = await stage();
-    const bad = boot({ hooks: { notify: async () => { throw new Error("boom"); } } }); await bad.ready;
+    const bad = boot({ handlers: { render: async () => ({}) }, hooks: { notify: async () => { throw new Error("boom"); } } }); await bad.ready;
     await queue.enqueue(id2, 0, 0, "h1");
     await waitFor(async () => (await getStage(db.pool, id2))?.status === "failed", "still failed");
+  });
+
+  it("worker_without_handlers_leaves_rows_queued_and_does_not_advance", async () => {
+    const advanceAll = vi.fn(async () => {}); const log = vi.fn();
+    const worker = boot({ log, intervalMs: 20, hooks: { advanceAll } }); await worker.ready;
+    const id = await stage(); await queue.enqueue(id, 0, 0, "h1");
+    await waitFor(async () => log.mock.calls.some((c) => c[0] === "reconcile ok"), "loop ran");
+    await new Promise((r) => setTimeout(r, 200));
+    expect((await getStage(db.pool, id))?.status).toBe("queued");
+    expect(advanceAll).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("no stage handlers registered"));
+  });
+
+  it("reconciler_parked_and_failed_stages_notify_the_owner_once", async () => {
+    const a = await stage(); const b = await stage();
+    const reconcileFn = vi.fn(async () => ({ requeued: [], reenqueued: [], needsDecision: [a], failed: [b], cancelled: [], enqueueFailed: [] }));
+    const worker = boot({ intervalMs: 20, hooks: { reconcile: reconcileFn } }); await worker.ready;
+    await waitFor(async () => (await db.pool.query("select 1 from notifications")).rowCount === 2, "both notified");
+    await new Promise((r) => setTimeout(r, 100)); // further ticks must not add rows
+    const rows = (await db.pool.query("select event, to_state from notifications order by event")).rows;
+    expect(rows).toEqual([{ event: "needs_decision", to_state: "needs_decision" }, { event: "video_failed", to_state: "failed" }]);
+  });
+
+  it("clean_stop_waits_for_the_in_flight_job_to_commit", async () => {
+    const started = deferred();
+    const worker = boot({ handlers: { draft: async () => { started.resolve(); await new Promise((r) => setTimeout(r, 400)); return { ok: true }; } } }); await worker.ready;
+    const id = await stage(); await queue.enqueue(id, 0, 0, "h1");
+    await started.promise; await worker.stop();
+    expect((await getStage(db.pool, id))?.status).toBe("succeeded");
   });
 
   it("worker_starts_stops_and_logs_without_redis_when_redis_is_down", async () => {

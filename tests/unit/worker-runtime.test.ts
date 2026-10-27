@@ -87,7 +87,7 @@ describe("worker runtime", () => {
       close: closeQueue,
     } as unknown as StageQueue;
     const worker = startWorker({
-      pool: { end } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log: vi.fn(), shutdownTimeoutMs: 100,
+      pool: { end } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log: vi.fn(), shutdownTimeoutMs: 100, handlers: { render: async () => ({}) },
       hooks: {
         connectQueue: async () => queue,
         loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
@@ -99,11 +99,35 @@ describe("worker runtime", () => {
     await worker.ready;
     void processor({ stageRunId: "stage", inputHash: "h1" }, "job");
     const stopped = worker.stop(); expect(worker.stop()).toBe(stopped);
-    expect(pause).toHaveBeenCalledTimes(1); expect(signal.aborted).toBe(true);
-    await vi.advanceTimersByTimeAsync(99); expect(closeConsumer).not.toHaveBeenCalled();
+    expect(pause).toHaveBeenCalledTimes(1); expect(signal.aborted).toBe(false); // graceful first
+    await vi.advanceTimersByTimeAsync(50); expect(signal.aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(49); expect(closeConsumer).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1); await stopped;
     expect(closeConsumer).toHaveBeenCalledWith(true); expect(closeQueue).toHaveBeenCalledWith(true);
     expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it("teardown_gets_its_own_fresh_timeout_after_a_slow_drain", async () => {
+    vi.useFakeTimers();
+    const end = vi.fn(() => new Promise<void>(() => {}));
+    let processor!: (job: StageJob, id: string) => Promise<void>;
+    const queue = { startWorker: (h: typeof processor) => { processor = h; return { pause: async () => {}, close: async () => {} }; }, close: async () => {}, disconnect: async () => {} } as unknown as StageQueue;
+    const log = vi.fn();
+    const worker = startWorker({
+      pool: { end } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log, shutdownTimeoutMs: 100, handlers: { render: async () => ({}) },
+      hooks: {
+        connectQueue: async () => queue,
+        loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
+        checkVault: async () => "ok", reconcile: async () => {}, advanceAll: async () => {}, markStalled: async () => {},
+        runStage: async () => new Promise(() => {}),
+      },
+    });
+    await worker.ready; void processor({ stageRunId: "s", inputHash: "h" }, "j");
+    const stopped = worker.stop(); let done = false; void stopped.then(() => { done = true; });
+    await vi.advanceTimersByTimeAsync(100); // drain limit (50 graceful + 50 after abort) hit, teardown started and still blocked
+    expect(end).toHaveBeenCalledTimes(1); expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(100); await stopped; // teardown's own 100 ms
+    expect(done).toBe(true);
   });
 
   it("database_maintenance_runs_immediately_and_each_tick_while_redis_is_down", async () => {
@@ -132,7 +156,7 @@ describe("worker runtime", () => {
     const end = vi.fn(() => new Promise<void>(() => {}));
     const queue = { startWorker: () => ({ pause: async () => {}, close: closeConsumer }), close: closeQueue } as unknown as StageQueue;
     const worker = startWorker({
-      pool: { end } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log: vi.fn(), shutdownTimeoutMs: 100,
+      pool: { end } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log: vi.fn(), shutdownTimeoutMs: 100, handlers: { render: async () => ({}) },
       hooks: {
         connectQueue: async () => queue,
         loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
@@ -146,6 +170,26 @@ describe("worker runtime", () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(await Promise.race([result, Promise.resolve("still pending")])).toBe("stopped");
     expect(closeConsumer).toHaveBeenCalledTimes(1); expect(closeQueue).toHaveBeenCalledTimes(1); expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it("maintenance_failure_logs_the_real_error_and_never_says_reconcile_ok", async () => {
+    const log = vi.fn();
+    const worker = startWorker({
+      pool: { end: vi.fn().mockResolvedValue(undefined) } as unknown as WorkerOptions["pool"], redisUrl: "redis://x", log, intervalMs: 1_000_000,
+      handlers: { render: async () => ({}) },
+      hooks: {
+        connectQueue: async () => ({ startWorker: () => ({ close: async () => {} }), liveJobIds: async () => new Set<string>(), close: async () => {} }) as unknown as StageQueue,
+        loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 1, concurrentRenders: 1 }),
+        checkVault: async () => "ok",
+        reconcile: async () => ({}), advanceAll: async () => {},
+        markStalled: async () => { throw new Error("stalled-boom"); },
+      },
+    });
+    await worker.ready; await tick();
+    expect(log.mock.calls.map((c) => c[0]).join("\n")).toContain("stalled-boom");
+    expect(log).not.toHaveBeenCalledWith("reconcile ok");
+    expect(log).not.toHaveBeenCalledWith("waiting for Redis");
+    await worker.stop();
   });
 
   it("env_file_missing_gives_a_plain_error", () => {

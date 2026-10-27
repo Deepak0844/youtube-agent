@@ -4,7 +4,7 @@ export function startReconcileLoop(opts: { run(): Promise<void>; intervalMs?: nu
   let pending: Promise<void> | undefined;
   const tick = () => {
     if (stopped || pending) return;
-    pending = opts.run().catch(() => opts.log("reconcile failed; will retry")).finally(() => { pending = undefined; });
+    pending = opts.run().catch((err) => opts.log(`reconcile failed; will retry: ${String(err instanceof Error ? err.message : err).slice(0, 400)}`)).finally(() => { pending = undefined; });
   };
   tick();
   const timer = setInterval(tick, opts.intervalMs ?? 15_000);
