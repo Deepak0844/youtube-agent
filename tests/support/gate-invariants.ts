@@ -70,13 +70,13 @@ export type GateSuite = { suite: string } | { todoPhase: number };
  */
 export const GATE_SUITES: Record<GateId, GateSuite> = {
   outline: { todoPhase: GATE_ROADMAP_PHASE.outline },
-  script: { todoPhase: GATE_ROADMAP_PHASE.script },
-  cost: { todoPhase: GATE_ROADMAP_PHASE.cost },
+  script: { suite: "tests/integration/gates/script.test.ts" },
+  cost: { suite: "tests/integration/gates/cost.test.ts" },
   chapter: { todoPhase: GATE_ROADMAP_PHASE.chapter },
-  video: { todoPhase: GATE_ROADMAP_PHASE.video },
+  video: { suite: "tests/integration/gates/video.test.ts" },
   thumbnail: { todoPhase: GATE_ROADMAP_PHASE.thumbnail },
-  evidence: { todoPhase: GATE_ROADMAP_PHASE.evidence },
-  publish: { todoPhase: GATE_ROADMAP_PHASE.publish },
+  evidence: { suite: "tests/integration/gates/evidence.test.ts" },
+  publish: { suite: "tests/integration/gates/publish.test.ts" },
   comment_reply: { todoPhase: GATE_ROADMAP_PHASE.comment_reply },
   allow_public: { suite: "tests/unit/safety-settings-session-only.test.ts" }, // the flag is the safety setting policy.allow_public
   live_title: { todoPhase: GATE_ROADMAP_PHASE.live_title },
