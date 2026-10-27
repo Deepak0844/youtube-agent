@@ -4,7 +4,7 @@ import { Queue } from "bullmq";
 import { createJobQueue, type JobQueue } from "@/server/queue/job-queue";
 import { reconcile } from "@/server/db/reconciler";
 import { runStage } from "@/server/db/stage-runner-adapter";
-import { claimStage, commitStage, getStage, insertQueuedStage, type Claim } from "@/server/db/stages";
+import { claimStage, commitStage, getStage, insertQueuedStage, requestCancel, type Claim } from "@/server/db/stages";
 import { getBudget, reserveIntent } from "@/server/db/spend";
 import { stageJobId } from "@/server/core/job-id";
 import { callKey } from "@/server/core/spend";
@@ -281,5 +281,101 @@ describe("reconciler", () => {
     expect(await reconcile(db.pool, queue, { graceMs: 0 })).toMatchObject({ ...NONE, reenqueued: [id] });
     expect(await reconcile(db.pool, queue, { graceMs: 0 })).toMatchObject(NONE);
     expect(await queue.liveJobIds()).toEqual(new Set([stageJobId(id, 1, 2)]));
+  });
+
+  it("queued_row_over_max_attempts_with_pending_intent_is_parked_not_failed", async () => {
+    for (const intentStatus of ["pending", "unknown"]) {
+      const id = await newStage();
+      const c = await claim(id);
+      expect((await reserve(c)).kind).toBe("new");
+      await db.pool.query("update spend_intents set status=$2 where stage_run_id=$1", [id, intentStatus]);
+      // abnormal shape (queued with an open intent): must never be failed, that would hide held money
+      await db.pool.query(
+        "update stage_runs set status='queued', lease_owner=NULL, lease_until=NULL, attempt_seq=3 where id=$1",
+        [id],
+      );
+      await ageRow(id);
+      expect(await reconcile(db.pool, queue, { graceMs: 0, maxAttempts: 3 }), intentStatus).toMatchObject({
+        ...NONE,
+        needsDecision: [id],
+        failed: [],
+      });
+      expect((await getStage(db.pool, id))?.status, intentStatus).toBe("needs_decision");
+      const { rows } = await db.pool.query("select status from spend_intents where stage_run_id=$1", [id]);
+      expect(rows, intentStatus).toEqual([{ status: "unknown" }]);
+      expect((await queue.liveJobIds()).size).toBe(0);
+    }
+    expect((await getBudget(db.pool, "g"))?.reservedMicroUsd).toBe(2000);
+  });
+
+  it("queued_row_over_max_attempts_without_open_intent_still_fails", async () => {
+    const id = await newStage();
+    await db.pool.query("update stage_runs set attempt_seq=3 where id=$1", [id]);
+    await ageRow(id);
+    expect(await reconcile(db.pool, queue, { graceMs: 0, maxAttempts: 3 })).toMatchObject({ ...NONE, failed: [id] });
+    expect((await getStage(db.pool, id))?.status).toBe("failed");
+  });
+
+  it("reconciler_cancels_queued_rows_with_cancel_requested_and_enqueues_nothing", async () => {
+    const id = await newStage();
+    await requestCancel(db.pool, id);
+    await ageRow(id);
+    expect(await reconcile(db.pool, queue, { graceMs: 0 })).toMatchObject({ ...NONE, cancelled: [id] });
+    expect(await getStage(db.pool, id)).toMatchObject({ status: "cancelled", cancelRequested: true });
+    expect((await queue.liveJobIds()).size).toBe(0);
+    // inside the grace window too: a cancel never needs to wait
+    const fresh = await newStage();
+    await requestCancel(db.pool, fresh);
+    expect(await reconcile(db.pool, queue)).toMatchObject({ cancelled: [fresh] });
+  });
+
+  it("a_cancelled_queued_row_delivered_late_is_a_noop_and_spends_nothing", async () => {
+    const id = await newStage();
+    await requestCancel(db.pool, id);
+    const outcomes: StageOutcome[] = [];
+    startRunner(outcomes);
+    await queue.enqueue(id, 0, 0, H);
+    await waitFor(() => outcomes.length === 1, "delivery handled");
+    expect(outcomes[0]).toEqual({ kind: "noop" });
+    expect(await provider.dbCalls(callKey(id, 0, 0))).toBe(0);
+  });
+
+  it("queued_row_with_flag_and_open_intent_is_parked_by_the_reconciler", async () => {
+    const id = await newStage();
+    const c = await claim(id);
+    expect((await reserve(c)).kind).toBe("new");
+    await db.pool.query("update stage_runs set status='queued', lease_owner=NULL, lease_until=NULL where id=$1", [id]);
+    await requestCancel(db.pool, id);
+    expect(await reconcile(db.pool, queue, { graceMs: 0 })).toMatchObject({ ...NONE, needsDecision: [id], cancelled: [] });
+    expect((await getStage(db.pool, id))?.status).toBe("needs_decision");
+    const { rows } = await db.pool.query("select status from spend_intents where stage_run_id=$1", [id]);
+    expect(rows).toEqual([{ status: "unknown" }]);
+    expect((await queue.liveJobIds()).size).toBe(0);
+  });
+
+  it("expired_running_row_with_flag_is_requeued_then_cancelled_in_one_pass", async () => {
+    const id = await newStage();
+    await claim(id);
+    await requestCancel(db.pool, id);
+    await expireLease(id);
+    expect(await reconcile(db.pool, queue, { graceMs: 0 })).toMatchObject({ ...NONE, requeued: [id], cancelled: [id] });
+    expect((await getStage(db.pool, id))?.status).toBe("cancelled");
+    // the stale delivery from the requeue is a no-op and spends nothing
+    const outcomes: StageOutcome[] = [];
+    startRunner(outcomes);
+    await waitFor(() => outcomes.length === 1, "stale delivery handled");
+    expect(outcomes[0]).toEqual({ kind: "noop" });
+    expect(await provider.dbCalls(callKey(id, 0, 0))).toBe(0);
+  });
+
+  it("needs_decision_row_with_flag_is_left_untouched", async () => {
+    const id = await newStage();
+    await claim(id);
+    await db.pool.query("update stage_runs set status='needs_decision' where id=$1", [id]);
+    await requestCancel(db.pool, id);
+    await ageRow(id);
+    const before = await getStage(db.pool, id);
+    expect(await reconcile(db.pool, queue, { graceMs: 0 })).toMatchObject({ ...NONE, cancelled: [] });
+    expect(await getStage(db.pool, id)).toEqual(before);
   });
 });
