@@ -19,6 +19,7 @@ import { markStalled } from "@/server/db/uploads";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { createJobQueue, type StageQueue } from "@/server/queue/job-queue";
 import { createEventBus, type EventBus } from "@/server/queue/event-bus";
+import { pruneAgentSteps } from "@/server/db/agent-steps";
 import { emitEvent, pruneEvents, type EventType } from "@/server/db/events";
 import { openStageLog } from "@/server/logs/stage-log";
 import { storageRoot } from "@/server/db/system-status";
@@ -78,7 +79,7 @@ const defaults: WorkerHooks = {
   markStalled: (pool) => markStalled(pool, 60_000),
   // Retention for the events table through the owner-granted prune_events() (the app role cannot delete). One indexed
   // DELETE per loop tick.
-  prune: async (pool) => { await pruneEvents(pool); },
+  prune: async (pool) => { await pruneEvents(pool); await pruneAgentSteps(pool); },
   emitEvent, createEventBus,
   beforeStart: async () => {},
   sweepOrphans, holdWorkerLock, createChildRegistry,
