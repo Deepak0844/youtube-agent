@@ -53,6 +53,8 @@ export async function saveOwnGoogleApp(
   const client = await pool.connect();
   try {
     await client.query("begin");
+    // Serialise saves: the row lock below does not exist yet on a first save, and id and secret must be one writer's pair.
+    await client.query("select pg_advisory_xact_lock(hashtext('google_app.own'))");
     const cur = await client.query<{ client_id: string }>("select client_id from google_apps where kind = 'own' for update");
     const hasSecret = ((await client.query("select 1 from secrets where name = $1", [SECRET_NAME])).rowCount ?? 0) > 0;
     const parsed = googleAppInput(

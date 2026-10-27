@@ -1,7 +1,7 @@
 import type pg from "pg";
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { makeKeyring } from "@/server/core/vault-crypto";
+import { VaultError, makeKeyring } from "@/server/core/vault-crypto";
 import { SECRET_NAME } from "@/server/core/google-app";
 import { getSecret } from "@/server/db/vault";
 import { getOwnGoogleApp, saveOwnGoogleApp, testOwnGoogleApp, listLegacyGoogleApps } from "@/server/db/google-app";
@@ -82,8 +82,9 @@ describe("google app (app role)", () => {
     expect(a.rows.map((r) => r.event)).toEqual(["google_app.saved", "google_app.saved"]);
     const dump = JSON.stringify(a.rows) + logs.join("\n");
     for (const s of [SECRET, SECRET2, ID, "SuperSecretValue"]) expect(dump).not.toContain(s);
-    expect(a.rows[0].detail.changed).toEqual(["client_id", "client_secret"]);
-    expect(a.rows[1].detail.changed).toEqual(["client_secret"]);
+    // exact shape: names only, nothing else (a value, even a prefix of one, would break this)
+    expect(a.rows[0].detail).toEqual({ kind: "own", changed: ["client_id", "client_secret"] });
+    expect(a.rows[1].detail).toEqual({ kind: "own", changed: ["client_secret"] });
   });
 
   it("a failed audit rolls the whole save back", async () => {
@@ -123,5 +124,43 @@ describe("google app (app role)", () => {
 
   it("app role cannot alter the table", async () => {
     await expect(db.pool.query("alter table google_apps add column x int")).rejects.toThrow();
+  });
+
+  it("an oversize secret or id is refused: nothing stored or audited, old secret unchanged", async () => {
+    await saveOwnGoogleApp(db.pool, ring, { clientId: ID, clientSecret: SECRET });
+    const auditsBefore = (await db.ownerPool.query("select count(*)::int n from audit_log")).rows[0].n;
+    for (const input of [
+      { clientId: ID2, clientSecret: "s".repeat(400) },
+      { clientId: ID2, clientSecret: "s".repeat(5000) },
+      { clientId: `${"a".repeat(400)}.apps.googleusercontent.com`, clientSecret: SECRET2 },
+    ]) {
+      expect(await saveOwnGoogleApp(db.pool, ring, input)).toMatchObject({ ok: false, reason: "invalid" });
+    }
+    expect(await getSecret(db.pool, ring, SECRET_NAME)).toBe(SECRET);
+    expect((await getOwnGoogleApp(db.pool))!.clientId).toBe(ID);
+    expect((await db.ownerPool.query("select count(*)::int n from audit_log")).rows[0].n).toBe(auditsBefore);
+  });
+
+  it("a loader that throws (no master key) refuses and writes nothing", async () => {
+    const r = await saveOwnGoogleApp(db.pool, () => { throw new VaultError("bad_key"); }, { clientId: ID, clientSecret: SECRET });
+    expect(r).toEqual({ ok: false, reason: "vault" });
+    expect(await getOwnGoogleApp(db.pool)).toBeNull();
+    expect((await db.ownerPool.query("select count(*)::int n from secrets")).rows[0].n).toBe(0);
+  });
+
+  it("two simultaneous first saves and a concurrent replace leave one own row and a matching, decryptable pair", async () => {
+    const A = { clientId: ID, clientSecret: SECRET };
+    const B = { clientId: ID2, clientSecret: SECRET2 };
+    const rs = await Promise.all([saveOwnGoogleApp(db.pool, ring, A), saveOwnGoogleApp(db.pool, ring, B), saveOwnGoogleApp(db.pool, ring, { clientSecret: "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" })]);
+    expect(rs.every((r) => r.ok || r.reason === "invalid")).toBe(true);
+    expect((await db.ownerPool.query("select count(*)::int n from google_apps where kind = 'own'")).rows[0].n).toBe(1);
+    expect((await db.ownerPool.query("select count(*)::int n from secrets where name = $1", [SECRET_NAME])).rows[0].n).toBe(1);
+    const app = (await getOwnGoogleApp(db.pool))!;
+    const secret = await getSecret(db.pool, ring, SECRET_NAME);
+    // the last writer wins as a whole: A's id never sits beside B's secret
+    const okPair = (app.clientId === ID && secret === SECRET) || (app.clientId === ID2 && secret === SECRET2) || secret === "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";
+    expect(okPair).toBe(true);
+    const saved = rs.filter((r) => r.ok).length;
+    expect((await db.ownerPool.query("select count(*)::int n from audit_log where event = 'google_app.saved'")).rows[0].n).toBe(saved);
   });
 });

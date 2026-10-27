@@ -22,9 +22,16 @@ describe("validateClientSecret", () => {
 
 describe("redirect URI", () => {
   it("defaults to localhost:3000", () => expect(redirectUriFor(undefined)).toEqual({ ok: true, uri: `http://localhost:3000${CALLBACK_PATH}` }));
-  it("derives from APP_URL, dropping trailing slash and path", () => {
+  it("derives from APP_URL (a trailing slash is fine)", () => {
     expect(redirectUriFor("https://studio.example.com/")).toEqual({ ok: true, uri: `https://studio.example.com${CALLBACK_PATH}` });
-    expect(redirectUriFor("http://127.0.0.1:3000/x")).toMatchObject({ ok: true, uri: `http://127.0.0.1:3000${CALLBACK_PATH}` });
+    expect(redirectUriFor("http://127.0.0.1:3000")).toMatchObject({ ok: true, uri: `http://127.0.0.1:3000${CALLBACK_PATH}` });
+  });
+  it("refuses an APP_URL that has a path, query or fragment, with a clear message (never silently drops it)", () => {
+    for (const v of ["http://127.0.0.1:3000/x", "https://studio.example.com/studio", "https://studio.example.com/?a=1", "https://studio.example.com/#f"]) {
+      const r = redirectUriFor(v);
+      expect(r.ok, v).toBe(false);
+      if (!r.ok) expect(r.error).toContain("no path");
+    }
   });
   it.each(["http://studio.example.com", "ftp://localhost", "javascript:alert(1)", "http://10.0.0.5:3000", "https://user:pw@example.com", "nope", "http://localhost.evil.com"])("refuses %j", (v) => {
     expect(redirectUriFor(v).ok).toBe(false);
@@ -42,6 +49,18 @@ describe("maskClientId", () => {
     expect(m.startsWith("1234")).toBe(true);
     expect(m.endsWith(".apps.googleusercontent.com")).toBe(true);
     expect(m).not.toContain("abcdefghijklmnop");
+  });
+});
+
+describe("maskClientId case", () => {
+  it("masks an upper-case id the same way (the id check is case-insensitive)", () => {
+    const up = ID.toUpperCase();
+    expect(validateClientId(up).ok).toBe(true);
+    const m = maskClientId(up);
+    expect(m).not.toBe("…");
+    expect(m.startsWith("1234")).toBe(true);
+    expect(m).not.toContain("ABCDEFGHIJKLMNOP");
+    expect(m.toLowerCase().endsWith(".apps.googleusercontent.com")).toBe(true);
   });
 });
 

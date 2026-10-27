@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import pg from "pg";
 import { expect, test, type Page } from "@playwright/test";
 
+// NOTE: Playwright traces, screenshots and videos record what specs type (fill() values). Use throwaway strings only,
+// never a real Google client secret.
 const phone = (page: Page) => (page.viewportSize()?.width ?? 1440) < 768;
 
 test("page shows the redirect address, setup guide and an empty state", async ({ page }) => {
@@ -15,13 +17,30 @@ test("page shows the redirect address, setup guide and an empty state", async ({
   await expect(page.getByRole("link", { name: "Google app" }).first()).toBeAttached();
 });
 
-test("a wrong client id is refused in words and nothing is saved", async ({ page }) => {
+test("a refused save (bad client id, real-looking secret) never shows the secret anywhere", async ({ page }, info) => {
+  const SECRET = `GOCSPX-E2eRejectedSecret${info.project.name.replace(/\W/g, "")}Hn3vB6cX1`;
+  const bodies: string[] = [];
+  page.on("response", async (r) => {
+    try {
+      bodies.push(await r.text());
+    } catch {
+      /* redirects and streamed bodies */
+    }
+  });
   await page.goto("/settings/google");
   await page.waitForLoadState("networkidle");
   await page.getByLabel("Client ID").fill("not-a-google-id");
-  await page.getByLabel("Client secret").fill("GOCSPX-badidattempt0000000000000000");
+  await page.getByLabel("Client secret").fill(SECRET);
   await page.getByRole("button", { name: "Save to vault" }).click();
   await expect(page.getByText("does not look like a Google client ID")).toBeVisible();
+  await expect(page.getByText("Saved.")).toHaveCount(0);
+  // the secret is not in the DOM (markup or any field value), any response body, or the server log
+  expect(await page.content()).not.toContain(SECRET);
+  const values = await page.locator("input, textarea").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value));
+  expect(values.join("|")).not.toContain(SECRET);
+  expect(await page.locator("body").innerText()).not.toContain(SECRET);
+  for (const b of bodies) expect(b).not.toContain(SECRET);
+  expect(readFileSync(process.env.E2E_SERVER_LOG!, "utf8")).not.toContain(SECRET);
 });
 
 test("save, replace and check: the secret never comes back in a page, response, log or audit row", async ({ page }, info) => {
@@ -69,6 +88,11 @@ test("save, replace and check: the secret never comes back in a page, response, 
   try {
     const audit = await db.query("select event, detail from audit_log where event like 'google_app.%' order by id");
     expect(audit.rows.map((r) => r.event)).toEqual(expect.arrayContaining(["google_app.saved", "google_app.tested"]));
+    // exact detail shapes: names and booleans only, no value of any kind
+    for (const r of audit.rows) {
+      if (r.event === "google_app.saved") expect(Object.keys(r.detail).sort()).toEqual(["changed", "kind"]);
+      if (r.event === "google_app.tested") expect(r.detail).toEqual({ idOk: expect.any(Boolean), vaultOk: expect.any(Boolean), redirectOk: expect.any(Boolean) });
+    }
     const dump = JSON.stringify(audit.rows) + JSON.stringify((await db.query("select * from google_apps")).rows) + JSON.stringify((await db.query("select name, hint from secrets")).rows);
     for (const s of [SECRET, SECRET2, "E2eSecretValue", "E2eSecondValue"]) expect(dump).not.toContain(s);
     const ct = (await db.query("select ciphertext from secrets where name = 'google.app.client_secret'")).rows[0].ciphertext as Buffer;
