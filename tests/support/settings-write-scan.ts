@@ -8,11 +8,12 @@ import ts from "typescript";
 //      no alias import, alias const, .call/.apply, element access, destructure rename, spread, variable or type cast;
 //  (c) no file other than settings.ts may mention the `settings` table in SQL (any schema/quoting/ONLY/case, folded string
 //      concatenation, and the "settings" literal next to write keywords for string-built SQL).
-/** Files allowed to import the settings module. Empty on purpose: add a file here only together with a review of its calls. */
-export const SETTINGS_IMPORT_ALLOW: readonly string[] = [
-  // Reads network.local_services with getSetting to derive a model endpoint kind; never calls setSetting. Needs owner review.
-  "src/server/db/llm-models.ts",
-];
+/** Files allowed to import the settings module, each with the ONLY names it may import (an alias of a permitted name is fine).
+ *  Add a file here only together with a review of its calls. A permitted list never contains setSetting without that review. */
+export const SETTINGS_IMPORT_ALLOW: Readonly<Record<string, readonly string[]>> = {
+  // Reads network.local_services with getSetting to derive a model endpoint kind and uses the Actor type; never writes.
+  "src/server/db/llm-models.ts": ["getSetting", "Actor"],
+};
 
 const SETTINGS_MODULE = "src/server/db/settings";
 const OWNER_FILE = "src/server/db/settings.ts";
@@ -58,12 +59,12 @@ function badSessionCall(call: ts.CallExpression): string | null {
 }
 
 /** Problems found in one source file. `file` is repo-relative with forward slashes. */
-export function scanSettingsWrites(file: string, text: string, importAllow: readonly string[] = SETTINGS_IMPORT_ALLOW): string[] {
+export function scanSettingsWrites(file: string, text: string, importAllow: Readonly<Record<string, readonly string[]>> = SETTINGS_IMPORT_ALLOW): string[] {
   if (file === OWNER_FILE) return [];
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, kindFor(file));
   const out: string[] = [];
   const at = (n: ts.Node, msg: string) => out.push(`${file}:${sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1}: ${msg}`);
-  const allowed = importAllow.includes(file);
+  const permitted = Object.hasOwn(importAllow, file) ? importAllow[file]! : undefined;
   const strings: string[] = [];
   let hasSettingsLiteral = false;
   let hasWriteWord = false;
@@ -72,7 +73,13 @@ export function scanSettingsWrites(file: string, text: string, importAllow: read
     // (a) module references
     if ((ts.isImportDeclaration(n) || ts.isExportDeclaration(n)) && n.moduleSpecifier && ts.isStringLiteral(n.moduleSpecifier) && resolvesToSettings(file, n.moduleSpecifier.text)) {
       if (ts.isExportDeclaration(n)) at(n, "re-exports db/settings (hides setSetting from this scan)");
-      else if (!allowed) at(n, "imports db/settings but is not on SETTINGS_IMPORT_ALLOW");
+      else if (!permitted) at(n, "imports db/settings but is not on SETTINGS_IMPORT_ALLOW");
+      else {
+        const c = (n as ts.ImportDeclaration).importClause;
+        const b = c?.namedBindings;
+        if (!c || c.name || !b || !ts.isNamedImports(b)) at(n, "an allowed file may use only named imports from db/settings");
+        else for (const el of b.elements) if (!permitted.includes((el.propertyName ?? el.name).text)) at(el, `imports ${(el.propertyName ?? el.name).text} from db/settings, which this file is not permitted to`);
+      }
     }
     if (ts.isImportEqualsDeclaration(n) && ts.isExternalModuleReference(n.moduleReference) && ts.isStringLiteral(n.moduleReference.expression) && resolvesToSettings(file, n.moduleReference.expression.text)) {
       at(n, "import = require of db/settings");

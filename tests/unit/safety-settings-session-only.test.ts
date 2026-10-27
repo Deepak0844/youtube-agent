@@ -88,11 +88,13 @@ describe("no code path in src writes a safety setting as anything but a session"
   });
 
   it("the import allow-list is explicit (a new importer must be added here on purpose)", () => {
-    expect([...SETTINGS_IMPORT_ALLOW]).toEqual(["src/server/db/llm-models.ts"]); // read-only getSetting of network.local_services
+    // file -> the only names it may import. llm-models reads network.local_services (getSetting) and uses the Actor type.
+    expect(SETTINGS_IMPORT_ALLOW).toEqual({ "src/server/db/llm-models.ts": ["getSetting", "Actor"] });
+    for (const names of Object.values(SETTINGS_IMPORT_ALLOW)) expect(names).not.toContain("setSetting");
   });
 
   const OK = 'import { setSetting } from "@/server/db/settings";\nawait setSetting(db, k, v, { actor: "session" });';
-  const scan = (src: string, file = "src/app/x/actions.ts", allow: readonly string[] = [file]) => scanSettingsWrites(file, src, allow);
+  const scan = (src: string, file = "src/app/x/actions.ts", allow: Record<string, readonly string[]> = { [file]: ["setSetting"] }) => scanSettingsWrites(file, src, allow);
   const IMP = 'import { setSetting } from "@/server/db/settings";\n';
   const NS = 'import * as s from "@/server/db/settings";\n';
 
@@ -126,14 +128,40 @@ describe("no code path in src writes a safety setting as anything but a session"
       it(name, () => expect(scan(src), name).not.toEqual([]));
     }
     it("a relative import of db/settings from an unlisted file is flagged", () => {
-      expect(scan('import { setSetting } from "../../server/db/settings";', "src/app/x/actions.ts", [])).not.toEqual([]);
-      expect(scan('import { getSetting } from "./settings";', "src/server/db/other.ts", [])).not.toEqual([]);
+      expect(scan('import { setSetting } from "../../server/db/settings";', "src/app/x/actions.ts", {})).not.toEqual([]);
+      expect(scan('import { getSetting } from "./settings";', "src/server/db/other.ts", {})).not.toEqual([]);
     });
     it("an importer that is not on the allow-list is flagged even with a correct call", () => {
-      expect(scan(OK, "src/app/x/actions.ts", [])).not.toEqual([]);
+      expect(scan(OK, "src/app/x/actions.ts", {})).not.toEqual([]);
     });
     it("a mention in a comment or an unrelated string is not a call", () => {
-      expect(scan('// setSetting(db,k,v,{actor:"token"})\nconst s = "setSetting";', "src/lib/a.ts", [])).toEqual([]);
+      expect(scan('// setSetting(db,k,v,{actor:"token"})\nconst s = "setSetting";', "src/lib/a.ts", {})).toEqual([]);
+    });
+  });
+
+  describe("SELF-TEST: an allowed file may import only its permitted names", () => {
+    const F = "src/server/db/llm-models.ts";
+    const allow = { [F]: ["getSetting", "Actor"] };
+    const at = (src: string) => scanSettingsWrites(F, src, allow);
+    it("permitted names pass, aliases of permitted names too", () => {
+      expect(at('import { getSetting, type Actor } from "@/server/db/settings";')).toEqual([]);
+      expect(at('import { getSetting as g } from "@/server/db/settings";')).toEqual([]);
+    });
+    it("an allowed file importing setSetting is flagged (even with a correct call)", () => {
+      expect(at('import { getSetting, setSetting } from "@/server/db/settings";\nawait setSetting(db, k, v, { actor: "session" });')).not.toEqual([]);
+    });
+    it("any other name, default, namespace, side-effect import or re-export is flagged", () => {
+      for (const src of [
+        'import { SETTINGS } from "@/server/db/settings";',
+        'import d from "@/server/db/settings";',
+        'import * as s from "@/server/db/settings";',
+        'import "@/server/db/settings";',
+        'import { getSetting } from "@/server/db/settings";\nexport { getSetting } from "@/server/db/settings";',
+        'import { setSetting as getSetting } from "@/server/db/settings";',
+      ]) expect(at(src), src).not.toEqual([]);
+    });
+    it("an inherited object key is not an allow-list entry", () => {
+      expect(scanSettingsWrites("constructor", 'import { getSetting } from "@/server/db/settings";', {})).not.toEqual([]);
     });
   });
 
@@ -154,12 +182,12 @@ describe("no code path in src writes a safety setting as anything but a session"
       "select (read)": 'db.query("select value from settings")',
     };
     for (const [name, src] of Object.entries(sql)) {
-      it(name, () => expect(scanSettingsWrites("src/server/db/other.ts", src, []), name).not.toEqual([]));
+      it(name, () => expect(scanSettingsWrites("src/server/db/other.ts", src, {}), name).not.toEqual([]));
     }
     it("settings.ts itself and unrelated words are not flagged", () => {
-      expect(scanSettingsWrites("src/server/db/settings.ts", 'db.query("update settings set value = 1")', [])).toEqual([]);
-      expect(scanSettingsWrites("src/ui/nav.ts", 'const label = "Settings"; const href = "/settings/keys";', [])).toEqual([]);
-      expect(scanSettingsWrites("src/x.ts", 'db.query("select * from user_settings_cache")', [])).toEqual([]);
+      expect(scanSettingsWrites("src/server/db/settings.ts", 'db.query("update settings set value = 1")', {})).toEqual([]);
+      expect(scanSettingsWrites("src/ui/nav.ts", 'const label = "Settings"; const href = "/settings/keys";', {})).toEqual([]);
+      expect(scanSettingsWrites("src/x.ts", 'db.query("select * from user_settings_cache")', {})).toEqual([]);
     });
   });
 });
