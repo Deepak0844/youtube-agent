@@ -5,6 +5,7 @@ import {
   estimateInputTokens,
   runAgent,
   type AgentResult,
+  type AgentStepStore,
   type AgentTool,
   type Message,
   type ModelStep,
@@ -12,7 +13,7 @@ import {
   type StepResult,
 } from "@/server/core/agent-loop";
 import { STAGES, checkModelUsable, eligibleForStage, microToUsd, priceCardFor, type ModelRow } from "@/server/core/llm-catalog";
-import { KnownFailure } from "@/server/core/paid-call";
+import { KnownFailure, type ClaimLike } from "@/server/core/paid-call";
 import { worstCaseMicroUsd, type PriceCard } from "@/server/core/spend";
 import { getModel, listRoutes, localServices } from "@/server/db/llm-models";
 import { createAiSdkStep, type ToolDecl } from "./ai-sdk-step";
@@ -66,7 +67,15 @@ export interface LlmClient {
   ): Promise<{ value: T; spentMicroUsd: number }>;
   agent(
     ctx: LlmStageContext,
-    a: { stage: string; tools: DeclaredTool[]; messages: Message[]; maxSteps: number; maxOutputTokens: number },
+    a: {
+      stage: string;
+      tools: DeclaredTool[];
+      messages: Message[];
+      maxSteps: number;
+      maxOutputTokens: number;
+      /** Tool-output checkpoints (Task 16): a resumed run replays finished steps. runOrdinal must differ for each agent run in one stage. */
+      checkpoint?: { claim: ClaimLike; store: AgentStepStore; runOrdinal: number };
+    },
   ): Promise<AgentResult>;
 }
 
@@ -188,6 +197,7 @@ export function createLlmClient(deps: LlmClientDeps): LlmClient {
         tools: a.tools,
         messages: a.messages,
         signal: ctx.signal,
+        ...(a.checkpoint ? { claim: a.checkpoint.claim, store: a.checkpoint.store, runOrdinal: a.checkpoint.runOrdinal } : {}),
       });
     },
   };

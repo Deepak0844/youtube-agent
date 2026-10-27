@@ -26,6 +26,8 @@ export interface StepResult {
 export interface AgentTool {
   name: string;
   run(args: unknown): Promise<string>;
+  /** Called when a resumed run takes this tool's output from the checkpoint instead of running it, so the tool can rebuild any state its later calls rely on. */
+  onReplay?(args: unknown, output: string): void;
 }
 export type ModelStep = (messages: Message[], idempotencyKey: string, signal?: AbortSignal) => Promise<StepResult>;
 
@@ -185,6 +187,7 @@ export async function runAgent(o: AgentOptions): Promise<AgentResult> {
       const argsHash = hashToolArgs(call.args);
       const hit = stored?.get(index);
       if (hit && hit.toolName === call.name && hit.argsHash === argsHash) {
+        try { byName.get(call.name)?.onReplay?.(call.args, hit.output); } catch { /* rebuilding tool state must never fail a replay */ }
         messages.push({ role: "tool", content: hit.output, toolCallId: call.id });
         continue;
       }
