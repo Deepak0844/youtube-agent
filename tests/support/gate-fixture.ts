@@ -27,16 +27,17 @@ export async function bumpContent(db: pg.Pool, videoId: string, kind: ContentKin
   else await addContent(db, videoId, kind, { body, sha256: sha256Hex(`${kind}-${n}`) });
 }
 
+export const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 export const STALE = "0".repeat(64);
 
 /** Builds the `act` function the harness needs: drives the real approveGate. Non-session actors are passed through untyped. */
 export async function gateFixture(db: pg.Pool, gate: GateId): Promise<{ videoId: string; seen: string; act: GateAct; resultOf: (r: Awaited<ReturnType<typeof approveGate>>) => GateResult }> {
   const videoId = await seedVideo(db);
-  const seen = await liveGateHash(db, videoId, gate);
+  const seen = (await liveGateHash(db, videoId, gate))?.hash;
   if (!seen) throw new Error("fixture: no live hash");
   const act = async ({ actor, hash }: GateAttempt): Promise<GateResult> => {
-    const seenHash = hash === "seen" ? seen : hash === "current" ? ((await liveGateHash(db, videoId, gate)) ?? STALE) : STALE;
-    const r = await approveGate(db, { videoId, gate, seenHash, actor: { kind: actor } as never });
+    const seenHash = hash === "seen" ? seen : hash === "current" ? ((await liveGateHash(db, videoId, gate))?.hash ?? STALE) : STALE;
+    const r = await approveGate(db, { videoId, gate, seenHash, actor: { kind: actor, sessionId: SESSION_ID } as never });
     return r.ok ? { ok: true } : { ok: false, reason: r.reason };
   };
   return { videoId, seen, act, resultOf: (r) => (r.ok ? { ok: true } : { ok: false, reason: r.reason }) };

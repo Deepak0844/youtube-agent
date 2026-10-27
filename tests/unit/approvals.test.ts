@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { IMPLEMENTED_GATES, actorProblem, liveHash, noteProblem, type LiveInputs } from "@/server/core/approvals";
 import { GATE_IDS } from "@/server/core/gates";
 
+const SID = "11111111-1111-4111-8111-111111111111";
 const h = (c: string) => c.repeat(64).slice(0, 64);
 const plan = { providers_models: { llm: "m1" }, path: "scene_kit", library_scene_versions: { a: 1 }, quote: { micro_usd: "5" } };
 const base = (): LiveInputs => ({
@@ -22,8 +23,8 @@ const hash = (g: (typeof IMPLEMENTED_GATES)[number], i: LiveInputs) => {
 
 describe("actorProblem", () => {
   it("accepts only {kind:'session'}", () => {
-    expect(actorProblem({ kind: "session" })).toBeNull();
-    for (const bad of [undefined, null, {}, { kind: "token" }, { kind: "system" }, { kind: "job" }, "session", { kind: "Session" }]) {
+    expect(actorProblem({ kind: "session", sessionId: SID })).toBeNull();
+    for (const bad of [undefined, null, {}, { kind: "session" }, { kind: "session", sessionId: "" }, { kind: "session", sessionId: "not-a-uuid" }, { kind: "session", sessionId: SID, extra: 1 }, { kind: "token", sessionId: SID }, { kind: "system" }, { kind: "job" }, "session", { kind: "Session", sessionId: SID }]) {
       expect(actorProblem(bad)).toBe("only the signed-in owner can do this");
     }
   });
@@ -36,6 +37,16 @@ describe("noteProblem", () => {
     expect(noteProblem("x".repeat(1001))).not.toBeNull();
     expect(noteProblem("fix the intro")).toBeNull();
     expect(noteProblem(42 as never)).not.toBeNull();
+  });
+  it("counts_code_points_not_utf16_units", () => {
+    expect(noteProblem("😀".repeat(600))).toBeNull(); // 1200 UTF-16 units, 600 characters
+    expect(noteProblem("😀".repeat(1000))).toBeNull();
+    expect(noteProblem("😀".repeat(1001))).not.toBeNull();
+    expect(noteProblem("😀😀😀")).toBeNull();
+  });
+  it("rejects_nul_control_characters_and_lone_surrogates_but_allows_newlines", () => {
+    for (const bad of ["fix\u0000this", "bell\u0007here", "esc\u001bhere", "del\u007fhere", "lone\ud800surrogate"]) expect(noteProblem(bad), JSON.stringify(bad)).not.toBeNull();
+    expect(noteProblem("line one\nline two\tok")).toBeNull();
   });
 });
 
@@ -57,6 +68,47 @@ describe("liveHash", () => {
       expect(hash(g, j), g).toBe(hash(g, base()));
     }
   });
+  it("same_stored_sha_with_a_different_body_or_file_path_changes_the_hash", () => {
+    for (const g of ["script", "video", "evidence", "publish"] as const) {
+      const before = hash(g, base());
+      const i = base();
+      for (const k of ["script", "video", "evidence", "metadata"] as const) {
+        const c = i.content[k]!;
+        i.content[k] = { sha256: c.sha256, body: c.body === null ? null : { ...(c.body as object), tampered: true }, filePath: c.body === null ? "other/path.bin" : null };
+      }
+      expect(hash(g, i), g).not.toBe(before);
+    }
+    const a = base();
+    a.content.video = { sha256: h("c"), body: null, filePath: "v/1.mp4" };
+    const b = base();
+    b.content.video = { sha256: h("c"), body: null, filePath: "v/2.mp4" };
+    expect(hash("video", a)).not.toBe(hash("video", b));
+  });
+  it("cost_refuses_null_or_wrongly_shaped_plan_fields", () => {
+    const bad: Array<Record<string, unknown>> = [
+      { providers_models: null, path: null, library_scene_versions: null, quote: null },
+      { ...plan, providers_models: null },
+      { ...plan, providers_models: {} },
+      { ...plan, path: "teleport" },
+      { ...plan, path: null },
+      { ...plan, library_scene_versions: null },
+      { ...plan, library_scene_versions: [] },
+      { ...plan, quote: null },
+      { ...plan, quote: { micro_usd: 5 } },
+      { ...plan, quote: { micro_usd: "-5" } },
+      { ...plan, quote: {} },
+    ];
+    for (const b of bad) {
+      const i = base();
+      i.content.cost_plan = { sha256: h("b"), body: b };
+      expect(liveHash("cost", i), JSON.stringify(b)).toMatchObject({ ok: false });
+    }
+  });
+  it("unreadable_content_refuses_instead_of_throwing", () => {
+    const i = base();
+    i.content.script = { sha256: h("a"), body: { f: () => 1 } };
+    expect(liveHash("script", i)).toMatchObject({ ok: false });
+  });
   it("missing content refuses with a plain reason", () => {
     const i = base();
     delete i.content.script;
@@ -64,9 +116,10 @@ describe("liveHash", () => {
   });
   it("cost_hash_covers_quote_providers_path_and_library_scene_versions", () => {
     const before = hash("cost", base());
+    const changed = { providers_models: { llm: "m2" }, path: "ai", library_scene_versions: { a: 2 }, quote: { micro_usd: "6" } };
     for (const field of ["providers_models", "path", "library_scene_versions", "quote"] as const) {
       const i = base();
-      i.content.cost_plan = { sha256: h("b"), body: { ...plan, [field]: "changed" } }; // same stored sha: the field itself is covered
+      i.content.cost_plan = { sha256: h("b"), body: { ...plan, [field]: changed[field] } }; // same stored sha: the field itself is covered
       expect(hash("cost", i), field).not.toBe(before);
     }
     const i = base();
