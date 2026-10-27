@@ -96,7 +96,8 @@ export async function insertQueuedStage(
 }
 
 // One conditional UPDATE: no read-then-write. Only a queued row whose input_hash matches and that nobody asked to
-// cancel can be claimed (no money can be spent after a cancel request).
+// cancel can be claimed: a QUEUED row cannot start spending after a cancel request. A row already running keeps
+// spending until its worker honours the flag (later task).
 export async function claimStage(
   db: Db,
   args: { id: string; inputHash: string; workerId: string; ttlMs: number },
@@ -190,15 +191,39 @@ export async function requestCancel(db: Db, stageRunId: string): Promise<boolean
   return res.rowCount === 1;
 }
 
-// A queued row with the cancel flag can never be claimed (see claimStage), so it is moved to its final state here
-// instead of waiting forever. Conditional: running/finished rows are never touched. false = nothing changed.
-export async function cancelQueuedStage(db: Db, stageRunId: string): Promise<boolean> {
-  const res = await db.query(
-    `update stage_runs set status = 'cancelled', updated_at = clock_timestamp()
-      where id = $1 and status = 'queued' and cancel_requested`,
-    [stageRunId],
-  );
-  return res.rowCount === 1;
+// A queued row with the cancel flag can never be claimed (see claimStage), so it is moved on here instead of waiting
+// forever. Lock order stage row -> intents (same as the reconciler). A row holding an open (pending/unknown) paid call
+// is never "cancelled" (that would hide held money): its pending intents become unknown and it parks as
+// needs_decision. "skip" = nothing changed (not queued, or no flag).
+export type CancelQueuedOutcome = "cancelled" | "needs_decision" | "skip";
+export async function cancelQueuedStage(db: Db, stageRunId: string): Promise<CancelQueuedOutcome> {
+  return atomic(db, async (q) => {
+    const locked = await q.query(
+      "select id from stage_runs where id = $1 and status = 'queued' and cancel_requested for update",
+      [stageRunId],
+    );
+    if (locked.rowCount !== 1) return "skip";
+    const open = await q.query(
+      `select id from spend_intents where stage_run_id = $1 and status not in ('done', 'failed_known')
+        order by id for update`,
+      [stageRunId],
+    );
+    if (open.rowCount! > 0) {
+      await q.query(
+        "update spend_intents set status = 'unknown', updated_at = clock_timestamp() where stage_run_id = $1 and status = 'pending'",
+        [stageRunId],
+      );
+      await q.query(
+        "update stage_runs set status = 'needs_decision', result = $2::jsonb, updated_at = clock_timestamp() where id = $1",
+        [stageRunId, JSON.stringify({ needsDecision: "cancel requested while a paid call of unknown outcome is open" })],
+      );
+      return "needs_decision";
+    }
+    await q.query("update stage_runs set status = 'cancelled', updated_at = clock_timestamp() where id = $1", [
+      stageRunId,
+    ]);
+    return "cancelled";
+  });
 }
 
 export async function getStage(db: Db, id: string): Promise<StageRow | null> {

@@ -226,7 +226,11 @@ export async function reconcile(
   const doomed = await pool.query<{ id: string }>(
     "select id from stage_runs where status = 'queued' and cancel_requested order by id",
   );
-  for (const { id } of doomed.rows) if (await cancelQueuedStage(pool, id)) out.cancelled.push(id);
+  for (const { id } of doomed.rows) {
+    const d = await cancelQueuedStage(pool, id);
+    if (d === "cancelled") out.cancelled.push(id);
+    if (d === "needs_decision") out.needsDecision.push(id);
+  }
 
   // B) queued rows with no live job for their current attempt (rows requeued above are inside the grace window
   //    unless graceMs is 0, in which case their fresh job is live and they are skipped)

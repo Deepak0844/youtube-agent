@@ -339,4 +339,43 @@ describe("reconciler", () => {
     expect(outcomes[0]).toEqual({ kind: "noop" });
     expect(await provider.dbCalls(callKey(id, 0, 0))).toBe(0);
   });
+
+  it("queued_row_with_flag_and_open_intent_is_parked_by_the_reconciler", async () => {
+    const id = await newStage();
+    const c = await claim(id);
+    expect((await reserve(c)).kind).toBe("new");
+    await db.pool.query("update stage_runs set status='queued', lease_owner=NULL, lease_until=NULL where id=$1", [id]);
+    await requestCancel(db.pool, id);
+    expect(await reconcile(db.pool, queue, { graceMs: 0 })).toMatchObject({ ...NONE, needsDecision: [id], cancelled: [] });
+    expect((await getStage(db.pool, id))?.status).toBe("needs_decision");
+    const { rows } = await db.pool.query("select status from spend_intents where stage_run_id=$1", [id]);
+    expect(rows).toEqual([{ status: "unknown" }]);
+    expect((await queue.liveJobIds()).size).toBe(0);
+  });
+
+  it("expired_running_row_with_flag_is_requeued_then_cancelled_in_one_pass", async () => {
+    const id = await newStage();
+    await claim(id);
+    await requestCancel(db.pool, id);
+    await expireLease(id);
+    expect(await reconcile(db.pool, queue, { graceMs: 0 })).toMatchObject({ ...NONE, requeued: [id], cancelled: [id] });
+    expect((await getStage(db.pool, id))?.status).toBe("cancelled");
+    // the stale delivery from the requeue is a no-op and spends nothing
+    const outcomes: StageOutcome[] = [];
+    startRunner(outcomes);
+    await waitFor(() => outcomes.length === 1, "stale delivery handled");
+    expect(outcomes[0]).toEqual({ kind: "noop" });
+    expect(await provider.dbCalls(callKey(id, 0, 0))).toBe(0);
+  });
+
+  it("needs_decision_row_with_flag_is_left_untouched", async () => {
+    const id = await newStage();
+    await claim(id);
+    await db.pool.query("update stage_runs set status='needs_decision' where id=$1", [id]);
+    await requestCancel(db.pool, id);
+    await ageRow(id);
+    const before = await getStage(db.pool, id);
+    expect(await reconcile(db.pool, queue, { graceMs: 0 })).toMatchObject({ ...NONE, cancelled: [] });
+    expect(await getStage(db.pool, id)).toEqual(before);
+  });
 });
