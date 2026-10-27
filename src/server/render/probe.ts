@@ -39,8 +39,8 @@ function exec(bin: string, args: string[], o: ExecOpts): Promise<Buffer> {
     execFile(
       bin,
       args,
-      { env: o.env, timeout: o.timeoutMs, maxBuffer: OUT_CAP, signal: o.signal, encoding: "buffer", killSignal: "SIGKILL" },
-      (err, stdout, stderr) => {
+      { env: o.env as NodeJS.ProcessEnv, timeout: o.timeoutMs, maxBuffer: OUT_CAP, signal: o.signal, encoding: "buffer", killSignal: "SIGKILL" },
+      (err: Error | null, stdout: Buffer, stderr: Buffer) => {
         if (err) {
           const e = err as NodeJS.ErrnoException & { killed?: boolean };
           if (e.name === "AbortError") return reject(new ProbeError("Video check was cancelled."));
