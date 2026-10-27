@@ -162,6 +162,8 @@ for (const e of PROTECTED) {
           const canonical = new URL(r.res.headers().location ?? "", ORIGIN).pathname;
           const ok = redirectsToLogin(r.res, r.body) || s === 401 || s === 404 || (s === 308 && (canonical === e.url || canonical === url.replace(/\/+$/, "") || canonical === "/" + url.replace(/^\/+/, "")));
           expect(ok, `${method} ${url} (${state}) -> ${s} ${r.res.headers().location ?? ""}`).toBe(true);
+          // A 200 that carries the redirect digest is only the static shell: no page heading or content may be in it.
+          if (s === 200) expect(r.body, "a streamed redirect must not carry page content").not.toMatch(/<h1[\s>]/);
           if (s === 404) expect(r.body, "a 404 must not carry the protected content").not.toContain(REDIRECT_DIGEST.replace("NEXT_REDIRECT", "NEVER"));
         });
       }

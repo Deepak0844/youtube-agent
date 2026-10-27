@@ -1,6 +1,7 @@
 import type pg from "pg";
 import {
   capabilitiesSchema,
+  parseStoredPrices,
   checkModelUsable,
   deriveEndpointKind,
   eligibleForStage,
@@ -48,7 +49,7 @@ function toRow(r: DbModel): ModelRow {
     modelId: r.model_id,
     label: r.label,
     baseUrl: r.base_url,
-    prices: r.prices,
+    prices: parseStoredPrices(r.prices), // a tampered block reads as "no price", never as a cheap one
     isFree: r.is_free,
     capabilities: capabilitiesSchema.parse(r.capabilities),
     enabled: r.enabled,

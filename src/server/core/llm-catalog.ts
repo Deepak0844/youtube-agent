@@ -94,6 +94,28 @@ export const priceBlockSchema = z.strictObject({
 });
 export type PriceBlock = z.infer<typeof priceBlockSchema>;
 
+/** Stored prices are not trusted: anything that is not a valid block (zeros, strings, junk, unknown keys) is NO price. */
+export function parseStoredPrices(raw: unknown): PriceBlock | null {
+  if (raw === null || raw === undefined) return null;
+  const r = priceBlockSchema.safeParse(raw);
+  return r.success ? r.data : null;
+}
+
+/** Thrown when a form field is longer than allowed. Never silently turned into an empty value. */
+export class InputTooLongError extends Error {
+  constructor() {
+    super("A field is too long.");
+    this.name = "InputTooLongError";
+  }
+}
+
+/** Text of a form field: "" when absent; throws when over `max` characters or not text (a file). */
+export function boundedText(v: FormDataEntryValue | null, max: number): string {
+  if (v === null) return "";
+  if (typeof v !== "string" || v.length > max) throw new InputTooLongError();
+  return v;
+}
+
 export const capabilitiesSchema = z.strictObject({
   structuredOutput: z.boolean(),
   toolUse: z.boolean(),
@@ -169,7 +191,7 @@ export function priceCardFor(model: Pick<ModelRow, "baseUrl" | "prices" | "isFre
       perVideoSecondMicro: 0,
     };
   }
-  const p = model.prices;
+  const p = parseStoredPrices(model.prices);
   if (!p) return undefined;
   return {
     inputPerMTokMicro: p.inputPerMTokMicro,

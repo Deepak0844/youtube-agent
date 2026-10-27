@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { requireOwner } from "@/lib/auth/require-owner";
-import { usdToMicro } from "@/server/core/llm-catalog";
+import { InputTooLongError, boundedText, usdToMicro } from "@/server/core/llm-catalog";
 import { CatalogError, copyDefault, createModel, deleteModel, setRoute, updateModel } from "@/server/db/llm-models";
 import { getPool } from "@/server/db/pool";
 
@@ -24,12 +24,13 @@ const echo = (form: FormData): Record<string, string> =>
 const fail = (err: unknown, form: FormData): FormState => {
   const fields = echo(form);
   if (err instanceof CatalogError) return { error: err.message, fields };
+  if (err instanceof InputTooLongError) return { error: err.message, fields };
   console.error(JSON.stringify({ event: "models.action_failed", name: err instanceof Error ? err.name : "unknown" }));
   return { error: GENERIC, fields };
 };
 
 const idField = z.string().max(64);
-const text = (v: FormDataEntryValue | null, max: number): string => (typeof v === "string" && v.length <= max ? v : "");
+const text = boundedText;
 const checked = (v: FormDataEntryValue | null): boolean => v === "on";
 
 // Dollars per million tokens as typed -> integer micro-USD. Empty = not given. Anything unreadable stays NaN, which the

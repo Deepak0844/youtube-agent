@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { withTestDb, type TestDb } from "../support/db";
 import { CatalogError, copyDefault, createModel, deleteModel, listDefaults, listRoutes, listModels, modelsForStage, setRoute, updateModel } from "@/server/db/llm-models";
 import { setSetting } from "@/server/db/settings";
-import { priceCardFor } from "@/server/core/llm-catalog";
+import { priceCardFor, parseStoredPrices } from "@/server/core/llm-catalog";
 import { UnpricedCallError, worstCaseMicroUsd } from "@/server/core/spend";
 
 let db: TestDb;
@@ -60,9 +60,9 @@ describe("catalog on the app role", () => {
     await refused(createModel(db.pool, { ...freeLocal, baseUrl: "https://api.x.test/v1" }, session));
   });
 
-  it("the_database_itself_rejects_unpriced_enabled_and_hosted_free_rows", async () => {
+  it("the_database_itself_rejects_unpriced_enabled_and_hosted_free_rows_even_for_the_app_role", async () => {
     const ins = (kind: string, free: boolean, prices: string | null, enabled: boolean) =>
-      db.ownerPool.query(
+      db.pool.query(
         "insert into llm_models (provider, model_id, label, prices, is_free, capabilities, endpoint_kind, enabled) values ('x', $1, 'x', $2::jsonb, $3, '{}', $4, $5)",
         [`id-${Math.random()}`, prices, free, kind, enabled],
       );
@@ -88,6 +88,42 @@ describe("catalog on the app role", () => {
   it("a_duplicate_is_refused_in_words", async () => {
     await createModel(db.pool, paid, session);
     await expect(createModel(db.pool, paid, session)).rejects.toThrow(/already in the catalog/);
+  });
+});
+
+describe("stored prices cannot be tampered into a free ride (app role)", () => {
+  const tamper = (id: string, prices: string) => db.pool.query("update llm_models set prices = $2::jsonb where id = $1", [id, prices]);
+  const cases: [string, string][] = [
+    ["zero input and output", '{"inputPerMTokMicro":0,"outputPerMTokMicro":0}'],
+    ["string prices", '{"inputPerMTokMicro":"3000000","outputPerMTokMicro":"15000000"}'],
+    ["empty object", "{}"],
+    ["unknown key", '{"inputPerMTokMicro":1,"outputPerMTokMicro":1,"freeLunch":1}'],
+    ["negative optional", '{"inputPerMTokMicro":1,"outputPerMTokMicro":1,"cacheReadPerMTokMicro":-1}'],
+    ["fractional", '{"inputPerMTokMicro":1.5,"outputPerMTokMicro":1}'],
+    ["array", "[1,2]"],
+  ];
+  it.each(cases)("%s is rejected by the database", async (_n, prices) => {
+    const m = await createModel(db.pool, paid, session);
+    await expect(tamper(m.id, prices)).rejects.toMatchObject({ code: "23514" });
+    const back = (await listModels(db.pool))[0]!;
+    expect(parseStoredPrices(back.prices)).not.toBeNull(); // the good row is unchanged
+  });
+  it("the_reader_refuses_a_bad_block_even_if_the_constraint_is_gone", async () => {
+    const m = await createModel(db.pool, paid, session);
+    await db.ownerPool.query("alter table llm_models drop constraint llm_models_price_shape");
+    try {
+      await tamper(m.id, '{"inputPerMTokMicro":0,"outputPerMTokMicro":0}');
+      const back = (await listModels(db.pool))[0]!;
+      expect(back.prices).toBeNull();
+      expect(priceCardFor(back, [])).toBeUndefined();
+    } finally {
+      await db.ownerPool.query("update llm_models set prices = '{\"inputPerMTokMicro\":1,\"outputPerMTokMicro\":1}'");
+      await db.ownerPool.query(await readFile("src/server/db/migrations/0011_llm_price_checks.sql", "utf8"));
+    }
+  });
+  it("the_app_role_has_no_trigger_or_references_on_the_suggestions", async () => {
+    const r = await db.pool.query("select has_table_privilege('ytstudio_app','model_catalog_defaults','TRIGGER') t, has_table_privilege('ytstudio_app','model_catalog_defaults','REFERENCES') r");
+    expect(r.rows[0]).toEqual({ t: false, r: false });
   });
 });
 
@@ -127,6 +163,29 @@ describe("routes", () => {
     expect((await listModels(db.pool)).length).toBe(1);
     await setRoute(db.pool, "build_scene_kit", null, session);
     await deleteModel(db.pool, m.id, session);
+  });
+
+  it("a_routed_free_model_cannot_be_moved_off_the_machine_or_survive_an_allow_list_removal", async () => {
+    await setSetting(db.pool, "network.local_services", ["192.168.1.20:11434"], session);
+    const lan = { ...freeLocal, modelId: "lan", baseUrl: "http://192.168.1.20:11434/v1", capabilities: { ...caps, toolUse: false } };
+    const m = await createModel(db.pool, lan, session);
+    await setRoute(db.pool, "outline", m.id, session);
+    await refused(updateModel(db.pool, m.id, { ...lan, baseUrl: "https://api.x.test/v1" }, session)); // free but hosted
+    await refused(updateModel(db.pool, m.id, { ...lan, baseUrl: "http://192.168.1.99:11434/v1" }, session)); // other LAN host, not listed
+    await setSetting(db.pool, "network.local_services", [], session);
+    await refused(updateModel(db.pool, m.id, lan, session)); // no longer local
+    await refused(setRoute(db.pool, "titles", m.id, session)); // and no new route to it
+    expect(modelsForStage("outline", await listModels(db.pool), [])).toEqual([]);
+  });
+
+  it("setRoute_and_updateModel_racing_never_leave_a_route_on_a_disabled_model", async () => {
+    for (let i = 0; i < 15; i++) {
+      await db.ownerPool.query("truncate llm_routes, llm_models cascade");
+      const m = await createModel(db.pool, paid, session);
+      await Promise.allSettled([setRoute(db.pool, "outline", m.id, session), updateModel(db.pool, m.id, { ...paid, enabled: false }, session)]);
+      const bad = await db.pool.query("select 1 from llm_routes r join llm_models m on m.id = r.model_id where not m.enabled");
+      expect(bad.rowCount, `round ${i}`).toBe(0);
+    }
   });
 
   it("route_changes_are_audited_with_from_and_to", async () => {

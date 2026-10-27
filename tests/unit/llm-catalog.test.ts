@@ -9,6 +9,9 @@ import {
   priceCardFor,
   usdToMicro,
   microToUsd,
+  parseStoredPrices,
+  boundedText,
+  InputTooLongError,
   type ModelRow,
 } from "@/server/core/llm-catalog";
 import { UnpricedCallError, worstCaseMicroUsd } from "@/server/core/spend";
@@ -120,6 +123,38 @@ describe("money text", () => {
     for (const bad of ["", "-1", "1e3", "1.1234567", "abc", "1,5", "$3"]) expect(usdToMicro(bad), bad).toBeUndefined();
     expect(microToUsd(3_000_000)).toBe("3.00");
     expect(microToUsd(75_000)).toBe("0.075");
+  });
+});
+
+describe("stored prices are not trusted on read", () => {
+  const bad: [string, unknown][] = [
+    ["zero input and output", { inputPerMTokMicro: 0, outputPerMTokMicro: 0 }],
+    ["string prices", { inputPerMTokMicro: "3000000", outputPerMTokMicro: "15000000" }],
+    ["empty object", {}],
+    ["unknown key", { ...prices, freeLunch: 1 }],
+    ["negative optional", { ...prices, cacheReadPerMTokMicro: -5 }],
+    ["fractional", { inputPerMTokMicro: 1.5, outputPerMTokMicro: 2 }],
+    ["array", [1, 2]],
+    ["scalar", 7],
+  ];
+  it.each(bad)("%s gives no price", (_n, p) => {
+    expect(parseStoredPrices(p)).toBeNull();
+    const card = priceCardFor({ baseUrl: null, prices: p as never, isFree: false }, []);
+    expect(card).toBeUndefined();
+    expect(() => worstCaseMicroUsd(card, { inputTokens: 1, maxOutputTokens: 1 })).toThrow(UnpricedCallError);
+  });
+  it("a good block survives and null stays null", () => {
+    expect(parseStoredPrices(prices)).toEqual(prices);
+    expect(parseStoredPrices(null)).toBeNull();
+  });
+});
+
+describe("form text is bounded, never silently emptied", () => {
+  it("returns the text, empty for a missing field, and throws when too long or not text", () => {
+    expect(boundedText("abc", 5)).toBe("abc");
+    expect(boundedText(null, 5)).toBe("");
+    expect(() => boundedText("x".repeat(6), 5)).toThrow(InputTooLongError);
+    expect(() => boundedText(new File([], "a"), 5)).toThrow(InputTooLongError);
   });
 });
 
