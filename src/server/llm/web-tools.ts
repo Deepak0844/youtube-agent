@@ -22,7 +22,7 @@ export function createWebTools(opts: { searxUrl: string; fetchImpl?: typeof safe
         const u = new URL("/search", searx);
         u.searchParams.set("q", q);
         u.searchParams.set("format", "json");
-        const res = await fetcher(u.toString(), undefined, { mode: "typed", ownServices: own });
+        const res = await fetcher(u.toString(), undefined, { mode: "typed", ownServices: own, localServices: [] });
         if (!res.ok) throw new Error(`search failed: ${res.status}`);
         const data = (await res.json()) as { results?: Array<{ title?: string; url?: string; content?: string }> };
         const rows = (data.results ?? []).filter((r) => typeof r.url === "string").slice(0, 8);

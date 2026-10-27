@@ -2,22 +2,32 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import ipaddr from "ipaddr.js";
 import { Agent, fetch as undiciFetch } from "undici";
+import { matchLocalService, ownServicePorts } from "@/server/core/local-services";
 import { classifyAddress, type AddressClass } from "@/server/core/net-policy";
 
 export type FetchMode = "typed" | "indirect";
 
-export interface SafeFetchOptions {
-  mode: FetchMode;
+interface SafeFetchBase {
   ownServices?: Array<{ host: string; port: number }>;
   maxRedirects?: number;
   timeoutMs?: number;
   lookup?: (host: string) => Promise<string[]>;
 }
 
+/**
+ * Typed mode must say which local services it may reach: `localServices` is the owner's `network.local_services` list
+ * (exact host:port strings; pass `[]` for "none"). A private/loopback/CGNAT/Docker address is reachable only if its host
+ * and port are listed; link-local never is. Own-service ports, own services and metadata are refused first, so typing them
+ * into the list changes nothing. Leaving the list out is a compile error, and at run time it means an empty list.
+ */
+export type SafeFetchOptions =
+  | (SafeFetchBase & { mode: "typed"; localServices: readonly string[] })
+  | (SafeFetchBase & { mode: "indirect"; localServices?: undefined });
+
 export class BlockedAddressError extends Error {
   constructor(
     public readonly address: string,
-    public readonly reason: AddressClass | "own-service",
+    public readonly reason: AddressClass | "own-service" | "not-listed",
     detail?: string,
   ) {
     super(detail ?? `Blocked address ${address} (${reason})`);
@@ -106,7 +116,13 @@ interface OwnService {
   port: number;
   ips: Set<string>;
   loopback: boolean;
+  /** 0.0.0.0 / :: ("every interface"): the service answers on any local address, so every non-public address on its port is it. */
+  bindAny: boolean;
 }
+
+const LOCAL_CLASSES: ReadonlySet<AddressClass> = new Set(["private", "loopback", "linklocal", "cgnat", "docker"]);
+// With an allow-list, link-local is never reachable (it is where metadata services live) and only these may be listed.
+const LISTABLE_CLASSES: ReadonlySet<AddressClass> = new Set(["private", "loopback", "cgnat", "docker"]);
 
 function race<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) return Promise.reject(signal.reason);
@@ -134,25 +150,36 @@ async function resolveOwnServices(opts: SafeFetchOptions, signal: AbortSignal): 
         if (addrs.length === 0) throw new BlockedAddressError(host, "own-service", `own service "${host}" did not resolve`);
       }
       const ips = new Set(addrs.map(canonical));
-      const loopback = [...ips].some((ip) => ip === "0.0.0.0" || ip === "::" || classifyAddress(ip) === "loopback");
-      return { host, port: svc.port, ips, loopback };
+      const bindAny = [...ips].some((ip) => ip === "0.0.0.0" || ip === "::");
+      const loopback = bindAny || [...ips].some((ip) => classifyAddress(ip) === "loopback");
+      return { host, port: svc.port, ips, loopback, bindAny };
     }),
   );
 }
 
-function check(address: string, url: URL, mode: FetchMode, own: OwnService[]): void {
+function check(address: string, url: URL, mode: FetchMode, own: OwnService[], listed: readonly string[] | undefined): void {
   const port = defaultPort(url);
   const hostname = stripBrackets(url.hostname).toLowerCase();
   const ip = canonical(address);
   const cls = classifyAddress(address);
   for (const svc of own) {
     if (svc.port !== port) continue;
-    if (svc.host === hostname || svc.ips.has(ip) || (svc.loopback && cls === "loopback")) {
+    if (svc.host === hostname || svc.ips.has(ip) || (svc.loopback && cls === "loopback") || (svc.bindAny && LOCAL_CLASSES.has(cls))) {
       throw new BlockedAddressError(address, "own-service");
     }
   }
   const allowed = mode === "typed" ? TYPED_ALLOWED.has(cls) : cls === "public";
   if (!allowed) throw new BlockedAddressError(address, cls);
+  if (mode === "typed" && cls !== "public") {
+    // The app's own ports are never a typed destination on any local address, whatever the caller passed. It throws, and
+    // so refuses, if the own-service settings cannot be read.
+    const ownPorts = ownServicePorts();
+    if (ownPorts.has(port)) throw new BlockedAddressError(address, "own-service");
+    if (!LISTABLE_CLASSES.has(cls)) throw new BlockedAddressError(address, cls);
+    if (!matchLocalService(listed ?? [], url, ownPorts)) {
+      throw new BlockedAddressError(address, "not-listed", `Local address ${address} is not on the local-service list`);
+    }
+  }
 }
 
 // Validates every address the host resolves to; returns them for pinning.
@@ -161,7 +188,7 @@ async function resolveValidated(url: URL, mode: FetchMode, opts: SafeFetchOption
   // IP literals (URL parser already normalised decimal/hex/octal spellings) skip DNS.
   const addresses = isIP(host) !== 0 ? [host] : await race((opts.lookup ?? defaultLookup)(host), signal);
   if (addresses.length === 0) throw new Error(`No addresses for ${host}`);
-  for (const address of addresses) check(address, url, mode, own);
+  for (const address of addresses) check(address, url, mode, own, opts.localServices);
   return addresses;
 }
 

@@ -45,6 +45,50 @@ describe("endpoint kind (derived, never typed)", () => {
   });
 });
 
+describe("a model base URL never points at one of the app's own services", () => {
+  const OWN = new Set([5432, 6379, 8888, 3128, 3000]);
+  it.each([
+    "http://localhost:5432/v1",
+    "http://127.0.0.1:6379",
+    "http://[::1]:8888/v1",
+    "http://127.0.0.2:3128",
+    "http://2130706433:5432",
+    "http://foo.localhost:3000",
+    "http://localhost:3000/v1",
+    "http://192.168.1.20:5432/v1",
+    "http://10.0.0.5:6379",
+    "http://172.17.0.2:8888",
+    "http://100.64.0.9:3128",
+  ])("%s is invalid, even if it is on the allow-list", (url) => {
+    const host = new URL(url).host.replace(/^\[(.*)\]/, "[$1]");
+    expect(deriveEndpointKind(url, [], OWN), url).toBe("invalid");
+    expect(deriveEndpointKind(url, [host], OWN), `${url} listed`).toBe("invalid");
+  });
+  it("other ports on the same hosts are unchanged", () => {
+    expect(deriveEndpointKind("http://localhost:11434", [], OWN)).toBe("local");
+    expect(deriveEndpointKind("http://192.168.1.20:11434", ["192.168.1.20:11434"], OWN)).toBe("local");
+    expect(deriveEndpointKind("http://192.168.1.20:11434", [], OWN)).toBe("hosted");
+  });
+  it("a public host on an own port is not this app's service", () => {
+    expect(deriveEndpointKind("https://api.example.com:6379/v1", [], OWN)).toBe("hosted");
+  });
+  it("uses the real own-service ports by default (including PORT and deployment URLs)", () => {
+    expect(deriveEndpointKind("http://localhost:5432", [])).toBe("invalid");
+  });
+  it("fails closed when an own-service setting cannot be read", () => {
+    const old = process.env.SEARXNG_URL;
+    process.env.SEARXNG_URL = "not a url";
+    try {
+      expect(deriveEndpointKind("http://localhost:11434", [])).toBe("invalid");
+      expect(deriveEndpointKind("https://api.openai.com/v1", [])).toBe("invalid");
+      expect(deriveEndpointKind(null, [])).toBe("hosted"); // no URL: the provider's own endpoint, nothing local to check
+    } finally {
+      if (old === undefined) delete process.env.SEARXNG_URL;
+      else process.env.SEARXNG_URL = old;
+    }
+  });
+});
+
 describe("price and free rules", () => {
   it("a priced hosted model is accepted", () => expect(parse({}).success).toBe(true));
   it("a hosted model cannot be free", () => {

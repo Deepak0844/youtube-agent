@@ -42,6 +42,11 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     DATABASE_URL: appUrl,
     REDIS_URL: infra.redisUrl,
     VAULT_MASTER_KEY: vaultKey,
+    // The production server refuses every local-service entry until it knows the app's own service ports (S2).
+    RENDER_RUNNER_URL: "http://127.0.0.1:47001",
+    FETCHER_URL: "http://127.0.0.1:47002",
+    SEARXNG_URL: "http://127.0.0.1:48888",
+    EGRESS_PROXY_URL: "http://127.0.0.1:43128",
     TRUST_PROXY: "1",
     AUTH_MAX_IN_FLIGHT: "1",
     UPLOAD_MAX_BYTES: String(50 * 1024 * 1024), // lets the oversize test stay small

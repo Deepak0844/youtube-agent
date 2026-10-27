@@ -6,7 +6,7 @@ import { SAFETY_KEYS, SETTINGS } from "@/server/core/settings-registry";
 import { setSetting, type Actor } from "@/server/db/settings";
 import { gateById } from "@/server/core/gates";
 import { expectSessionRequired, expectTokenCannotPass, type GateAct } from "../support/gate-invariants";
-import { SETTINGS_IMPORT_ALLOW, scanSettingsWrites } from "../support/settings-write-scan";
+import { SESSION_WRITER_IMPORT_ALLOW, SETTINGS_IMPORT_ALLOW, scanSettingsWrites } from "../support/settings-write-scan";
 
 // Doc 02 4.6 / Doc 07: safety settings (policy.require_evidence, policy.allow_public, network.local_services, ...) can be
 // changed ONLY by a logged-in session, never by an API token, the system or a job. This is also the suite for the
@@ -87,10 +87,74 @@ describe("no code path in src writes a safety setting as anything but a session"
     expect(bad).toEqual([]);
   });
 
-  it("the import allow-list is explicit (a new importer must be added here on purpose)", () => {
+  it("the import allow-lists are explicit maps of file to permitted names (a new importer must be added here on purpose)", () => {
     // file -> the only names it may import. llm-models reads network.local_services (getSetting) and uses the Actor type.
-    expect(SETTINGS_IMPORT_ALLOW).toEqual({ "src/server/db/llm-models.ts": ["getSetting", "Actor"] });
+    expect(SETTINGS_IMPORT_ALLOW).toEqual({
+      "src/server/db/llm-models.ts": ["getSetting", "Actor"],
+      "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],
+    });
     for (const names of Object.values(SETTINGS_IMPORT_ALLOW)) expect(names).not.toContain("setSetting");
+    expect(SESSION_WRITER_IMPORT_ALLOW).toEqual({ "src/app/(app)/settings/system/actions.ts": ["saveLocalServices", "saveSystemSettings"] });
+    for (const names of [...Object.values(SETTINGS_IMPORT_ALLOW), ...Object.values(SESSION_WRITER_IMPORT_ALLOW)]) expect(names.length).toBeGreaterThan(0);
+  });
+
+  describe("SELF-TEST: the session writers (S-A)", () => {
+    const SS = 'import { saveLocalServices } from "@/server/db/system-settings";\n';
+    const ST = 'import { setSessionSettings, getSetting } from "@/server/db/settings";\n';
+    const ACTIONS = "src/app/(app)/settings/system/actions.ts";
+    const SSFILE = "src/server/db/system-settings.ts";
+    const w = (src: string, file: string) => scanSettingsWrites(file, src, SETTINGS_IMPORT_ALLOW, SESSION_WRITER_IMPORT_ALLOW);
+
+    it("the real shapes are accepted", () => {
+      expect(w(SS + "await saveLocalServices(db, t);", ACTIONS)).toEqual([]);
+      expect(w('import { saveLocalServices, saveSystemSettings } from "@/server/db/system-settings";\nawait saveSystemSettings(db, i);', ACTIONS)).toEqual([]);
+      expect(w(ST + "await setSessionSettings(db, writes, onChange);\nawait getSetting(db, k);", SSFILE)).toEqual([]);
+    });
+    it("PROBE: a new file importing a writer is flagged (the reviewer's zz-probe case)", () => {
+      expect(w(SS + "await saveLocalServices(db, t);", "src/app/zz-probe/page.tsx")).not.toEqual([]);
+      expect(w('import { saveSystemSettings } from "@/server/db/system-settings";', "src/server/zz-probe.ts")).not.toEqual([]);
+      expect(w('import { saveLocalServices } from "../../server/db/system-settings";', "src/app/zz/actions.ts")).not.toEqual([]);
+    });
+    it("readers and types from system-settings stay importable anywhere", () => {
+      expect(w('import { loadSystemSettings, type SystemSettingsView } from "@/server/db/system-settings";', "src/app/x/page.tsx")).toEqual([]);
+      expect(w('import type { SaveResult } from "@/server/db/system-settings";', "src/app/x/page.tsx")).toEqual([]);
+    });
+    const bypasses: Record<string, [string, string]> = {
+      "writer not on this file's list": ['import { saveSystemSettings } from "@/server/db/system-settings";', "src/app/(app)/settings/system/forms.tsx"],
+      "aliased writer": ['import { saveLocalServices as s } from "@/server/db/system-settings";\ns(db, t);', ACTIONS],
+      "namespace import of system-settings": ['import * as ss from "@/server/db/system-settings";\nss.saveLocalServices(db, t);', ACTIONS],
+      "default import of system-settings": ['import ss from "@/server/db/system-settings";', ACTIONS],
+      "writer passed around": [SS + "const f = saveLocalServices;\nf(db, t);", ACTIONS],
+      "writer .call": [SS + "await saveLocalServices.call(null, db, t);", ACTIONS],
+      "writer element access": ['import * as ss from "@/server/db/system-settings";\nss["saveLocalServices"](db, t);', ACTIONS],
+      "writer require": ['const m = require("@/server/db/system-settings");', "src/app/x/actions.ts"],
+      "writer dynamic import": ['const m = await import("@/server/db/system-settings");', "src/app/x/actions.ts"],
+      "writer re-export": ['export { saveLocalServices } from "@/server/db/system-settings";', ACTIONS],
+      "writer export star": ['export * from "@/server/db/system-settings";', "src/app/x/index.ts"],
+      "setSessionSettings in an unlisted file": [ST + "await setSessionSettings(db, w, f);", "src/app/x/actions.ts"],
+      "setSessionSettings aliased": ['import { setSessionSettings as w } from "@/server/db/settings";\nw(db, a, b);', SSFILE],
+      "setSessionSettings passed around": [ST + "const w = setSessionSettings;", SSFILE],
+      "setSessionSettings wrong argument count": [ST + "await setSessionSettings(db, writes);", SSFILE],
+      "setSessionSettings .apply": [ST + "await setSessionSettings.apply(null, [db, w, f]);", SSFILE],
+      "setSessionSettings element access": ['import * as s from "@/server/db/settings";\ns["setSessionSettings"](db, w, f);', SSFILE],
+      "settings import not on the file's name list": ['import { setSetting } from "@/server/db/settings";\nawait setSetting(db, k, v, { actor: "session" });', SSFILE],
+      "settings namespace import in an allowed file": ['import * as s from "@/server/db/settings";', SSFILE],
+      "settings default import": ['import s from "@/server/db/settings";', SSFILE],
+    };
+    for (const [name, [src, file]] of Object.entries(bypasses)) {
+      it(`flags: ${name}`, () => expect(w(src, file), name).not.toEqual([]));
+    }
+    it("type-only imports of unlisted names are exempt from the name list", () => {
+      expect(w('import { type Actor, getSetting } from "@/server/db/settings";', SSFILE)).toEqual([]);
+      expect(w('import type { Actor } from "@/server/db/settings";', SSFILE)).toEqual([]);
+    });
+    it("an alias of a harmless permitted name is fine; an alias of a guarded name is not", () => {
+      expect(w('import { getSetting as g } from "@/server/db/settings";', SSFILE)).toEqual([]);
+      expect(w('import { setSessionSettings as g } from "@/server/db/settings";', SSFILE)).not.toEqual([]);
+    });
+    it("a file not in the settings map is flagged for any import", () => {
+      expect(w('import { getSetting } from "@/server/db/settings";', "src/app/x/page.tsx")).not.toEqual([]);
+    });
   });
 
   const OK = 'import { setSetting } from "@/server/db/settings";\nawait setSetting(db, k, v, { actor: "session" });';

@@ -128,7 +128,7 @@ describe("test", () => {
   it("sends the stored key to the provider, records the verdict as audit + last test, never the body", async () => {
     await saveProviderKey(db.pool, loader, "anthropic", KEY);
     const r = await testProviderKey(db.pool, loader, "anthropic", {
-      fetcher: (url, init, o) => safeFetch(`http://127.0.0.1:${port}${new URL(url).pathname}`, init, { mode: "typed", ...o }),
+      fetcher: (url, init, o) => safeFetch(`http://127.0.0.1:${port}${new URL(url).pathname}`, init, { mode: "typed", localServices: [`127.0.0.1:${port}`], ...o }),
     });
     expect(r).toEqual({ ok: true, result: "ok" });
     expect(seenAuth).toBe(KEY);
