@@ -27,7 +27,7 @@ export function createDraftHandler(d: { db: pg.Pool; makeLlm: (budgetScopes: str
     if (!videoId) throw new KnownFailure("draft needs a video");
     const video = await loadDraftVideo(d.db, videoId);
     if (!video) throw new KnownFailure("The video for this draft no longer exists.");
-    const scopes = await ensureDraftScopes(d.db, { stageRunId: ctx.stage.id, videoId, kind: video.kind }).catch((e: unknown) => {
+    const scopes = await ensureDraftScopes(d.db, { stageRunId: ctx.stage.id, videoId, kind: video.kind, format: video.format }).catch((e: unknown) => {
       throw new KnownFailure(e instanceof Error ? e.message : "budget caps for Draft are not set up");
     });
     const feedback = await pendingScriptFeedback(d.db, videoId);
@@ -36,7 +36,7 @@ export function createDraftHandler(d: { db: pg.Pool; makeLlm: (budgetScopes: str
       { llm: d.makeLlm(scopes), web: d.makeWeb(), db: d.db },
       { topic: video.topic, lang: video.language, kind: video.kind, format: video.format, ...(video.notes ? { notes: video.notes } : {}), ...(feedback ? { feedback } : {}) },
     );
-    const versions = await saveDraftContent(d.db, videoId, ctx.stage.id, script);
+    const versions = await saveDraftContent(d.db, videoId, ctx.claim, script);
     return { title: script.title, spentMicroUsd, versions };
   };
 }

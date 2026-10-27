@@ -15,6 +15,26 @@ export function foldForQuote(s: string): string {
     .toLowerCase();
 }
 
+export const MIN_QUOTE_CHARS = 25;
+export const MIN_QUOTE_WORDS = 5;
+
+const tokens = (s: string) => new Set(foldForQuote(s).split(/[^\p{L}\p{N}]+/u).filter((t) => t.length >= 4));
+const mostlyAscii = (s: string) => {
+  const letters = [...s].filter((c) => /\p{L}/u.test(c));
+  return letters.length > 0 && letters.filter((c) => c.charCodeAt(0) < 128).length / letters.length > 0.8;
+};
+
+/**
+ * The claim text and its quote must share a key word or number. Only checked when both are in Latin letters: a claim
+ * written in English about a quote in another script (allowed for Indic videos) cannot be compared this way.
+ */
+function anchored(claimText: string, quote: string): boolean {
+  if (!mostlyAscii(claimText) || !mostlyAscii(quote)) return true;
+  const q = tokens(quote);
+  for (const t of tokens(claimText)) if (q.has(t)) return true;
+  return false;
+}
+
 export type EvidenceCheck = { ok: true } | { ok: false; problems: string[] };
 
 export function checkEvidence(script: Pick<Script, "evidence">, fetched: ReadonlyMap<string, string>): EvidenceCheck {
@@ -33,12 +53,20 @@ export function checkEvidence(script: Pick<Script, "evidence">, fetched: Readonl
       problems.push(`claim ${n}: the quote is empty`);
       return;
     }
+    if ([...quote].length < MIN_QUOTE_CHARS || quote.split(" ").length < MIN_QUOTE_WORDS) {
+      problems.push(`claim ${n}: the quote is too short to prove anything; copy a full sentence (at least ${MIN_QUOTE_WORDS} words, ${MIN_QUOTE_CHARS} characters)`);
+      return;
+    }
     let text = folded.get(claim.source_url);
     if (text === undefined) {
       text = foldForQuote(page);
       folded.set(claim.source_url, text);
     }
-    if (!text.includes(quote)) problems.push(`claim ${n}: the quote does not appear on that page; copy the exact words from the excerpt`);
+    if (!text.includes(quote)) {
+      problems.push(`claim ${n}: the quote does not appear on that page; copy the exact words from the excerpt`);
+      return;
+    }
+    if (!anchored(claim.text, quote)) problems.push(`claim ${n}: the quote does not support what the claim says; they share no key word or number`);
   });
   return problems.length ? { ok: false, problems } : { ok: true };
 }

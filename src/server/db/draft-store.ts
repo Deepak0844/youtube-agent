@@ -1,7 +1,9 @@
 import type pg from "pg";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import type { Script } from "@/server/core/script-contract";
-import { addContent, type ContentKind, type VideoFormat, type VideoKind, type VideoLanguage } from "./videos";
+import { LeaseLostError, type ClaimLike } from "@/server/core/paid-call";
+import { ensureScopeCopies, periodScopes, videoTemplate } from "./budget-scopes";
+import type { ContentKind, VideoFormat, VideoKind, VideoLanguage } from "./videos";
 
 // SQL for Draft (Phase 2 Task 17): which mode the routed model uses, what the owner asked for, and saving the result.
 
@@ -42,54 +44,58 @@ export async function pendingScriptFeedback(db: pg.Pool, videoId: string): Promi
 }
 
 /**
- * Saves the draft as script / beats / evidence versions. Idempotent per stage run: a stage that crashed after saving and
- * runs again does not add a second set of versions (the kind is already produced by this stage run).
+ * Saves the draft as script / beats / evidence versions, all in ONE transaction that first checks the caller still holds
+ * the stage (running, same fence, same owner): a stale worker writes nothing. Idempotent per stage run: a stage that
+ * crashed after saving and runs again does not add a second set of versions.
  */
-export async function saveDraftContent(db: pg.Pool, videoId: string, stageRunId: string, script: Script): Promise<Record<string, number>> {
+export async function saveDraftContent(db: pg.Pool, videoId: string, claim: ClaimLike, script: Script): Promise<Record<string, number>> {
   const parts: Array<[ContentKind, unknown]> = [
     ["script", { title: script.title, ...(script.description !== undefined ? { description: script.description } : {}), narration: script.narration }],
     ["beats", { beats: script.beats }],
     ["evidence", { claims: script.evidence }],
   ];
-  const versions: Record<string, number> = {};
-  for (const [kind, body] of parts) {
-    const have = await db.query<{ version: number }>(
-      "select version from video_content where video_id = $1 and kind = $2 and produced_by = $3 order by version desc limit 1",
-      [videoId, kind, stageRunId],
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    const gate = await client.query(
+      "select 1 from stage_runs where id = $1 and status = 'running' and fence = $2 and lease_owner = $3 for share",
+      [claim.stageRunId, claim.fence, claim.workerId],
     );
-    if (have.rows[0]) {
-      versions[kind] = have.rows[0].version;
-      continue;
+    if (gate.rowCount === 0) throw new LeaseLostError(`draft content:${claim.stageRunId}`);
+    const versions: Record<string, number> = {};
+    for (const [kind, body] of parts) {
+      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`video_content:${videoId}:${kind}`]);
+      const have = await client.query<{ version: number }>(
+        "select version from video_content where video_id = $1 and kind = $2 and produced_by = $3 order by version desc limit 1",
+        [videoId, kind, claim.stageRunId],
+      );
+      if (have.rows[0]) {
+        versions[kind] = have.rows[0].version;
+        continue;
+      }
+      const ins = await client.query<{ version: number }>(
+        `insert into video_content (video_id, kind, version, sha256, body, produced_by)
+         values ($1, $2, (select coalesce(max(version), 0) + 1 from video_content where video_id = $1 and kind = $2), $3, $4, $5)
+         returning version`,
+        [videoId, kind, sha256Hex(canonicalJson(body)), JSON.stringify(body), claim.stageRunId],
+      );
+      versions[kind] = ins.rows[0]!.version;
     }
-    const { version } = await addContent(db, videoId, kind, { body, sha256: sha256Hex(canonicalJson(body)), producedBy: stageRunId });
-    versions[kind] = version;
+    await client.query("commit");
+    return versions;
+  } catch (e) {
+    await client.query("rollback").catch(() => undefined);
+    throw e;
+  } finally {
+    client.release();
   }
-  return versions;
 }
 
-/**
- * The budget scopes one Draft run reserves against. The seeded rows (`draft_run`, `video:<kind>`, `day`, `month`) are
- * templates: each run, video and calendar period gets its own copy with the same cap, so a cap limits one run, one video,
- * one UTC day, one UTC month (not everything ever spent). Missing template = nothing is reserved and the stage fails.
- */
-export async function ensureDraftScopes(db: pg.Pool, a: { stageRunId: string; videoId: string; kind: VideoKind }): Promise<string[]> {
-  const t = await db.query<{ day: string; month: string }>(
-    "select to_char(clock_timestamp() at time zone 'utc', 'YYYY-MM-DD') as day, to_char(clock_timestamp() at time zone 'utc', 'YYYY-MM') as month",
-  );
-  const { day, month } = t.rows[0]!;
-  const pairs: Array<[string, string]> = [
+/** The budget scopes one Draft run reserves against: this run, this video (long videos use the video:long cap), this UTC day and month. */
+export async function ensureDraftScopes(db: pg.Pool, a: { stageRunId: string; videoId: string; kind: VideoKind; format: VideoFormat }): Promise<string[]> {
+  return ensureScopeCopies(db, [
     [`draft_run:${a.stageRunId}`, "draft_run"],
-    [`video:${a.videoId}`, `video:${a.kind}`],
-    [`day:${day}`, "day"],
-    [`month:${month}`, "month"],
-  ];
-  await db.query(
-    `insert into budgets (scope, cap_micro_usd)
-     select p.scope, b.cap_micro_usd from unnest($1::text[], $2::text[]) as p(scope, template) join budgets b on b.scope = p.template
-     on conflict (scope) do nothing`,
-    [pairs.map((p) => p[0]), pairs.map((p) => p[1])],
-  );
-  const have = await db.query<{ scope: string }>("select scope from budgets where scope = any($1::text[])", [pairs.map((p) => p[0])]);
-  if (have.rowCount !== pairs.length) throw new Error("budget caps for Draft are not set up");
-  return pairs.map((p) => p[0]);
+    [`video:${a.videoId}`, videoTemplate(a.kind, a.format)],
+    ...(await periodScopes(db)),
+  ]);
 }
