@@ -16,7 +16,7 @@ Before answering, check whether a skill matches the prompt and invoke it via the
 ## Review and finish
 - Review a diff or PR → `code-review-and-quality` or `requesting-code-review`; feedback received → `receiving-code-review`
 - Before claiming done, committing, or opening a PR → `verification-before-completion`
-- Branch wrap-up → `finishing-a-development-branch`; commits/branches → `git-workflow-and-versioning`
+- Branch wrap-up → `finishing-a-development-branch`; commits, branches, PR descriptions → `yt-studio-git` (then `git-workflow-and-versioning` for general rules)
 - Deploying → `shipping-and-launch`, `ci-cd-and-automation`
 
 ## Code quality
