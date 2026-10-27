@@ -89,7 +89,7 @@ export function keyTestRequest(id: ProviderId, key: string): KeyTestRequest | nu
     case "qwen":
       return { url: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models", method: "GET", headers: bearer };
     case "together":
-      return { url: "https://api.together.xyz/v1/models", method: "GET", headers: bearer };
+      return { url: "https://api.together.ai/v1/models", method: "GET", headers: bearer };
     case "siliconflow":
       return { url: "https://api.siliconflow.com/v1/models", method: "GET", headers: bearer };
     case "custom":

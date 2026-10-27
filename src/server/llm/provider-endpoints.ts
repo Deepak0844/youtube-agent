@@ -31,9 +31,9 @@ export const PROVIDER_ENDPOINTS: Record<ProviderId, ProviderEndpoint> = {
   qwen: {
     adapter: "openai-compatible",
     baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-    sourceNote: `https://www.alibabacloud.com/help/en/model-studio/compatibility-of-openai-with-dashscope (international region), ${CHECKED}`,
+    sourceNote: `NOTE: current docs use workspace-scoped URLs; this host answers 401 but the /models path used by the key test is unverified. https://www.alibabacloud.com/help/en/model-studio/compatibility-of-openai-with-dashscope (international region), ${CHECKED}`,
   },
-  together: { adapter: "openai-compatible", baseUrl: "https://api.together.xyz/v1", sourceNote: `https://docs.together.ai/docs/openai-api-compatibility, ${CHECKED}` },
+  together: { adapter: "openai-compatible", baseUrl: "https://api.together.ai/v1", sourceNote: `https://docs.together.ai/docs/openai-api-compatibility, ${CHECKED}` },
   siliconflow: { adapter: "openai-compatible", baseUrl: "https://api.siliconflow.com/v1", sourceNote: `https://docs.siliconflow.com/en/api-reference, ${CHECKED}` },
   ollama: { adapter: "openai-compatible", baseUrl: null, sourceNote: `https://github.com/ollama/ollama/blob/main/docs/openai.md, base URL comes from the model row (OpenAI route at /v1); 2026-10-27, address not probed` },
   lmstudio: { adapter: "openai-compatible", baseUrl: null, sourceNote: `https://lmstudio.ai/docs/app/api/endpoints/openai, base URL comes from the model row; 2026-10-27, address not probed` },

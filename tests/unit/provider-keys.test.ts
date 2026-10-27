@@ -89,7 +89,7 @@ describe("test requests are fixed, free and key-bearing only for the provider", 
     xai: "https://api.x.ai/v1/models",
     moonshot: "https://api.moonshot.ai/v1/models",
     qwen: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models",
-    together: "https://api.together.xyz/v1/models",
+    together: "https://api.together.ai/v1/models",
     siliconflow: "https://api.siliconflow.com/v1/models",
   };
   it.each(Object.entries(FIXED))("%s: the whole request (method, url, headers) is exactly the expected object", (id, url) => {

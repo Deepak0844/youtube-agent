@@ -36,7 +36,7 @@ function modelFor(fx: Fixture, payload: unknown) {
   };
   const fetch = (async () => new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } })) as typeof globalThis.fetch;
   const decls = [{ name: "webSearch", description: "search", inputSchema: { type: "object", properties: { query: { type: "string" } } } }];
-  return createAiSdkStep(buildModel(row, async () => KEY, { localServices: [], fetch }), decls, 100);
+  return createAiSdkStep(buildModel(row, async () => KEY, { localServices: ["localhost:11434"], fetch }), decls, 100);
 }
 const ask = [{ role: "user" as const, content: "go" }];
 

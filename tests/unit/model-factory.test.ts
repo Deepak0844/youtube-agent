@@ -105,7 +105,7 @@ describe("model factory", () => {
     for (const provider of ["ollama", "lmstudio"]) {
       const o = recorder(body);
       const k = keyFn();
-      await run(buildModel(row({ provider, baseUrl: "http://localhost:11434/v1", endpointKind: "local" }), k.getKey, { localServices: [], fetch: o.fetch }));
+      await run(buildModel(row({ provider, baseUrl: "http://localhost:11434/v1", endpointKind: "local" }), k.getKey, { localServices: ["localhost:11434"], fetch: o.fetch }));
       expect(k.calls.n, provider).toBe(0);
       expect(o.seen[0]!.url).toBe("http://localhost:11434/v1/chat/completions");
       expect(o.seen[0]!.headers.get("authorization")).toBeNull();
@@ -114,7 +114,7 @@ describe("model factory", () => {
 
   it("custom: local address needs no key; a hosted address needs one and must be https", async () => {
     const local = recorder(body);
-    await run(buildModel(row({ provider: "custom", baseUrl: "http://localhost:1234/v1", endpointKind: "local" }), async () => null, { localServices: [], fetch: local.fetch }));
+    await run(buildModel(row({ provider: "custom", baseUrl: "http://localhost:1234/v1", endpointKind: "local" }), async () => null, { localServices: ["localhost:1234"], fetch: local.fetch }));
     expect(local.seen).toHaveLength(1);
     expect(local.seen[0]!.headers.get("authorization")).toBeNull();
     const hosted = recorder(body);
