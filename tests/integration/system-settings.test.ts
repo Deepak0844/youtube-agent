@@ -1,7 +1,7 @@
 import os from "node:os";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { withTestDb, type TestDb } from "../support/db";
-import { getSetting } from "@/server/db/settings";
+import { getSetting, setSessionSettings } from "@/server/db/settings";
 import { listAudit } from "@/server/db/audit";
 import { loadLocalServices, loadSystemSettings, saveLocalServices, saveSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus } from "@/server/db/system-status";
@@ -200,6 +200,29 @@ describe("system settings form (app role)", () => {
        on conflict (key) do update set value = excluded.value`);
     await saveSystemSettings(db.pool, { ...good, scene_kit: false });
     expect(await getSetting(db.pool, "tracks.enabled")).toEqual({ scene_kit: false, tsx: false, collage: true, ai: false });
+  });
+});
+
+describe("setSessionSettings is limited to the keys this page writes", () => {
+  const noAudit = async () => undefined;
+  it.each(["policy.allow_public", "policy.require_evidence", "display.currency", "uploads.total_gb", "uploads.max_image_mb"])(
+    "refuses %s and touches nothing",
+    async (key) => {
+      const value = key.startsWith("policy") ? true : key === "display.currency" ? "EUR" : 9;
+      await expect(setSessionSettings(db.pool, [{ key, value }], noAudit)).rejects.toThrow(/not writable here/);
+      expect((await db.pool.query("select count(*)::int n from settings where key = $1", [key])).rows[0].n).toBe(0);
+    },
+  );
+  it("refuses an unknown key and a batch with one bad key as a whole", async () => {
+    await expect(setSessionSettings(db.pool, [{ key: "nope", value: 1 }], noAudit)).rejects.toThrow();
+    await expect(
+      setSessionSettings(db.pool, [{ key: "storage.warn_gb", value: 70 }, { key: "policy.allow_public", value: true }], noAudit),
+    ).rejects.toThrow(/not writable here/);
+    expect(await getSetting(db.pool, "storage.warn_gb")).toBe(50);
+  });
+  it("still writes the page's own keys", async () => {
+    await setSessionSettings(db.pool, [{ key: "network.local_services", value: ["localhost:11434"] }], noAudit);
+    expect(await getSetting(db.pool, "network.local_services")).toEqual(["localhost:11434"]);
   });
 });
 

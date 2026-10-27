@@ -3,6 +3,7 @@ import {
   MAX_LOCAL_SERVICES,
   localServiceBlockers,
   matchLocalService,
+  ownServiceConfigProblem,
   ownServicePorts,
   parseLocalServicesInput,
   validateLocalService,
@@ -151,6 +152,17 @@ describe("own service ports", () => {
   });
 });
 
+describe("N-b: an unreadable own-service setting is reported, not hidden", () => {
+  it("says which setting cannot be read, never its value", () => {
+    expect(ownServiceConfigProblem({})).toBeNull();
+    expect(ownServiceConfigProblem({ SEARXNG_URL: "http://127.0.0.1:8888" })).toBeNull();
+    const p = ownServiceConfigProblem({ SEARXNG_URL: "secret-looking-garbage" });
+    expect(p).toMatch(/SEARXNG_URL/);
+    expect(p).not.toContain("secret-looking-garbage");
+    expect(ownServiceConfigProblem({ OWN_SERVICE_PORTS: "9001,zzz" })).toMatch(/OWN_SERVICE_PORTS/);
+  });
+});
+
 describe("production needs the own-service URLs before any entry counts", () => {
   const all = { RENDER_RUNNER_URL: "http://127.0.0.1:7001", FETCHER_URL: "http://127.0.0.1:7002", SEARXNG_URL: "http://127.0.0.1:8888", EGRESS_PROXY_URL: "http://127.0.0.1:3128" };
   it("names what is missing in production and nothing outside it", () => {
@@ -218,6 +230,11 @@ describe("matching a URL against the list", () => {
     expect(matchLocalService(["localhost:80"], new URL("http://localhost/"))).toBe(true);
     expect(matchLocalService(["localhost:443"], new URL("https://localhost/"))).toBe(true);
     expect(matchLocalService(["localhost:443"], new URL("http://localhost/"))).toBe(false);
+  });
+  it("N-a: with no ports given it uses the app's own ports, so a caller cannot forget them", () => {
+    expect(matchLocalService(["localhost:3000"], new URL("http://localhost:3000/"))).toBe(false);
+    expect(matchLocalService(["localhost:9001"], new URL("http://localhost:9001/"), undefined, { OWN_SERVICE_PORTS: "9001" })).toBe(false);
+    expect(matchLocalService(["localhost:9001"], new URL("http://localhost:9001/"), undefined, {})).toBe(true);
   });
   it("ignores invalid stored entries instead of trusting them", () => {
     expect(matchLocalService(["0.0.0.0:80", "*:80", 5 as unknown as string], new URL("http://0.0.0.0/"))).toBe(false);

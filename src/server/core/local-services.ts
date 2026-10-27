@@ -78,6 +78,17 @@ export function ownServicePorts(env: Record<string, string | undefined> = proces
   return ports;
 }
 
+/** Owner-facing sentence naming the own-service setting that cannot be read (never its value), or null when all are readable. */
+export function ownServiceConfigProblem(env: Record<string, string | undefined> = process.env): string | null {
+  try {
+    ownServicePorts(env);
+    return null;
+  } catch (e) {
+    const name = /own-service setting (\w+)/.exec(e instanceof Error ? e.message : "")?.[1] ?? "an own-service setting";
+    return `The server setting ${name} cannot be read, so no local service can be listed or reached until it is fixed. You can still clear the list.`;
+  }
+}
+
 export type EntryResult = { ok: true; entry: string; host: string; port: number } | { ok: false; reason: string };
 const refuse = (reason: string): EntryResult => ({ ok: false, reason });
 
@@ -201,10 +212,11 @@ export function parseLocalServicesInput(
 export function matchLocalService(
   list: readonly string[],
   url: URL,
-  ownPorts: ReadonlySet<number> = new Set(),
+  ownPortsArg?: ReadonlySet<number>,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   if (localServiceBlockers(env).length > 0) return false;
+  const ownPorts = ownPortsArg ?? ownServicePorts(env); // never "no own ports" by default; throws (refuses) if unreadable
   let host = url.hostname.toLowerCase();
   if (host.startsWith("[") && host.endsWith("]")) {
     host = host.slice(1, -1);

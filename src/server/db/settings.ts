@@ -44,6 +44,16 @@ async function getSettingForUpdate(client: pg.PoolClient, key: string): Promise<
   return rows.length > 0 ? rows[0]!.value : (SETTINGS as Record<string, SettingDef>)[key]!.default;
 }
 
+/** The only keys setSessionSettings may write: what /settings/system saves. Other safety keys (policies) need their own reviewed path. */
+export const SESSION_BATCH_KEYS: readonly string[] = [
+  "network.local_services",
+  "jobs.concurrent_renders",
+  "jobs.concurrent_jobs",
+  "storage.warn_gb",
+  "video.max_long_minutes",
+  "tracks.enabled",
+];
+
 export interface SessionWrite {
   key: string;
   /** The new value, or a function of the current one (read under the transaction's lock). */
@@ -61,9 +71,16 @@ export async function setSessionSettings(
   writes: readonly SessionWrite[],
   onChange: (client: pg.PoolClient, key: string, change: { old: unknown; new: unknown }) => Promise<void>,
 ): Promise<Array<{ key: string; old: unknown; new: unknown }>> {
+  // Checked before the database is touched: a batch with one key outside the set writes nothing.
+  for (const w of writes) {
+    if (!isSettingKey(w.key)) throw new Error(`unknown setting: ${w.key}`);
+    if (!SESSION_BATCH_KEYS.includes(w.key)) throw new Error(`setting ${w.key} is not writable here`);
+  }
   const client = await db.connect();
   try {
     await client.query("begin");
+    // Advisory-lock key space: one app-wide key per feature, hashed from a dotted name under "ytstudio." (the settings
+    // page batch is "ytstudio.settings.session-batch"). Pick a new distinct name for any other advisory lock.
     await client.query("select pg_advisory_xact_lock(hashtext('ytstudio.settings.session-batch'))");
     const out: Array<{ key: string; old: unknown; new: unknown }> = [];
     for (const w of writes) {

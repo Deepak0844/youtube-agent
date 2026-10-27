@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
-import { localServiceBlockers, MAX_LOCAL_SERVICES } from "@/server/core/local-services";
+import { localServiceBlockers, MAX_LOCAL_SERVICES, ownServiceConfigProblem } from "@/server/core/local-services";
 import { getPool } from "@/server/db/pool";
 import { loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
@@ -22,6 +22,7 @@ async function Owned() {
   const [status, view] = await Promise.all([getSystemStatus(db), loadSystemSettings(db)]);
   const { renders, jobs, warnGb, longMinutes, services } = view;
   const blockers = localServiceBlockers();
+  const configProblem = ownServiceConfigProblem();
   return (
     <div className="flex min-w-0 flex-col gap-layout">
       <h1 className="text-page-title font-semibold tracking-tight">System</h1>
@@ -45,6 +46,11 @@ async function Owned() {
           local is only reachable if it is listed here. The studio&apos;s own services (database, Redis, search, renderer, fetcher)
           and cloud metadata addresses can never be listed. Changes are written to the audit log.
         </p>
+        {configProblem ? (
+          <p role="note" className="mb-5 max-w-[60ch] rounded-card bg-pill-negative-bg p-4 text-body text-pill-negative-ink">
+            {configProblem}
+          </p>
+        ) : null}
         {blockers.length > 0 ? (
           <p role="note" className="mb-5 max-w-[60ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">
             Local services are switched off. The server is missing these settings, so the studio cannot tell which ports are its
