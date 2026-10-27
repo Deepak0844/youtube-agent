@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { expect, test, type APIRequestContext, type APIResponse } from "@playwright/test";
+import { expect, request as pwRequest, test, type APIRequestContext, type APIResponse } from "@playwright/test";
 import { isApiPath } from "@/lib/auth/policy";
 import { ACTION_ALLOW } from "../../support/route-guards";
 import { routeTable, type RouteEntry } from "../../support/route-table";
@@ -27,6 +27,22 @@ const isLoginRedirect = (res: APIResponse) => res.status() === 307 && new URL(re
 const redirectsToLogin = (res: APIResponse, body: string) => isLoginRedirect(res) || (res.status() === 200 && body.includes(REDIRECT_DIGEST));
 const isApiRoute = (e: RouteEntry) => e.kind === "route" && isApiPath(e.url);
 
+// PAGE CONTENT MARKERS. Every (app) page is wrapped by a layout whose top bar calls requireOwner() inside <Suspense>, so ANY
+// app page answered without a valid session is a 200 that carries the redirect digest, whatever the page's own guard does.
+// The digest alone therefore cannot tell a guarded page from an unguarded one (a reviewer removed requireOwner from
+// /settings/system, rebuilt, and every spec stayed green). So each page also gets MARKERS: its own <h1>/<h2> elements, taken from
+// the valid-session response. A denied response must contain none of them. The marker is the whole element, not its text, so a
+// nav link with the same words (e.g. "Home") cannot match. This proves: page content that streams before the redirect is caught.
+// It does NOT prove a guard exists when the framework suppresses unauthenticated page output on its own; the static check in
+// tests/unit/route-inventory.test.ts (requireOwner must be the first call of every protected page) covers that case.
+const PAGES = PROTECTED.filter((r) => r.kind === "page");
+const MARKERS = new Map<string, string[]>();
+const markersOf = (html: string): string[] => [...html.matchAll(/<h[12]\b[^>]*>[\s\S]*?<\/h[12]>/g)].map((m) => m[0]);
+function expectNoPageContent(e: RouteEntry, body: string, label: string) {
+  if (e.kind !== "page") return;
+  for (const m of MARKERS.get(e.url) ?? []) expect(body.includes(m), `${label}: the denied response contains page content ${m.slice(0, 80)}`).toBe(false);
+}
+
 async function send(request: APIRequestContext, url: string, method: string, headers: Record<string, string>) {
   const res = await request.fetch(url, { method, headers, maxRedirects: 0 });
   return { res, body: method === "HEAD" ? "" : await res.text() };
@@ -43,6 +59,7 @@ function expectDenied(e: RouteEntry, method: string, state: string, r: Sent) {
     expect(isLoginRedirect(r.res) || (r.res.status() === 200 && r.body === ""), label).toBe(true);
   } else {
     expect(redirectsToLogin(r.res, r.body), label).toBe(true);
+    expectNoPageContent(e, r.body, label);
   }
 }
 
@@ -62,6 +79,15 @@ test.beforeAll(async () => {
   const revoked = await mintSession();
   await revokeSession(revoked);
   sessions = { expired, absolute, revoked, valid: await mintSession() };
+  const ctx = await pwRequest.newContext({ baseURL: ORIGIN });
+  try {
+    for (const e of PAGES) {
+      const res = await ctx.get(e.url, { headers: cookieOf(sessions.valid), maxRedirects: 0 });
+      MARKERS.set(e.url, res.status() === 200 ? markersOf(await res.text()) : []);
+    }
+  } finally {
+    await ctx.dispose();
+  }
 });
 test.afterAll(endSessionPool);
 
@@ -70,6 +96,14 @@ test("the derived table is not empty and contains the known routes", () => {
   const urls = TABLE.map((r) => r.url);
   for (const u of ["/", "/api/me", "/api/uploads", "/login", "/healthz"]) expect(urls, u).toContain(u);
 });
+
+// A page with no <h1>/<h2> of its own would make the marker check vacuous, so it fails here with the fix spelled out.
+for (const e of PAGES) {
+  test(`page markers: ${e.url} exposes its own <h1>/<h2> (needed so a denied response can be checked for page content)`, () => {
+    const found = MARKERS.get(e.url) ?? [];
+    expect(found.length, `${e.url}: the valid-session response has no <h1> or <h2>: add one (the spec needs a distinctive page element)`).toBeGreaterThan(0);
+  });
+}
 
 for (const e of PROTECTED) {
   for (const method of e.methods) {
@@ -162,6 +196,7 @@ for (const e of PROTECTED) {
           const canonical = new URL(r.res.headers().location ?? "", ORIGIN).pathname;
           const ok = redirectsToLogin(r.res, r.body) || s === 401 || s === 404 || (s === 308 && (canonical === e.url || canonical === url.replace(/\/+$/, "") || canonical === "/" + url.replace(/^\/+/, "")));
           expect(ok, `${method} ${url} (${state}) -> ${s} ${r.res.headers().location ?? ""}`).toBe(true);
+          expectNoPageContent(e, r.body, `${method} ${url} (${state})`);
           // A 200 that carries the redirect digest is only the static shell: no page heading or content may be in it.
           if (s === 200) expect(r.body, "a streamed redirect must not carry page content").not.toMatch(/<h1[\s>]/);
           if (s === 404) expect(r.body, "a 404 must not carry the protected content").not.toContain(REDIRECT_DIGEST.replace("NEXT_REDIRECT", "NEVER"));
