@@ -275,4 +275,21 @@ describe("agent checkpoints", () => {
     );
     expect(out.messages.find((m) => m.role === "tool")?.content).toBe("stored");
   });
+
+  it("a_replayed_tool_output_is_handed_to_the_tool_so_it_can_rebuild_its_state", async () => {
+    const { store } = memStore();
+    const done = new Map<number, StepResult>();
+    const script = [res("", [{ id: "a", name: "t", args: { q: 1 } }]), res("ok")];
+    let n = 0;
+    const step: ModelStep = async () => script[Math.min(n++, 1)]!;
+    const seen: string[] = [];
+    const tool = { name: "t", run: async () => "page", onReplay: (_a: unknown, out: string) => void seen.push(out) };
+    await runAgent(mini({ paid: replayingPaid(done), step, store, tools: [tool] }));
+    expect(seen).toEqual([]); // live run: the tool ran, nothing to replay
+    await runAgent(mini({ paid: replayingPaid(done), step, store, tools: [tool] }));
+    expect(seen).toEqual(["page"]);
+    // a throwing hook never fails the replay
+    const bad = { ...tool, onReplay: () => { throw new Error("x"); } };
+    await expect(runAgent(mini({ paid: replayingPaid(done), step, store, tools: [bad] }))).resolves.toBeDefined();
+  });
 });

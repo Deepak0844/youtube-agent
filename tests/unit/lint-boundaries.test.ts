@@ -58,6 +58,7 @@ describe("import boundaries", () => {
     ["bullmq in core", "src/server/core/a.ts", 'import { Queue } from "bullmq";\nexport const a = Queue;\n'],
     ["undici in core", "src/server/core/a.ts", 'import { fetch } from "undici";\nexport const a = fetch;\n'],
     ["node:http2 in core", "src/server/core/a.ts", 'import h from "node:http2";\nexport const a = h;\n'],
+    ["@/server/authoring in core", "src/server/core/a.ts", 'import * as r from "@/server/authoring/draft";\nexport const a = r;\n'],
     ["@/server/render in core", "src/server/core/a.ts", 'import * as r from "@/server/render";\nexport const a = r;\n'],
     ["fetch global in core", "src/server/core/a.ts", 'export const a = () => fetch("https://example.com");\n'],
     ["dynamic import in core", "src/server/core/a.ts", 'export const a = () => import("node:fs");\n'],
