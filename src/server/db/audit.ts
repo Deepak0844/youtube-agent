@@ -53,7 +53,7 @@ export async function listAudit(
     `select id::text as id, at, event, detail from audit_log
       where ($1::bigint is null or id < $1::bigint)
         and ($2 = '' or left(event, length($2)) = $2)
-      order by id desc limit $3`,
+      order by audit_log.id desc limit $3`,
     [opts.before ?? null, prefix, take + 1],
   );
   const more = rows.length > take;
