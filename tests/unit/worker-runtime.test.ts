@@ -60,6 +60,7 @@ describe("worker runtime", () => {
     const worker = startWorker({
       pool: { end } as unknown as WorkerOptions["pool"], redisUrl: "redis://127.0.0.1:1", log,
       hooks: {
+        sweepOrphans: async () => 0, holdWorkerLock: async () => ({ release: async () => {} }), createChildRegistry: () => ({}) as never,
         connectQueue: connect,
         loadSettings: async () => ({ config: (await import("@/server/core/engine-config")).buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
         checkVault: async () => "missing_key",
@@ -89,6 +90,7 @@ describe("worker runtime", () => {
     const worker = startWorker({
       pool: { end } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log: vi.fn(), shutdownTimeoutMs: 100, handlers: { render: async () => ({}) },
       hooks: {
+        sweepOrphans: async () => 0, holdWorkerLock: async () => ({ release: async () => {} }), createChildRegistry: () => ({}) as never,
         connectQueue: async () => queue,
         loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
         checkVault: async () => "missing_key", reconcile: async () => {}, advanceAll: async () => {},
@@ -116,6 +118,7 @@ describe("worker runtime", () => {
     const worker = startWorker({
       pool: { end } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log, shutdownTimeoutMs: 100, handlers: { render: async () => ({}) },
       hooks: {
+        sweepOrphans: async () => 0, holdWorkerLock: async () => ({ release: async () => {} }), createChildRegistry: () => ({}) as never,
         connectQueue: async () => queue,
         loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
         checkVault: async () => "ok", reconcile: async () => {}, advanceAll: async () => {}, markStalled: async () => {},
@@ -138,6 +141,7 @@ describe("worker runtime", () => {
       pool: { end: vi.fn().mockResolvedValue(undefined) } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log: vi.fn(),
       intervalMs: 100, retryMs: 100,
       hooks: {
+        sweepOrphans: async () => 0, holdWorkerLock: async () => ({ release: async () => {} }), createChildRegistry: () => ({}) as never,
         loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
         checkVault: async () => "missing_key", connectQueue: async () => { throw new Error("offline"); },
         markStalled, prune, reconcile, advanceAll,
@@ -158,6 +162,7 @@ describe("worker runtime", () => {
     const worker = startWorker({
       pool: { end } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log: vi.fn(), shutdownTimeoutMs: 100, handlers: { render: async () => ({}) },
       hooks: {
+        sweepOrphans: async () => 0, holdWorkerLock: async () => ({ release: async () => {} }), createChildRegistry: () => ({}) as never,
         connectQueue: async () => queue,
         loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
         checkVault: async () => "missing_key", reconcile: async () => {}, advanceAll: async () => {}, markStalled: async () => {},
@@ -178,6 +183,7 @@ describe("worker runtime", () => {
       pool: { end: vi.fn().mockResolvedValue(undefined) } as unknown as WorkerOptions["pool"], redisUrl: "redis://x", log, intervalMs: 1_000_000,
       handlers: { render: async () => ({}) },
       hooks: {
+        sweepOrphans: async () => 0, holdWorkerLock: async () => ({ release: async () => {} }), createChildRegistry: () => ({}) as never,
         connectQueue: async () => ({ startWorker: () => ({ close: async () => {} }), liveJobIds: async () => new Set<string>(), close: async () => {} }) as unknown as StageQueue,
         loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 1, concurrentRenders: 1 }),
         checkVault: async () => "ok",
@@ -189,6 +195,40 @@ describe("worker runtime", () => {
     expect(log.mock.calls.map((c) => c[0]).join("\n")).toContain("stalled-boom");
     expect(log).not.toHaveBeenCalledWith("reconcile ok");
     expect(log).not.toHaveBeenCalledWith("waiting for Redis");
+    await worker.stop();
+  });
+
+  it("boot_sweeps_orphans_before_taking_the_worker_lock_and_hands_handlers_the_registry", async () => {
+    const calls: string[] = []; const registry = { tag: "reg" } as never; let seen: unknown;
+    const release = vi.fn(async () => { calls.push("release"); });
+    const end = vi.fn(async () => { calls.push("end"); });
+    const worker = startWorker({
+      pool: { end } as unknown as WorkerOptions["pool"], redisUrl: "redis://x", log: vi.fn(), workerId: "w1",
+      handlers: (env) => { seen = env.childRegistry; return { render: async () => ({}) }; },
+      hooks: {
+        sweepOrphans: async (_p, id) => { calls.push(`sweep ${id}`); return 0; },
+        holdWorkerLock: async (_p, id) => { calls.push(`lock ${id}`); return { release }; },
+        createChildRegistry: () => registry,
+        connectQueue: async () => { throw new Error("offline"); },
+        loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 1, concurrentRenders: 1 }),
+        checkVault: async () => "ok", markStalled: async () => {},
+      },
+    });
+    await worker.ready; await worker.stop();
+    expect(calls).toEqual(["sweep w1", "lock w1", "release", "end"]);
+    expect(seen).toBe(registry);
+  });
+
+  it("a_second_worker_with_the_same_id_refuses_to_start", async () => {
+    const worker = startWorker({
+      pool: { end: async () => {} } as unknown as WorkerOptions["pool"], redisUrl: "redis://x", log: vi.fn(),
+      hooks: {
+        sweepOrphans: async () => 0, holdWorkerLock: async () => { throw new Error("Another worker is already running with id w."); },
+        loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 1, concurrentRenders: 1 }),
+        checkVault: async () => "ok",
+      },
+    });
+    await expect(worker.ready).rejects.toThrow(/already running/);
     await worker.stop();
   });
 

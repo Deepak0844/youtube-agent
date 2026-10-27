@@ -13,6 +13,8 @@ import { notifyTransition, type NotifyPorts } from "@/server/db/notify";
 import { getStage } from "@/server/db/stages";
 import type { StageOutcome } from "@/server/core/stage-runner";
 import type { NotifyEventId } from "@/server/core/notify";
+import { createChildRegistry, holdWorkerLock, sweepOrphans, type WorkerLock } from "@/server/db/child-processes";
+import type { ChildRegistry } from "@/server/render/child";
 import { markStalled } from "@/server/db/uploads";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { createJobQueue, type StageQueue } from "@/server/queue/job-queue";
@@ -32,11 +34,16 @@ export interface WorkerHooks {
   /** Called after a stage ends in a state the owner must hear about. Best-effort: never throws into the job. */
   notify(pool: pg.Pool, ports: NotifyPorts, e: Parameters<typeof notifyTransition>[2]): Promise<unknown>;
   beforeStart(pool: pg.Pool): Promise<void>;
+  /** Boot order matters: sweep children left by dead workers first, then claim this worker id. */
+  sweepOrphans(pool: pg.Pool, workerId: string): Promise<number>;
+  holdWorkerLock(pool: pg.Pool, workerId: string): Promise<WorkerLock>;
+  createChildRegistry(pool: pg.Pool, workerId: string): ChildRegistry;
 }
 export interface WorkerOptions {
   pool?: pg.Pool;
   redisUrl?: string;
-  handlers?: StageHandlers;
+  /** Handlers, or a factory that receives the registry render children must be registered with (so a crash leaves them sweepable). */
+  handlers?: StageHandlers | ((env: { childRegistry: ChildRegistry }) => StageHandlers);
   workerId?: string;
   log?: (message: string) => void;
   hooks?: Partial<WorkerHooks>;
@@ -65,6 +72,7 @@ const defaults: WorkerHooks = {
   // Event storage is introduced by Task 11. Never invent a table or use an owner pool here.
   prune: async () => {},
   beforeStart: async () => {},
+  sweepOrphans, holdWorkerLock, createChildRegistry,
 };
 
 // Stage outcomes the owner must hear about. A redelivered job reuses (stage id, fence), so it notifies once.
@@ -95,6 +103,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
   const shutdown = new AbortController();
   const workerId = opts.workerId ?? randomUUID();
   let pool = opts.pool;
+  let workerLock: WorkerLock | undefined;
   let queue: StageQueue | undefined;
   let consumer: ReturnType<StageQueue["startWorker"]> | undefined;
   let loop: ReturnType<typeof startReconcileLoop> | undefined;
@@ -119,9 +128,15 @@ export function startRuntime(opts: WorkerOptions = {}) {
     catch { log("vault unreadable"); }
     await hooks.beforeStart(db);
     if (stopping) return;
-    const hasHandlers = Object.keys(opts.handlers ?? {}).length > 0;
+    const swept = await hooks.sweepOrphans(db, workerId);
+    if (swept > 0) log(`swept ${swept} orphaned child process(es)`);
+    workerLock = await hooks.holdWorkerLock(db, workerId);
+    if (stopping) return;
+    const childRegistry = hooks.createChildRegistry(db, workerId);
+    const handlers = typeof opts.handlers === "function" ? opts.handlers({ childRegistry }) : (opts.handlers ?? {});
+    const hasHandlers = Object.keys(handlers).length > 0;
     if (!hasHandlers) log("no stage handlers registered; stages stay queued and are not consumed or advanced");
-    const dispatch = createStageDispatcher(opts.handlers ?? {}, settings.concurrentRenders);
+    const dispatch = createStageDispatcher(handlers, settings.concurrentRenders);
     const renderStageNames = stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }).filter((s) => s.resource === "render").map((s) => s.stage);
     // Reconciler paths that park (unknown paid outcome) or fail (too many attempts) a stage tell the owner too.
     // Same (stage id, fence) key as the runner path, so one stage state notifies once.
@@ -246,7 +261,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
         }
         // Teardown has its own fresh limit, so a slow drain cannot starve closing connections.
         const teardownExpired = await within(Promise.allSettled([
-          safely(() => consumer?.close(true)), safely(() => queue?.close(true)), safely(() => pool?.end()),
+          safely(() => consumer?.close(true)), safely(() => queue?.close(true)), safely(async () => { await workerLock?.release(); await pool?.end(); }),
         ]));
         if (teardownExpired) {
           if (pool) forceClosePool(pool);
