@@ -9,6 +9,7 @@ import { loadKeyring } from "@/server/db/master-key";
 import { vaultStatus } from "@/server/db/vault";
 import { reconcile, type ReconcileResult } from "@/server/db/reconciler";
 import { advanceAll } from "@/server/db/pipeline";
+import { afterReconcile, afterStageOutcome, sweepRetries } from "@/server/db/retry";
 import { notifyTransition, type NotifyPorts } from "@/server/db/notify";
 import { getStage } from "@/server/db/stages";
 import type { StageOutcome } from "@/server/core/stage-runner";
@@ -32,6 +33,12 @@ export interface WorkerHooks {
   checkVault(pool: pg.Pool): Promise<string>;
   reconcile(pool: pg.Pool, queue: StageQueue, config: EngineConfig): Promise<unknown>;
   advanceAll(pool: pg.Pool, queue: StageQueue): Promise<unknown>;
+  /** Retries for confirmed provider rejections: repairs a crash between "failed" and "retry row" and releases held ones. */
+  sweepRetries(pool: pg.Pool, queue: StageQueue): Promise<unknown>;
+  /** Breaker bookkeeping and the retry for one finished attempt. */
+  afterOutcome: typeof afterStageOutcome;
+  /** Breaker bookkeeping for stages the reconciler failed or parked. */
+  afterReconcile: typeof afterReconcile;
   markStalled(pool: pg.Pool): Promise<unknown>;
   prune(pool: pg.Pool): Promise<void>;
   runStage: typeof runStage;
@@ -73,6 +80,9 @@ const defaults: WorkerHooks = {
   checkVault: async (pool) => (await vaultStatus(pool, loadKeyring)).status,
   reconcile: (pool, queue, config) => reconcile(pool, queue, { maxAttempts: config.retryAttempts - 1, attemptBasis: "claim" }),
   advanceAll,
+  sweepRetries: (pool, queue) => sweepRetries(pool, queue),
+  afterOutcome: afterStageOutcome,
+  afterReconcile,
   runStage,
   notify: notifyTransition,
   markStalled: (pool) => markStalled(pool, 60_000),
@@ -166,8 +176,18 @@ export function startRuntime(opts: WorkerOptions = {}) {
     const renderStageNames = stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }).filter((s) => s.resource === "render").map((s) => s.stage);
     // Reconciler paths that park (unknown paid outcome) or fail (too many attempts) a stage tell the owner too.
     // Same (stage id, fence) key as the runner path, so one stage state notifies once.
+    const notifyBreaker = async (database: pg.Pool, opened: { stage: string; openedAtMs: number }) => {
+      try {
+        await hooks.notify(database, { channels: {} }, {
+          event: "spend_cap_hit", from: "closed", to: "spend_cap_hit",
+          transitionId: `breaker.${opened.stage}.${Math.round(opened.openedAtMs)}`,
+          detail: `${opened.stage} paused after repeated failures`,
+        });
+      } catch { log("notify failed"); }
+    };
     const notifyReconciled = async (database: pg.Pool, result: unknown) => {
       const r = result as Partial<ReconcileResult> | undefined;
+      try { for (const o of await hooks.afterReconcile(database, r)) await notifyBreaker(database, o); } catch { log("breaker bookkeeping failed"); }
       const items: Array<[string, NotifyEventId, string]> = [
         ...(r?.needsDecision ?? []).map((id): [string, NotifyEventId, string] => [id, "needs_decision", "needs_decision"]),
         ...(r?.failed ?? []).map((id): [string, NotifyEventId, string] => [id, "video_failed", "failed"]),
@@ -196,7 +216,10 @@ export function startRuntime(opts: WorkerOptions = {}) {
             const result = await hooks.reconcile(db, connected, settings.config);
             await notifyReconciled(db, result);
             // Without handlers every stage would fail as "missing handler"; leave rows queued instead.
-            if (!stopping && hasHandlers) await hooks.advanceAll(db, connected);
+            if (!stopping && hasHandlers) {
+              await hooks.advanceAll(db, connected);
+              await hooks.sweepRetries(db, connected);
+            }
           }),
           guard("mark stalled uploads", () => hooks.markStalled(db)),
           guard("prune", () => hooks.prune(db)),
@@ -234,6 +257,16 @@ export function startRuntime(opts: WorkerOptions = {}) {
                 },
                 provider: { call: async () => { throw new Error("runtime requires a stage handler"); } },
               }, job);
+              // Breaker event and (for a clear provider rejection only) the retry row. Best-effort: if this fails the
+              // sweep schedules the retry later, and a missed breaker event only delays the pause by one failure.
+              let retryScheduled = false;
+              if (outcome && "claim" in outcome) {
+                try {
+                  const follow = await hooks.afterOutcome(db, queue!, { kind: outcome.kind, stageRunId: outcome.claim.stageRunId });
+                  retryScheduled = follow.retry?.kind === "scheduled";
+                  if (follow.breakerOpened) await notifyBreaker(db, follow.breakerOpened);
+                } catch { log("retry bookkeeping failed"); }
+              }
               const evType = outcome && "claim" in outcome ? OUTCOME_EVENTS[outcome.kind] : undefined;
               if (evType && "claim" in outcome) {
                 try {
@@ -242,7 +275,8 @@ export function startRuntime(opts: WorkerOptions = {}) {
                 } catch { log("event emit failed"); }
               }
               const hit = outcome && "claim" in outcome ? NOTIFY_OUTCOMES[outcome.kind] : undefined;
-              if (hit && "claim" in outcome) {
+              // A failure that is being retried is not news yet: the owner hears when the retries run out.
+              if (hit && "claim" in outcome && !retryScheduled) {
                 try {
                   const row = await getStage(db, outcome.claim.stageRunId);
                   await hooks.notify(db, { channels: {} }, {

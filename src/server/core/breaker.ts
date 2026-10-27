@@ -22,6 +22,29 @@ export function breakerAllows(state: BreakerState, nowMs: number, cfg: BreakerCo
   return effective(state, nowMs, cfg).status !== "open";
 }
 
+/**
+ * Admission for ONE new stage. Closed: pass. Open: hold. Half open: exactly one stage (the probe) passes; the rest hold
+ * until the probe reports or, if its outcome never arrives (cancelled, parked), one more cooldown has passed.
+ */
+export function admitBreaker(state: BreakerState, probeAtMs: number | null, nowMs: number, cfg: BreakerConfig): { allowed: boolean; takesProbe: boolean } {
+  if (cfg.threshold <= 0) return { allowed: true, takesProbe: false };
+  const s = effective(state, nowMs, cfg);
+  if (s.status === "closed") return { allowed: true, takesProbe: false };
+  if (s.status === "open") return { allowed: false, takesProbe: false };
+  if (probeAtMs === null || nowMs - probeAtMs >= cfg.cooldownMs) return { allowed: true, takesProbe: true };
+  return { allowed: false, takesProbe: false };
+}
+
+/** When the next stage may pass (ms), or null when one may pass now. For the "paused until" text. */
+export function holdUntilMs(state: BreakerState, probeAtMs: number | null, nowMs: number, cfg: BreakerConfig): number | null {
+  if (cfg.threshold <= 0) return null;
+  const s = effective(state, nowMs, cfg);
+  if (s.status === "closed") return null;
+  if (s.status === "open") return (s.openedAtMs ?? nowMs) + cfg.cooldownMs;
+  if (probeAtMs === null || nowMs - probeAtMs >= cfg.cooldownMs) return null;
+  return probeAtMs + cfg.cooldownMs;
+}
+
 export function breakerStep(state: BreakerState, event: BreakerEvent, nowMs: number, cfg: BreakerConfig): BreakerState {
   if (event === "reset" || event === "success") return CLOSED;
   if (cfg.threshold <= 0) return CLOSED;

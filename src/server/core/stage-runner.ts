@@ -11,6 +11,7 @@ import {
   type PaidCallPorts,
 } from "./paid-call";
 import type { EngineConfig } from "./engine-config";
+import { classifyError, type ErrorClass } from "./error-class";
 import { createStageContext, StageAbort, type StageHandler, type StageLogHandle } from "./stage-handler";
 
 // The worker body for one stage attempt: claim -> paid steps (each through runPaidCall) -> commit. No IO here;
@@ -85,7 +86,7 @@ export interface StageRunnerPorts {
   commit(claim: StageClaim, result: unknown): Promise<boolean>;
   // Both fenced on claim (fence + owner + running); false = the stage has moved on.
   markNeedsDecision(claim: StageClaim, reason: string): Promise<boolean>;
-  fail(claim: StageClaim, reason: string): Promise<boolean>;
+  fail(claim: StageClaim, reason: string, errorClass?: ErrorClass): Promise<boolean>;
   cancel?(claim: StageClaim): Promise<"cancelled" | "needs_decision" | "rejected">;
   timeOut?(claim: StageClaim, reason: "stage_timeout" | "provider_timeout"): Promise<"failed" | "needs_decision" | "rejected">;
 }
@@ -263,7 +264,7 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
     }
     if (err instanceof KnownFailure) {
       if (releaseFailed) return { kind: "known_failure_release_failed", claim };
-      await ports.fail(claim, `known_failure: ${safeReason(err)}`);
+      await ports.fail(claim, `known_failure: ${safeReason(err)}`, classifyError(err));
       return { kind: "known_failure", claim };
     }
     throw err;

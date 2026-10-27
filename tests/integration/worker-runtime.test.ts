@@ -5,6 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { NotProcessedError } from "@/server/core/error-class";
+import { advanceVideo } from "@/server/db/pipeline";
+import { createVideoRow } from "@/server/db/videos";
 import { createPool } from "@/server/db/pool";
 import { insertQueuedStage, getStage } from "@/server/db/stages";
 import { setSetting } from "@/server/db/settings";
@@ -68,6 +71,33 @@ describe("worker runtime with Postgres and Redis", () => {
     await waitFor(async () => (await getStage(db.pool, id2))?.status === "failed", "still failed");
   });
 
+  it("a_confirmed_provider_rejection_schedules_a_delayed_retry_row_and_stays_quiet_until_retries_run_out", async () => {
+    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" });
+    await advanceVideo(db.pool, queue, v.id);
+    const worker = boot({ handlers: { draft: async () => { throw new NotProcessedError("provider said 503", { status: 503 }); } } }); await worker.ready;
+    const rows = async () => (await db.pool.query("select id, status, retry_of, not_before, input_hash, result from stage_runs where video_id = $1 order by created_at, id", [v.id])).rows;
+    await waitFor(async () => (await rows()).length === 2, "retry row created");
+    const [failed, retry] = await rows();
+    expect(failed).toMatchObject({ status: "failed", result: { class: "transient" } });
+    expect(retry).toMatchObject({ status: "queued", retry_of: failed.id, input_hash: failed.input_hash });
+    expect(retry.not_before.getTime()).toBeGreaterThan(Date.now() + 20_000); // 30 s back-off on the database clock
+    // not a "video failed" notice while a retry is coming
+    expect((await db.pool.query("select 1 from notifications where event = 'video_failed'")).rowCount).toBe(0);
+    // and the worker does not run it early
+    await new Promise((r) => setTimeout(r, 300));
+    expect((await rows()).map((r) => r.status)).toEqual(["failed", "queued"]);
+  });
+
+  it("an_opening_breaker_tells_the_owner_once", async () => {
+    await setSetting(db.pool, "breaker.threshold", 1, { actor: "session" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" });
+    await advanceVideo(db.pool, queue, v.id);
+    const worker = boot({ handlers: { draft: async () => { throw new NotProcessedError("bad request", { status: 400 }); } } }); await worker.ready;
+    await waitFor(async () => (await db.pool.query("select 1 from notifications where event = 'spend_cap_hit'")).rowCount === 1, "breaker notified");
+    expect((await db.pool.query("select 1 from notifications where event = 'video_failed'")).rowCount).toBe(1);
+    expect((await advanceVideo(db.pool, queue, (await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Another" })).id)).held).toMatchObject({ stage: "draft" });
+  });
+
   it("worker_without_handlers_leaves_rows_queued_and_does_not_advance", async () => {
     const advanceAll = vi.fn(async () => {}); const log = vi.fn();
     const worker = boot({ log, intervalMs: 20, hooks: { advanceAll } }); await worker.ready;
@@ -82,7 +112,8 @@ describe("worker runtime with Postgres and Redis", () => {
   it("reconciler_parked_and_failed_stages_notify_the_owner_once", async () => {
     const a = await stage(); const b = await stage();
     const reconcileFn = vi.fn(async () => ({ requeued: [], reenqueued: [], needsDecision: [a], failed: [b], cancelled: [], enqueueFailed: [] }));
-    const worker = boot({ intervalMs: 20, hooks: { reconcile: reconcileFn } }); await worker.ready;
+    // The stub repeats the same ids every tick (the real reconciler reports each transition once), so keep breaker counting out of this notice test.
+    const worker = boot({ intervalMs: 20, hooks: { reconcile: reconcileFn, afterReconcile: async () => [] } }); await worker.ready;
     await waitFor(async () => (await db.pool.query("select 1 from notifications")).rowCount === 2, "both notified");
     await new Promise((r) => setTimeout(r, 100)); // further ticks must not add rows
     const rows = (await db.pool.query("select event, to_state from notifications order by event")).rows;

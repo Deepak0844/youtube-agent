@@ -16,6 +16,7 @@ import {
   type StageName,
 } from "@/server/core/pipeline-plan";
 import type { StageQueue } from "@/server/queue/job-queue";
+import { admitStage } from "@/server/db/breakers";
 import { getSetting } from "@/server/db/settings";
 import { cancelQueuedStage, requestCancel } from "@/server/db/stages";
 import { createVideoRow, type VideoInput, type VideoRow } from "@/server/db/videos";
@@ -25,6 +26,12 @@ import { createVideoRow, type VideoInput, type VideoRow } from "@/server/db/vide
 // the two leaves a queued row the reconciler enqueues; a crash before the next row exists is caught by advanceAll.
 
 export type EnqueueOnly = Pick<StageQueue, "enqueue">;
+
+/** A stage the breaker is holding back: no row was created, the video just waits. `until` is when a stage may pass again. */
+export interface BreakerHold {
+  stage: StageName;
+  until: Date | null;
+}
 
 /** Where the pipeline learns about owner decisions. Approvals (hash-bound, Task 04) plug in here; until they exist the
  *  defaults say "nothing approved, no feedback", so a video stops at its first gate. */
@@ -45,6 +52,8 @@ export interface AdvanceResult {
   /** stage_runs ids created but whose queue add failed; they stay queued and the reconciler delivers them */
   enqueueFailed: string[];
   action: Action | null;
+  /** set when the breaker for the next stage is open ("paused: breaker open until <time>") */
+  held?: BreakerHold;
 }
 
 interface VideoLocked {
@@ -145,9 +154,15 @@ export async function advanceVideo(db: pg.Pool, queue: EnqueueOnly, videoId: str
     const view = await buildView(c, v, readers);
     const [action] = nextActions(view);
     const created: Array<{ id: string; inputHash: string }> = [];
+    let held: BreakerHold | undefined;
     if (action?.kind === "enqueue") {
-      const id = await insertRun(c, videoId, action.stage, action.inputHash);
-      if (id) created.push({ id, inputHash: action.inputHash });
+      // The breaker decides inside this transaction, so a half-open probe is only spent on a row that is really created.
+      const gate = await admitStage(c, action.stage);
+      if (!gate.allowed) held = { stage: action.stage, until: gate.until };
+      else {
+        const id = await insertRun(c, videoId, action.stage, action.inputHash);
+        if (id) created.push({ id, inputHash: action.inputHash });
+      }
     }
     const next = action?.kind === "wait_gate" || action?.kind === "done" ? "waiting" : "active";
     if (next !== v.status) await c.query("update videos set status = $2, updated_at = now() where id = $1", [videoId, next]);
@@ -155,9 +170,9 @@ export async function advanceVideo(db: pg.Pool, queue: EnqueueOnly, videoId: str
     // says nothing. Only a change INTO waiting speaks: repeated sweeps over a parked video stay quiet.
     if (next !== v.status && action?.kind === "wait_gate") await insertEvent(c, { type: "gate.waiting", videoId, payload: { gate: action.gate } });
     if (next !== v.status && action?.kind === "done") await insertEvent(c, { type: "video.done", videoId });
-    return { created, action: action ?? null };
+    return { created, action: action ?? null, held };
   });
-  return { ...(await deliver(queue, decided.created)), action: decided.action };
+  return { ...(await deliver(queue, decided.created)), action: decided.action, ...(decided.held ? { held: decided.held } : {}) };
 }
 
 export interface SweepResult {
@@ -185,7 +200,7 @@ export async function advanceAll(db: pg.Pool, queue: EnqueueOnly, readers: Pipel
 
 /** Explicit rerun of one stage (failed, cancelled or stale). Refuses while a run is active or when nothing changed. */
 export async function rerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: string, stage: StageName, readers: PipelineReaders = NO_DECISIONS): Promise<AdvanceResult> {
-  const created = await inTx(db, async (c) => {
+  const decided = await inTx(db, async (c) => {
     const v = await lockVideo(c, videoId);
     if (!LIVE_VIDEO.includes(v.status)) throw new Error(`video is ${v.status}`);
     const view = await buildView(c, v, readers);
@@ -202,13 +217,38 @@ export async function rerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: strin
     }
     const want = expectedInputHash(view, stage, prevHash);
     if (run?.status === "succeeded" && run.inputHash === want) throw new Error("nothing changed since this stage last succeeded");
+    const gate = await admitStage(c, stage);
+    if (!gate.allowed) return { created: [] as Array<{ id: string; inputHash: string }>, held: { stage, until: gate.until } as BreakerHold | undefined };
     const id = await insertRun(c, videoId, stage, want);
     if (!id) throw new Error("cannot_rerun_while_job_active");
     await c.query("update videos set status = 'active', updated_at = now() where id = $1", [videoId]);
-    return [{ id, inputHash: want }];
+    return { created: [{ id, inputHash: want }], held: undefined as BreakerHold | undefined };
   });
-  return { ...(await deliver(queue, created)), action: null };
+  return { ...(await deliver(queue, decided.created)), action: null, ...(decided.held ? { held: decided.held } : {}) };
 }
+
+/**
+ * The input hash `stage` must have right now for this video, or null when the video is not live, the stage is not on its
+ * route, or the stage before it has not succeeded. Locks the video row (the caller supplies the transaction). Retries use
+ * it to refuse a run whose input changed since it failed.
+ */
+export async function wantedHashLocked(c: pg.PoolClient, videoId: string, stage: StageName, readers: PipelineReaders = NO_DECISIONS): Promise<string | null> {
+  const v = await lockVideo(c, videoId);
+  if (!LIVE_VIDEO.includes(v.status)) return null;
+  const view = await buildView(c, v, readers);
+  const plan = stagePlan(view.kind, view.format, view.flags);
+  const idx = plan.findIndex((s) => s.stage === stage);
+  if (idx < 0) return null;
+  let prevHash: string | null = null;
+  if (idx > 0) {
+    const before = view.runs[plan[idx - 1]!.stage];
+    if (before?.status !== "succeeded") return null;
+    prevHash = before.inputHash;
+  }
+  return expectedInputHash(view, stage, prevHash);
+}
+
+export { inTx };
 
 /** Stops the video and flags every active stage. A queued stage is closed at once; a running one stops at its worker. */
 export async function cancelVideo(db: pg.Pool, videoId: string): Promise<{ flagged: string[] }> {

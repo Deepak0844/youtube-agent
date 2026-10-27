@@ -31,6 +31,8 @@ import { cancelQueuedStage, toNumber } from "./stages";
 // an open intent parks the row (pending -> unknown, needs_decision) instead of failing it.
 // Queued rows with cancel_requested are moved to 'cancelled' (cancelQueuedStage) and never re-enqueued; claimStage
 // refuses them anyway.
+// A queued row with a future not_before (a retry waiting out its back-off) is skipped by B until the DATABASE clock passes it:
+// after a Redis wipe or a Mac sleep it is enqueued on the first pass after it is due, never earlier.
 // An enqueue failure is recorded in enqueueFailed: the row stays queued with a fresh updated_at and the next
 // reconcile after the grace window re-enqueues it.
 // needs_decision (and succeeded/failed/cancelled) rows are never selected, so never touched.
@@ -254,6 +256,7 @@ export async function reconcile(
   const queued = await pool.query<{ id: string; fence: string; attempt_seq: number }>(
     `select id, fence, attempt_seq from stage_runs
       where status = 'queued' and not cancel_requested and name <> 'model_test'
+        and (not_before is null or not_before <= clock_timestamp())
         and updated_at < clock_timestamp() - ($1::bigint * interval '1 millisecond')
       order by id`,
     [graceMs],
@@ -274,6 +277,7 @@ export async function reconcile(
       `update stage_runs
           set attempt_seq = attempt_seq + 1, attempt_job_id = $2, updated_at = clock_timestamp()
         where id = $1 and status = 'queued' and not cancel_requested and fence = $3 and attempt_seq = $4
+          and (not_before is null or not_before <= clock_timestamp())
           and updated_at < clock_timestamp() - ($5::bigint * interval '1 millisecond')
     returning input_hash`,
       [r.id, stageJobId(r.id, fence, attemptSeq), fence, r.attempt_seq, graceMs],

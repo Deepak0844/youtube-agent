@@ -22,7 +22,8 @@ export type QueueKind = "stages" | "uploads";
 export interface StageQueue {
   readonly kind: "stages";
   readonly name: string;
-  enqueue(stageRunId: string, fence: number, attemptSeq: number, inputHash: string): Promise<string>;
+  // delayMs holds the job back in Redis (a retry waiting out its back-off); Postgres not_before is the real gate.
+  enqueue(stageRunId: string, fence: number, attemptSeq: number, inputHash: string, opts?: { delayMs?: number }): Promise<string>;
   startWorker(
     handler: (job: StageJob, jobId: string) => Promise<void>,
     opts?: {
@@ -101,10 +102,12 @@ export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: strin
     const q: StageQueue & { enqueueUpload?: unknown } = {
       kind,
       name,
-      async enqueue(stageRunId, fence, attemptSeq, inputHash) {
+      async enqueue(stageRunId, fence, attemptSeq, inputHash, enqueueOpts) {
         const jobId = stageJobId(stageRunId, fence, attemptSeq);
         const data: StageJob = { stageRunId, inputHash };
-        await queue.add("stage", data, { jobId, attempts: 1, removeOnComplete: true, removeOnFail: { count: keepFailed } });
+        const delay = enqueueOpts?.delayMs;
+        if (delay !== undefined && (!Number.isSafeInteger(delay) || delay < 0)) throw new RangeError("delayMs must be a non-negative integer");
+        await queue.add("stage", data, { jobId, attempts: 1, removeOnComplete: true, removeOnFail: { count: keepFailed }, ...(delay ? { delay } : {}) });
         return jobId;
       },
       startWorker(handler, opts = {}) {

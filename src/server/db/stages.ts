@@ -130,6 +130,7 @@ export async function claimStage(
               fence = fence + 1,
               updated_at = now()
         where id = $1 and status = 'queued' and input_hash = $2 and not cancel_requested
+          and (not_before is null or not_before <= clock_timestamp())
     returning fence, lease_until, attempt_seq`,
       [args.id, args.inputHash, args.workerId, args.ttlMs],
     );
@@ -174,12 +175,14 @@ export async function commitStage(db: Db, claim: Claim, result: unknown): Promis
   return res.rowCount === 1;
 }
 
-export async function failStage(db: Db, claim: Claim, reason: string): Promise<boolean> {
+// errorClass "transient" is stored in the result: it is the evidence scheduleRetry (db/retry.ts) needs that the provider
+// refused the request before doing any work. Every other class leaves the result exactly as before.
+export async function failStage(db: Db, claim: Claim, reason: string, errorClass?: string): Promise<boolean> {
   const res = await db.query(
     `update stage_runs
         set status = 'failed', result = $4::jsonb, updated_at = now()
       where id = $1 and status = 'running' and fence = $2 and lease_owner = $3`,
-    [claim.stageRunId, claim.fence, claim.workerId, JSON.stringify({ error: reason })],
+    [claim.stageRunId, claim.fence, claim.workerId, JSON.stringify(errorClass === "transient" ? { error: reason, class: "transient" } : { error: reason })],
   );
   return res.rowCount === 1;
 }
