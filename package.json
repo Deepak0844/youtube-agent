@@ -18,6 +18,7 @@
     "worker": "tsx src/worker/index.ts",
     "dev:all": "concurrently -k -n web,worker \"next dev -H 127.0.0.1\" \"tsx watch src/worker/index.ts\"",
     "lint": "eslint",
+    "design:check": "tsx scripts/design-check.mts",
     "typecheck": "next typegen && tsc --noEmit && tsc --noEmit -p infra/egress-proxy",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",

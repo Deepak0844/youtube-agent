@@ -99,7 +99,7 @@ function Gallery() {
             <Row key={variant} label={variant}>
               <Button variant={variant}>Default</Button>
               <Button variant={variant} disabled>Disabled</Button>
-              <Button variant={variant} className="max-w-48 overflow-hidden">{LONG_HI}</Button>
+              <Button variant={variant} className="max-w-48"><span className="truncate">{LONG_HI}</span></Button>
             </Row>
           ))}
         </Section>

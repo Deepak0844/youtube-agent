@@ -28,20 +28,20 @@ function Strip() {
 
 export function AuthFrame({ title, lead, children }: { title: string; lead: string; children: ReactNode }) {
   return (
-    <main className="grid min-h-dvh flex-1 grid-rows-[auto_1fr] md:grid-rows-1 md:grid-cols-[minmax(0,1fr)_minmax(26rem,32rem)]">
-      <div className="flex flex-col justify-between gap-16 px-4 py-5 sm:px-gutter md:py-8">
+    <main className="grid min-h-dvh flex-1 grid-rows-[auto_1fr] lg:grid-rows-1 lg:grid-cols-[minmax(0,1fr)_minmax(26rem,32rem)]">
+      <div className="flex flex-col justify-between gap-16 px-4 py-5 sm:px-gutter lg:py-8">
         <div className="flex items-center gap-2 font-mono text-body font-medium tracking-tight text-text">
           <Mark />
           YT Studio
         </div>
-        <div className="hidden flex-col gap-10 md:flex">
+        <div className="hidden flex-col gap-10 lg:flex">
           <p className="max-w-[14ch] text-[clamp(2.25rem,4.6vw,4rem)] leading-[1.02] font-semibold tracking-tight text-text">
             Nothing goes out until you say so.
           </p>
           <Strip />
         </div>
       </div>
-      <section className="flex flex-col justify-center gap-6 bg-surface px-4 py-10 sm:px-gutter md:px-12">
+      <section className="flex flex-col justify-center gap-6 bg-surface px-4 py-10 sm:px-gutter lg:px-12">
         <div className="flex flex-col gap-1">
           <h1 className="text-page-title font-semibold tracking-tight text-text">{title}</h1>
           <p className="text-body text-muted">{lead}</p>
