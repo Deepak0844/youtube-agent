@@ -35,7 +35,14 @@ const isApiRoute = (e: RouteEntry) => e.kind === "route" && isApiPath(e.url);
 // nav link with the same words (e.g. "Home") cannot match. This proves: page content that streams before the redirect is caught.
 // It does NOT prove a guard exists when the framework suppresses unauthenticated page output on its own; the static check in
 // tests/unit/route-inventory.test.ts (requireOwner must be the first call of every protected page) covers that case.
-const PAGES = PROTECTED.filter((r) => r.kind === "page");
+// DEV_ONLY_ROUTES: design-review pages that requireOwner() and then notFound() in a production build (and this e2e server IS one).
+// Under cacheComponents the not-found UI streams, so a signed-in request answers 200 with the not-found page + a noindex tag
+// instead of a 404 status, and the page's own <h1>/<h2> never exist to be used as markers. So for these routes ONLY: every
+// refusal state below still applies unchanged, the valid-session control expects "signed in, not redirected, not-found page,
+// noindex" instead of the page, and the h1/h2 marker check is skipped. The static route-inventory check still demands the guard.
+const DEV_ONLY_ROUTES = ["/dev/ui", "/dev/ui/home", "/dev/ui/video"];
+const isDevOnly = (e: RouteEntry) => DEV_ONLY_ROUTES.includes(e.url);
+const PAGES = PROTECTED.filter((r) => r.kind === "page" && !isDevOnly(r));
 const MARKERS = new Map<string, string[]>();
 const markersOf = (html: string): string[] => [...html.matchAll(/<h[12]\b[^>]*>[\s\S]*?<\/h[12]>/g)].map((m) => m[0]);
 function expectNoPageContent(e: RouteEntry, body: string, label: string) {
@@ -144,7 +151,14 @@ for (const e of PROTECTED) {
         const want = controlStatus(method, e.url);
         expect(want, `declare the expected valid-session status of ${method} ${e.url} in CONTROL_STATUS`).toBeDefined();
         const { res, body } = await send(request, e.url, method, { ...cookieOf(sessions.valid), origin: ORIGIN });
-        expect(res.status(), `${method} ${e.url}`).toBe(want);
+        if (isDevOnly(e)) {
+          expect([200, 404], `${method} ${e.url}`).toContain(res.status());
+          expect(body, "a dev-only page must show the not-found page in production").toContain("This page could not be found.");
+          expect(body, "a dev-only page must be noindex").toMatch(/<meta name="robots" content="[^"]*noindex/);
+          expect(body, "the dev screen itself must not render").not.toContain('data-testid="dev-ui"');
+        } else {
+          expect(res.status(), `${method} ${e.url}`).toBe(want);
+        }
         expect(body, "a valid session must not be redirected").not.toContain(REDIRECT_DIGEST);
       });
     });
