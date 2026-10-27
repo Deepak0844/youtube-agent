@@ -94,7 +94,8 @@ describe("worker runtime with Postgres and Redis", () => {
     await advanceVideo(db.pool, queue, v.id);
     const worker = boot({ handlers: { draft: async () => { throw new NotProcessedError("bad request", { status: 400 }); } } }); await worker.ready;
     await waitFor(async () => (await db.pool.query("select 1 from notifications where event = 'spend_cap_hit'")).rowCount === 1, "breaker notified");
-    expect((await db.pool.query("select 1 from notifications where event = 'video_failed'")).rowCount).toBe(1);
+    await waitFor(async () => (await db.pool.query("select 1 from notifications where event = 'video_failed'")).rowCount === 1, "failure notified");
+    expect((await db.pool.query("select 1 from notifications where event = 'spend_cap_hit'")).rowCount).toBe(1);
     expect((await advanceVideo(db.pool, queue, (await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Another" })).id)).held).toMatchObject({ stage: "draft" });
   });
 
