@@ -19,6 +19,8 @@ import ts from "typescript";
  */
 export type ImportAllow = Readonly<Record<string, readonly string[]>>;
 export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
+  // Read-only batch read of the engine numbers (getEngineConfig); never writes.
+  "src/server/db/engine-config.ts": ["getStoredSettings"],
   // Reads network.local_services with getSetting to derive a model endpoint kind and uses the Actor type; never writes.
   "src/server/db/llm-models.ts": ["getSetting", "Actor"],
   "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],

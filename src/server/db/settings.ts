@@ -9,6 +9,13 @@ export async function getSetting(db: pg.Pool | pg.PoolClient, key: string): Prom
   return rows.length > 0 ? rows[0]!.value : (SETTINGS as Record<string, SettingDef>)[key]!.default;
 }
 
+/** Stored values for several keys in one query; a key with no row is absent from the map (the caller decides the fallback). */
+export async function getStoredSettings(db: pg.Pool | pg.PoolClient, keys: readonly string[]): Promise<Map<string, unknown>> {
+  for (const k of keys) if (!isSettingKey(k)) throw new Error(`unknown setting: ${k}`);
+  const { rows } = await db.query<{ key: string; value: unknown }>("select key, value from settings where key = any($1::text[])", [keys]);
+  return new Map(rows.map((r) => [r.key, r.value]));
+}
+
 // Returns old/new so the caller can audit. Safety keys are session-only (Doc 02 4.6).
 export async function setSetting(
   db: pg.Pool,

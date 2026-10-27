@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ENGINE_KEYS } from "@/server/core/engine-config";
 import { BUDGET_DEFAULTS, SETTINGS, SAFETY_KEYS, parseSetting } from "@/server/core/settings-registry";
 
 describe("settings registry", () => {
@@ -22,11 +23,16 @@ describe("settings registry", () => {
   });
 
   it("safety_keys_are_exactly_the_reviewed_list", () => {
-    expect([...SAFETY_KEYS].sort()).toEqual(["network.local_services", "policy.allow_public", "policy.require_evidence"]);
+    expect([...SAFETY_KEYS].sort()).toEqual(
+      [
+        "network.local_services", "policy.allow_public", "policy.require_evidence",
+        ...ENGINE_KEYS,
+      ].sort(),
+    );
   });
 
   it("defaults_match_doc_02_and_07", () => {
-    const d = Object.fromEntries(Object.entries(SETTINGS).map(([k, v]) => [k, v.default]));
+    const d = Object.fromEntries(Object.entries(SETTINGS).filter(([k]) => !ENGINE_KEYS.includes(k as never)).map(([k, v]) => [k, v.default]));
     expect(d).toEqual({
       "jobs.concurrent_renders": 1,
       "jobs.concurrent_jobs": 2,

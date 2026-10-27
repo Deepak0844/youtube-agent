@@ -10,6 +10,9 @@ export interface SettingDef {
 }
 
 const posInt = z.number().int().positive();
+const nonNegInt = z.number().int().nonnegative();
+const num = z.number().finite();
+const posNum = z.number().finite().positive();
 
 export const SETTINGS = {
   "jobs.concurrent_renders": { schema: posInt, default: 1, safety: false, label: "Concurrent renders" },
@@ -29,6 +32,36 @@ export const SETTINGS = {
   "policy.require_evidence": { schema: z.boolean(), default: true, safety: true, label: "Require evidence" },
   "policy.allow_public": { schema: z.boolean(), default: false, safety: true, label: "Allow public publishing (global kill switch)" },
   "network.local_services": { schema: z.array(z.string().min(1)), default: [] as string[], safety: true, label: "Local services (host:port)" },
+  // Engine numbers (Doc 02 4.7, agent gap G5). All safety: they bound retries, spend exposure and what counts as a good video.
+  // Defaults come from the old agent/config.py and agent/qa.py (docs/spec/old-app-snapshot-2026-10-26); where the plan and
+  // the old code differ the old number wins (log_cap_bytes: config.py line 31 is 5_000_000, not 5 MiB).
+  "engine.retry_attempts": { schema: posInt.max(10), default: 3, safety: true, label: "Stage attempts (config.py:27)" },
+  "engine.retry_backoff_seconds": { schema: z.array(posInt).min(1).max(10), default: [30, 120, 480], safety: true, label: "Retry back-off seconds (config.py:28)" },
+  "engine.timeout_stage_s": { schema: posInt, default: 1800, safety: true, label: "Stage timeout, seconds (config.py:26)" },
+  "engine.timeout_author_s": { schema: posInt, default: 2400, safety: true, label: "Author stage timeout, seconds (config.py:58)" },
+  "engine.timeout_live_s": { schema: posInt, default: 43200, safety: true, label: "Live stage timeout, seconds (Doc 02 4.7: 12 h)" },
+  "engine.lease_s": { schema: posInt, default: 60, safety: true, label: "Stage lease, seconds (config.py:29)" },
+  "engine.heartbeat_s": { schema: posInt, default: 5, safety: true, label: "Heartbeat, seconds (config.py:30)" },
+  "engine.log_cap_bytes": { schema: posInt, default: 5_000_000, safety: true, label: "Stage log cap, bytes (config.py:31)" },
+  // Reserved: unused until the owner reverses open question 4 (cheap text steps).
+  "engine.cheap_text_run_budget_micro_usd": { schema: nonNegInt, default: 50_000, safety: true, label: "Cheap text run budget (micro-USD, reserved)" },
+  "breaker.threshold": { schema: nonNegInt, default: 3, safety: true, label: "Breaker threshold, 0 = off (config.py:46)" },
+  "breaker.cooldown_s": { schema: nonNegInt, default: 900, safety: true, label: "Breaker cooldown, seconds (config.py:47)" },
+  "breaker.stages": { schema: z.array(z.string().min(1)), default: ["draft", "build", "voice"], safety: true, label: "Breaker stages (config.py:48)" },
+  "uploads.concurrent": { schema: posInt, default: 1, safety: true, label: "Concurrent uploads (Doc 02 4.7: one at a time)" },
+  // QA (agent/config.py:33-35 and :57, agent/qa.py).
+  "qa.width": { schema: posInt, default: 1080, safety: true, label: "QA short width" },
+  "qa.height": { schema: posInt, default: 1920, safety: true, label: "QA short height" },
+  "qa.min_s": { schema: posNum, default: 15, safety: true, label: "QA short min seconds" },
+  "qa.max_s": { schema: posNum, default: 60, safety: true, label: "QA short max seconds" },
+  "qa.mean_db_min": { schema: num, default: -40, safety: true, label: "QA mean loudness floor (dB)" },
+  "qa.peak_db_max": { schema: num, default: -0.3, safety: true, label: "QA peak ceiling (dB)" },
+  "qa.loop_diff_max": { schema: posNum, default: 14, safety: true, label: "QA loop seam difference (of 255)" },
+  "qa.duration_tolerance_s": { schema: posNum, default: 1.5, safety: true, label: "QA duration tolerance (s)" },
+  "qa.long_width": { schema: posInt, default: 1920, safety: true, label: "QA long width" },
+  "qa.long_height": { schema: posInt, default: 1080, safety: true, label: "QA long height" },
+  "qa.long_min_s": { schema: posNum, default: 180, safety: true, label: "QA long min seconds" },
+  "qa.long_max_s": { schema: posNum, default: 900, safety: true, label: "QA long max seconds" },
   "display.currency": { schema: z.string().min(1), default: "USD", safety: false, label: "Display currency" },
 } satisfies Record<string, SettingDef>;
 
