@@ -26,7 +26,7 @@ export type ReserveResult =
       intentId: string;
       reservedMicroUsd: number;
     }
-  | { kind: "refused"; reason: "cap" | "stale_fence" };
+  | { kind: "refused"; reason: "cap" | "stale_fence" | "cancel_requested" };
 
 export interface Budget {
   scope: string;
@@ -96,14 +96,18 @@ export async function reserveIntent(
   return atomic(db, async (q): Promise<ReserveResult> => {
     // 1. The claim must still be valid on the DB clock. FOR SHARE keeps the stage row from being
     //    requeued/refenced until this transaction ends, so the reservation cannot slip past a takeover.
-    const { rows: live } = await q.query(
-      `select 1 from stage_runs
+    const { rows: live } = await q.query<{ cancel_requested: boolean }>(
+      `select cancel_requested from stage_runs
         where id = $1 and status = 'running' and fence = $2 and lease_owner = $3
           and lease_until > clock_timestamp()
           for share`,
       [claim.stageRunId, claim.fence, claim.workerId],
     );
-    if (live.length === 0) return { kind: "refused", reason: "stale_fence" };
+    const stage = live[0];
+    if (!stage) return { kind: "refused", reason: "stale_fence" };
+    // Read under the same stage lock as the fence check, before touching intents or budgets. requestCancel's
+    // UPDATE conflicts with FOR SHARE, so a cancellation committed first cannot slip past this reservation.
+    if (stage.cancel_requested) return { kind: "refused", reason: "cancel_requested" };
 
     // 2. Insert first (intent row is below the stage row in the lock order). A conflict means the call
     //    was already made (or is being made by a concurrent transaction: we wait for it): report it, reserve nothing.
