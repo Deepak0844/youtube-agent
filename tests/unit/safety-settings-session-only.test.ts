@@ -94,6 +94,7 @@ describe("no code path in src writes a safety setting as anything but a session"
       "src/server/db/engine-config.ts": ["getStoredSettings"],
       "src/server/db/llm-models.ts": ["getSetting", "Actor"],
       "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],
+      "src/server/db/pipeline.ts": ["getSetting"],
     });
     for (const names of Object.values(SETTINGS_IMPORT_ALLOW)) expect(names).not.toContain("setSetting");
     expect(SESSION_WRITER_IMPORT_ALLOW).toEqual({ "src/app/(app)/settings/system/actions.ts": ["saveLocalServices", "saveSystemSettings"] });
