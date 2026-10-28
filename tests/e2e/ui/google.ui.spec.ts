@@ -14,6 +14,7 @@ test("page shows the redirect address, setup guide and an empty state", async ({
   await expect(page.getByRole("heading", { name: "Setting it up in Google" })).toBeVisible();
   await expect(page.getByText("Nothing is sent to Google")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  if (page.viewportSize()!.width < 768) await page.getByRole("navigation", { name: "Bottom" }).getByRole("button", { name: "More" }).click(); // Google app sits under More on a phone
   await expect(page.getByRole("link", { name: "Google app" }).first()).toBeAttached();
 });
 

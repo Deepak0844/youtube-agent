@@ -33,8 +33,8 @@ describe("nav config", () => {
   it("hidden flags are absent from the rendered nav", () => {
     const shown = visibleNav().flatMap((g) => g.items);
     expect(shown.every((i) => isEnabled(i.flag))).toBe(true);
-    expect(shown.map((i) => i.href)).not.toContain("/queue");
-    expect(shown.map((i) => i.label)).toEqual(["Home", "Models", "Keys", "Google app", "Audit", "System"]);
+    expect(shown.map((i) => i.href)).not.toContain("/videos");
+    expect(shown.map((i) => i.label)).toEqual(["Home", "Queue", "Models", "Keys", "Google app", "Audit", "System"]);
   });
   it("every enabled href resolves to an existing page file", () => {
     for (const i of NAV_ITEMS.filter((i) => isEnabled(i.flag) && !PAGE_ARRIVES_ON_ANOTHER_BRANCH.includes(i.href))) {

@@ -37,3 +37,21 @@ export function assertSameOrigin(request: Request): Response | null {
   if (request.headers.get("sec-fetch-site") === "same-origin" && sameHost(request.headers.get("referer"))) return null;
   return forbidden("origin_missing");
 }
+
+/**
+ * Server actions: Next compares Origin with Host itself, but lets an Origin-less POST through. The queue's money and
+ * publish actions are stricter: a missing, "null" or foreign Origin is refused. Returns a reason, or null when fine.
+ */
+export function actionOriginProblem(h: Pick<Headers, "get">): string | null {
+  const origin = h.get("origin");
+  if (!origin || origin === "null") return "origin_missing";
+  const host = (h.get("host") ?? "").toLowerCase();
+  const allowed = parseAllowedHosts(process.env.ALLOWED_HOSTS);
+  try {
+    const url = new URL(origin);
+    const same = (url.protocol === "http:" || url.protocol === "https:") && url.host.toLowerCase() === host && isAllowedHost(url.host, allowed);
+    return same ? null : "origin";
+  } catch {
+    return "origin";
+  }
+}

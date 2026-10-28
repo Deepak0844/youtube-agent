@@ -27,6 +27,10 @@ export const AUDIT_EVENTS = {
   "breaker.reset": "A paused stage was released by the owner",
   // Phase 2 parked stages (detail: stage run id, video id, choice, reason, session id, dollar figure; never a call key)
   "stage.decision": "The owner resolved a parked stage",
+  // Phase 2 queue page (detail: ids and session id only)
+  "video.cancelled": "The owner cancelled a video",
+  "upload.requeued": "An approved upload was sent to the uploader again",
+  "dryrun.started": "A development dry run was started",
   // Phase 2 notifications (detail: event, channel, error class only)
   "notify.delivery_failed": "A notification channel failed to deliver",
   // Already written by owner setup, login and TOTP code

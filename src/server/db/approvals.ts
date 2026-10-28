@@ -109,13 +109,17 @@ async function decide<T = undefined>(db: pg.Pool, d: Decision, decision: "approv
   try {
     await client.query("begin");
     // Serialises every decision on this video; the live hash is read only after the lock is held.
-    const locked = await client.query("select id from videos where id = $1 for update", [d.videoId]);
+    const locked = await client.query<{ status: string }>("select status from videos where id = $1 for update", [d.videoId]);
     if (locked.rows.length === 0) return await abort(client, "video not found");
+    // A cancelled, finished or failed video takes no new decisions (a stale tab must not approve it back to life).
+    if (!["active", "waiting"].includes(locked.rows[0]!.status)) return await abort(client, "this video is no longer in production");
     const snap = await readSnapshot(client, d.videoId, d.gate);
     if (snap === "no_video") return await abort(client, "video not found");
     if (!snap.live.ok) return await abort(client, snap.live.reason);
     const live = snap.live;
     if (live.hash !== d.seenHash) return await abort(client, STALE_REASON);
+    // Inside the lock, so two concurrent clicks on the same page record exactly one approval.
+    if (decision === "approved" && snap.last?.decision === "approved" && snap.last.hash === live.hash) return await abort(client, "this is already approved");
     if (decision === "approved" && snap.last?.decision === "sent_back" && snap.last.hash === live.hash) return await abort(client, "you sent this back; wait for the new version before approving");
     const okSnap = snap as OkSnapshot;
     if (hooks.guard) {

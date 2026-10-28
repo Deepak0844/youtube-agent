@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { createPool } from "@/server/db/pool";
+import { approvalReaders } from "@/server/db/approval-readers";
 import { dryRunRefusal } from "./stages/guard";
 import { defaultDryRunDeps, dryRunHandlers, productionHandlers } from "./handlers";
 import { startRuntime, type WorkerOptions } from "./runtime";
@@ -31,7 +32,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         log("ENGINE_DRY_RUN=1: stages run on fake providers");
         handlers = dryRunHandlers(defaultDryRunDeps(pool));
       }
-      const worker = startWorker({ log, pool, handlers });
+      const worker = startWorker({ log, pool, handlers, readers: approvalReaders });
       let exiting = false;
       const shutdown = () => {
         if (exiting) return;

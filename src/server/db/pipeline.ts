@@ -251,10 +251,26 @@ export async function wantedHashLocked(c: pg.PoolClient, videoId: string, stage:
 
 export { inTx };
 
+/** What the pipeline would do next for a video, read only (no row lock, nothing written). null when the video is gone, not live or has no route. */
+export async function readNextAction(db: pg.Pool, videoId: string, readers: PipelineReaders = NO_DECISIONS): Promise<Action | null> {
+  const c = await db.connect();
+  try {
+    const r = await c.query<VideoLocked>("select id, format, kind, language, topic, notes, status from videos where id = $1", [videoId]);
+    const v = r.rows[0];
+    if (!v || !LIVE_VIDEO.includes(v.status)) return null;
+    return nextActions(await buildView(c, v, readers))[0] ?? null;
+  } catch {
+    return null; // a route that cannot be planned (long format is Phase 6b) is simply not listed
+  } finally {
+    c.release();
+  }
+}
+
 /** Stops the video and flags every active stage. A queued stage is closed at once; a running one stops at its worker. */
 export async function cancelVideo(db: pg.Pool, videoId: string): Promise<{ flagged: string[] }> {
   const flagged = await inTx(db, async (c) => {
-    await lockVideo(c, videoId);
+    const v = await lockVideo(c, videoId);
+    if (!LIVE_VIDEO.includes(v.status)) return []; // finished, failed or already cancelled: nothing to cancel
     await c.query("update videos set status = 'cancelled', updated_at = now() where id = $1", [videoId]);
     const active = await c.query<{ id: string }>("select id from stage_runs where video_id = $1 and status in ('queued','running','needs_decision') order by id", [videoId]);
     const ids: string[] = [];
