@@ -2,6 +2,7 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
+import { stageInputHash } from "@/server/core/pipeline-plan";
 import { addContent } from "@/server/db/videos";
 import { versionsKey } from "@/server/core/queue-input";
 import { approvalReaders } from "@/server/db/approval-readers";
@@ -53,7 +54,7 @@ async function plannedCalls(videoId: string): Promise<number> {
   const plan = (await q("select body from video_content where video_id = $1 and kind = 'cost_plan' order by version desc limit 1", [videoId])).rows[0]?.body as { items: unknown[] };
   return plan.items.length + 1;
 }
-const stageRow = async (videoId: string, name: string) => (await q("select id, status, fence from stage_runs where video_id = $1 and name = $2 order by created_at desc limit 1", [videoId, name])).rows[0] as { id: string; status: string; fence: string } | undefined;
+const stageRow = async (videoId: string, name: string) => (await q("select id, status, fence, input_hash from stage_runs where video_id = $1 and name = $2 order by created_at desc limit 1", [videoId, name])).rows[0] as { id: string; status: string; fence: string; input_hash: string } | undefined;
 const callsFor = async (videoId: string) => (await q("select count(*)::int n from engine_calls e join spend_intents i on i.call_key = e.real_key join stage_runs s on s.id = i.stage_run_id where s.video_id = $1", [videoId])).rows[0].n as number;
 const callsAt = async (videoId: string, stage: string) => (await q("select count(*)::int n from engine_calls e join spend_intents i on i.call_key = e.real_key join stage_runs s on s.id = i.stage_run_id where s.video_id = $1 and s.name = $2", [videoId, stage])).rows[0].n as number;
 
@@ -393,10 +394,14 @@ describe("approval races", () => {
     const videoId = await w.newVideo();
     await atScript(videoId);
     const i = await input(videoId, "script");
+    const initialDraft = await stageRow(videoId, "draft");
+    const initialScriptSha = (await q("select sha256 from video_content where video_id = $1 and kind = 'script' order by version desc limit 1", [videoId])).rows[0].sha256 as string;
     const [ap, sb] = await Promise.all([
       decideGate(db.pool, w.queues, w.session, i, "approve"),
       decideGate(db.pool, w.queues, w.session, { ...i, note: "Shorter hook, please" }, "send_back"),
     ]);
+    const allowedBuildInputs = new Set<string>();
+    if (ap.ok) allowedBuildInputs.add(stageInputHash("build", { prev: initialDraft!.input_hash, script: initialScriptSha }, {}));
     // approve and send-back can both be recorded (approve first, then the owner sends it back); what must hold is that the
     // text build used is the text that was approved at the moment it started.
     expect(ap.ok || sb.ok).toBe(true);
@@ -412,11 +417,14 @@ describe("approval races", () => {
       await addContent(db.pool, videoId, "script", { body, sha256: sha256Hex(canonicalJson(body)) });
       const beats = { beats: [{ id: "b1", text: body.narration }] };
       await addContent(db.pool, videoId, "beats", { body: beats, sha256: sha256Hex(canonicalJson(beats)) });
+      const rewrittenDraft = await stageRow(videoId, "draft");
+      allowedBuildInputs.add(stageInputHash("build", { prev: rewrittenDraft!.input_hash, script: sha256Hex(canonicalJson(body)) }, {}));
     }
     await runToUploaded(w, videoId);
     await worker.stop();
-    const builds = (await q("select input_hash from stage_runs where video_id = $1 and name = 'build' order by created_at", [videoId])).rows;
+    const builds = (await q("select input_hash from stage_runs where video_id = $1 and name = 'build' order by created_at", [videoId])).rows as Array<{ input_hash: string }>;
     expect(builds.length).toBeGreaterThanOrEqual(1);
+    expect(builds.every((build) => allowedBuildInputs.has(build.input_hash))).toBe(true);
     const approvedHashes = new Set((await q("select content_hash from approvals where video_id = $1 and gate = 'script' and decision = 'approved'", [videoId])).rows.map((r) => r.content_hash));
     const finalScript = (await liveGateHash(db.pool, videoId, "script"))!.hash;
     expect(approvedHashes.has(finalScript)).toBe(true); // the script that shipped was approved as shipped
