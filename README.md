@@ -16,6 +16,17 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+### Engine commands
+
+After migrating the local database and configuring `.env.local`:
+
+| Command | Purpose |
+|---|---|
+| `npm run dev:all` | Run the Next app and background worker together. |
+| `npm run worker` | Run only the Postgres/Redis-backed worker. |
+| `ENGINE_DRY_RUN=1 npm run dry-run -- "a topic"` | Run one fake-provider video until its next owner gate; no network, real key or real spend. Add `--auto-approve` only on a throwaway database. |
+| `npm run eval:llm -- --model <catalog-id> --mode agent --topics 10 --max-usd 2` | Print the hosted-model evaluation plan and cost ceiling without spending. Add `--yes` only after approving the capped real spend. |
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
