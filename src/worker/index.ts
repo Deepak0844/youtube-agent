@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { createPool } from "@/server/db/pool";
-import { productionHandlers } from "./handlers";
+import { dryRunRefusal } from "./stages/guard";
+import { defaultDryRunDeps, dryRunHandlers, productionHandlers } from "./handlers";
 import { startRuntime, type WorkerOptions } from "./runtime";
 
 // Retain startWorker(log) for existing callers, alongside the runtime options interface.
@@ -16,15 +17,31 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exitCode = 1;
   } else {
     const pool = createPool(process.env.DATABASE_URL);
-    const worker = startWorker({ log, pool, handlers: productionHandlers(pool) });
-    let exiting = false;
-    const shutdown = () => {
-      if (exiting) return;
-      exiting = true;
-      void worker.stop().then(() => process.exit(0), () => process.exit(1));
-    };
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
-    void worker.ready.catch(async () => { await worker.stop(); process.exitCode = 1; });
+    void (async () => {
+      // Fake providers only on an explicit opt-in that passes the guard; a refused opt-in stops the worker (no silent fallback).
+      let handlers = productionHandlers(pool);
+      if (process.env.ENGINE_DRY_RUN === "1") {
+        const refusal = await dryRunRefusal(pool, process.env).catch((e: unknown) => `The dry run guard could not check the database (${e instanceof Error ? e.message : "error"}).`);
+        if (refusal) {
+          process.stderr.write(`${refusal}\n`);
+          process.exitCode = 1;
+          await pool.end().catch(() => undefined);
+          return;
+        }
+        log("ENGINE_DRY_RUN=1: stages run on fake providers");
+        handlers = dryRunHandlers(defaultDryRunDeps(pool));
+      }
+      const worker = startWorker({ log, pool, handlers });
+      let exiting = false;
+      const shutdown = () => {
+        if (exiting) return;
+        exiting = true;
+        void worker.stop().then(() => process.exit(0), () => process.exit(1));
+      };
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+      void worker.ready.catch(async () => { await worker.stop(); process.exitCode = 1; });
+    })();
   }
 }
+  

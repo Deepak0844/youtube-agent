@@ -29,6 +29,20 @@ export async function ensureScopeCopies(db: pg.Pool, pairs: ReadonlyArray<readon
   return pairs.map((p) => p[0]);
 }
 
+/**
+ * A scope whose cap is a fixed figure that is not a template copy (an approved cost quote). Created on first use; later calls
+ * can only LOWER the cap, never raise it, so re-running a stage cannot widen what the owner approved.
+ */
+export async function ensureCapScope(db: pg.Pool, scope: string, capMicroUsd: number): Promise<string> {
+  if (!Number.isSafeInteger(capMicroUsd) || capMicroUsd < 0) throw new RangeError("a budget cap must be a whole, non-negative micro-USD amount");
+  await db.query(
+    `insert into budgets (scope, cap_micro_usd) values ($1, $2)
+     on conflict (scope) do update set cap_micro_usd = least(budgets.cap_micro_usd, excluded.cap_micro_usd)`,
+    [scope, capMicroUsd],
+  );
+  return scope;
+}
+
 /** `day:<date>` and `month:<yyyy-mm>` copies of the seeded `day` and `month` caps. */
 export async function periodScopes(db: pg.Pool): Promise<[string, string][]> {
   const { day, month } = await utcPeriods(db);
