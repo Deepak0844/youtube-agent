@@ -23,7 +23,7 @@ import { cancelQueuedStage, requestCancel } from "./stages";
 // The two choices that keep the same row (use_result, and raise_cap when the input is unchanged) are the ones where every
 // earlier call is settled `done` or was never made, so replaying the same keys returns stored results and pays nothing.
 
-export type ResolveResult = { ok: true; newStageRunId?: string; requeued?: boolean } | { ok: false; reason: string };
+export type ResolveResult = { ok: true; newStageRunId?: string; requeued?: boolean; rerunHeld?: boolean } | { ok: false; reason: string };
 
 export interface DecisionDetail extends DecisionView {
   stageRunId: string;
@@ -33,6 +33,10 @@ export interface DecisionDetail extends DecisionView {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NOT_OWNER = "only the signed-in owner can do this";
+
+// One raise may take a cap up to 10 times what it is now, or to $10, whichever is more.
+const MAX_RAISE_FACTOR = 10;
+const MIN_RAISE_ALLOWANCE_MICRO_USD = 10_000_000;
 
 class Refusal extends Error {}
 const refuse = (reason: string): never => {
@@ -91,7 +95,7 @@ export async function resolveDecision(db: pg.Pool, queue: EnqueueOnly, a: Resolv
   if (typeof a.stageRunId !== "string" || !UUID_RE.test(a.stageRunId)) return { ok: false, reason: "no such stage" };
   const sessionId = a.actor.sessionId;
 
-  type Done = { newId: string | null; requeue: { id: string; fence: number; attemptSeq: number; inputHash: string } | null; flagged: string[] };
+  type Done = { newId: string | null; requeue: { id: string; fence: number; attemptSeq: number; inputHash: string } | null; flagged: string[]; noop?: boolean; rerunHeld?: boolean };
   let done: Done;
   try {
     done = await inTx(db, async (c): Promise<Done> => {
@@ -121,7 +125,7 @@ export async function resolveDecision(db: pg.Pool, queue: EnqueueOnly, a: Resolv
       const view = describeDecision({ name: s.name, status: s.status, result: s.result }, toView(intents));
       if (!view.choices.includes(a.choice)) return refuse("that choice is not available for this step");
 
-      const out: Done = { newId: null, requeue: null, flagged: [] };
+      const out: Done = { newId: null, requeue: null, flagged: [], rerunHeld: false };
       const audit: Record<string, unknown> = {
         stageRunId: s.id, videoId: pipelineStage ? s.video_id : null, stage: s.name, choice: a.choice, reason: view.reason, sessionId,
         maxCostMicroUsd: view.maxCostMicroUsd, openCalls: intents.filter((i) => i.status === "pending" || i.status === "unknown").length,
@@ -130,12 +134,18 @@ export async function resolveDecision(db: pg.Pool, queue: EnqueueOnly, a: Resolv
 
       if (a.choice === "cancel_video") {
         if (!pipelineStage) return refuse("this step belongs to no video");
-        // Nothing is released: a call that may have run keeps its reservation, and the parked row stays visible with the
-        // cancel flag so held money is never hidden. The owner can still release or count it afterwards.
-        await c.query("update videos set status = 'cancelled', updated_at = now() where id = $1", [s.video_id]);
+        const openCalls = audit.openCalls as number;
+        // Asking twice while money is still held changes nothing: the first cancel already flagged everything.
+        if (!videoLive && s.cancel_requested && openCalls > 0) return { newId: null, requeue: null, flagged: [], noop: true, rerunHeld: false };
+        // Only a live video becomes cancelled: a video that already ended (done, failed, cancelled) keeps its status.
+        if (videoLive) await c.query("update videos set status = 'cancelled', updated_at = now() where id = $1 and status in ('active','waiting')", [s.video_id]);
         const active = await c.query<{ id: string }>("select id from stage_runs where video_id = $1 and status in ('queued','running','needs_decision') order by id", [s.video_id]);
         for (const { id } of active.rows) if (await requestCancel(c, id)) out.flagged.push(id);
+        // Money that may have run keeps its reservation and the parked row stays visible (held money is never hidden). With
+        // no open money there is nothing to hide, so the parked row is closed here.
+        if (openCalls === 0) await c.query("update stage_runs set status = 'cancelled', result = coalesce(result, '{}'::jsonb) || $2::jsonb, updated_at = clock_timestamp() where id = $1 and status = 'needs_decision'", [s.id, JSON.stringify(marker)]);
       } else {
+        const rerunChoice = a.choice === "release_and_rerun" || a.choice === "keep_spent_and_rerun";
         // Decide the shape of the follow-up BEFORE touching money, so a refusal changes nothing.
         let shape: "close" | "new_row" | "same_row";
         if (a.choice === "use_result") {
@@ -145,26 +155,46 @@ export async function resolveDecision(db: pg.Pool, queue: EnqueueOnly, a: Resolv
           if (!videoLive || want === null) return refuse("this video cannot run this step now");
           shape = want === s.input_hash ? "same_row" : "new_row";
         } else {
-          // release / keep: with a live video the step runs again as a new row; otherwise the money is settled and the row closed.
-          shape = pipelineStage && videoLive ? "new_row" : "close";
+          // release / keep: a fresh run (new call keys) only when no call of this row was paid, otherwise it would pay again.
+          // Without a live video, or with a paid call in the row, the money is settled and the row closed.
+          shape = pipelineStage && videoLive && view.rerunSafe && !intents.some((i) => i.status === "done") ? "new_row" : "close";
           if (shape === "new_row" && want === null) return refuse("an earlier step is not finished, so this step cannot run again yet");
         }
         if (s.cancel_requested && shape !== "close") return refuse("this step was cancelled");
-        if (shape !== "close") {
-          const gate = await admitStage(c, s.name);
-          if (!gate.allowed) return refuse(`paused: the ${s.name} step is on hold after repeated failures${gate.until ? ` until ${gate.until.toISOString()}` : ""}. Reset it first, then decide again`);
-        }
 
+        // Validate the cap change before the breaker is asked, so a refusal never spends a half-open probe.
+        let capChange: { scope: string; old: number; next: number } | null = null;
         if (a.choice === "raise_cap_and_rerun") {
           const rc = a.raiseCap;
           if (!rc || typeof rc.scope !== "string" || rc.scope.length === 0 || !Number.isSafeInteger(rc.capMicroUsd) || rc.capMicroUsd < 0) return refuse("give the budget to raise and its new limit");
+          // The scopes this video's paid calls were reserved against. A budget outside them did not refuse anything here.
+          const used = await c.query<{ scope: string }>(
+            "select distinct unnest(i.scopes) as scope from spend_intents i join stage_runs r on r.id = i.stage_run_id where r.video_id = $1",
+            [s.video_id],
+          );
+          if (used.rows.length > 0 && !used.rows.some((u) => u.scope === rc.scope)) return refuse("that budget did not pay for this video's calls");
           const cur = await c.query<{ cap: string }>("select cap_micro_usd as cap from budgets where scope = $1 for update", [rc.scope]);
           if (!cur.rows[0]) return refuse("no such budget");
           const old = Number(cur.rows[0].cap);
           if (rc.capMicroUsd <= old) return refuse("the new limit must be higher than the current one");
-          await c.query("update budgets set cap_micro_usd = $2 where scope = $1", [rc.scope, rc.capMicroUsd]);
-          Object.assign(audit, { scope: rc.scope, oldCapMicroUsd: old, newCapMicroUsd: rc.capMicroUsd });
-        } else if (a.choice === "release_and_rerun" || a.choice === "keep_spent_and_rerun") {
+          if (rc.capMicroUsd > Math.max(old * MAX_RAISE_FACTOR, MIN_RAISE_ALLOWANCE_MICRO_USD)) return refuse("that limit is too high for one step: raise it by at most 10 times (or to $10) at a time");
+          capChange = { scope: rc.scope, old, next: rc.capMicroUsd };
+        }
+
+        if (shape !== "close") {
+          const gate = await admitStage(c, s.name);
+          if (!gate.allowed) {
+            // A held breaker pauses RUNNING, not bookkeeping: the money decision still goes through, the step just is not rerun.
+            if (!rerunChoice) return refuse(`paused: the ${s.name} step is on hold after repeated failures${gate.until ? ` until ${gate.until.toISOString()}` : ""}. Reset it first, then decide again`);
+            shape = "close";
+            out.rerunHeld = true;
+          }
+        }
+
+        if (capChange) {
+          await c.query("update budgets set cap_micro_usd = $2 where scope = $1", [capChange.scope, capChange.next]);
+          Object.assign(audit, { scope: capChange.scope, oldCapMicroUsd: capChange.old, newCapMicroUsd: capChange.next });
+        } else if (rerunChoice) {
           for (const i of intents) {
             if (i.status !== "pending" && i.status !== "unknown") continue;
             const changed = a.choice === "release_and_rerun" ? await releaseUnclearIntent(c, i.id) : await keepUnclearIntentSpent(c, i.id);
@@ -187,6 +217,7 @@ export async function resolveDecision(db: pg.Pool, queue: EnqueueOnly, a: Resolv
           const closed = shape === "close" && !videoLive && pipelineStage ? "cancelled" : "failed";
           await c.query("update stage_runs set status = $2, result = coalesce(result, '{}'::jsonb) || $3::jsonb, updated_at = clock_timestamp() where id = $1 and status = 'needs_decision'", [s.id, closed, JSON.stringify(marker)]);
           if (shape === "new_row") {
+            if (intents.some((i) => i.status === "done") && a.choice !== "raise_cap_and_rerun") return refuse("a paid call in this step already settled, so it cannot be run again with new keys"); // defence in depth
             const id = uuidv7();
             const ins = await c.query("insert into stage_runs (id, video_id, name, status, input_hash) values ($1,$2,$3,'queued',$4) on conflict do nothing", [id, s.video_id, s.name, want]);
             if (ins.rowCount !== 1) return refuse("another run of this step already exists"); // rolls everything back
@@ -197,7 +228,8 @@ export async function resolveDecision(db: pg.Pool, queue: EnqueueOnly, a: Resolv
         if (pipelineStage && shape !== "close") await c.query("update videos set status = 'active', updated_at = now() where id = $1", [s.video_id]);
       }
 
-      Object.assign(audit, { newStageRunId: out.newId ?? undefined, mode: out.requeue ? (out.newId ? "new_row" : "same_row") : a.choice === "cancel_video" ? "cancel" : "close" });
+      if (out.noop) return out;
+      Object.assign(audit, { newStageRunId: out.newId ?? undefined, mode: out.requeue ? (out.newId ? "new_row" : "same_row") : a.choice === "cancel_video" ? "cancel" : "close", rerunHeld: out.rerunHeld });
       await recordAudit(c, "stage.decision", audit);
       await insertEvent(c, { type: "notify", videoId: pipelineStage ? s.video_id : null, stageRunId: s.id, payload: { kind: "decision", choice: a.choice, stage: s.name } });
       return out;
@@ -215,5 +247,5 @@ export async function resolveDecision(db: pg.Pool, queue: EnqueueOnly, a: Resolv
       /* the queued row is the record; the reconciler enqueues it */
     }
   }
-  return { ok: true, ...(done.newId ? { newStageRunId: done.newId } : {}), ...(done.requeue && !done.newId ? { requeued: true } : {}) };
+  return { ok: true, ...(done.newId ? { newStageRunId: done.newId } : {}), ...(done.requeue && !done.newId ? { requeued: true } : {}), ...(done.rerunHeld ? { rerunHeld: true } : {}) };
 }

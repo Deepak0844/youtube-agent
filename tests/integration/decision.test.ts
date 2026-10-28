@@ -94,6 +94,44 @@ async function parkUnknown(q: FakeQueue, reserve = RESERVE) {
   return { videoId: v.id, stageId: d!.id };
 }
 
+/** call 0 paid and settled, call 1 died with an unclear outcome: the stage is parked with BOTH a done and an unknown call. */
+async function parkMixed(q: FakeQueue) {
+  const v = await createVideoRow(db.pool, input);
+  await advanceVideo(db.pool, q, v.id);
+  const [d] = await stagesOf(v.id);
+  const row = (await getStage(db.pool, d!.id))!;
+  const handler: StageHandler = async (ctx) => {
+    await ctx.paid(step(), (key) => provider.call(key));
+    return ctx.paid(step({ kind: "cheap_text" }), async () => {
+      throw new Error("socket hang up");
+    });
+  };
+  await expect(runStage(db.pool, deps(handler, { ttlMs: 300 }), { stageRunId: d!.id, inputHash: row.inputHash })).rejects.toThrow(/socket hang up/);
+  await db.ownerPool.query("update stage_runs set lease_until = clock_timestamp() - interval '1 second' where id = $1", [d!.id]);
+  expect((await reconcile(db.pool, q, { graceMs: 0 })).needsDecision).toEqual([d!.id]);
+  q.calls.length = 0;
+  return { videoId: v.id, stageId: d!.id };
+}
+
+/** With a done call: call 0 paid on scope g, then g's cap drops below what is spent, so call 1 is refused. Without: refused at once. */
+async function parkRefused(q: FakeQueue, withDone = true) {
+  const v = await createVideoRow(db.pool, input);
+  await advanceVideo(db.pool, q, v.id);
+  const [d] = await stagesOf(v.id);
+  const row = (await getStage(db.pool, d!.id))!;
+  if (!withDone) await db.pool.query("update budgets set cap_micro_usd = 100 where scope = 'g'");
+  const handler: StageHandler = async (ctx) => {
+    if (withDone) {
+      await ctx.paid(step(), (key) => provider.call(key));
+      await db.pool.query("update budgets set cap_micro_usd = 100 where scope = 'g'");
+    }
+    return ctx.paid(step(), (key) => provider.call(key));
+  };
+  expect((await runStage(db.pool, deps(handler), { stageRunId: d!.id, inputHash: row.inputHash })).kind).toBe("budget_refused");
+  q.calls.length = 0;
+  return { videoId: v.id, stageId: d!.id };
+}
+
 const payOnce: StageHandler = (ctx) => ctx.paid(step(), (key) => provider.call(key));
 
 describe("needs_decision resolution", () => {
@@ -310,17 +348,6 @@ describe("needs_decision resolution", () => {
     expect(await auditRows()).toHaveLength(0);
   });
 
-  it("an_open_breaker_refuses_the_rerun_and_leaves_the_money_held", async () => {
-    const q = fakeQueue();
-    const { stageId } = await parkUnknown(q);
-    for (let n = 0; n < 5; n++) await recordBreakerEvent(db.pool, "draft", "failure");
-    const r = await resolveDecision(db.pool, q, { stageRunId: stageId, choice: "release_and_rerun", actor: SESSION });
-    expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(/paused|breaker/i) });
-    expect(await g()).toMatchObject({ reservedMicroUsd: RESERVE });
-    expect((await intentsOf(stageId)).map((i) => i.status)).toEqual(["unknown"]);
-    expect((await getStage(db.pool, stageId))!.status).toBe("needs_decision");
-  });
-
   it("a_stage_that_is_not_parked_cannot_be_resolved", async () => {
     const q = fakeQueue();
     const v = await createVideoRow(db.pool, input);
@@ -359,5 +386,173 @@ describe("needs_decision resolution", () => {
     await db.ownerPool.query("update stage_runs set updated_at = clock_timestamp() - interval '1 hour' where id = $1", [rows[1]!.id]);
     await reconcile(db.pool, q, { graceMs: 0 });
     expect(q.calls.map((c) => c.id)).toEqual([rows[1]!.id]);
+  });
+
+  it("a_stage_with_a_done_call_and_an_unknown_call_is_never_rerun_with_fresh_keys", async () => {
+    for (const choice of ["release_and_rerun", "keep_spent_and_rerun", "cancel_video", "use_result", "raise_cap_and_rerun"] as const) {
+      await db.reset();
+      await db.ownerPool.query(await readFile("src/server/db/migrations/0014_breakers.sql", "utf8"));
+      await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('g', 100000000)");
+      await db.ownerPool.query("insert into sessions (id, token_hash, expires_at, absolute_expires_at) values ($1, 'decision-test', clock_timestamp() + interval '1 day', clock_timestamp() + interval '7 days')", [SESSION_ID]);
+      const q = fakeQueue();
+      const { videoId, stageId } = await parkMixed(q);
+      const before = await g();
+      expect(await getDecision(db.pool, stageId), choice).toMatchObject({ rerunSafe: false, choices: ["release_and_rerun", "keep_spent_and_rerun", "cancel_video"] });
+      const r = await resolveDecision(db.pool, q, { stageRunId: stageId, choice, actor: SESSION, raiseCap: { scope: "g", capMicroUsd: 999_999 } });
+      const rows = await stagesOf(videoId);
+      expect(rows, choice).toHaveLength(1); // never a second row, so call 0 can never be paid again
+      expect(q.calls, choice).toHaveLength(0);
+      const intents = await intentsOf(stageId);
+      expect(intents[0]!.status).toBe("done"); // the paid call is never touched
+      if (choice === "use_result" || choice === "raise_cap_and_rerun") {
+        expect(r).toMatchObject({ ok: false });
+        expect(rows[0]!.status).toBe("needs_decision");
+        expect(await g()).toEqual(before);
+      } else if (choice === "cancel_video") {
+        expect(r).toMatchObject({ ok: true });
+        expect(rows[0]!.status).toBe("needs_decision"); // open money keeps the row visible
+        expect(await g()).toEqual(before);
+      } else {
+        expect(r).toMatchObject({ ok: true });
+        expect(rows[0]!.status).toBe("failed"); // settled and closed, no rerun
+        expect(r).not.toHaveProperty("newStageRunId");
+        const after = await g();
+        expect(after.reservedMicroUsd).toBe(0);
+        expect(after.spentMicroUsd).toBe(before.spentMicroUsd + (choice === "keep_spent_and_rerun" ? RESERVE : 0));
+        expect(intents[1]!.status).toBe(choice === "keep_spent_and_rerun" ? "done" : "failed_known");
+      }
+    }
+  });
+
+  it("an_open_breaker_still_settles_the_money_but_holds_the_rerun", async () => {
+    const q = fakeQueue();
+    const { videoId, stageId } = await parkUnknown(q);
+    for (let n = 0; n < 5; n++) await recordBreakerEvent(db.pool, "draft", "failure");
+    const r = await resolveDecision(db.pool, q, { stageRunId: stageId, choice: "release_and_rerun", actor: SESSION });
+    expect(r).toMatchObject({ ok: true, rerunHeld: true });
+    expect(await g()).toMatchObject({ reservedMicroUsd: 0, spentMicroUsd: 0 });
+    expect((await intentsOf(stageId)).map((i) => i.status)).toEqual(["failed_known"]);
+    expect((await stagesOf(videoId)).map((x) => x.status)).toEqual(["failed"]); // closed, no new row
+    expect(q.calls).toHaveLength(0);
+  });
+
+  it("an_open_breaker_refuses_raise_cap_which_is_all_rerun", async () => {
+    const q = fakeQueue();
+    const { stageId } = await parkRefused(q, false);
+    for (let n = 0; n < 5; n++) await recordBreakerEvent(db.pool, "draft", "failure");
+    expect(await resolveDecision(db.pool, q, { stageRunId: stageId, choice: "raise_cap_and_rerun", actor: SESSION, raiseCap: { scope: "g", capMicroUsd: 5_000_000 } })).toMatchObject({ ok: false, reason: expect.stringMatching(/paused/i) });
+    expect((await g()).capMicroUsd).toBe(100);
+    expect((await getStage(db.pool, stageId))!.status).toBe("needs_decision");
+  });
+
+  it("half_open_probe_is_spent_only_by_a_rerun_that_really_happens", async () => {
+    const probe = async () => (await db.ownerPool.query("select probe_at from breakers where stage = 'draft'")).rows[0]?.probe_at ?? null;
+    const q = fakeQueue();
+    const second = await parkUnknown(q); // both rows are parked before the breaker opens (it would hold new rows)
+    const refused = await parkRefused(q, false);
+    for (let n = 0; n < 5; n++) await recordBreakerEvent(db.pool, "draft", "failure");
+    await db.ownerPool.query("update breakers set opened_at = clock_timestamp() - interval '1 day' where stage = 'draft'");
+    // a refused choice leaves the probe free
+    expect(await resolveDecision(db.pool, q, { stageRunId: refused.stageId, choice: "raise_cap_and_rerun", actor: SESSION, raiseCap: { scope: "nope", capMicroUsd: 5_000_000 } })).toMatchObject({ ok: false });
+    expect(await probe()).toBeNull();
+    // a real rerun takes it
+    expect(await resolveDecision(db.pool, q, { stageRunId: refused.stageId, choice: "raise_cap_and_rerun", actor: SESSION, raiseCap: { scope: "g", capMicroUsd: 5_000_000 } })).toMatchObject({ ok: true });
+    expect(await probe()).not.toBeNull();
+    // with the probe already out, a second rerun is held but a money-only settle still works
+    expect(await resolveDecision(db.pool, q, { stageRunId: second.stageId, choice: "release_and_rerun", actor: SESSION })).toMatchObject({ ok: true, rerunHeld: true });
+    expect(await stagesOf(second.videoId)).toMatchObject([{ status: "failed" }]);
+  });
+
+  it("cancel_video_closes_a_row_with_no_open_money_and_never_overwrites_a_terminal_video", async () => {
+    const q = fakeQueue();
+    const a = await parkRefused(q, false);
+    expect(await resolveDecision(db.pool, q, { stageRunId: a.stageId, choice: "cancel_video", actor: SESSION })).toMatchObject({ ok: true });
+    expect((await getStage(db.pool, a.stageId))!.status).toBe("cancelled");
+    expect((await db.pool.query("select status from videos where id = $1", [a.videoId])).rows[0].status).toBe("cancelled");
+    expect(await resolveDecision(db.pool, q, { stageRunId: a.stageId, choice: "cancel_video", actor: SESSION })).toMatchObject({ ok: false }); // already closed: clean refusal
+    expect(await auditRows()).toHaveLength(1);
+
+    for (const terminal of ["failed", "done"]) {
+      const b = await parkRefused(q, false);
+      await db.ownerPool.query("update videos set status = $2 where id = $1", [b.videoId, terminal]);
+      expect(await resolveDecision(db.pool, q, { stageRunId: b.stageId, choice: "cancel_video", actor: SESSION })).toMatchObject({ ok: true });
+      expect((await db.pool.query("select status from videos where id = $1", [b.videoId])).rows[0].status).toBe(terminal);
+      expect((await getStage(db.pool, b.stageId))!.status).toBe("cancelled");
+    }
+  });
+
+  it("a_second_cancel_with_money_still_held_is_a_clean_no_op", async () => {
+    const q = fakeQueue();
+    const { videoId, stageId } = await parkUnknown(q);
+    expect(await resolveDecision(db.pool, q, { stageRunId: stageId, choice: "cancel_video", actor: SESSION })).toMatchObject({ ok: true });
+    expect(await resolveDecision(db.pool, q, { stageRunId: stageId, choice: "cancel_video", actor: SESSION })).toMatchObject({ ok: true });
+    expect(await auditRows()).toHaveLength(1);
+    expect((await db.pool.query("select status from videos where id = $1", [videoId])).rows[0].status).toBe("cancelled");
+    expect(await g()).toMatchObject({ reservedMicroUsd: RESERVE });
+  });
+
+  it("settled_late_and_budget_refused_rows_on_a_cancelled_video_can_still_be_closed", async () => {
+    const q = fakeQueue();
+    const late = await parkUnknown(q);
+    const [i] = await intentsOf(late.stageId);
+    await settleIntent(db.pool, i.id, { actualMicroUsd: 5, result: null });
+    const refused = await parkRefused(q, false);
+    for (const x of [late, refused]) {
+      // the video was cancelled by another path (cancelVideo flags rows but leaves parked ones)
+      await db.ownerPool.query("update videos set status = 'cancelled' where id = $1", [x.videoId]);
+      await db.ownerPool.query("update stage_runs set cancel_requested = true where id = $1", [x.stageId]);
+      expect(await resolveDecision(db.pool, q, { stageRunId: x.stageId, choice: "cancel_video", actor: SESSION })).toMatchObject({ ok: true });
+      expect((await getStage(db.pool, x.stageId))!.status).toBe("cancelled");
+    }
+  });
+
+  it("raise_cap_must_name_the_budget_that_was_used_and_stay_within_the_limit", async () => {
+    const q = fakeQueue();
+    await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('other', 1000)");
+    const { stageId } = await parkRefused(q, true); // call 0 used scope g
+    const raise = (scope: string, capMicroUsd: number) => resolveDecision(db.pool, q, { stageRunId: stageId, choice: "raise_cap_and_rerun", actor: SESSION, raiseCap: { scope, capMicroUsd } });
+    expect(await raise("other", 5000)).toMatchObject({ ok: false, reason: expect.stringMatching(/did not/i) });
+    expect(await raise("g", 10_000_001)).toMatchObject({ ok: false, reason: expect.stringMatching(/too high/i) });
+    expect((await g()).capMicroUsd).toBe(100);
+    expect((await getBudget(db.pool, "other"))!.capMicroUsd).toBe(1000);
+    expect(await auditRows()).toHaveLength(0);
+    expect(await raise("g", 10_000_000)).toMatchObject({ ok: true });
+  });
+
+  it("raise_cap_with_a_changed_input_hash_starts_a_new_row_instead_of_replaying_the_old_one", async () => {
+    const q = fakeQueue();
+    const { videoId, stageId } = await parkRefused(q, false);
+    await db.ownerPool.query("update videos set topic = 'A different topic' where id = $1", [videoId]);
+    const r = await resolveDecision(db.pool, q, { stageRunId: stageId, choice: "raise_cap_and_rerun", actor: SESSION, raiseCap: { scope: "g", capMicroUsd: 5_000_000 } });
+    expect(r).toMatchObject({ ok: true, newStageRunId: expect.any(String) });
+    const rows = await stagesOf(videoId);
+    expect(rows.map((x) => x.status)).toEqual(["failed", "queued"]);
+    expect(rows[1]!.input_hash).not.toBe(rows[0]!.input_hash);
+    expect(q.calls.map((c) => c.id)).toEqual([rows[1]!.id]);
+    expect((await auditRows())[0].detail).toMatchObject({ mode: "new_row" });
+  });
+
+  it("a_late_settle_racing_the_decision_never_counts_money_twice", async () => {
+    // (a) the late settle wins: the choice is re-evaluated under the lock and the unknown call is gone
+    const q = fakeQueue();
+    const a = await parkUnknown(q);
+    const [ia] = await intentsOf(a.stageId);
+    await settleIntent(db.pool, ia.id, { actualMicroUsd: 300_000, result: { late: true } });
+    expect(await resolveDecision(db.pool, q, { stageRunId: a.stageId, choice: "release_and_rerun", actor: SESSION })).toMatchObject({ ok: false });
+    expect(await g()).toMatchObject({ reservedMicroUsd: 0, spentMicroUsd: 300_000 });
+
+    // (b) the owner counts it first: a zombie settle with other numbers is refused, the money stays counted once
+    const b = await parkUnknown(q);
+    const [ib] = await intentsOf(b.stageId);
+    await resolveDecision(db.pool, q, { stageRunId: b.stageId, choice: "keep_spent_and_rerun", actor: SESSION });
+    await expect(settleIntent(db.pool, ib.id, { actualMicroUsd: 1, result: { late: true } })).rejects.toThrow(/different values/);
+    expect(await g()).toMatchObject({ reservedMicroUsd: 0, spentMicroUsd: 300_000 + RESERVE });
+
+    // (c) the owner released it first: a zombie settle cannot slip money in afterwards
+    const c = await parkUnknown(q);
+    const [ic] = await intentsOf(c.stageId);
+    await resolveDecision(db.pool, q, { stageRunId: c.stageId, choice: "release_and_rerun", actor: SESSION });
+    await expect(settleIntent(db.pool, ic.id, { actualMicroUsd: RESERVE, result: null })).rejects.toThrow(/cannot be settled/);
+    expect(await g()).toMatchObject({ reservedMicroUsd: 0, spentMicroUsd: 300_000 + RESERVE });
   });
 });

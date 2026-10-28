@@ -24,6 +24,11 @@ export interface DecisionView {
   summary: string;
   /** What the owner may choose for this stage, in the order to show them. */
   choices: readonly DecisionChoice[];
+  /**
+   * False when some call of this step already settled `done`: a fresh run (new call keys) would pay for it again, so
+   * release/keep only settle the money and close the step, and the owner starts it again later on purpose.
+   */
+  rerunSafe: boolean;
 }
 
 const isOpen = (s: DecisionIntent["status"]): boolean => s === "pending" || s === "unknown";
@@ -46,11 +51,15 @@ export function describeDecision(stage: { name: string; status: string; result: 
   const maxCostMicroUsd = open.reduce((sum, x) => sum + x.reservedMicroUsd, 0);
 
   if (open.length > 0) {
+    const rerunSafe = done.length === 0;
     return {
       maxCostMicroUsd,
       reason: "paid_call_may_have_run",
-      summary: `A paid call in the "${stage.name}" step may have been charged and nobody knows for sure. The most it could have cost is ${usd(maxCostMicroUsd)}. Check the provider's billing page, then say whether it was charged. Nothing will run again until you choose.`,
+      summary:
+        `A paid call in the "${stage.name}" step may have been charged and nobody knows for sure. The most it could have cost is ${usd(maxCostMicroUsd)}. Check the provider's billing page, then say whether it was charged. Nothing will run again until you choose.` +
+        (rerunSafe ? "" : " Earlier calls in this step were already paid for, so this step will NOT be run again for you: your choice only settles the money and closes the step."),
       choices: ["release_and_rerun", "keep_spent_and_rerun", "cancel_video"],
+      rerunSafe,
     };
   }
   if (budgetRefused(stage.result)) {
@@ -59,6 +68,7 @@ export function describeDecision(stage: { name: string; status: string; result: 
       reason: "budget_refused",
       summary: `The "${stage.name}" step stopped because the next paid call would go over a spending limit. Nothing was charged for it. Raise the limit to carry on, or cancel the video.`,
       choices: ["raise_cap_and_rerun", "cancel_video"],
+      rerunSafe: true,
     };
   }
   const allDone = intents.length > 0 && done.length === intents.length;
@@ -68,6 +78,7 @@ export function describeDecision(stage: { name: string; status: string; result: 
       reason: "settled_late",
       summary: `Every paid call in the "${stage.name}" step finished and was paid for (${usd(done.reduce((s, x) => s + x.reservedMicroUsd, 0))} at most), but the step itself was not saved. Using the result carries on without paying again.`,
       choices: ["use_result", "cancel_video"],
+      rerunSafe: true,
     };
   }
   const nothingPaid = done.length === 0;
@@ -78,5 +89,6 @@ export function describeDecision(stage: { name: string; status: string; result: 
       ? `The "${stage.name}" step stopped, but no paid call is outstanding. It can be run again.`
       : `The "${stage.name}" step stopped after some calls were paid for and others were not. Running it again could pay twice, so only cancelling is offered.`,
     choices: nothingPaid ? ["release_and_rerun", "cancel_video"] : ["cancel_video"],
+    rerunSafe: nothingPaid,
   };
 }

@@ -15,6 +15,14 @@ describe("describeDecision", () => {
     expect(d.summary).not.toMatch(/intent|fence|reservation|call_key/i);
   });
 
+  it("a_done_call_next_to_an_open_one_means_no_fresh_rerun_and_the_text_says_so", () => {
+    const mixed = describeDecision(stage(), [i("done", 100_000), i("unknown", 400_000)]);
+    expect(mixed.rerunSafe).toBe(false);
+    expect(mixed.summary).toMatch(/will NOT be run again/);
+    expect(describeDecision(stage(), [i("unknown", 400_000)]).rerunSafe).toBe(true);
+    expect(describeDecision(stage(), [i("done", 1), i("failed_known", 1)]).rerunSafe).toBe(false);
+  });
+
   it("a_zero_priced_open_call_still_asks_and_says_zero_dollars", () => {
     const d = describeDecision(stage(), [i("unknown", 0)]);
     expect(d.reason).toBe("paid_call_may_have_run");
