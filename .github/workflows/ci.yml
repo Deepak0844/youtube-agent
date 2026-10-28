@@ -73,7 +73,11 @@ jobs:
             sudo timeout 300 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y --no-install-recommends ffmpeg
             ffprobe -version
           fi
-      - run: npm run test:integration
+      - name: Run integration suites without starving engine workers
+        run: |
+          npm run test:integration -- --exclude tests/integration/engine-resilience.test.ts --exclude tests/integration/engine-chaos.test.ts
+          npm run test:integration -- --run tests/integration/engine-resilience.test.ts
+          npm run test:integration -- --run tests/integration/engine-chaos.test.ts
 
   e2e:
     runs-on: ubuntu-latest
