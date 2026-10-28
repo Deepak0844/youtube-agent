@@ -25,7 +25,7 @@ import { STORAGE_STATE } from "../tests/e2e/fixtures/owner";
 
 const SKILL = path.resolve(".claude/skills/design-taste-frontend/scripts");
 const OUT = path.resolve(".taste-skill/app");
-const TARGETS = ["/dev/ui", "/dev/ui/home", "/dev/ui/video", "/", "/settings/keys", "/settings/models", "/settings/google", "/settings/system", "/settings/audit", "/login"];
+const TARGETS = ["/dev/ui", "/dev/ui/home", "/dev/ui/video", "/", "/settings/keys", "/settings/models", "/settings/google", "/settings/system", "/settings/audit", "/queue", "/login"];
 const slug = (p: string) => (p === "/" ? "home" : p.slice(1).replaceAll("/", "-"));
 const only = process.env.DESIGN_CHECK_ONLY?.split(",");
 

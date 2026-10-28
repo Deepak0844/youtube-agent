@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { createPool } from "@/server/db/pool";
+import { approvalReaders } from "@/server/db/approval-readers";
 import { productionHandlers } from "./handlers";
 import { startRuntime, type WorkerOptions } from "./runtime";
 
@@ -16,7 +17,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exitCode = 1;
   } else {
     const pool = createPool(process.env.DATABASE_URL);
-    const worker = startWorker({ log, pool, handlers: productionHandlers(pool) });
+    const worker = startWorker({ log, pool, handlers: productionHandlers(pool), readers: approvalReaders });
     let exiting = false;
     const shutdown = () => {
       if (exiting) return;

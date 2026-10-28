@@ -8,8 +8,9 @@ export const FLAGS: Record<string, boolean> = {
   "settings.google": true,
   "settings.audit": true,
   "settings.system": true,
+  // Phase 2.
+  queue: true,
   // Not built yet (later phases).
-  queue: false,
   library: false,
   new: false,
   assets: false,

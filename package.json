@@ -71,6 +71,7 @@
     "@types/pngjs": "^6.0.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "axe-core": "^4.14.0",
     "concurrently": "^10.0.6",
     "esbuild": "^0.28.2",
     "eslint": "^9",
