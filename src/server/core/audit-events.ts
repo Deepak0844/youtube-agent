@@ -25,6 +25,8 @@ export const AUDIT_EVENTS = {
   "upload.refused": "A queued upload was refused before it began",
   // Phase 2 retries (detail: stage name and session id only)
   "breaker.reset": "A paused stage was released by the owner",
+  // Phase 2 parked stages (detail: stage run id, video id, choice, reason, session id, dollar figure; never a call key)
+  "stage.decision": "The owner resolved a parked stage",
   // Phase 2 notifications (detail: event, channel, error class only)
   "notify.delivery_failed": "A notification channel failed to deliver",
   // Already written by owner setup, login and TOTP code

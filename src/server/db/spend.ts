@@ -238,6 +238,42 @@ export async function failIntentKnown(db: Db, intentId: string, reason: string):
   });
 }
 
+// Owner decisions on an UNCLEAR outcome (db/decision.ts; session only, audited there). Both lock the intent row then the
+// budgets, so a caller already holding the stage row follows the global lock order. They touch only pending/unknown
+// intents: a settled or released intent is left exactly as it is (false = nothing changed).
+
+// The owner checked and nothing was charged: the reservation goes back, the intent is closed as a known failure.
+export async function releaseUnclearIntent(db: Db, intentId: string): Promise<boolean> {
+  return atomic(db, async (q) => {
+    const row = await lockIntent(q, intentId, "null");
+    if (row.status !== "pending" && row.status !== "unknown") return false;
+    await moveBudgets(q, row, 0);
+    await q.query(
+      "update spend_intents set status = 'failed_known', result = $2::jsonb, updated_at = clock_timestamp() where id = $1",
+      [intentId, JSON.stringify({ error: "released by the owner: checked, nothing was charged" })],
+    );
+    return true;
+  });
+}
+
+// The owner could not rule a charge out (or saw one): the money counts as spent at the reserved amount (worst case),
+// flagged actual_invalid so a report can tell it from a provider-reported cost.
+export async function keepUnclearIntentSpent(db: Db, intentId: string): Promise<boolean> {
+  return atomic(db, async (q) => {
+    const row = await lockIntent(q, intentId, "null");
+    if (row.status !== "pending" && row.status !== "unknown") return false;
+    await moveBudgets(q, row, toNumber(row.reserved));
+    await q.query(
+      `update spend_intents
+          set status = 'done', actual_micro_usd = reserved_micro_usd, actual_invalid = true,
+              result = $2::jsonb, updated_at = clock_timestamp()
+        where id = $1`,
+      [intentId, JSON.stringify({ kept_as_spent_by_owner: true })],
+    );
+    return true;
+  });
+}
+
 // Outcome unknown (money may have been spent): pending -> unknown, reservation stays held.
 export async function markUnknown(db: Db, intentId: string): Promise<boolean> {
   return atomic(db, async (q) => {
