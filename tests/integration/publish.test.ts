@@ -6,9 +6,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { sha256Hex } from "@/server/core/content-hash";
 import { uuidv7 } from "@/server/core/ids";
 import { UPLOAD_CAPS } from "@/server/core/publish-rules";
-import { approveGate, liveGateHash } from "@/server/db/approvals";
+import { approveGate, liveGateHash, sendBack } from "@/server/db/approvals";
 import { createPool } from "@/server/db/pool";
-import { approvePublish, requeueUpload } from "@/server/db/publish";
+import { approvePublish, readUploadTarget, requeueUpload } from "@/server/db/publish";
+import { hashStoredFile } from "@/server/storage/hash-file";
 import { setSetting } from "@/server/db/settings";
 import { markStalled } from "@/server/db/uploads";
 import { addContent, createVideoRow } from "@/server/db/videos";
@@ -86,7 +87,16 @@ async function approved(o: Parameters<typeof seed>[0] = {}, over: Partial<Parame
   if (!res.ok) throw new Error(`fixture approval refused: ${res.reason}`);
   return { s, uploadId: res.uploadId, q };
 }
-const run = (uploadId: string, uploader: Uploader) => handlePublishUpload(db.pool, { uploader, root, caps: { ...UPLOAD_CAPS } }, uploadId);
+const run = (uploadId: string, uploader: Uploader, afterRead?: () => Promise<void>) => handlePublishUpload(db.pool, { uploader, root, caps: { ...UPLOAD_CAPS }, afterRead }, uploadId);
+/** The upload must not start, the uploader must not be called, the row must stay publish_approved, and the audit must name the reason. */
+async function refusedWith(uploadId: string, reason: string, afterRead?: () => Promise<void>) {
+  const up = createFakeUploader();
+  expect(await run(uploadId, up, afterRead)).toEqual({ started: false });
+  expect(up.totalCalls()).toBe(0);
+  expect((await row(uploadId)).status).toBe("publish_approved");
+  const refusals = (await auditOf("upload.refused")).filter((r) => r.detail.uploadId === uploadId);
+  expect(refusals.at(-1)?.detail.reason).toBe(reason);
+}
 const row = async (id: string) => (await db.pool.query("select * from uploads where id = $1", [id])).rows[0];
 const count = async (t: string) => Number((await db.pool.query(`select count(*) c from ${t}`)).rows[0].c);
 const auditOf = async (prefix: string) => (await db.pool.query("select event, detail from audit_log where event like $1 order by id", [`${prefix}%`])).rows;
@@ -284,54 +294,40 @@ describe("handlePublishUpload", () => {
   it("changing_the_metadata_or_the_channel_blocks_a_queued_upload", async () => {
     const a = await approved();
     await addContent(db.pool, a.s.videoId, "metadata", { body: { visibility: "public", publish_at: null }, sha256: sha256Hex("m2") });
-    const up = createFakeUploader();
-    expect(await run(a.uploadId, up)).toEqual({ started: false });
+    await refusedWith(a.uploadId, "approval_changed");
     const b = await approved();
     await db.ownerPool.query("update videos set channel_id = 'UC-other' where id = $1", [b.s.videoId]);
-    expect(await run(b.uploadId, up)).toEqual({ started: false });
-    expect(up.totalCalls()).toBe(0);
+    await refusedWith(b.uploadId, "approval_changed");
   });
 
   it("file_bytes_swapped_after_approval_block_the_upload_even_though_the_database_still_matches", async () => {
     const { s, uploadId } = await approved();
     writeFileSync(path.join(root, s.videoPath), "tampered on disk");
-    const up = createFakeUploader();
-    expect(await run(uploadId, up)).toEqual({ started: false });
-    expect(up.totalCalls()).toBe(0);
-    expect((await auditOf("upload.refused"))[0].detail).toMatchObject({ reason: "file_changed" });
+    await refusedWith(uploadId, "file_changed");
   });
 
   it("a_missing_file_blocks_the_upload", async () => {
     const { s, uploadId } = await approved();
     rmSync(path.join(root, s.videoPath));
-    const up = createFakeUploader();
-    expect(await run(uploadId, up)).toEqual({ started: false });
-    expect(up.totalCalls()).toBe(0);
+    await refusedWith(uploadId, "file_changed");
   });
 
   it("the_upload_row_cannot_be_pointed_at_a_different_file_than_the_approved_one", async () => {
     const { uploadId } = await approved();
     await db.ownerPool.query("update uploads set file_sha = $2 where id = $1", [uploadId, sha("something else")]);
-    const up = createFakeUploader();
-    expect(await run(uploadId, up)).toEqual({ started: false });
-    expect(up.totalCalls()).toBe(0);
+    await refusedWith(uploadId, "file_changed");
   });
 
   it("an_approval_from_a_session_that_never_existed_is_refused_at_job_time", async () => {
     const { uploadId, s } = await approved();
     await db.ownerPool.query("update approvals set session_id = $2 where video_id = $1 and gate = 'publish'", [s.videoId, uuidv7()]);
-    const up = createFakeUploader();
-    expect(await run(uploadId, up)).toEqual({ started: false });
-    expect(up.totalCalls()).toBe(0);
-    expect((await auditOf("upload.refused"))[0].detail).toMatchObject({ reason: "approval_session_invalid" });
+    await refusedWith(uploadId, "approval_session_invalid");
   });
 
   it("an_approval_made_in_a_session_that_was_already_revoked_is_refused_at_job_time", async () => {
     const { uploadId, s } = await approved();
     await db.ownerPool.query("update sessions set revoked_at = (select decided_at from approvals where video_id = $1 and gate = 'publish') - interval '1 second' where id = $2", [s.videoId, s.sessionId]);
-    const up = createFakeUploader();
-    expect(await run(uploadId, up)).toEqual({ started: false });
-    expect(up.totalCalls()).toBe(0);
+    await refusedWith(uploadId, "approval_session_invalid");
   });
 
   it("logging_out_after_approving_does_not_cancel_the_upload", async () => {
@@ -344,19 +340,68 @@ describe("handlePublishUpload", () => {
     await allowPublic(true);
     const { uploadId } = await approved({ visibility: "public" }, { visibility: "public" });
     await allowPublic(false);
-    const up = createFakeUploader();
-    expect(await run(uploadId, up)).toEqual({ started: false });
-    expect(up.totalCalls()).toBe(0);
-    expect((await auditOf("upload.refused"))[0].detail).toMatchObject({ reason: "policy" });
+    await refusedWith(uploadId, "policy");
   });
 
   it("a_scheduled_time_that_has_already_passed_is_refused_at_job_time", async () => {
     const soon = new Date(Date.now() + 61 * 60_000).toISOString();
-    const { uploadId } = await approved({ publishAt: soon }, { publishAt: soon });
-    await db.ownerPool.query("update video_content set body = jsonb_set(body, '{publish_at}', to_jsonb($1::text)) where kind = 'metadata'", [new Date(Date.now() - 1000).toISOString()]);
-    const up = createFakeUploader();
-    expect(await run(uploadId, up)).toEqual({ started: false });
-    expect(up.totalCalls()).toBe(0);
+    const { s: seeded, uploadId } = await approved({ publishAt: soon }, { publishAt: soon });
+    // Move the stored time into the past, then re-point the approval at the new live hash so ONLY the policy can refuse
+    // (otherwise the hash change trips approval_changed first and the schedule rule is never reached).
+    await db.ownerPool.query("update video_content set body = jsonb_set(body, '{publish_at}', to_jsonb($1::text)) where kind = 'metadata' and video_id = $2", [new Date(Date.now() - 1000).toISOString(), seeded.videoId]);
+    const live = (await liveGateHash(db.pool, seeded.videoId, "publish"))!;
+    await db.ownerPool.query("update approvals set content_hash = $2 where video_id = $1 and gate = 'publish'", [seeded.videoId, live.hash]);
+    await refusedWith(uploadId, "policy");
+  });
+
+  describe("H1 races: the start transaction re-reads the live approval and policy", () => {
+    it("a_send_back_that_commits_after_the_read_stops_the_start", async () => {
+      const { s: v, uploadId } = await approved();
+      await refusedWith(uploadId, "approval_changed", async () => {
+        const hash = (await liveGateHash(db.pool, v.videoId, "publish"))!.hash;
+        const r = await sendBack(db.pool, { videoId: v.videoId, gate: "publish", seenHash: hash, note: "no, redo it", actor: { kind: "session", sessionId: v.sessionId } });
+        expect(r.ok).toBe(true);
+      });
+    });
+    it("allow_public_turned_off_after_the_read_stops_the_start", async () => {
+      await allowPublic(true);
+      const { uploadId } = await approved({ visibility: "public" }, { visibility: "public" });
+      await refusedWith(uploadId, "policy", async () => {
+        await allowPublic(false);
+      });
+    });
+    it("a_content_rewrite_after_the_read_stops_the_start", async () => {
+      const { s: v, uploadId } = await approved();
+      await refusedWith(uploadId, "approval_changed", async () => {
+        await addContent(db.pool, v.videoId, "metadata", { body: { title: "other", visibility: "private", publish_at: null }, sha256: sha256Hex("rewritten") });
+      });
+    });
+    it("evidence_replaced_after_the_read_stops_the_start", async () => {
+      const { s: v, uploadId } = await approved();
+      await refusedWith(uploadId, "approval_changed", async () => {
+        await addContent(db.pool, v.videoId, "evidence", { filePath: "e/2.pdf", sha256: sha256Hex("evidence-2") });
+      });
+    });
+    it("a_decision_in_flight_is_waited_for_not_raced", async () => {
+      // A decision holds the video row FOR UPDATE; the start's FOR SHARE must wait for it and then see its result.
+      const { s: v, uploadId } = await approved();
+      const hash = (await liveGateHash(db.pool, v.videoId, "publish"))!.hash;
+      const holder = await db.pool.connect();
+      try {
+        await holder.query("begin");
+        await holder.query("select id from videos where id = $1 for update", [v.videoId]);
+        const up = createFakeUploader();
+        const pending = run(uploadId, up);
+        await new Promise((r) => setTimeout(r, 400));
+        expect((await row(uploadId)).status).toBe("publish_approved");
+        await holder.query("insert into approvals (video_id, gate, content_hash, content_versions, decision, note, decided_by, session_id) values ($1,'publish',$2,'{}'::jsonb,'sent_back','changed my mind','session',$3)", [v.videoId, hash, v.sessionId]);
+        await holder.query("commit");
+        expect(await pending).toEqual({ started: false });
+        expect(up.totalCalls()).toBe(0);
+      } finally {
+        holder.release();
+      }
+    });
   });
 
   it("duplicate_upload_delivery_does_nothing", async () => {
@@ -417,6 +462,62 @@ describe("handlePublishUpload", () => {
     // extra arguments are ignored: the handler's signature takes the id only
     await (handlePublishUpload as unknown as (...a: unknown[]) => Promise<unknown>)(db.pool, { uploader: up, root, caps: UPLOAD_CAPS }, uploadId, { fileSha: "x", approvalHash: "y", path: "/etc/passwd" });
     expect((await row(uploadId)).status).toBe("uploaded");
+  });
+});
+
+describe("file reading limits and the uploader contract", () => {
+  it("a_fifo_in_place_of_the_video_is_refused_without_hanging", async () => {
+    const s = await seed();
+    rmSync(path.join(root, s.videoPath));
+    const { execFileSync } = await import("node:child_process");
+    execFileSync("mkfifo", [path.join(root, s.videoPath)]);
+    const t0 = Date.now();
+    const r = await approve(s);
+    expect(r.res).toMatchObject({ ok: false, reason: expect.stringMatching(/regular file/) });
+    expect(Date.now() - t0).toBeLessThan(5000);
+  });
+
+  it("the_target_stream_delivers_the_approved_bytes_and_fails_if_the_file_changed_after_the_job_time_check", async () => {
+    const { s: v, uploadId } = await approved();
+    const t = await readUploadTarget(db.pool, uploadId, { root });
+    if (!t.ok) throw new Error(t.reason);
+    const chunks: Buffer[] = [];
+    for await (const c of await t.value.target.open()) chunks.push(c as Buffer);
+    expect(Buffer.concat(chunks).equals(v.videoBytes)).toBe(true);
+    writeFileSync(path.join(root, v.videoPath), "swapped after the check!!");
+    await expect((async () => { for await (const c of await t.value.target.open()) void c; })()).rejects.toThrow(/changed after it was approved/);
+  });
+
+  it("an_oversized_file_is_refused", async () => {
+    writeFileSync(path.join(root, "big.bin"), Buffer.alloc(2048));
+    await expect(hashStoredFile(root, "big.bin", { maxBytes: 1024 })).rejects.toThrow(/larger than allowed/);
+  });
+
+  it("the_generic_gate_cannot_approve_publish_so_approve_publish_is_the_only_path", async () => {
+    const s = await seed();
+    const seenHash = (await liveGateHash(db.pool, s.videoId, "publish"))!.hash;
+    const r = await approveGate(db.pool, { videoId: s.videoId, gate: "publish", seenHash, actor: { kind: "session", sessionId: s.sessionId } });
+    expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(/publish approval/) });
+    expect(await count("approvals where gate = 'publish'")).toBe(0);
+  });
+});
+
+describe("queue redelivery", () => {
+  it("a_failed_job_does_not_block_requeueUpload_and_the_row_still_decides", async () => {
+    const uq = createJobQueue(db.redisUrl, "uploads", `rq-${process.pid}`);
+    try {
+      const { uploadId } = await approved();
+      let calls = 0;
+      const w = uq.startWorker(async () => { calls++; if (calls === 1) throw new Error("worker was stopping"); }, { concurrency: 1 });
+      await uq.enqueueUpload(uploadId);
+      await waitFor(async () => calls === 1, "first delivery failed");
+      await new Promise((r) => setTimeout(r, 300));
+      expect(await requeueUpload(db.pool, uq, uploadId)).toBe(true);
+      await waitFor(async () => calls === 2, "second delivery after requeue");
+      await w.close();
+    } finally {
+      await uq.close();
+    }
   });
 });
 

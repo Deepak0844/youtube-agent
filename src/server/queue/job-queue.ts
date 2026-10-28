@@ -132,6 +132,10 @@ export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: strin
     async enqueueUpload(uploadId) {
       if (!/^[0-9a-f-]{36}$/i.test(uploadId)) throw new RangeError(`invalid upload id: ${uploadId}`);
       const jobId = `upload.${uploadId}`;
+      // BullMQ ignores add() for an id it still holds, and failed jobs are kept. A failed job (the worker was stopping or
+      // threw before the row started) must not block a re-send; the one-shot transition in Postgres still decides.
+      const existing = await queue.getJob(jobId);
+      if (existing && (await existing.isFailed())) await existing.remove();
       await queue.add("upload", { uploadId }, { jobId, attempts: 1, removeOnComplete: true, removeOnFail: { count: keepFailed } });
       return jobId;
     },

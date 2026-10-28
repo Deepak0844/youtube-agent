@@ -145,12 +145,15 @@ async function abort(client: pg.PoolClient, reason: string): Promise<{ ok: false
 
 /** Approves exactly the content the owner saw. Refuses (never throws) for a wrong actor, stale hash or missing content; a database fault throws. */
 export async function approveGate(db: pg.Pool, a: { videoId: string; gate: GateId; seenHash: string; actor: GateActor }): Promise<GateResult> {
+  // The publish approval carries policy checks and the upload row; approvePublish (db/publish.ts) is the only way to make one.
+  if (a?.gate === "publish") return refuse("publishing is approved through the publish approval, not the generic gate");
   const r = await decide(db, a, "approved");
   return r.ok ? { ok: true, approvalId: r.approvalId } : r;
 }
 
 /** approveGate plus checks and writes inside the same transaction and video lock (see DecideHooks). */
 export function approveGateWith<T>(db: pg.Pool, a: { videoId: string; gate: GateId; seenHash: string; actor: GateActor }, hooks: DecideHooks<T>): Promise<GateResultWith<T>> {
+  if (a?.gate === "publish" && (!hooks?.guard || !hooks?.after)) return Promise.resolve(refuse("publishing is approved through the publish approval, not the generic gate"));
   return decide(db, a, "approved", hooks);
 }
 

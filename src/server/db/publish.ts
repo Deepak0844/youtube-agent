@@ -7,7 +7,7 @@ import { recordAudit } from "@/server/db/audit";
 import { getSetting } from "@/server/db/settings";
 import type { UploadTarget } from "@/server/providers/uploader";
 import type { UploadQueue } from "@/server/queue/job-queue";
-import { hashStoredFile, StoredFileError } from "@/server/storage/hash-file";
+import { hashStoredFile, openStoredFile, StoredFileError } from "@/server/storage/hash-file";
 import { storageRoot } from "@/server/storage/paths";
 
 // Publish approval and the facts an upload job must re-prove (Task 21, ADR 0004). Two entry points:
@@ -66,6 +66,23 @@ export async function approvePublish(db: pg.Pool, queue: Pick<UploadQueue, "enqu
   const root = opts.root ?? storageRoot();
   const sessionId = a.actor.sessionId;
 
+  // The real bytes are hashed BEFORE the transaction (a big file must not hold the video lock). Under the lock the guard
+  // binds only this digest: it must belong to the very video version that is still the newest, and match its stored sha.
+  const pre = await readSnapshot(db, a.videoId, "publish");
+  if (pre === "no_video") return refuse("video not found");
+  if (!pre.live.ok) return refuse(pre.live.reason);
+  if (pre.live.hash !== a.seenHash) return refuse("this changed while you were looking; review again");
+  const preVideo = pre.inputs.content.video;
+  if (!preVideo || preVideo.filePath == null || !pre.versions.video) return refuse("the video file cannot be used: it is not a stored file");
+  let preFile: { sha256: string; bytes: number };
+  try {
+    preFile = await hashStoredFile(root, preVideo.filePath);
+  } catch (e) {
+    return refuse(fileProblem(e));
+  }
+  if (preFile.sha256 !== preVideo.sha256) return refuse("the video file on disk is not the file that was reviewed; render it again");
+  const preVersionId = pre.versions.video.id;
+
   const res = await approveGateWith(db, { videoId: a.videoId, gate: "publish", seenHash: a.seenHash, actor: a.actor }, {
     async guard(client, snap) {
       if (!(await sessionIsLive(client, sessionId))) return ACTOR_REASON;
@@ -85,13 +102,7 @@ export async function approvePublish(db: pg.Pool, queue: Pick<UploadQueue, "enqu
       }
       const policy = publishPolicyProblem({ visibility: body.visibility, publishAt: body.publish_at ?? null, ...(await policyFacts(client, a.videoId)), phase: "approve" });
       if (policy) return policy;
-      if (video.filePath == null) return "the video file cannot be used: it is not a stored file";
-      try {
-        const h = await hashStoredFile(root, video.filePath);
-        if (h.sha256 !== video.sha256) return "the video file on disk is not the file that was reviewed; render it again";
-      } catch (e) {
-        return fileProblem(e);
-      }
+      if (snap.versions.video?.id !== preVersionId || video.sha256 !== preFile.sha256) return "the video changed while it was being checked; review again";
       return null;
     },
     async after(client, { approvalId, snap }) {
@@ -126,6 +137,22 @@ export async function requeueUpload(db: pg.Pool, queue: Pick<UploadQueue, "enque
   if (r.rowCount !== 1) return false;
   await queue.enqueueUpload(uploadId);
   return true;
+}
+
+/**
+ * Runs INSIDE the start transaction (after the video row is share-locked, which waits for a decision in flight, and the
+ * upload rows are locked). Re-reads the derived approval and the policy on that connection, so a send-back, a content
+ * rewrite or allow_public=false that committed after readUploadTarget still stops the start.
+ */
+export async function recheckPublishStart(q: pg.PoolClient, row: { videoId: string; approvalHash: string }): Promise<"approval_changed" | "policy" | null> {
+  const state = await approvalState(q, row.videoId, "publish");
+  if (!state.approved || state.hash !== row.approvalHash) return "approval_changed";
+  const s = await readSnapshot(q, row.videoId, "publish");
+  const meta = s === "no_video" ? undefined : s.inputs.content.metadata;
+  if (s === "no_video" || !s.live.ok || s.live.hash !== state.hash || !meta || metadataProblem(meta.body)) return "approval_changed";
+  const body = meta.body as Record<string, unknown>;
+  const problem = publishPolicyProblem({ visibility: body.visibility, publishAt: body.publish_at ?? null, ...(await policyFacts(q, row.videoId)), phase: "upload" });
+  return problem ? "policy" : null;
 }
 
 export type TargetRefusal = "not_found" | "not_publish_approved" | "approval_changed" | "approval_session_invalid" | "policy" | "file_changed" | "no_channel";
@@ -200,6 +227,7 @@ export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { ro
       target: {
         videoId: snap.up.video_id, filePath: snap.video.filePath!, fileSha256: h.sha256, bytes: h.bytes, channelId: snap.channelId,
         visibility: snap.body.visibility as Visibility, publishAt: (snap.body.publish_at ?? null) as string | null,
+        open: () => openStoredFile(root, snap.video.filePath!, { sha256: h.sha256, bytes: h.bytes }),
       },
     },
   };

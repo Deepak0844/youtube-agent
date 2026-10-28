@@ -271,7 +271,9 @@ export function startRuntime(opts: WorkerOptions = {}) {
               if (stopping) { void Promise.resolve().then(() => uq.close(true)).catch(() => {}); return; }
               uploadQueue = uq;
               uploadConsumer = uq.startWorker(async (uploadId) => {
-                if (stopping) return;
+                // Throw, never return: returning would acknowledge (and delete) a job that did not run. A failed job is
+                // replaced by requeueUpload; the row is still publish_approved.
+                if (stopping) throw new Error("worker is stopping; the upload was not started");
                 const whole = handlePublishUpload(db, { uploader, root: opts.storageRoot }, uploadId).then(() => undefined);
                 active.add(whole);
                 try { await whole; } finally { active.delete(whole); }

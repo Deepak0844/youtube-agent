@@ -2,7 +2,7 @@ import type pg from "pg";
 import type { UploadCaps } from "@/server/core/upload-rules";
 import { UPLOAD_CAPS } from "@/server/core/publish-rules";
 import { recordAudit } from "@/server/db/audit";
-import { readUploadTarget } from "@/server/db/publish";
+import { readUploadTarget, recheckPublishStart } from "@/server/db/publish";
 import { runUpload } from "@/server/db/upload-job";
 import { startUpload } from "@/server/db/uploads";
 import type { Uploader } from "@/server/providers/uploader";
@@ -17,6 +17,8 @@ export interface PublishUploadDeps {
   uploader: Uploader;
   root?: string;
   caps?: UploadCaps;
+  /** Test seam: runs between the job-time read and the start transaction (to inject a send-back, a rewrite, a setting change). */
+  afterRead?: () => Promise<void>;
 }
 
 const QUIET = new Set(["not_publish_approved", "not_found"]); // a duplicate delivery is normal, not news
@@ -35,7 +37,14 @@ export async function handlePublishUpload(pool: pg.Pool, deps: PublishUploadDeps
   const t = await readUploadTarget(pool, uploadId, { root: deps.root });
   if (!t.ok) return refused(t.reason, t.detail);
   const { value } = t;
-  const started = await startUpload(pool, uploadId, { currentApprovalHash: value.approvalHash, currentFileSha: value.fileSha, caps: deps.caps ?? { ...UPLOAD_CAPS } });
+  await deps.afterRead?.();
+  // The start transaction re-reads the live approval and policy after locking (recheckPublishStart): the snapshot above
+  // is not trusted across the file hash.
+  const started = await startUpload(
+    pool, uploadId,
+    { currentApprovalHash: value.approvalHash, currentFileSha: value.fileSha, caps: deps.caps ?? { ...UPLOAD_CAPS } },
+    { recheck: (q, row) => recheckPublishStart(q, row) },
+  );
   if (!started.started) return refused(started.reason);
   try {
     await recordAudit(pool, "upload.started", {

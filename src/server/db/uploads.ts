@@ -23,6 +23,9 @@ import { atomic, toNumber, type Db } from "./stages";
 export type StartCtx = { currentApprovalHash: string; currentFileSha: string; caps: UploadCaps };
 // ignoreLoggedYoutubeId: a human cleared a youtube id that exists only in upload_log (a rejected stale attempt).
 export type RetryCtx = StartCtx & { humanConfirmedNotOnYouTube: true; ignoreLoggedYoutubeId?: true };
+// Optional guard run INSIDE the start transaction, after the upload rows are locked and before the transition. It runs on
+// the same connection, so it sees the committed state at that moment; returning a string refuses the start with that reason.
+export type StartRecheck = (q: pg.PoolClient, row: { uploadId: string; videoId: string; approvalHash: string }) => Promise<string | null>;
 export type StartResult = { started: true; attempt: number } | { started: false; reason: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -72,6 +75,7 @@ async function guardedStart(
   uploadId: string,
   ctx: StartCtx & { ignoreLoggedYoutubeId?: true },
   from: "publish_approved" | "upload_failed",
+  recheck?: StartRecheck,
 ): Promise<StartResult> {
   assertId(uploadId);
   assertCtx(ctx);
@@ -87,6 +91,8 @@ async function guardedStart(
         //    concurrent markStalled/finish did is decided here (we wait for it and see the committed state)
         const vid = await q.query<{ video_id: string }>("select video_id from uploads where id = $1", [uploadId]);
         if (vid.rowCount === 0) return { started: false, reason: "not_found" } as const;
+        // Lock order with a recheck: the video row (FOR SHARE: waits for a decision in flight, which holds FOR UPDATE) first.
+        if (recheck) await q.query("select id from videos where id = $1 for share", [vid.rows[0]!.video_id]);
         const { rows: locked } = await q.query<LockedRow>(
           `select id, status, started_at, video_id, approval_hash, file_sha, channel_id, youtube_id
              from uploads where video_id = $1 order by id for update`,
@@ -100,6 +106,11 @@ async function guardedStart(
         if (row.file_sha === null) return { started: false, reason: "file_changed" } as const;
         if (row.channel_id === null) return { started: false, reason: "no_channel" } as const;
         if (from === "upload_failed" && row.youtube_id !== null) return { started: false, reason: "already_on_youtube" } as const;
+
+        if (recheck) {
+          const refusal = await recheck(q as pg.PoolClient, { uploadId, videoId: row.video_id, approvalHash: row.approval_hash });
+          if (refusal !== null) return { started: false, reason: refusal } as const;
+        }
 
         // a sibling that failed after starting (may be live) or already has a video id: a human resolves it
         if (siblings.some((r) => (r.status === "upload_failed" && r.started_at !== null) || r.youtube_id !== null)) {
@@ -162,12 +173,12 @@ async function guardedStart(
   }
 }
 
-export function startUpload(db: Db, uploadId: string, ctx: StartCtx): Promise<StartResult> {
+export function startUpload(db: Db, uploadId: string, ctx: StartCtx, opts: { recheck?: StartRecheck } = {}): Promise<StartResult> {
   // override flags belong to manualRetry only: strip them even if a caller passes them at runtime
   const clean: Record<string, unknown> = { ...ctx };
   delete clean.ignoreLoggedYoutubeId;
   delete clean.humanConfirmedNotOnYouTube;
-  return guardedStart(db, uploadId, clean as StartCtx, "publish_approved");
+  return guardedStart(db, uploadId, clean as StartCtx, "publish_approved", opts.recheck);
 }
 
 // The ONLY function that moves upload_failed -> uploading. Human-initiated: the caller must state that a human
