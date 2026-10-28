@@ -23,15 +23,22 @@ export interface PlanFlags {
   requireEvidence: boolean;
   /** true when the cost plan has paid items; only then does the generate stage (and the cost gate) exist */
   paidGeneration: boolean;
+  /**
+   * PLACEHOLDER until Phase 9 (imported projects): the script and scenes already exist, so the authoring stages (draft,
+   * build) and the script gate are skipped. Nothing sets it yet.
+   */
+  imported?: boolean;
 }
 
 export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags): PlanStep[] {
   if (format === "long") throw new Error("long format is not built yet (Phase 6b)");
   void kind; // every kind shares the route in Phase 2
-  const steps: PlanStep[] = [
-    { stage: "draft", gateAfter: "script", resource: "net" },
-    { stage: "build", resource: "cpu" },
-  ];
+  const steps: PlanStep[] = flags.imported
+    ? []
+    : [
+        { stage: "draft", gateAfter: "script", resource: "net" },
+        { stage: "build", resource: "cpu" },
+      ];
   if (flags.paidGeneration) steps.push({ stage: "generate", gateBefore: "cost", resource: "net" });
   steps.push(
     { stage: "tts", resource: "net" },

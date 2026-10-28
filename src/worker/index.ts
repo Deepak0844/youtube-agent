@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { createPool } from "@/server/db/pool";
-import { productionHandlers } from "./handlers";
+import { defaultDryRunDeps, dryRunHandlers, productionHandlers } from "./handlers";
 import { startRuntime, type WorkerOptions } from "./runtime";
 
 // Retain startWorker(log) for existing callers, alongside the runtime options interface.
@@ -16,7 +16,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exitCode = 1;
   } else {
     const pool = createPool(process.env.DATABASE_URL);
-    const worker = startWorker({ log, pool, handlers: productionHandlers(pool) });
+    // Fake providers only on an explicit opt-in, never in production (there is no fake fallback).
+    const dryRun = process.env.ENGINE_DRY_RUN === "1" && process.env.NODE_ENV !== "production";
+    if (dryRun) log("ENGINE_DRY_RUN=1: stages run on fake providers");
+    const worker = startWorker({ log, pool, handlers: dryRun ? dryRunHandlers(defaultDryRunDeps(pool)) : productionHandlers(pool) });
     let exiting = false;
     const shutdown = () => {
       if (exiting) return;
