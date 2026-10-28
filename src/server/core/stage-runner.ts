@@ -245,6 +245,9 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
     stopped = true;
     const why = err instanceof StageAbort ? err.why : ctl.signal.reason instanceof StageAbort ? ctl.signal.reason.why : null;
     if (why === "lease_lost" || leaseLost) return { kind: "lease_lost", claim };
+    // A fenced step (promote, save) that refuses because the owner cancelled looks like a lost lease; without this the
+    // stage would sit "running" until its lease runs out. cancel() re-checks the fence, so a really lost lease still ends as lease_lost.
+    if (err instanceof LeaseLostError && !cancelSeen && ports.cancelRequested && (await ports.cancelRequested(claim).catch(() => false))) cancelSeen = true;
     if (why === "cancel" || cancelSeen || err instanceof CancelRequestedError) {
       const outcome = await ports.cancel!(claim);
       if (outcome === "rejected") return { kind: "lease_lost", claim };

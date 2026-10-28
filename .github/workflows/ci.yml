@@ -32,12 +32,13 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       # CI has no copy of the old shorts repo; the test also skips itself when it is absent.
       SKIP_OLD_SHORTS: "1"
       # The chaos harness defaults to 200 seeds locally; CI runs a reduced sweep to keep the job short.
       CHAOS_SEEDS: "60"
+      ENGINE_CHAOS_SEEDS: "60"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

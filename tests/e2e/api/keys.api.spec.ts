@@ -22,7 +22,8 @@ test.afterAll(async () => {
 });
 // A real, readable secret, so an action that wrongly ran would visibly change or use it.
 test.beforeEach(async () => {
-  await db.query("delete from secrets where name like 'provider.%'");
+  // The e2e database can be reused by focused Playwright runs; isolate this spec from signing/OAuth keys those runs made.
+  await db.query("delete from secrets");
   await putSecret(db, makeKeyring(process.env.E2E_VAULT_MASTER_KEY!), SEEDED_NAME, SEEDED);
 });
 test.afterEach(async () => {
