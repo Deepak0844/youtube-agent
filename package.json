@@ -8,6 +8,7 @@
     "start": "next start -H 127.0.0.1",
     "db:bootstrap": "tsx scripts/db-bootstrap.ts",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db-migrate.ts",
+    "dry-run": "tsx --env-file-if-exists=.env.local scripts/dry-run.ts",
     "eval:llm": "tsx --env-file-if-exists=.env.local scripts/llm-eval.ts",
     "totp:backfill": "tsx --env-file-if-exists=.env.local scripts/totp-backfill.ts",
     "vault:init": "tsx scripts/vault-init.ts",
