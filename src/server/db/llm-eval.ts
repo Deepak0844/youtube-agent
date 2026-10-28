@@ -59,6 +59,10 @@ export interface EvalDeps {
   makeStep?(model: LanguageModel, decls: ToolDecl[], maxOutputTokens: number): ModelStep;
   /** Tests only: fewer or other topics than the fixed ten. */
   topics?: EvalTopic[];
+  /** The owner pressed Ctrl-C (CLI) or cancelled: no new topic starts, a call in flight is abandoned, a partial run is recorded. */
+  signal?: AbortSignal;
+  /** Tests only: the run's start time (default: now). */
+  now?: () => Date;
 }
 
 export interface EvalRequest {
@@ -70,6 +74,10 @@ export interface EvalRequest {
   maxUsd?: number;
   /** The caller printed the ceiling and the owner said yes. */
   confirmed: boolean;
+  /**
+   * CALLER-ASSERTED: nothing here proves who the caller is. The CLI passes `owner_cli` (the owner's own terminal). A future web
+   * action must call `requireOwner()` first and then pass `session`; it must never forward a kind taken from the request.
+   */
   actor: { kind: string };
 }
 
@@ -131,14 +139,14 @@ export interface EvalOutcome {
   evidenceValid: number;
   costMicroUsd: number;
   p50LatencyMs: number;
-  stopped: "none" | "cap" | "unclear";
+  stopped: "none" | "cap" | "unclear" | "aborted";
   note: string;
   draftMode: DraftModeName;
   draftModeChanged: boolean;
 }
 
 /** The synthetic stage one topic is booked under: running, fence 1, its own lease owner. The reconciler ends it if abandoned. */
-async function openEvalStage(db: pg.Pool, runId: string, index: number): Promise<Claim> {
+export async function openEvalStage(db: pg.Pool, runId: string, index: number): Promise<Claim> {
   const id = uuidv7();
   const workerId = `llm-eval:${uuidv7()}`;
   const hash = createHash("sha256").update(`${EVAL_STAGE}:${runId}:${index}:${id}`).digest("hex");
@@ -166,7 +174,7 @@ export async function runEval(db: pg.Pool, req: EvalRequest, deps: EvalDeps): Pr
     throw new EvalRefusal(`This eval can spend up to ${usdTail(plan.ceilingMicroUsd)} on ${plan.model.label}. Confirm it to run.`);
   }
   const runId = uuidv7();
-  const startedAt = new Date();
+  const startedAt = (deps.now ?? (() => new Date()))();
   const scopes = await evalScopes(db, runId, plan.ceilingMicroUsd);
   const row = plan.model;
   const llm = createLlmClient({
@@ -178,6 +186,15 @@ export async function runEval(db: pg.Pool, req: EvalRequest, deps: EvalDeps): Pr
     ...(deps.makeStep ? { makeStep: deps.makeStep } : {}),
   });
   const ports = createPgPaidCallPorts(db);
+  const signal = deps.signal ?? new AbortController().signal;
+  // A stage-ending write that fails is logged (never swallowed): the stage then keeps its short lease and the reconciler ends it.
+  const endStage = async (what: string, fn: () => Promise<boolean>): Promise<void> => {
+    try {
+      if (!(await fn())) console.error(JSON.stringify({ event: "llm_eval.stage_end_rejected", what }));
+    } catch (e) {
+      console.error(JSON.stringify({ event: "llm_eval.stage_end_failed", what, name: e instanceof Error ? e.name : "unknown" }));
+    }
+  };
 
   let valid = 0;
   let evidenceValid = 0;
@@ -188,26 +205,32 @@ export async function runEval(db: pg.Pool, req: EvalRequest, deps: EvalDeps): Pr
   let note = "";
 
   for (const [index, t] of plan.topics.entries()) {
+    if (signal.aborted) {
+      stopped = "aborted";
+      note = `Stopped by the owner after ${done} of ${plan.topics.length} topics. Nothing more was sent.`;
+      break;
+    }
     const claim = await openEvalStage(db, runId, index);
     stageIds.push(claim.stageRunId);
     const ctx = createStageContext({
       stage: { id: claim.stageRunId, name: EVAL_STAGE, inputHash: "eval", videoId: NIL_UUID },
       claim,
       config: buildEngineConfig(new Map()),
-      signal: new AbortController().signal,
+      signal,
       paid: ports,
     }).ctx;
     const started = performance.now();
     try {
-      await runDraft(ctx, { llm, web: deps.makeWeb(), db, mode: plan.mode }, { topic: t.topic, lang: t.lang, kind: t.kind });
+      const out = await runDraft(ctx, { llm, web: deps.makeWeb(), db, mode: plan.mode }, { topic: t.topic, lang: t.lang, kind: t.kind });
       latencies.push(Math.round(performance.now() - started));
       valid++;
-      evidenceValid++;
+      // Evidence counts only with at least one sourced claim: a script of computed claims alone proves nothing about the web tools.
+      if (out.script.evidence.some((c) => c.kind === "sourced")) evidenceValid++;
       done++;
-      await commitStage(db, claim, { evaluated: true }).catch(() => undefined);
+      await endStage("commit", () => commitStage(db, claim, { evaluated: true }));
     } catch (err) {
       if (err instanceof BudgetRefusedError) {
-        await failStage(db, claim, "budget_refused").catch(() => undefined);
+        await endStage("budget_refused", () => failStage(db, claim, "budget_refused"));
         stopped = "cap";
         note = `Stopped at the spend cap after ${done} of ${plan.topics.length} topics. Nothing more was sent.`;
         break;
@@ -216,18 +239,23 @@ export async function runEval(db: pg.Pool, req: EvalRequest, deps: EvalDeps): Pr
         latencies.push(Math.round(performance.now() - started));
         if (classifyFailure(err.problems).scriptValid) valid++;
         done++;
-        await failStage(db, claim, "draft_invalid").catch(() => undefined);
+        await endStage("draft_invalid", () => failStage(db, claim, "draft_invalid"));
         continue;
       }
       if (err instanceof KnownFailure) {
         // Refused or failed with the reservation released ("nothing was charged"): this topic counts as not valid.
         done++;
-        await failStage(db, claim, safeReason(err)).catch(() => undefined);
+        await endStage("known_failure", () => failStage(db, claim, safeReason(err)));
         continue;
       }
       // Unclear outcome: a paid call may have been charged. Never retried; the reservation stays held; the eval stops here.
-      await markStageNeedsDecision(db, claim, "llm eval: unclear outcome").catch(() => undefined);
+      await endStage("needs_decision", () => markStageNeedsDecision(db, claim, "llm eval: unclear outcome"));
       console.error(JSON.stringify({ event: "llm_eval.unclear_outcome", name: err instanceof Error ? err.name : "unknown" }));
+      if (signal.aborted) {
+        stopped = "aborted";
+        note = `Stopped by the owner after ${done} of ${plan.topics.length} topics. A call was in flight, so it may have been charged; its reserved amount stays held until it is looked at.`;
+        break;
+      }
       stopped = "unclear";
       note = `Stopped after ${done} of ${plan.topics.length} topics: a call did not finish, so it may have been charged. Its reserved amount stays held until it is looked at.`;
       break;
@@ -298,9 +326,10 @@ export async function getEvalBadges(db: pg.Pool): Promise<Map<string, Badge>> {
  * The only writer of draft_mode besides the owner's SQL. Runs inside the caller's transaction.
  */
 export async function applyDraftMode(c: pg.PoolClient, modelId: string, by: string): Promise<{ mode: DraftModeName; changed: boolean }> {
-  const runs = await listEvalRuns(c, modelId);
-  const mode = decideDraftMode(runs);
+  // Lock the model row BEFORE reading its runs: two evals finishing together on one model take turns, and the second one
+  // decides from a list that already contains the first one's run, so a stale mode can never be written last.
   const cur = await c.query<{ draft_mode: string; provider: string; model_id: string }>("select draft_mode, provider, model_id from llm_models where id = $1 for update", [modelId]);
+  const mode = decideDraftMode(await listEvalRuns(c, modelId));
   if (!cur.rows[0]) return { mode, changed: false };
   if (cur.rows[0].draft_mode === mode) return { mode, changed: false };
   await c.query("update llm_models set draft_mode = $2, updated_at = now() where id = $1", [modelId, mode]);

@@ -40,7 +40,14 @@ async function main(): Promise<void> {
       return;
     }
     const model = await defaultModelDeps(db, () => loadKeyring());
-    const out = await runEval(db, { ...req, confirmed: true }, { ...model, makeWeb: () => createWebTools({ searxUrl }) });
+    // Ctrl-C: stop starting topics, abandon the call in flight, and still record the partial run (a second Ctrl-C exits at once).
+    const stop = new AbortController();
+    process.once("SIGINT", () => {
+      process.stderr.write("\nStopping: finishing the record of what was spent. Ctrl-C again to quit now.\n");
+      stop.abort();
+      process.once("SIGINT", () => process.exit(130));
+    });
+    const out = await runEval(db, { ...req, confirmed: true }, { ...model, signal: stop.signal, makeWeb: () => createWebTools({ searxUrl }) });
     process.stdout.write(
       `Done${out.stopped === "none" ? "" : ` (stopped early: ${out.stopped})`}. ${out.topics}/${out.planned} topics, ${out.valid} valid script, ${out.evidenceValid} valid evidence, cost $${microToUsd(out.costMicroUsd)}, median ${out.p50LatencyMs} ms.\n` +
         `${out.note ? `${out.note}\n` : ""}Draft mode for this model: ${out.draftMode}${out.draftModeChanged ? " (changed)" : ""}.\n`,

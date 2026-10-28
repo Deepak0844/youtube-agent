@@ -3,8 +3,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Message, ModelStep, StepResult } from "@/server/core/agent-loop";
 import { wordRange } from "@/server/core/lang";
 import { createModel, listRoutes, setRoute } from "@/server/db/llm-models";
-import { EvalRefusal, fixedTopics, getEvalBadges, planEval, runEval, type EvalDeps, type EvalRequest } from "@/server/db/llm-eval";
+import { applyDraftMode, EvalRefusal, fixedTopics, getEvalBadges, openEvalStage, planEval, runEval, type EvalDeps, type EvalRequest } from "@/server/db/llm-eval";
 import { createWebTools } from "@/server/llm/web-tools";
+import { reconcile } from "@/server/db/reconciler";
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;
@@ -34,7 +35,7 @@ beforeEach(async () => {
 });
 
 const words = (n: number) => Array.from({ length: n }, () => "word").join(" ");
-function goodScript(quote = QUOTE) {
+function goodScript(quote = QUOTE, computedOnly = false) {
   const r = wordRange("en");
   const narration = words(Math.round((r.min + r.max) / 2));
   return {
@@ -42,7 +43,7 @@ function goodScript(quote = QUOTE) {
     description: "d",
     narration,
     beats: [{ id: "hook", text: narration }],
-    evidence: [{ text: "Two hearts feed the gills", kind: "sourced", source_url: PAGE_URL, quote }],
+    evidence: computedOnly ? [{ text: "Three hearts times two", kind: "computed", method: "3 x 2 = 6" }] : [{ text: "Two hearts feed the gills", kind: "sourced", source_url: PAGE_URL, quote }],
   };
 }
 const ans = (o: unknown, outputTokens = 100): StepResult => ({ text: JSON.stringify(o), toolCalls: [], usage: { inputTokens: 200, outputTokens } });
@@ -53,7 +54,7 @@ interface Fake {
   stats: { model: number };
 }
 /** A model scripted per topic: topics whose index is in `failing` never produce evidence that is on the fetched page. */
-function fake(failing: number[] = [], opts: { outputTokens?: number; boom?: boolean } = {}): Fake {
+function fake(failing: number[] = [], opts: { outputTokens?: number; boom?: boolean; computedOnly?: boolean; onCall?: (n: number) => void } = {}): Fake {
   const stats = { model: 0 };
   const bad = new Set(failing.map((i) => TOPICS[i]!.topic));
   const fetchImpl = (async (url: string) => {
@@ -62,11 +63,12 @@ function fake(failing: number[] = [], opts: { outputTokens?: number; boom?: bool
   }) as never;
   const step = (messages: Message[]): StepResult => {
     stats.model++;
+    opts.onCall?.(stats.model);
     if (opts.boom) throw new Error("socket hang up");
     const text = messages.map((m) => m.content).join("\n");
     const isBad = [...bad].some((t) => text.includes(t));
     if (text.includes("plan web searches")) return ans({ queries: ["octopus hearts"] });
-    const answer = ans(goodScript(isBad ? "this sentence was never said anywhere on the page" : QUOTE), opts.outputTokens);
+    const answer = ans(goodScript(isBad ? "this sentence was never said anywhere on the page" : QUOTE, opts.computedOnly), opts.outputTokens);
     const tools = messages.filter((m) => m.role === "tool").length;
     if (text.includes("webSearch") || text.includes("fetchPage")) {
       // agent prompt path (tools declared): search, fetch, then answer
@@ -129,11 +131,10 @@ describe("eval harness: mode decision", () => {
   }, 60_000);
 
   it("badge_shows_the_latest_run_and_never_a_stale_better_one", async () => {
-    await runEval(db.pool, req({ mode: "agent" }), fake().deps);
+    await runEval(db.pool, req({ mode: "agent" }), { ...fake().deps, now: () => new Date("2026-10-01T00:00:00Z") });
     expect(await mode()).toBe("agent");
     expect((await getEvalBadges(db.pool)).get(modelId)).toMatchObject({ mode: "agent", label: "agent mode proven 10/10" });
-    await new Promise((r) => setTimeout(r, 15));
-    await runEval(db.pool, req({ mode: "agent" }), fake([0, 1, 2, 3, 4, 5]).deps); // 4 of 10
+    await runEval(db.pool, req({ mode: "agent" }), { ...fake([0, 1, 2, 3, 4, 5]).deps, now: () => new Date("2026-10-02T00:00:00Z") }); // 4 of 10
     expect(await mode()).toBe("search_then_write"); // the newer, worse run wins
     expect((await getEvalBadges(db.pool)).get(modelId)).toMatchObject({ mode: "search_then_write", label: "search-then-write", detail: "agent run 4/10" });
   }, 180_000);
@@ -209,10 +210,94 @@ describe("eval harness: money", () => {
   }, 60_000);
 });
 
+describe("eval harness: review fixes", () => {
+  it("applyDraftMode_locks_the_model_row_before_it_reads_the_runs", async () => {
+    // A concurrent eval has locked the model and is about to commit an agent run. The decision must wait for it and include it.
+    const a = await db.pool.connect();
+    try {
+      await a.query("begin");
+      await a.query("select 1 from llm_models where id = $1 for update", [modelId]);
+      const b = await db.pool.connect();
+      let settled = false;
+      const decision = (async () => {
+        await b.query("begin");
+        const r = await applyDraftMode(b, modelId, "owner");
+        await b.query("commit");
+        settled = true;
+        return r;
+      })().finally(() => b.release());
+      await new Promise((r) => setTimeout(r, 300));
+      expect(settled).toBe(false); // blocked on the lock, not reading a stale (empty) run list
+      await a.query(
+        "insert into llm_eval_runs (id, model_id, topics, valid, evidence_valid, cost_micro_usd, p50_latency_ms, mode_tested) values (gen_random_uuid(), $1, 10, 10, 10, 0, 0, 'agent')",
+        [modelId],
+      );
+      await a.query("commit");
+      expect(await decision).toEqual({ mode: "agent", changed: true });
+    } finally {
+      a.release();
+    }
+    expect(await mode()).toBe("agent");
+  });
+
+  it("an_all_computed_script_does_not_count_as_valid_evidence", async () => {
+    const out = await runEval(db.pool, req({ mode: "agent" }), fake([], { computedOnly: true }).deps);
+    expect(out).toMatchObject({ topics: 10, valid: 10, evidenceValid: 0, draftMode: "search_then_write" });
+    expect(await mode()).toBe("search_then_write");
+  }, 120_000);
+
+  it("an_abort_stops_new_topics_ends_the_stage_and_records_the_partial_run", async () => {
+    const stop = new AbortController();
+    const f = fake([], { onCall: (n) => n === 3 && stop.abort() }); // topic 1 = 2 calls; abort during topic 2's first call
+    const out = await runEval(db.pool, req(), { ...f.deps, signal: stop.signal });
+    expect(out.stopped).toBe("aborted");
+    expect(out.topics).toBe(1);
+    expect(f.stats.model).toBe(3); // nothing sent after the abort
+    const rows = await runs();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ topics: 1 });
+    expect(rows[0].note).toMatch(/Stopped by the owner/);
+    const st = await db.pool.query("select status from stage_runs where name = 'llm_eval' order by id");
+    expect(st.rows.map((r) => r.status)).toEqual(["succeeded", "needs_decision"]); // none left running
+    expect(await mode()).toBe("search_then_write");
+  }, 60_000);
+
+  it("an_already_aborted_run_sends_nothing_and_still_records_a_row", async () => {
+    const stop = new AbortController();
+    stop.abort();
+    const f = fake();
+    const out = await runEval(db.pool, req(), { ...f.deps, signal: stop.signal });
+    expect(out).toMatchObject({ stopped: "aborted", topics: 0 });
+    expect(f.stats.model).toBe(0);
+    expect(await count("stage_runs")).toBe(0);
+    expect(await count("llm_eval_runs")).toBe(1);
+  });
+
+  const idle = { enqueue: async () => undefined, liveJobIds: async () => new Set<string>() };
+
+  it("reconciler_ends_an_expired_llm_eval_stage_and_never_requeues_it", async () => {
+    const claim = await openEvalStage(db.pool, "r1", 0); // process died: running, no intent
+    await db.ownerPool.query("update stage_runs set lease_until = clock_timestamp() - interval '1 second' where id = $1", [claim.stageRunId]);
+    const enqueued: string[] = [];
+    const out = await reconcile(db.pool, { ...idle, enqueue: async (id: string) => void enqueued.push(id) } as never, { graceMs: 0 });
+    expect(enqueued).toEqual([]);
+    expect(out.requeued).toEqual([]);
+    expect((await db.pool.query("select status from stage_runs where id = $1", [claim.stageRunId])).rows[0].status).toBe("failed");
+  });
+
+  it("reconciler_never_enqueues_a_queued_llm_eval_row", async () => {
+    const claim = await openEvalStage(db.pool, "r2", 0);
+    await db.ownerPool.query("update stage_runs set status = 'queued', lease_owner = null, lease_until = null, updated_at = now() - interval '1 hour' where id = $1", [claim.stageRunId]);
+    const enqueued: string[] = [];
+    await reconcile(db.pool, { ...idle, enqueue: async (id: string) => void enqueued.push(id) } as never, { graceMs: 0 });
+    expect(enqueued).toEqual([]);
+  });
+});
+
 describe("eval harness: refusals", () => {
   it("eval_refuses_without_yes_and_without_a_model_id", async () => {
     const f = fake();
-    await expect(runEval(db.pool, req({ confirmed: false }), f.deps)).rejects.toThrow(/up to 2 USD|up to 2\.?0* USD|Confirm/);
+    await expect(runEval(db.pool, req({ confirmed: false }), f.deps)).rejects.toThrow(/^This eval can spend up to 2.00 USD on Paid one\. Confirm it to run\.$/);
     await expect(runEval(db.pool, req({ modelId: "" }), f.deps)).rejects.toBeInstanceOf(EvalRefusal);
     await expect(runEval(db.pool, req({ modelId: "not-a-uuid" }), f.deps)).rejects.toBeInstanceOf(EvalRefusal);
     await expect(runEval(db.pool, req({ modelId: "00000000-0000-4000-8000-000000000000" }), f.deps)).rejects.toThrow(/Unknown model/);
