@@ -3,7 +3,8 @@ import path from "node:path";
 import { buildCostPlan, costPlanBody, type CostItem } from "@/server/core/cost-plan";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { AttemptHandler } from "./attempt";
-import { contentBody, DEFAULTS, loadVideo, plainScope, scopeHeadroom, videoMoneyScopes, type StageDeps } from "./deps";
+import { approvedScript } from "@/server/db/stage-content";
+import { DEFAULTS, loadVideo, plainScope, scopeHeadroom, videoMoneyScopes, type StageDeps } from "./deps";
 
 const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`;
 
@@ -15,9 +16,9 @@ const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`;
 export function buildAttempt(deps: StageDeps): AttemptHandler {
   return async (ctx) => {
     const video = await loadVideo(deps.db, ctx);
-    await contentBody(deps.db, video.id, "script");
-    const { beats } = await contentBody<{ beats?: Array<{ id?: unknown }> }>(deps.db, video.id, "beats");
-    const beatIds = (Array.isArray(beats) ? beats : []).map((b, i) => (typeof b?.id === "string" && b.id !== "" ? b.id : `beat-${i + 1}`));
+    const script = await approvedScript(deps.db, video.id);
+    if (!script.ok) throw new KnownFailure(script.reason);
+    const beatIds = script.beats.map((b, i) => (typeof b?.id === "string" && b.id !== "" ? b.id : `beat-${i + 1}`));
 
     const count = Math.max(1, Math.min(beatIds.length, deps.maxImages ?? DEFAULTS.maxImages));
     const items: CostItem[] = Array.from({ length: count }, () => ({

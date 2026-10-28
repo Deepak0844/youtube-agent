@@ -52,6 +52,28 @@ export async function saveStageContent(db: pg.Pool, videoId: string, claim: Clai
   }
 }
 
+export type ApprovedScript = { ok: true; hash: string; script: Record<string, unknown>; beats: Array<{ id?: unknown }> } | { ok: false; reason: string };
+
+/**
+ * The script the owner approved, exactly (not the newest), and the beats written by the same Draft run. A newer script that
+ * nobody approved yet can therefore never be built, narrated or paid for.
+ */
+export async function approvedScript(db: pg.Pool, videoId: string): Promise<ApprovedScript> {
+  const state = await approvalState(db, videoId, "script");
+  const ref = state.approved ? state.versions.script : undefined;
+  if (!state.approved || !ref) return { ok: false, reason: "The script is not approved, or it changed after you approved it. Approve it again." };
+  const s = await db.query<{ body: unknown; produced_by: string | null }>("select body, produced_by from video_content where id = $1 and video_id = $2 and kind = 'script'", [ref.id, videoId]);
+  const row = s.rows[0];
+  if (!row || row.body === null || typeof row.body !== "object") return { ok: false, reason: "The approved script could not be found." };
+  const b = await db.query<{ body: { beats?: unknown } | null }>(
+    "select body from video_content where video_id = $1 and kind = 'beats' and produced_by is not distinct from $2 order by version desc limit 1",
+    [videoId, row.produced_by],
+  );
+  const beats = b.rows[0]?.body?.beats;
+  if (!Array.isArray(beats)) return { ok: false, reason: "The beats that belong to the approved script are missing. Run the draft again." };
+  return { ok: true, hash: state.hash, script: row.body as Record<string, unknown>, beats: beats as Array<{ id?: unknown }> };
+}
+
 export type ApprovedCostPlan = { ok: true; hash: string; body: unknown } | { ok: false; reason: string };
 
 /**

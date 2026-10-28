@@ -3,9 +3,9 @@ import path from "node:path";
 import { parseCostPlan } from "@/server/core/cost-plan";
 import { KnownFailure } from "@/server/core/paid-call";
 import { ensureCapScope } from "@/server/db/budget-scopes";
-import { approvedCostPlan } from "@/server/db/stage-content";
-import type { AttemptHandler } from "./attempt";
-import { contentBody, DEFAULTS, loadVideo, SIZE, videoMoneyScopes, type StageDeps } from "./deps";
+import { approvedCostPlan, approvedScript } from "@/server/db/stage-content";
+import { assertProviderName, type AttemptHandler } from "./attempt";
+import { DEFAULTS, loadVideo, SIZE, videoMoneyScopes, type StageDeps } from "./deps";
 
 /**
  * Generate: buys what the approved cost plan lists, one paid call per item, and nothing else.
@@ -37,7 +37,9 @@ export function generateAttempt(deps: StageDeps): AttemptHandler {
 
     const quoteScope = await ensureCapScope(deps.db, `quote:${video.id}:${approved.hash.slice(0, 16)}`, quoteMicroUsd);
     const scopes = [...(await videoMoneyScopes(deps.db, video)), quoteScope];
-    const { beats } = await contentBody<{ beats?: Array<{ id?: unknown }> }>(deps.db, video.id, "beats");
+    const script = await approvedScript(deps.db, video.id);
+    if (!script.ok) throw new KnownFailure(script.reason);
+    const beats = script.beats;
 
     const files: string[] = [];
     for (const [index, item] of plan.items.entries()) {
@@ -53,7 +55,7 @@ export function generateAttempt(deps: StageDeps): AttemptHandler {
           return { result: { name, b64: (await readFile(r.imagePath)).toString("base64") }, actualMicroUsd: r.priceMicroUsd };
         },
       );
-      if (made.name !== path.basename(made.name) || made.name === "" || made.name.startsWith(".")) throw new KnownFailure("The image provider returned an unusable file name.");
+      assertProviderName(made.name, "image");
       await writeFile(path.join(ctx.attemptDir, made.name), Buffer.from(made.b64, "base64")); // also rebuilds the file after a resume
       if (!files.includes(made.name)) files.push(made.name);
     }

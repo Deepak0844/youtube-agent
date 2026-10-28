@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
-import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -26,6 +26,11 @@ import { createFakeRenderer } from "@/server/providers/renderer/fake";
 import { createFakeVoice } from "@/server/providers/voice/fake";
 import { attemptDir } from "@/server/storage/paths";
 import { sweepLostAttempts } from "@/server/storage/store";
+import { assertProviderName } from "@/worker/stages/attempt";
+import { dryRunRefusal } from "@/worker/stages/guard";
+import { approvePublish } from "@/server/db/publish";
+import { hashStoredFile } from "@/server/storage/hash-file";
+import { promoteAttempt } from "@/server/storage/store";
 import { createStageDispatcher, dryRunHandlers } from "@/worker/handlers";
 import { finishAttempt, prepareAttempt, withAttempt, type AttemptHandler } from "@/worker/stages/attempt";
 import { buildAttempt } from "@/worker/stages/build";
@@ -71,11 +76,18 @@ function mkDeps(over: Partial<StageDeps> = {}): StageDeps & { voice: ReturnType<
 const newVideo = (language: "en" | "hi" = "en") => createVideoRow(db.pool, { format: "short", kind: "scene_kit", language, topic: "Why do octopuses have three hearts?" });
 
 /** Script + beats as the Draft stage would save them, without running Draft. */
-async function seedScript(videoId: string, beats = 3): Promise<void> {
+async function seedScript(videoId: string, beats = 3, approve = true): Promise<void> {
   const d = fakeDraft("en") as { title: string; narration: string };
   await addContent(db.pool, videoId, "script", { body: { title: d.title, narration: d.narration }, sha256: sha256Hex(canonicalJson(d)) });
   const b = { beats: Array.from({ length: beats }, (_, i) => ({ id: `b${i + 1}`, text: "x" })) };
   await addContent(db.pool, videoId, "beats", { body: b, sha256: sha256Hex(canonicalJson(b)) });
+  if (approve) await approveScript(videoId);
+}
+
+async function approveScript(videoId: string): Promise<void> {
+  const live = await liveGateHash(db.pool, videoId, "script");
+  const r = await approveGate(db.pool, { videoId, gate: "script", seenHash: live!.hash, actor: SESSION });
+  if (!r.ok) throw new Error(r.reason);
 }
 
 async function stageCtx(videoId: string, name: string, workerId = "w1"): Promise<{ ctx: StageContext; stageId: string; claim: NonNullable<Awaited<ReturnType<typeof claimStage>>> }> {
@@ -107,6 +119,7 @@ async function chain(videoId: string, until: StageName, handlers = dryRunHandler
     const o = await play(videoId, s, dispatcher);
     out.push(o);
     if (o.kind !== "committed") throw new Error(`${s} ended ${o.kind}: ${JSON.stringify((await db.pool.query("select result from stage_runs where video_id=$1 and name=$2 order by created_at desc limit 1", [videoId, s])).rows[0])}`);
+    if (s === "draft") await approveScript(videoId);
     if (s === "build") await approveCost(videoId);
     if (s === until) break;
   }
@@ -166,6 +179,7 @@ describe("dry-run stage handlers", () => {
     const before0 = snapshot(root);
     expect((await play(v.id, "draft", dryRunDraftHandler(db.pool))).kind).toBe("committed");
     expect(snapshot(root)).toEqual(before0);
+    await approveScript(v.id);
 
     for (const [name, make] of attempts) {
       const { ctx } = await stageCtx(v.id, name);
@@ -389,13 +403,178 @@ describe("paid generation is bounded by the approved quote", () => {
   });
 });
 
+// --- review round: guard, approved inputs, names, crash points ---------------------------------------------------------------
+
+describe("dry-run guard", () => {
+  const env = (over: Record<string, string> = {}) => ({ ENGINE_DRY_RUN: "1", ...over }) as unknown as NodeJS.ProcessEnv;
+  it("refuses in production, without the opt-in, without a throwaway-database marker, and when a provider key is stored", async () => {
+    expect(await dryRunRefusal(db.pool, env({ NODE_ENV: "production", ENGINE_DRY_RUN_DB_OK: "1" }))).toMatch(/production/);
+    expect(await dryRunRefusal(db.pool, {} as unknown as NodeJS.ProcessEnv)).toMatch(/ENGINE_DRY_RUN=1/);
+    const name = (await db.pool.query("select current_database() n")).rows[0].n as string;
+    if (!/_(dev|test)$/.test(name)) expect(await dryRunRefusal(db.pool, env())).toMatch(/throwaway database/); // NODE_ENV unset is not enough
+    expect(await dryRunRefusal(db.pool, env({ ENGINE_DRY_RUN_DB_OK: "1" }))).toBeNull();
+
+    await db.ownerPool.query("insert into secrets (name, ciphertext, nonce, key_id, hint) values ('provider.anthropic.api_key', $1, $2, 'abcdef01', 'wxyz')", [Buffer.alloc(32, 1), Buffer.alloc(12, 2)]);
+    expect(await dryRunRefusal(db.pool, env({ ENGINE_DRY_RUN_DB_OK: "1" }))).toMatch(/provider key is stored/);
+  });
+  it("scripts/dry-run.ts --auto-approve is refused on a database with a key or without the marker", async () => {
+    const base = { DATABASE_URL: db.pool.options.connectionString!, STORAGE_ROOT: root, ENGINE_DRY_RUN: "1" };
+    await db.ownerPool.query("insert into secrets (name, ciphertext, nonce, key_id, hint) values ('provider.anthropic.api_key', $1, $2, 'abcdef01', 'wxyz')", [Buffer.alloc(32, 1), Buffer.alloc(12, 2)]);
+    await expect(execFileAsync(process.execPath, ["--import", "tsx", "scripts/dry-run.ts", "--auto-approve"], { cwd: process.cwd(), env: { ...process.env, ...base, ENGINE_DRY_RUN_DB_OK: "1" } })).rejects.toMatchObject({ stderr: expect.stringMatching(/auto-approve refused.*provider key/) });
+    expect(Number((await db.pool.query("select count(*) n from approvals")).rows[0].n)).toBe(0);
+  });
+});
+
+describe("stages use what the owner approved", () => {
+  it("a newer, unapproved script cannot be built or narrated", async () => {
+    const deps = mkDeps();
+    const v = await newVideo();
+    await seedScript(v.id);
+    const d = fakeDraft("en") as { title: string };
+    const newer = { title: d.title, narration: "a different narration nobody approved" };
+    await addContent(db.pool, v.id, "script", { body: newer, sha256: sha256Hex(canonicalJson(newer)) });
+    const built = await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(deps)));
+    expect(built.kind).toBe("known_failure");
+    expect((await stageResult(v.id, "build")).result).toMatchObject({ error: expect.stringMatching(/script is not approved/) });
+    expect((await play(v.id, "tts", withAttempt({ db: db.pool, root }, ttsAttempt(deps)))).kind).toBe("known_failure");
+    expect(deps.voice.totalCalls()).toBe(0);
+    expect(await intentCount()).toBe(0);
+  });
+
+  it("narrates the approved script even when a newer one exists after the stage was queued for it", async () => {
+    const deps = mkDeps();
+    const v = await newVideo();
+    await seedScript(v.id);
+    const approved = (await latestContent(db.pool, v.id, "script"))!.body as { title: string; narration: string };
+    // A newer version is added, then the owner approves THAT one: tts must use it (the approved one), not a stale read.
+    const newer = { title: approved.title, narration: "second narration alpha beta" };
+    await addContent(db.pool, v.id, "script", { body: newer, sha256: sha256Hex(canonicalJson(newer)) });
+    await approveScript(v.id);
+    expect((await play(v.id, "tts", withAttempt({ db: db.pool, root }, ttsAttempt(deps)))).kind).toBe("committed");
+    expect(deps.voice.totalCalls()).toBe(1);
+  });
+
+  it("narration is outside the quote: it spends only from the video, day and month caps, and those still stop it", async () => {
+    const deps = mkDeps({ maxImages: 1 });
+    const v = await newVideo();
+    await seedScript(v.id, 1);
+    expect((await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(deps)))).kind).toBe("committed");
+    await approveCost(v.id);
+    expect((await play(v.id, "generate", withAttempt({ db: db.pool, root }, generateAttempt(deps)))).kind).toBe("committed");
+    const quote = (await db.pool.query("select scope, spent_micro_usd s from budgets where scope like 'quote:%'")).rows[0] as { scope: string; s: string };
+    expect(Number(quote.s)).toBe(4000);
+    expect((await play(v.id, "tts", withAttempt({ db: db.pool, root }, ttsAttempt(deps)))).kind).toBe("committed");
+    expect(Number((await db.pool.query("select spent_micro_usd s from budgets where scope = $1", [quote.scope])).rows[0].s)).toBe(4000); // untouched by narration
+    expect(Number((await db.pool.query("select spent_micro_usd s from budgets where scope = $1", [`video:${v.id}`])).rows[0].s)).toBe(5000); // image 4000 + narration 1000
+
+    // Leave the video cap too small for the narration reserve: refused, nothing called.
+    const w = await newVideo();
+    await seedScript(w.id, 1);
+    await db.pool.query("insert into budgets (scope, cap_micro_usd) values ($1, 9000)", [`video:${w.id}`]);
+    const calls = deps.voice.totalCalls();
+    expect((await play(w.id, "tts", withAttempt({ db: db.pool, root }, ttsAttempt(deps)))).kind).toBe("budget_refused");
+    expect(deps.voice.totalCalls()).toBe(calls);
+  });
+});
+
+describe("provider file names and video files", () => {
+  it("a provider that picks one of the engine's own file names is refused", async () => {
+    for (const name of ["final.mp4", "render.mp4", "voiced.mp4", "scene.json", "review-first.png", ".promote-marker.json", "a/b.png", ""]) {
+      expect(() => assertProviderName(name, "image")).toThrow(/unusable file name/);
+    }
+    expect(() => assertProviderName("image-abc.png", "image")).not.toThrow();
+
+    const deps = mkDeps();
+    const evil: ImageProvider = { generate: async (c) => { const p = path.join(c.attemptDir, "final.mp4"); writeFileSync(p, "x"); return { imagePath: p, priceMicroUsd: 1 }; } };
+    const v = await newVideo();
+    await seedScript(v.id);
+    expect((await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(deps)))).kind).toBe("committed");
+    await approveCost(v.id);
+    expect((await play(v.id, "generate", withAttempt({ db: db.pool, root }, generateAttempt({ ...deps, image: evil })))).kind).toBe("known_failure");
+    expect(existsSync(path.join(root, "videos", v.id, "final.mp4"))).toBe(false);
+  });
+
+  it("publish refuses a video whose file changed after an Sfx/Render rerun", async () => {
+    const v = await newVideo();
+    await chain(v.id, "qa");
+    await db.pool.query("update videos set channel_id = 'UC-test' where id = $1", [v.id]);
+    await addContent(db.pool, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence") });
+    await addContent(db.pool, v.id, "metadata", { body: { title: "t", visibility: "private", publish_at: null }, sha256: sha256Hex("meta") });
+    const sid = uuidv7();
+    await db.pool.query(
+      "insert into sessions (id, token_hash, expires_at, absolute_expires_at) values ($1, $2, clock_timestamp() + interval '1 hour', clock_timestamp() + interval '7 days')",
+      [sid, `t-${sid}`],
+    );
+    const actor = { kind: "session", sessionId: sid } as const;
+    for (const gate of ["video", "evidence"] as const) await approveGate(db.pool, { videoId: v.id, gate, seenHash: (await liveGateHash(db.pool, v.id, gate))!.hash, actor });
+
+    // Render, Voice and Sfx run again with a different clip. final.mp4 changes on disk; no QA has run, so the stored video version is the old one.
+    const other = dryRunHandlers(mkDeps({ renderer: createFakeRenderer({ fixture: path.join(FIXTURES, "loop-mismatch.mp4") }) }));
+    const d = createStageDispatcher(other, 1);
+    for (const s of ["render", "voice", "sfx"] as const) expect((await play(v.id, s, d)).kind).toBe("committed");
+    const stored = (await latestContent(db.pool, v.id, "video"))!;
+    expect((await hashStoredFile(root, stored.filePath!)).sha256).not.toBe(stored.sha256);
+
+    const enqueueUpload = async () => "job";
+    const res = await approvePublish(db.pool, { enqueueUpload } as never, { videoId: v.id, seenHash: (await liveGateHash(db.pool, v.id, "publish"))!.hash, visibility: "private", publishAt: null, channelId: "UC-test", actor }, { root });
+    expect(res).toMatchObject({ ok: false, reason: expect.stringMatching(/not the file that was reviewed/) });
+  });
+});
+
+describe("crash points", () => {
+  it("a crash between promote and the content save resumes cleanly: files replaced, content saved once", async () => {
+    const v = await newVideo();
+    await seedScript(v.id);
+    const deps = mkDeps();
+    const { ctx, stageId } = await stageCtx(v.id, "build");
+    await prepareAttempt(ctx, root);
+    const out = await buildAttempt(deps)(ctx);
+    expect(await promoteAttempt(db.pool, ctx.claim as never, out.files, { root })).toBe(true); // ...and the worker dies here
+    expect(existsSync(path.join(root, "videos", v.id, "scene.json"))).toBe(true);
+    expect(await contentCount(v.id, "cost_plan")).toBe(0);
+
+    await db.ownerPool.query("update stage_runs set status='queued', lease_owner=null, lease_until=null where id=$1", [stageId]);
+    const claim2 = (await claimStage(db.pool, { id: stageId, inputHash: "h", workerId: "w2", ttlMs: 600_000 }))!;
+    const ctx2 = createStageContext({ stage: ctx.stage, claim: claim2, config, signal: new AbortController().signal, paid: createPgPaidCallPorts(db.pool) }).ctx;
+    await withAttempt({ db: db.pool, root }, buildAttempt(deps))(ctx2);
+    expect(await contentCount(v.id, "cost_plan")).toBe(1);
+    expect(existsSync(path.join(root, "videos", v.id, "scene.json"))).toBe(true);
+    // and a third delivery of the same finished attempt adds nothing
+    await finishAttempt({ db: db.pool, root }, ctx2, { files: [], content: out.content });
+    expect(await contentCount(v.id, "cost_plan")).toBe(1);
+  });
+
+  it("a replayed Generate re-checks the approval: a plan edited after the first attempt buys and promotes nothing", async () => {
+    const deps = mkDeps();
+    const v = await newVideo();
+    await seedScript(v.id);
+    expect((await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(deps)))).kind).toBe("committed");
+    await approveCost(v.id);
+    const { ctx, stageId } = await stageCtx(v.id, "generate");
+    await prepareAttempt(ctx, root);
+    await generateAttempt(deps)(ctx);
+    expect(deps.image.totalCalls()).toBe(3);
+
+    const old = (await latestContent(db.pool, v.id, "cost_plan"))!.body as { items: Array<{ kind: "image"; provider: string; quoteMicroUsd: number }> };
+    const changed = costPlanBody(buildCostPlan(old.items.map((i) => ({ ...i, quoteMicroUsd: i.quoteMicroUsd + 1 })), "scene_kit"));
+    await addContent(db.pool, v.id, "cost_plan", { body: changed, sha256: sha256Hex(canonicalJson(changed)) });
+
+    await db.ownerPool.query("update stage_runs set status='queued', lease_owner=null, lease_until=null where id=$1", [stageId]);
+    const claim2 = (await claimStage(db.pool, { id: stageId, inputHash: "h", workerId: "w2", ttlMs: 600_000 }))!;
+    const ctx2 = createStageContext({ stage: ctx.stage, claim: claim2, config, signal: new AbortController().signal, paid: createPgPaidCallPorts(db.pool) }).ctx;
+    await expect(withAttempt({ db: db.pool, root }, generateAttempt(deps))(ctx2)).rejects.toThrow(/not approved/);
+    expect(deps.image.totalCalls()).toBe(3);
+    expect(readdirSync(path.join(root, "videos", v.id)).filter((n) => n.endsWith(".png"))).toEqual([]);
+  });
+});
+
 // --- scripts/dry-run.ts -------------------------------------------------------------------------------------------------
 
 describe("scripts/dry-run.ts", () => {
   const run = (args: string[], env: Record<string, string> = {}) =>
     execFileAsync(process.execPath, ["--import", "tsx", "scripts/dry-run.ts", ...args], {
       cwd: process.cwd(),
-      env: { ...process.env, DATABASE_URL: db.pool.options.connectionString!, STORAGE_ROOT: root, ENGINE_DRY_RUN: "1", ...env },
+      env: { ...process.env, DATABASE_URL: db.pool.options.connectionString!, STORAGE_ROOT: root, ENGINE_DRY_RUN: "1", ENGINE_DRY_RUN_DB_OK: "1", ...env },
       timeout: 100_000,
     });
 

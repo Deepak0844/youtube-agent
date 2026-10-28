@@ -22,6 +22,7 @@ import { getPool } from "@/server/db/pool";
 import { advanceVideo, createVideo, type PipelineReaders } from "@/server/db/pipeline";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { latestContent } from "@/server/db/videos";
+import { dryRunRefusal } from "@/worker/stages/guard";
 import { storageRoot } from "@/server/storage/paths";
 
 const readers: PipelineReaders = {
@@ -40,6 +41,10 @@ async function main(): Promise<void> {
   const topic = process.argv.slice(2).find((a) => !a.startsWith("--")) ?? "Why do octopuses have three hearts?";
 
   const db = getPool();
+  if (autoApprove) {
+    const refusal = await dryRunRefusal(db, process.env);
+    if (refusal) throw new Error(`--auto-approve refused: ${refusal}`);
+  }
   const root = storageRoot();
   const deps = defaultDryRunDeps(db, root);
   const dispatcher = createStageDispatcher(dryRunHandlers(deps), 1);

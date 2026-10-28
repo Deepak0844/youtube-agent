@@ -30,6 +30,16 @@ export interface StageOutput {
 }
 export type AttemptHandler = (ctx: StageContext) => Promise<StageOutput>;
 
+/** Names only the engine's own stages write. A provider that picks one of these could overwrite another stage's output. */
+export const RESERVED_NAMES: ReadonlySet<string> = new Set(["scene.json", "render.mp4", "voiced.mp4", "final.mp4", "review-first.png", "review-last.png"]);
+
+/** A file name a provider chose: a plain name, not hidden, not one of the engine's own output names. */
+export function assertProviderName(name: unknown, who: string): asserts name is string {
+  if (typeof name !== "string" || name === "" || name !== path.basename(name) || name.startsWith(".") || RESERVED_NAMES.has(name)) {
+    throw new KnownFailure(`The ${who} provider returned an unusable file name.`);
+  }
+}
+
 export function videoIdOf(ctx: StageContext): string {
   if (!ctx.stage.videoId) throw new KnownFailure(`${ctx.stage.name} needs a video`);
   return ctx.stage.videoId;
