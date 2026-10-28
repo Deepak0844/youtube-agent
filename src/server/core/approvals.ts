@@ -1,5 +1,6 @@
 import { canonicalJson, gateHash, sha256Hex } from "@/server/core/content-hash";
 import type { GateId } from "@/server/core/gates";
+import { metadataProblem } from "@/server/core/publish-rules";
 
 // Hash-bound gate rules (Doc 02 4.4). Pure: no IO. The live hash of a gate is computed from the latest stored content;
 // db/approvals.ts reads the rows and calls this. An approval counts only while its stored hash equals the live hash.
@@ -53,12 +54,15 @@ const partHash = (v: unknown): string => sha256Hex(canonicalJson(v));
 const contentDigest = (c: StoredContent): string => partHash({ sha256: c.sha256, body: c.body ?? null, file_path: c.filePath ?? null });
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const COST_PATHS = ["scene_kit", "tsx", "collage", "ai"];
+const isMicroUsd = (v: unknown): boolean => typeof v === "string" && /^[0-9]{1,18}$/.test(v); // fits a signed 64-bit amount
 const costPlanProblem = (b: unknown): string | null => {
+  const pm = field(b, "providers_models");
+  const lib = field(b, "library_scene_versions");
   const ok =
-    isObj(field(b, "providers_models")) && Object.keys(field(b, "providers_models") as object).length > 0 &&
+    isObj(pm) && Object.keys(pm).length > 0 && Object.values(pm).every((x) => typeof x === "string" && x.trim() !== "") &&
     typeof field(b, "path") === "string" && COST_PATHS.includes(field(b, "path") as string) &&
-    isObj(field(b, "library_scene_versions")) &&
-    isObj(field(b, "quote")) && typeof (field(b, "quote") as Record<string, unknown>).micro_usd === "string" && /^[0-9]+$/.test((field(b, "quote") as Record<string, unknown>).micro_usd as string);
+    isObj(lib) && Object.values(lib).every((x) => Number.isSafeInteger(x) && (x as number) >= 1) &&
+    isObj(field(b, "quote")) && isMicroUsd((field(b, "quote") as Record<string, unknown>).micro_usd);
   return ok ? null : "the cost plan is incomplete: it needs models, a path, library scene versions and a quote in micro-USD";
 };
 
@@ -106,8 +110,9 @@ function liveHashUnsafe(gate: GateId, i: LiveInputs): LiveHash {
       if (!c.metadata) return NOTHING("title and description");
       if (!c.evidence) return NOTHING("evidence file");
       if (!i.channelId) return { ok: false, reason: "choose a channel before publishing" };
-      const visibility = field(c.metadata.body, "visibility");
-      if (typeof visibility !== "string" || visibility === "") return { ok: false, reason: "the metadata needs a visibility before publishing" };
+      const problem = metadataProblem(c.metadata.body);
+      if (problem) return { ok: false, reason: problem };
+      const visibility = field(c.metadata.body, "visibility") as string;
       return {
         ok: true,
         hash: gateHash("publish", {

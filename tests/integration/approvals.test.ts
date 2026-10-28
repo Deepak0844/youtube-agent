@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sha256Hex } from "@/server/core/content-hash";
-import { approvalState, approveGate, isApproved, liveGateHash, sendBack } from "@/server/db/approvals";
+import { approvalState, approveGate, approveGateWith, isApproved, liveGateHash, sendBack } from "@/server/db/approvals";
 import { addContent } from "@/server/db/videos";
 import { withTestDb, type TestDb } from "../support/db";
 import { SESSION_ID, STALE, bumpContent, seedVideo } from "../support/gate-fixture";
@@ -18,7 +18,12 @@ beforeEach(async () => {
 });
 const session = { kind: "session", sessionId: SESSION_ID } as const;
 const live = async (v: string, gate: "script" | "publish" | "cost" | "video" | "evidence" = "script") => (await liveGateHash(db.pool, v, gate))!.hash;
-const approve = async (v: string, seenHash: string, gate: "script" | "publish" | "cost" | "video" | "evidence" = "script") => approveGate(db.pool, { videoId: v, gate, seenHash, actor: session });
+// The publish gate has one real path (approvePublish, tested in publish.test.ts); these tests only exercise the derived
+// hash/versions logic, so they record the publish approval through the hooked variant with empty hooks.
+const approve = async (v: string, seenHash: string, gate: "script" | "publish" | "cost" | "video" | "evidence" = "script") =>
+  gate === "publish"
+    ? approveGateWith(db.pool, { videoId: v, gate, seenHash, actor: session }, { guard: async () => null, after: async () => undefined })
+    : approveGate(db.pool, { videoId: v, gate, seenHash, actor: session });
 
 describe("approvals", () => {
   it("approval_valid_only_while_stored_hash_equals_live_hash", async () => {

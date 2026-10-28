@@ -19,7 +19,9 @@ import { createChildRegistry, holdWorkerLock, sweepOrphans, type WorkerLock } fr
 import type { ChildRegistry } from "@/server/render/child";
 import { markStalled } from "@/server/db/uploads";
 import { runStage } from "@/server/db/stage-runner-adapter";
-import { createJobQueue, type StageQueue } from "@/server/queue/job-queue";
+import { createJobQueue, type StageQueue, type UploadQueue } from "@/server/queue/job-queue";
+import type { Uploader } from "@/server/providers/uploader";
+import { handlePublishUpload } from "./stages/publish-upload";
 import { createEventBus, type EventBus } from "@/server/queue/event-bus";
 import { pruneAgentSteps } from "@/server/db/agent-steps";
 import { emitEvent, pruneEvents, type EventType } from "@/server/db/events";
@@ -31,6 +33,8 @@ import { startReconcileLoop } from "./reconcile-loop";
 // Composition seams for boot cleanup (09), event retention/transitions (11), and notifications (12).
 export interface WorkerHooks {
   connectQueue(redisUrl: string, log: (message: string) => void): Promise<StageQueue>;
+  /** The `uploads` queue; connected only when an uploader was supplied. */
+  connectUploadQueue(redisUrl: string, log: (message: string) => void): Promise<UploadQueue>;
   loadSettings(pool: pg.Pool): Promise<WorkerSettings>;
   checkVault(pool: pg.Pool): Promise<string>;
   reconcile(pool: pg.Pool, queue: StageQueue, config: EngineConfig): Promise<unknown>;
@@ -60,6 +64,10 @@ export interface WorkerOptions {
   redisUrl?: string;
   /** Handlers, or a factory that receives the registry render children must be registered with (so a crash leaves them sweepable). */
   handlers?: StageHandlers | ((env: { childRegistry: ChildRegistry }) => StageHandlers);
+  /** Starts the `uploads` consumer. There is no default: with no uploader (real YouTube is Phase 5) approved uploads just wait. */
+  uploader?: Uploader;
+  /** Where approved video files live; defaults to STORAGE_ROOT. */
+  storageRoot?: string;
   workerId?: string;
   /** Where the pipeline reads owner decisions. The SAME readers go to advance, retry scheduling and the retry sweep. */
   readers?: PipelineReaders;
@@ -78,8 +86,11 @@ async function connectQueue(redisUrl: string, log: (message: string) => void): P
   finally { probe.disconnect(); }
   return createJobQueue(redisUrl, "stages", undefined, { onError: () => log("waiting for Redis") });
 }
+async function connectUploadQueue(redisUrl: string, log: (message: string) => void): Promise<UploadQueue> {
+  return createJobQueue(redisUrl, "uploads", undefined, { onError: () => log("waiting for Redis") });
+}
 const defaults: WorkerHooks = {
-  connectQueue,
+  connectQueue, connectUploadQueue,
   loadSettings: getWorkerSettings,
   checkVault: async (pool) => (await vaultStatus(pool, loadKeyring)).status,
   reconcile: (pool, queue, config) => reconcile(pool, queue, { maxAttempts: config.retryAttempts - 1, attemptBasis: "claim" }),
@@ -143,6 +154,8 @@ export function startRuntime(opts: WorkerOptions = {}) {
   let queue: StageQueue | undefined;
   let bus: EventBus | undefined;
   let consumer: ReturnType<StageQueue["startWorker"]> | undefined;
+  let uploadQueue: UploadQueue | undefined;
+  let uploadConsumer: ReturnType<UploadQueue["startWorker"]> | undefined;
   let loop: ReturnType<typeof startReconcileLoop> | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let stopping = false;
@@ -250,6 +263,23 @@ export function startRuntime(opts: WorkerOptions = {}) {
             return;
           }
           queue = connected;
+          // One upload at a time (Doc 02 4.7). The handler reads everything from Postgres and the disk; the payload is an id.
+          if (opts.uploader && !uploadConsumer) {
+            const uploader = opts.uploader;
+            try {
+              const uq = await hooks.connectUploadQueue(redisUrl, log);
+              if (stopping) { void Promise.resolve().then(() => uq.close(true)).catch(() => {}); return; }
+              uploadQueue = uq;
+              uploadConsumer = uq.startWorker(async (uploadId) => {
+                // Throw, never return: returning would acknowledge (and delete) a job that did not run. A failed job is
+                // replaced by requeueUpload; the row is still publish_approved.
+                if (stopping) throw new Error("worker is stopping; the upload was not started");
+                const whole = handlePublishUpload(db, { uploader, root: opts.storageRoot }, uploadId).then(() => undefined);
+                active.add(whole);
+                try { await whole; } finally { active.delete(whole); }
+              }, { concurrency: 1, onError: () => log("waiting for Redis") });
+            } catch { log("uploads queue unavailable; approved uploads wait until the worker restarts"); }
+          }
           // Without handlers there is no consumer: jobs wait in Redis and rows stay queued.
           if (hasHandlers) consumer = queue.startWorker(async (job) => {
             if (stopping) return;
@@ -325,7 +355,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
       clearTimeout(retry);
       // pause(true) stops fetching without waiting on active handlers. Abort only after consumption is paused.
       const safely = (fn: () => unknown) => { try { return Promise.resolve(fn()); } catch (err) { return Promise.reject(err); } };
-      const pause = safely(() => consumer?.pause?.());
+      const pause = Promise.allSettled([safely(() => consumer?.pause?.()), safely(() => uploadConsumer?.pause?.())]);
       stopPromise = (async () => {
         const limitMs = opts.shutdownTimeoutMs ?? 10_000;
         const within = async (work: Promise<unknown>): Promise<boolean> => {
@@ -348,7 +378,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
         }
         // Teardown has its own fresh limit, so a slow drain cannot starve closing connections.
         const teardownExpired = await within(Promise.allSettled([
-          safely(() => consumer?.close(true)), safely(() => queue?.close(true)), safely(() => bus?.close()), safely(async () => { await workerLock?.release(); await pool?.end(); }),
+          safely(() => consumer?.close(true)), safely(() => uploadConsumer?.close(true)), safely(() => queue?.close(true)), safely(() => uploadQueue?.close(true)), safely(() => bus?.close()), safely(async () => { await workerLock?.release(); await pool?.end(); }),
         ]));
         if (teardownExpired) {
           if (pool) forceClosePool(pool);
