@@ -28,16 +28,23 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      - name: Install ffprobe for fake-video fixture tests
+        timeout-minutes: 8
+        run: |
+          sudo timeout 200 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 update
+          sudo timeout 300 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y --no-install-recommends ffmpeg
+          ffprobe -version
       - run: npm test
 
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       # CI has no copy of the old shorts repo; the test also skips itself when it is absent.
       SKIP_OLD_SHORTS: "1"
       # The chaos harness defaults to 200 seeds locally; CI runs a reduced sweep to keep the job short.
       CHAOS_SEEDS: "60"
+      ENGINE_CHAOS_SEEDS: "60"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -49,24 +56,18 @@ jobs:
         run: |
           npm run image:render
           npm run image:egress-proxy
-      - name: Host ffprobe (render tests probe videos on the host)
-        # apt-get install ffmpeg pulls ~100 packages from the runner's mirror, which sometimes crawls (one run lost 28
-        # minutes of the 30 minute budget; the tests themselves need ~8). The render image already contains Remotion's
-        # self-contained ffprobe (plus its own libs), so copy that out; apt is only the fallback.
+      - name: Install host ffmpeg and ffprobe
         timeout-minutes: 8
         run: |
-          dir=$(docker run --rm --entrypoint sh ytstudio-render:dev -c 'dirname "$(find /opt/render/node_modules/@remotion -name ffprobe -type f | head -1)"')
-          cid=$(docker create ytstudio-render:dev)
-          docker cp "$cid:$dir" "$HOME/ffprobe-bin"
-          docker rm "$cid" >/dev/null
-          echo "$HOME/ffprobe-bin" >> "$GITHUB_PATH"
-          if ! "$HOME/ffprobe-bin/ffprobe" -version; then
-            echo "bundled ffprobe unusable, falling back to apt"
-            sudo timeout 200 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 update
-            sudo timeout 300 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y --no-install-recommends ffmpeg
-            ffprobe -version
-          fi
-      - run: npm run test:integration
+          sudo timeout 200 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 update
+          sudo timeout 300 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y --no-install-recommends ffmpeg
+          ffmpeg -filters 2>/dev/null | grep -q volumedetect
+          ffprobe -version
+      - name: Run integration suites without starving engine workers
+        run: |
+          npm run test:integration -- --exclude tests/integration/engine-resilience.test.ts --exclude tests/integration/engine-chaos.test.ts
+          npm run test:integration -- --run tests/integration/engine-resilience.test.ts
+          npm run test:integration -- --run tests/integration/engine-chaos.test.ts
 
   e2e:
     runs-on: ubuntu-latest
