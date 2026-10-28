@@ -10,7 +10,19 @@ import type { PipelineReaders } from "@/server/db/pipeline";
 export const approvalReaders: PipelineReaders = {
   async approvedGates(db: pg.PoolClient, videoId: string): Promise<ReadonlySet<GateId>> {
     const out = new Set<GateId>();
-    for (const g of IMPLEMENTED_GATES) if ((await approvalState(db, videoId, g)).approved) out.add(g);
+    for (const g of IMPLEMENTED_GATES) {
+      if (!(await approvalState(db, videoId, g)).approved) continue;
+      // The pipeline moves on only for an approval a real session made: that session existed, was unexpired and not
+      // revoked when the decision was recorded (the same test the publish job applies). approvalState itself stays pure
+      // content-hash logic so the gate fixtures need no session rows; this is the check that gates what the engine does.
+      const ok = await db.query<{ valid: boolean }>(
+        `select exists (select 1 from sessions s where s.id = a.session_id and a.decided_at < s.expires_at and a.decided_at < s.absolute_expires_at
+                          and (s.revoked_at is null or s.revoked_at > a.decided_at)) as valid
+           from approvals a where a.video_id = $1 and a.gate = $2 order by a.seq desc limit 1`,
+        [videoId, g],
+      );
+      if (ok.rows[0]?.valid) out.add(g);
+    }
     return out;
   },
   /** The note on the newest script send-back, or null. A newer send-back replaces it; it changes the draft's input hash, so the draft reruns once. */

@@ -34,11 +34,11 @@ describe("cutStages", () => {
 });
 
 describe("dry run availability and navigation", () => {
-  it("is on in development and off in a production build unless ENGINE_DRY_RUN=1", () => {
-    expect(dryRunAllowed({ NODE_ENV: "development" })).toBe(true);
-    expect(dryRunAllowed({ NODE_ENV: "production" })).toBe(false);
-    expect(dryRunAllowed({ NODE_ENV: "production", ENGINE_DRY_RUN: "0" })).toBe(false);
-    expect(dryRunAllowed({ NODE_ENV: "production", ENGINE_DRY_RUN: "1" })).toBe(true);
+  it("needs ENGINE_DRY_RUN=1 and a non-production build", () => {
+    expect(dryRunAllowed({ NODE_ENV: "development", ENGINE_DRY_RUN: "1" })).toBe(true);
+    expect(dryRunAllowed({ NODE_ENV: "development" })).toBe(false); // development alone is not an opt-in
+    expect(dryRunAllowed({ NODE_ENV: "development", ENGINE_DRY_RUN: "0" })).toBe(false);
+    expect(dryRunAllowed({ NODE_ENV: "production", ENGINE_DRY_RUN: "1" })).toBe(false);
   });
   it("the nav lists /queue", () => {
     const hrefs = visibleNav().flatMap((g) => g.items.map((i) => i.href));

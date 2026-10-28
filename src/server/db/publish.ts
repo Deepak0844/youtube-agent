@@ -31,6 +31,13 @@ export interface PublishArgs {
 }
 
 const refuse = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
+const CANCELLED = "this video is no longer in production";
+
+/** A video that was cancelled, finished or failed publishes nothing, whatever approvals or upload rows it still has. */
+async function videoIsLive(db: pg.PoolClient | pg.Pool, videoId: string): Promise<boolean> {
+  const r = await db.query("select 1 from videos where id = $1 and status in ('active','waiting')", [videoId]);
+  return r.rowCount === 1;
+}
 
 async function sessionIsLive(db: pg.PoolClient, sessionId: string): Promise<boolean> {
   const r = await db.query(
@@ -86,6 +93,7 @@ export async function approvePublish(db: pg.Pool, queue: Pick<UploadQueue, "enqu
   const res = await approveGateWith(db, { videoId: a.videoId, gate: "publish", seenHash: a.seenHash, actor: a.actor }, {
     async guard(client, snap) {
       if (!(await sessionIsLive(client, sessionId))) return ACTOR_REASON;
+      if (!(await videoIsLive(client, a.videoId))) return CANCELLED;
       const meta = snap.inputs.content.metadata;
       const video = snap.inputs.content.video;
       if (!meta || !video) return "nothing to approve yet";
@@ -133,7 +141,7 @@ export async function approvePublish(db: pg.Pool, queue: Pick<UploadQueue, "enqu
 /** Sends the job again for an approved upload that never reached the queue. Only `publish_approved` rows; a no-op otherwise. */
 export async function requeueUpload(db: pg.Pool, queue: Pick<UploadQueue, "enqueueUpload">, uploadId: string): Promise<boolean> {
   if (typeof uploadId !== "string" || !UUID_RE.test(uploadId)) return false;
-  const r = await db.query("select 1 from uploads where id = $1 and status = 'publish_approved'", [uploadId]);
+  const r = await db.query("select 1 from uploads u join videos v on v.id = u.video_id where u.id = $1 and u.status = 'publish_approved' and v.status in ('active','waiting')", [uploadId]);
   if (r.rowCount !== 1) return false;
   await queue.enqueueUpload(uploadId);
   return true;
@@ -145,6 +153,7 @@ export async function requeueUpload(db: pg.Pool, queue: Pick<UploadQueue, "enque
  * rewrite or allow_public=false that committed after readUploadTarget still stops the start.
  */
 export async function recheckPublishStart(q: pg.PoolClient, row: { videoId: string; approvalHash: string }): Promise<"approval_changed" | "policy" | null> {
+  if (!(await videoIsLive(q, row.videoId))) return "policy";
   const state = await approvalState(q, row.videoId, "publish");
   if (!state.approved || state.hash !== row.approvalHash) return "approval_changed";
   const s = await readSnapshot(q, row.videoId, "publish");
@@ -184,6 +193,7 @@ export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { ro
     if (!up) return { ok: false, reason: "not_found" };
     if (up.status !== "publish_approved") return { ok: false, reason: "not_publish_approved" };
     if (up.channel_id === null) return { ok: false, reason: "no_channel" };
+    if (!(await videoIsLive(client, up.video_id))) return { ok: false, reason: "policy", detail: CANCELLED };
     const state = await approvalState(client, up.video_id, "publish");
     if (!state.approved) return { ok: false, reason: "approval_changed" };
     const s = await readSnapshot(client, up.video_id, "publish");

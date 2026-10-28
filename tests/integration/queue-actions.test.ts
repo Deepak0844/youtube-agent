@@ -11,7 +11,9 @@ import type { StageRunnerDeps } from "@/server/core/stage-runner";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { approveGate, liveGateHash } from "@/server/db/approvals";
 import { recordBreakerEvent } from "@/server/db/breakers";
-import { advanceVideo, readNextAction } from "@/server/db/pipeline";
+import { advanceVideo, cancelVideo, readNextAction } from "@/server/db/pipeline";
+import { readUploadTarget, recheckPublishStart } from "@/server/db/publish";
+import { refuseDryRunVideos } from "@/worker/handlers";
 import { loadQueue } from "@/server/db/queue-data";
 import { cancelVideoById, decideGate, decideParkedStage, resetBreakerFor, sendUploadAgain, startDryRun, type Queues } from "@/server/db/queue-actions";
 import { reconcile } from "@/server/db/reconciler";
@@ -148,7 +150,7 @@ describe("decideGate: approve and send back", () => {
     await draftDone(videoId, q);
     const i = await inputFor(videoId, "script");
     expect((await decideGate(db.pool, q, actor, i, "approve")).ok).toBe(true);
-    expect(await decideGate(db.pool, q, actor, i, "approve")).toEqual({ ok: false, message: "This is no longer waiting for you." });
+    expect((await decideGate(db.pool, q, actor, i, "approve")).ok).toBe(false);
     expect(await approvalsOf(videoId)).toHaveLength(1);
   });
   it("a hash forged by the page is refused and nothing is written", async () => {
@@ -192,7 +194,7 @@ describe("decideGate: approve and send back", () => {
       expect((await decideGate(db.pool, q, bad, i, "send_back")).ok).toBe(false);
       expect((await cancelVideoById(db.pool, bad, videoId)).ok).toBe(false);
       expect((await resetBreakerFor(db.pool, bad, "draft")).ok).toBe(false);
-      expect((await sendUploadAgain(db.pool, q, bad, videoId)).ok).toBe(false);
+      expect((await sendUploadAgain(db.pool, q, bad, "11111111-1111-4111-8111-111111111111")).ok).toBe(false);
       expect((await startDryRun(db.pool, q, bad)).ok).toBe(false);
     }
     expect(await approvalsOf(videoId)).toEqual([]);
@@ -245,6 +247,16 @@ describe("decideGate: publish", () => {
     await addContent(db.pool, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence-1") });
     await addContent(db.pool, v.id, "metadata", { body: { title: "Publish me", visibility: "private", publish_at: null }, sha256: sha256Hex("meta-1") });
     for (const g of ["video", "evidence"] as const) await approveGate(db.pool, { videoId: v.id, gate: g, seenHash: (await liveGateHash(db.pool, v.id, g))!.hash, actor });
+    // Every stage ran (as a worker would) and the script was approved: the pipeline now waits at the publish gate.
+    for (const stage of ["draft", "build", "tts", "render", "voice", "sfx", "qa"]) {
+      await advanceVideo(db.pool, q.stage, v.id, approvalReaders);
+      const { rows } = await db.pool.query<{ id: string; input_hash: string }>("select id, input_hash from stage_runs where video_id = $1 and name = $2 and status = 'queued'", [v.id, stage]);
+      const c = await claimStage(db.pool, { id: rows[0]!.id, inputHash: rows[0]!.input_hash, workerId: "w", ttlMs: 60_000 });
+      await commitStage(db.pool, c!, {});
+      if (stage === "draft") await approveGate(db.pool, { videoId: v.id, gate: "script", seenHash: (await liveGateHash(db.pool, v.id, "script"))!.hash, actor });
+    }
+    await advanceVideo(db.pool, q.stage, v.id, approvalReaders);
+    q.stageCalls.length = 0;
     return { q, root, videoId: v.id };
   }
   it("approves the publish once, queues the upload and rejects a replay of the same page", async () => {
@@ -407,11 +419,129 @@ describe("breaker, cancel and dry run", () => {
     expect(await auditEvents()).toContain("video.cancelled");
     expect((await cancelVideoById(db.pool, actor, "11111111-1111-4111-8111-111111111111")).ok).toBe(false);
   });
-  it("startDryRun makes one plain video, queues its draft and audits it", async () => {
+  it("startDryRun makes one marked video, queues its draft and audits it (throwaway database opt-in given)", async () => {
     const q = fakeQueues();
-    expect((await startDryRun(db.pool, q, actor)).ok).toBe(true);
+    expect((await startDryRun(db.pool, q, actor, { ENGINE_DRY_RUN: "1", NODE_ENV: "development", ENGINE_DRY_RUN_DB_OK: "1" })).ok).toBe(true);
     expect((await db.pool.query("select count(*)::int as n from videos where notes = 'dry run'")).rows[0].n).toBe(1);
     expect(q.stageCalls).toHaveLength(1);
     expect(await auditEvents()).toContain("dryrun.started");
+  });
+});
+
+describe("dry run guard (development mode must not spend real money)", () => {
+  const env = { ENGINE_DRY_RUN: "1", NODE_ENV: "development", ENGINE_DRY_RUN_DB_OK: "1" };
+  it("is refused without ENGINE_DRY_RUN=1, in production, and on a database not marked throwaway", async () => {
+    const q = fakeQueues();
+    for (const bad of [{ ...env, ENGINE_DRY_RUN: "0" }, { ...env, NODE_ENV: "production" }, { NODE_ENV: "development", ENGINE_DRY_RUN: "1" }]) {
+      expect((await startDryRun(db.pool, q, actor, bad)).ok, JSON.stringify(bad)).toBe(false);
+    }
+    expect((await db.pool.query("select count(*)::int as n from videos")).rows[0].n).toBe(0);
+  });
+  it("the production worker refuses a dry-run video before any real provider is touched", async () => {
+    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "dry", notes: "dry run" });
+    const real = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "real" });
+    let calls = 0;
+    const handler = refuseDryRunVideos(db.pool, async () => ((calls += 1), "ran"));
+    const ctx = (videoId: string) => ({ stage: { id: "s", name: "draft", inputHash: "h", videoId } }) as never;
+    await expect(handler(ctx(v.id))).rejects.toThrow(/dry-run video/);
+    expect(calls).toBe(0);
+    await expect(handler(ctx(real.id))).resolves.toBe("ran");
+  });
+});
+
+describe("a cancelled video does nothing more", () => {
+  async function approvedUpload() {
+    const q = fakeQueues();
+    const root = mkdtempSync(path.join(tmpdir(), "queue-cancel-"));
+    mkdirSync(path.join(root, "v"), { recursive: true });
+    writeFileSync(path.join(root, "v/1.mp4"), "video-1");
+    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Cancel me", channelId: "UC1" });
+    await addContent(db.pool, v.id, "script", { body: script(), sha256: sha256Hex("script-1") });
+    await addContent(db.pool, v.id, "video", { filePath: "v/1.mp4", sha256: sha256Hex("video-1") });
+    await addContent(db.pool, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence-1") });
+    await addContent(db.pool, v.id, "metadata", { body: { title: "Cancel me", visibility: "private", publish_at: null }, sha256: sha256Hex("meta-1") });
+    for (const g of ["video", "evidence"] as const) await approveGate(db.pool, { videoId: v.id, gate: g, seenHash: (await liveGateHash(db.pool, v.id, g))!.hash, actor });
+    return { q, root, videoId: v.id };
+  }
+  it("a stale tab cannot approve a cancelled video, at any gate", async () => {
+    const q = fakeQueues();
+    const videoId = await seedScriptVideo();
+    await draftDone(videoId, q);
+    const i = await inputFor(videoId, "script");
+    expect((await cancelVideoById(db.pool, actor, videoId)).ok).toBe(true);
+    expect(await decideGate(db.pool, q, actor, i, "approve")).toEqual({ ok: false, message: "This video is no longer in production." });
+    expect((await decideGate(db.pool, q, actor, { ...i, note: "fix it please" }, "send_back")).ok).toBe(false);
+    expect(await approvalsOf(videoId)).toEqual([]);
+  });
+  it("approvePublish itself refuses a cancelled video (not only the page)", async () => {
+    const { root, videoId } = await approvedUpload();
+    const { approvePublish } = await import("@/server/db/publish");
+    const seen = (await liveGateHash(db.pool, videoId, "publish"))!.hash;
+    await cancelVideo(db.pool, videoId);
+    const r = await approvePublish(db.pool, { enqueueUpload: async () => "x" }, { videoId, seenHash: seen, visibility: "private", publishAt: null, channelId: "UC1", actor }, { root });
+    expect(r.ok).toBe(false);
+    expect((await db.pool.query("select count(*)::int as n from uploads")).rows[0].n).toBe(0);
+  });
+  it("Send again, the stranded list, the job-time read and the start recheck all ignore an approved upload of a cancelled video", async () => {
+    const { q, root, videoId } = await approvedUpload();
+    const seen = (await liveGateHash(db.pool, videoId, "publish"))!.hash;
+    const { approvePublish } = await import("@/server/db/publish");
+    const ok = await approvePublish(db.pool, { enqueueUpload: async () => { throw new Error("down"); } }, { videoId, seenHash: seen, visibility: "private", publishAt: null, channelId: "UC1", actor }, { root });
+    expect(ok.ok).toBe(true);
+    const uploadId = (ok as { uploadId: string }).uploadId;
+    expect((await loadQueue(db.pool)).stranded).toHaveLength(1);
+    await cancelVideoById(db.pool, actor, videoId);
+    expect((await loadQueue(db.pool)).stranded).toEqual([]);
+    expect((await sendUploadAgain(db.pool, q, actor, uploadId)).ok).toBe(false);
+    expect(q.uploadCalls).toEqual([]);
+    const target = await readUploadTarget(db.pool, uploadId, { root });
+    expect(target).toMatchObject({ ok: false, reason: "policy" });
+    const c = await db.pool.connect();
+    try {
+      expect(await recheckPublishStart(c, { videoId, approvalHash: seen })).toBe("policy");
+    } finally {
+      c.release();
+    }
+  });
+  it("cancelVideo does nothing to a finished or failed video", async () => {
+    for (const status of ["done", "failed"]) {
+      const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: status });
+      await db.ownerPool.query("update videos set status = $2 where id = $1", [v.id, status]);
+      expect(await cancelVideo(db.pool, v.id)).toEqual({ flagged: [] });
+      expect((await db.pool.query("select status from videos where id = $1", [v.id])).rows[0].status).toBe(status);
+    }
+  });
+});
+
+describe("decisions are exact", () => {
+  it("two simultaneous clicks on the same page record one approval", async () => {
+    const q = fakeQueues();
+    const videoId = await seedScriptVideo();
+    await draftDone(videoId, q);
+    const i = await inputFor(videoId, "script");
+    const rs = await Promise.all([decideGate(db.pool, q, actor, i, "approve"), decideGate(db.pool, q, actor, i, "approve"), decideGate(db.pool, q, actor, i, "approve")]);
+    expect(rs.filter((r) => r.ok)).toHaveLength(1);
+    expect(await approvalsOf(videoId)).toHaveLength(1);
+  });
+  it("a gate the pipeline is not waiting at is refused, even with a correct hash for it", async () => {
+    const q = fakeQueues();
+    const videoId = await seedScriptVideo();
+    await addContent(db.pool, videoId, "video", { filePath: "v/x.mp4", sha256: sha256Hex("v") });
+    await draftDone(videoId, q);
+    const wrong = await inputFor(videoId, "video");
+    expect(await decideGate(db.pool, q, actor, wrong, "approve")).toEqual({ ok: false, message: "This is no longer waiting for you." });
+    expect((await decideGate(db.pool, q, actor, { ...wrong, note: "no thanks" }, "send_back")).ok).toBe(false);
+    expect(await approvalsOf(videoId)).toEqual([]);
+  });
+  it("the pipeline ignores an approval whose session did not exist (a row written by hand)", async () => {
+    const q = fakeQueues();
+    const videoId = await seedScriptVideo();
+    await draftDone(videoId, q);
+    const live = (await liveGateHash(db.pool, videoId, "script"))!;
+    const ghost = "22222222-2222-4222-8222-222222222222";
+    await db.pool.query("insert into approvals (video_id, gate, content_hash, content_versions, decision, decided_by, session_id) values ($1, 'script', $2, $3::jsonb, 'approved', 'session', $4)", [videoId, live.hash, JSON.stringify(live.versions), ghost]);
+    expect(await readNextAction(db.pool, videoId, approvalReaders)).toMatchObject({ kind: "wait_gate", gate: "script" });
+    await advanceVideo(db.pool, q.stage, videoId, approvalReaders);
+    expect(q.stageCalls).toEqual([]);
   });
 });

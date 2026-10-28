@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { createDraftHandler } from "@/server/authoring/draft";
+import { DRY_RUN_NOTES } from "@/lib/dry-run";
 import { KnownFailure } from "@/server/core/paid-call";
 import { STAGE_NAMES, stagePlan, type StageName } from "@/server/core/pipeline-plan";
 import { createSemaphore } from "@/server/core/semaphore";
@@ -77,5 +78,16 @@ export function productionHandlers(pool: pg.Pool): StageHandlers {
       makeWeb: () => createWebTools({ searxUrl }),
     })(ctx);
   };
-  return { draft };
+  return { draft: refuseDryRunVideos(pool, draft) };
+}
+
+/** A video made by the dry-run button must never reach a real provider, even if the worker was started without the dry-run opt-in. */
+export function refuseDryRunVideos(pool: pg.Pool, inner: StageHandler): StageHandler {
+  return async (ctx) => {
+    if (ctx.stage.videoId) {
+      const r = await pool.query("select 1 from videos where id = $1 and notes = $2", [ctx.stage.videoId, DRY_RUN_NOTES]);
+      if (r.rowCount === 1) throw new KnownFailure("This is a dry-run video and this worker uses real providers. Start the worker with ENGINE_DRY_RUN=1 (throwaway database) to run it.");
+    }
+    return inner(ctx);
+  };
 }

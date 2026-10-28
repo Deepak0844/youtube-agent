@@ -98,9 +98,13 @@ test("a page that went stale says so, approves nothing and shows the new content
   const before = await c.getByTestId("review-ref").textContent();
   await addContent(db(), videoId, "script", { body: script(topic), sha256: sha256Hex(`script-new-${videoId}`) });
   await c.getByRole("button", { name: /^Approve script/ }).click();
-  await expect(c.getByRole("alert")).toHaveText("This changed while you were looking. Review again.");
+  await expect(c.getByRole("alert").filter({ hasText: "Review again." }).first()).toHaveText("This changed while you were looking. Review again.");
   expect(await count("select count(*)::int as n from approvals where video_id = $1", [videoId])).toBe(0);
   await expect(c.getByTestId("review-ref")).not.toHaveText(before!); // the card was reloaded with the new version
+  // The old hash is never swapped silently: the buttons stay off until the owner says the new version was reviewed.
+  await expect(c.getByTestId("changed-notice")).toBeVisible();
+  await expect(c.getByRole("button", { name: /^Approve script/ })).toBeDisabled();
+  await c.getByRole("button", { name: "I reviewed the new version" }).click();
   await c.getByRole("button", { name: /^Approve script/ }).click();
   await expect(c).toHaveCount(0);
   expect(await count("select count(*)::int as n from approvals where video_id = $1 and decision = 'approved'", [videoId])).toBe(1);

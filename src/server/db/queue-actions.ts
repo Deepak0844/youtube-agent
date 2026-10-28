@@ -2,12 +2,14 @@ import type pg from "pg";
 import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { STALE_MESSAGE, versionsKey, type BreakerStage, type DecisionInput, type GateInput } from "@/server/core/queue-input";
 import { approvalReaders } from "@/server/db/approval-readers";
-import { approvalState, approveGate, liveGateHash, readSnapshot, sendBack } from "@/server/db/approvals";
+import { approveGate, liveGateHash, readSnapshot, sendBack } from "@/server/db/approvals";
 import { recordAudit } from "@/server/db/audit";
 import { resetBreaker } from "@/server/db/breakers";
 import { getDecision, resolveDecision } from "@/server/db/decision";
-import { advanceVideo, cancelVideo, createVideo, type EnqueueOnly } from "@/server/db/pipeline";
+import { DRY_RUN_NOTES } from "@/lib/dry-run";
+import { advanceVideo, cancelVideo, createVideo, readNextAction, type EnqueueOnly } from "@/server/db/pipeline";
 import { approvePublish, requeueUpload } from "@/server/db/publish";
+import { dryRunRefusal } from "@/worker/stages/guard";
 import type { UploadQueue } from "@/server/queue/job-queue";
 
 // What the /queue buttons do, minus the framework: the caller (actions.ts) has already run requireOwner() and passes the
@@ -43,6 +45,11 @@ async function advance(db: pg.Pool, queue: EnqueueOnly, videoId: string): Promis
 
 export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: GateInput, kind: "approve" | "send_back", opts: { root?: string } = {}): Promise<ActionResult> {
   if (actorProblem(actor)) return refuse(ACTOR_REASON);
+  const status = await db.query<{ status: string }>("select status from videos where id = $1", [i.videoId]);
+  if (!["active", "waiting"].includes(status.rows[0]?.status ?? "")) return refuse("This video is no longer in production.");
+  // Only the gate the pipeline is waiting at right now can be decided (a stale tab, or a hand-made post for another gate, is refused).
+  const next = await readNextAction(db, i.videoId, approvalReaders);
+  if (next?.kind !== "wait_gate" || next.gate !== i.gate) return refuse(NOT_WAITING);
   const live = await liveGateHash(db, i.videoId, i.gate);
   if (!live || live.hash !== i.seenHash || versionsKey(live.versions) !== i.seenVersions) return refuse(STALE_MESSAGE);
 
@@ -69,8 +76,6 @@ export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: Ga
     return { ok: true, message: r.queued ? "Approved. The upload is queued." : "Approved. The upload could not be queued just now; use Send again below." };
   }
 
-  // A replayed page (double click, second tab) must not add a second approval row for content that is already approved.
-  if ((await approvalState(db, i.videoId, i.gate)).approved) return refuse(NOT_WAITING);
   const r = await approveGate(db, { videoId: i.videoId, gate: i.gate, seenHash: i.seenHash, actor });
   if (!r.ok) return refuse(say(r.reason));
   await advance(db, q.stage, i.videoId);
@@ -121,9 +126,12 @@ export async function sendUploadAgain(db: pg.Pool, q: Queues, actor: GateActor, 
 }
 
 /** Development helper: a plain short video the engine picks up. Real providers decide what it costs; the dry-run handlers (Task 20) make it free. */
-export async function startDryRun(db: pg.Pool, q: Queues, actor: GateActor): Promise<ActionResult> {
+export async function startDryRun(db: pg.Pool, q: Queues, actor: GateActor, env: Record<string, string | undefined> = process.env): Promise<ActionResult> {
   if (actorProblem(actor)) return refuse(ACTOR_REASON);
-  const v = await createVideo(db, { format: "short", kind: "scene_kit", language: "en", topic: "Dry run: why the sky is blue", notes: "dry run" });
+  // Same guard the worker applies before it will use fake providers: opt-in, not production, throwaway database, no stored provider key.
+  const why = await dryRunRefusal(db, env as NodeJS.ProcessEnv).catch(() => "The dry run guard could not check the database.");
+  if (why) return refuse(why);
+  const v = await createVideo(db, { format: "short", kind: "scene_kit", language: "en", topic: "Dry run: why the sky is blue", notes: DRY_RUN_NOTES });
   await recordAudit(db, "dryrun.started", { videoId: v.id, sessionId: actor.sessionId });
   await advance(db, q.stage, v.id);
   return { ok: true, message: "Dry run started." };

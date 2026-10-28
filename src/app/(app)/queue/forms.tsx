@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button, type ButtonProps } from "@/ui/primitives/button";
 import { Label } from "@/ui/primitives/label";
 import { approveGateAction, cancelVideoAction, requeueUploadAction, resetBreakerAction, resolveDecisionAction, sendBackAction, startDryRunAction, type QueueState } from "./actions";
@@ -42,13 +42,27 @@ export interface GateFields {
 export function GateForms({ fields, approveLabel, canApprove, topic }: { fields: GateFields; approveLabel: string; canApprove: boolean; topic: string }) {
   const [approved, approve, approving] = useActionState<QueueState, FormData>(approveGateAction, {});
   const [sent, send, sending] = useActionState<QueueState, FormData>(sendBackAction, {});
-  const hidden = Object.entries(fields).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />);
+  // What the owner was looking at when this card first rendered. A refresh that brings new content never swaps the hash the
+  // buttons post: the buttons stay off until the owner says they reviewed the new version.
+  const [seen, setSeen] = useState(fields);
+  const changed = seen.seenHash !== fields.seenHash || seen.seenVersions !== fields.seenVersions;
+  const hidden = Object.entries(seen).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />);
   const id = `note-${fields.videoId}-${fields.gate}`;
   return (
     <div className="flex flex-col gap-4">
+      {changed ? (
+        <div role="alert" data-testid="changed-notice" className="flex max-w-[68ch] flex-col gap-3 rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">
+          <p className="m-0">This changed while you had it open. What you see above is the new version. Review it again before you decide.</p>
+          <div>
+            <Button type="button" variant="secondary" onClick={() => setSeen(fields)}>
+              I reviewed the new version
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <form action={approve} className="flex flex-wrap items-center gap-3">
         {hidden}
-        <Button type="submit" disabled={approving || !canApprove} aria-label={`${approveLabel}: ${topic}`}>
+        <Button type="submit" disabled={approving || !canApprove || changed} aria-label={`${approveLabel}: ${topic}`}>
           {approveLabel}
         </Button>
         <Result state={approved} />
@@ -67,7 +81,7 @@ export function GateForms({ fields, approveLabel, canApprove, topic }: { fields:
           className="min-h-20 w-full rounded-card border border-control bg-surface p-3 text-body text-text placeholder:text-faint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-text"
         />
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" variant="secondary" disabled={sending} aria-label={`Send back: ${topic}`}>
+          <Button type="submit" variant="secondary" disabled={sending || changed} aria-label={`Send back: ${topic}`}>
             Send back
           </Button>
           <Result state={sent} />

@@ -269,7 +269,8 @@ export async function readNextAction(db: pg.Pool, videoId: string, readers: Pipe
 /** Stops the video and flags every active stage. A queued stage is closed at once; a running one stops at its worker. */
 export async function cancelVideo(db: pg.Pool, videoId: string): Promise<{ flagged: string[] }> {
   const flagged = await inTx(db, async (c) => {
-    await lockVideo(c, videoId);
+    const v = await lockVideo(c, videoId);
+    if (!LIVE_VIDEO.includes(v.status)) return []; // finished, failed or already cancelled: nothing to cancel
     await c.query("update videos set status = 'cancelled', updated_at = now() where id = $1", [videoId]);
     const active = await c.query<{ id: string }>("select id from stage_runs where video_id = $1 and status in ('queued','running','needs_decision') order by id", [videoId]);
     const ids: string[] = [];

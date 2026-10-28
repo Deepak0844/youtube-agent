@@ -190,7 +190,7 @@ export async function loadQueue(db: pg.Pool): Promise<QueueData> {
     if (hold) breakers.push({ stage, until: hold.until ? hold.until.toISOString() : null });
   }
   const stranded = await db.query<{ id: string; video_id: string; topic: string | null; created_at: Date }>(
-    "select u.id, u.video_id, v.topic, u.created_at from uploads u left join videos v on v.id = u.video_id where u.status = 'publish_approved' order by u.created_at limit 20",
+    "select u.id, u.video_id, v.topic, u.created_at from uploads u join videos v on v.id = u.video_id where u.status = 'publish_approved' and v.status in ('active','waiting') order by u.created_at limit 20",
   );
   return { items, breakers, stranded: stranded.rows.map((r) => ({ uploadId: r.id, videoId: r.video_id, topic: r.topic ?? "(video)", approvedAt: r.created_at.toISOString() })) };
 }
