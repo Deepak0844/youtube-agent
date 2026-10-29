@@ -44,8 +44,8 @@ export async function ensureSound(ctx: StageContext, deps: SoundDeps, need: Soun
   if (need.tags.length === 0) throw new KnownFailure("A sound needs at least one tag so the library can be searched.");
   const prompt = cleanPrompt(need.prompt);
   if (prompt === null) throw new KnownFailure(`A sound needs a description of 1 to ${MAX_PROMPT} characters.`);
-  // An effect must not be longer than asked; a music bed must be at least half the asked length (the mixer trims longer ones).
-  const hits = await findLibraryFirst(deps.db, { kind: need.kind, tags: need.tags, maxDurationS: need.kind === "sfx" ? need.seconds : undefined });
+  // An effect must not be clearly longer than asked (mp3 padding makes a levelled clip slightly longer); a music bed must be at least half the asked length (the mixer trims longer ones).
+  const hits = await findLibraryFirst(deps.db, { kind: need.kind, tags: need.tags, maxDurationS: need.kind === "sfx" ? need.seconds * 1.25 + 0.5 : undefined });
   const hit = hits.find((h) => need.kind === "sfx" || (h.durationS ?? 0) >= need.seconds * 0.5);
   if (hit) return hit;
   if (!deps.generateAllowed) throw new KnownFailure("No sound in the library matches, and generating a new one is not allowed. Choose \"generate\", or pick a library track yourself.");

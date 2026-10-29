@@ -33,8 +33,8 @@ afterAll(async () => {
 });
 beforeEach(() => db.reset());
 
-const seed = (tags = ["whoosh"]) =>
-  addAudioItem(db.pool, { kind: "sfx", name: "lib", tags, source: "shipped", licence: "own", provenance: {}, filePath: "sfx/clips/a.mp3", sha256: "a".repeat(64), durationS: 1, meanLufs: -20, peakDbfs: -3 });
+const seed = (tags = ["whoosh"], durationS = 1) =>
+  addAudioItem(db.pool, { kind: "sfx", name: "lib", tags, source: "shipped", licence: "own", provenance: {}, filePath: "sfx/clips/a.mp3", sha256: "a".repeat(64), durationS, meanLufs: -20, peakDbfs: -3 });
 
 describe("ensureSound", () => {
   it("library_hit_never_calls_the_provider", async () => {
@@ -57,7 +57,7 @@ describe("ensureSound", () => {
     expect(p.totalCalls()).toBe(0);
   });
   it("library_clip_longer_than_asked_is_not_reused_for_sfx", async () => {
-    await seed(); // 1 s clip
+    await seed(["whoosh"], 2); // 2 s clip, asked 0.5 s: clearly longer
     const p = createFakeSound();
     await ensureSound(ctx(), deps(p), { ...need, seconds: 0.5 });
     expect(p.totalCalls()).toBe(1);
