@@ -75,7 +75,7 @@ describe("voice line cache", () => {
     expect(await lookupLine(db.pool, KEY)).toBeNull();
     mkdirSync(path.join(root, "voice-cache/ab"), { recursive: true });
     writeFileSync(path.join(root, rel), "abc");
-    await expect(storeLine(db.pool, root, row(KEY, rel, 4))).rejects.toThrow("not on disk"); // wrong size
+    await expect(storeLine(db.pool, root, row(KEY, rel, 4))).rejects.toThrow("not the one described"); // wrong size
     expect((await storeLine(db.pool, root, row(KEY, rel, 3))).created).toBe(true);
     expect(await lookupLine(db.pool, KEY)).toMatchObject({ provider: "fake", bytes: 3, durationS: 1.5, priceMicroUsd: 7, timingsKind: "none", wordTimings: null });
     await expect(storeLine(db.pool, root, row(KEY, "../escape.wav", 3))).rejects.toThrow();
