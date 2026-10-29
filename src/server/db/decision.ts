@@ -173,8 +173,9 @@ export async function resolveDecision(db: pg.Pool, queue: EnqueueOnly, a: Resolv
             [s.video_id],
           );
           if (used.rows.length > 0 && !used.rows.some((u) => u.scope === rc.scope)) return refuse("that budget did not pay for this video's calls");
-          const cur = await c.query<{ cap: string }>("select cap_micro_usd as cap from budgets where scope = $1 for update", [rc.scope]);
+          const cur = await c.query<{ cap: string | null }>("select cap_micro_usd as cap from budgets where scope = $1 for update", [rc.scope]);
           if (!cur.rows[0]) return refuse("no such budget");
+          if (cur.rows[0].cap === null) return refuse("that budget already has no limit");
           const old = Number(cur.rows[0].cap);
           if (rc.capMicroUsd <= old) return refuse("the new limit must be higher than the current one");
           if (rc.capMicroUsd > Math.max(old * MAX_RAISE_FACTOR, MIN_RAISE_ALLOWANCE_MICRO_USD)) return refuse("that limit is too high for one step: raise it by at most 10 times (or to $10) at a time");

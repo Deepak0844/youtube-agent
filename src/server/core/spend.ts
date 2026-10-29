@@ -76,3 +76,24 @@ export function worstCaseMicroUsd(card: PriceCard | undefined, usage: Usage): nu
 export function callKey(stageRunId: string, stepIndex: number, toolCallIndex: number): string {
   return `${stageRunId}:${stepIndex}:${toolCallIndex}`;
 }
+
+// A budget cap in micro-USD. `null` means "no limit": it always allows and is never read as zero (a cap of 0 refuses any spend).
+export type Cap = bigint | null;
+
+export function capAllows(cap: Cap, spent: bigint, reserved: bigint, want: bigint): boolean {
+  return cap === null || spent + reserved + want <= cap;
+}
+
+/** "2", "2.5", "0.0035" (whole dollars, up to 6 decimals) to integer micro-USD; null for anything else (empty, negative, "1e3", "2,5", too long). */
+export function dollarsToMicro(text: string): number | null {
+  const m = /^(\d{1,7})(?:\.(\d{1,6}))?$/.exec(text.trim());
+  if (!m) return null;
+  return Number(m[1]) * 1_000_000 + Number((m[2] ?? "").padEnd(6, "0"));
+}
+
+/** Integer micro-USD to dollars with at least 2 and at most 6 decimals, never rounded to a smaller figure: 2000000 -> "$2.00", 3500 -> "$0.0035". */
+export function microToDollars(micro: number): string {
+  const whole = Math.floor(micro / 1_000_000);
+  const frac = String(micro % 1_000_000).padStart(6, "0").replace(/0+$/, "").padEnd(2, "0");
+  return `$${whole.toLocaleString("en-US")}.${frac}`;
+}

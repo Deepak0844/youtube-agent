@@ -33,6 +33,8 @@ export const AUDIT_EVENTS = {
   "dryrun.started": "A development dry run was started",
   // Phase 2 notifications (detail: event, channel, error class only)
   "notify.delivery_failed": "A notification channel failed to deliver",
+  // Phase 3 budgets (detail: template scope, old and new cap in micro-USD; null means no limit)
+  "budget.cap_changed": "A spending cap was changed",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",

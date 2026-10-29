@@ -65,7 +65,8 @@ export async function scopeHeadroom(db: pg.Pool, scopes: readonly string[]): Pro
   for (const scope of scopes) {
     const b = await getBudget(db, scope);
     if (!b) throw new KnownFailure("budget caps are not set up");
-    const room = Math.max(0, b.capMicroUsd - b.reservedMicroUsd - b.spentMicroUsd);
+    // no limit (null cap) leaves unlimited room; it is never read as zero
+    const room = b.capMicroUsd === null ? Number.MAX_SAFE_INTEGER : Math.max(0, b.capMicroUsd - b.reservedMicroUsd - b.spentMicroUsd);
     if (!min || room < min.micro) min = { micro: room, scope };
   }
   if (!min) throw new KnownFailure("budget caps are not set up");

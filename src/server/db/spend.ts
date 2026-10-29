@@ -1,7 +1,7 @@
 import type pg from "pg";
 import { uuidv7 } from "@/server/core/ids";
 import { cleanProviderRef, safeReason, toStorable } from "@/server/core/paid-call";
-import { callKey } from "@/server/core/spend";
+import { callKey, capAllows, type Cap } from "@/server/core/spend";
 import { atomic, toNumber, type Claim, type Db } from "./stages";
 
 // Spend intents + serialized budgets. Money is integer micro-USD (bigint in SQL, safe integer in TS).
@@ -30,7 +30,8 @@ export type ReserveResult =
 
 export interface Budget {
   scope: string;
-  capMicroUsd: number;
+  /** null = no limit (never zero). */
+  capMicroUsd: number | null;
   reservedMicroUsd: number;
   spentMicroUsd: number;
 }
@@ -49,16 +50,16 @@ function normalizeScopes(scopes: string[]): string[] {
 }
 
 // Locks each scope row one at a time in sorted order; returns the rows that exist.
-async function lockBudgets(q: Q, scopes: string[]): Promise<Map<string, { cap: bigint; reserved: bigint; spent: bigint }>> {
-  const out = new Map<string, { cap: bigint; reserved: bigint; spent: bigint }>();
+async function lockBudgets(q: Q, scopes: string[]): Promise<Map<string, { cap: Cap; reserved: bigint; spent: bigint }>> {
+  const out = new Map<string, { cap: Cap; reserved: bigint; spent: bigint }>();
   for (const scope of scopes) {
-    const { rows } = await q.query<{ cap: string; reserved: string; spent: string }>(
+    const { rows } = await q.query<{ cap: string | null; reserved: string; spent: string }>(
       `select cap_micro_usd as cap, reserved_micro_usd as reserved, spent_micro_usd as spent
          from budgets where scope = $1 for update`,
       [scope],
     );
     const r = rows[0];
-    if (r) out.set(scope, { cap: BigInt(r.cap), reserved: BigInt(r.reserved), spent: BigInt(r.spent) });
+    if (r) out.set(scope, { cap: r.cap === null ? null : BigInt(r.cap), reserved: BigInt(r.reserved), spent: BigInt(r.spent) });
   }
   return out;
 }
@@ -130,7 +131,7 @@ export async function reserveIntent(
     const budgets = await lockBudgets(q, scopes);
     for (const scope of scopes) {
       const b = budgets.get(scope);
-      if (!b || b.reserved + b.spent + amount > b.cap) {
+      if (!b || !capAllows(b.cap, b.spent, b.reserved, amount)) {
         await q.query("delete from spend_intents where id = $1", [intentId]); // our own uncommitted row
         return { kind: "refused", reason: "cap" };
       }
@@ -285,12 +286,12 @@ export async function markUnknown(db: Db, intentId: string): Promise<boolean> {
 }
 
 export async function getBudget(db: Db, scope: string): Promise<Budget | null> {
-  const { rows } = await db.query<{ cap: string; reserved: string; spent: string }>(
+  const { rows } = await db.query<{ cap: string | null; reserved: string; spent: string }>(
     `select cap_micro_usd as cap, reserved_micro_usd as reserved, spent_micro_usd as spent
        from budgets where scope = $1`,
     [scope],
   );
   const r = rows[0];
   if (!r) return null;
-  return { scope, capMicroUsd: toNumber(r.cap), reservedMicroUsd: toNumber(r.reserved), spentMicroUsd: toNumber(r.spent) };
+  return { scope, capMicroUsd: r.cap === null ? null : toNumber(r.cap), reservedMicroUsd: toNumber(r.reserved), spentMicroUsd: toNumber(r.spent) };
 }

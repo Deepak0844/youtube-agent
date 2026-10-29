@@ -98,9 +98,10 @@ function assertOwner(actor: { kind: string }): void {
 }
 
 async function evalCap(db: pg.Pool): Promise<number> {
-  const r = await db.query<{ cap_micro_usd: string }>("select cap_micro_usd from budgets where scope = 'eval'");
+  const r = await db.query<{ cap_micro_usd: string | null }>("select cap_micro_usd from budgets where scope = 'eval'");
   if (!r.rows[0]) throw new EvalRefusal("The eval budget is not set up, so nothing was sent.");
-  return Number(r.rows[0].cap_micro_usd);
+  // no limit on the seeded eval budget leaves only the script's own --max-usd as the ceiling
+  return r.rows[0].cap_micro_usd === null ? Number.POSITIVE_INFINITY : Number(r.rows[0].cap_micro_usd);
 }
 
 /** Everything that can be checked before any money moves. The CLI prints `ceilingMicroUsd` from here. */
