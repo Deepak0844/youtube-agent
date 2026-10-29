@@ -7,7 +7,7 @@ export type WordTiming = { word: string; startS: number; endS: number };
 export type VoiceCapability = { id: string; wordTimings: TimingsKind; local: boolean; languages: Lang[]; maxChars: number; formats: string[] };
 
 // Narration voice. The real adapters make the provider call inside ctx.paid; the file lands in ctx.attemptDir.
-// `none` timings are not allowed for the voice stage (Doc 9 section 1): the stage throws.
+// `none` timings are not allowed for the voice stage (Doc 9 section 1); Task 10 enforces this in the stage.
 export interface VoiceProvider {
   capability: VoiceCapability;
   quote(a: { text: string; lang: Lang; voice: string; model?: string }): number;

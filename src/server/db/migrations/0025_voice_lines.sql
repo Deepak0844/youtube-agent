@@ -13,3 +13,7 @@ create table if not exists voice_lines (
   created_at timestamptz not null default now(),
   last_used_at timestamptz not null default now()
 );
+
+-- A cached row is what we bill and play from: once written, only last_used_at may change.
+revoke update, truncate on voice_lines from ytstudio_app;
+grant update (last_used_at) on voice_lines to ytstudio_app;

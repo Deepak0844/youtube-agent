@@ -43,13 +43,14 @@ async function narrate(voice: ReturnType<typeof createFakeVoice>, text: string) 
     const r = await voice.synthesise(ctx(), { text: line.text, lang: "en", voice: "v", model: "m", settings });
     const bytes = await readFile(r.audioPath);
     const filePath = await placeLineFile(root, key, "wav", r.audioPath);
-    await storeLine(db.pool, root, { cacheKey: key, provider: "fake", bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), durationS: 1, wordTimings: r.wordTimings, timingsKind: r.timingsKind, filePath, priceMicroUsd: r.priceMicroUsd });
+    await storeLine(db.pool, root, { cacheKey: key, provider: "fake", bytes: bytes.length, sha256: sha(bytes), durationS: 1, wordTimings: r.wordTimings, timingsKind: r.timingsKind, filePath, priceMicroUsd: r.priceMicroUsd });
     out.push(filePath);
   }
   return out;
 }
 
-const row = (cacheKey: string, filePath: string, bytes: number): VoiceLineRow => ({ cacheKey, provider: "fake", bytes, sha256: "x", durationS: 1.5, wordTimings: null, timingsKind: "none", filePath, priceMicroUsd: 7 });
+const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
+const row = (cacheKey: string, filePath: string, bytes: number, content = "abc"): VoiceLineRow => ({ cacheKey, provider: "fake", bytes, sha256: sha(content), durationS: 1.5, wordTimings: null, timingsKind: "none", filePath, priceMicroUsd: 7 });
 const KEY = "ab".repeat(32);
 
 describe("voice line cache", () => {
@@ -75,20 +76,36 @@ describe("voice line cache", () => {
     mkdirSync(path.join(root, "voice-cache/ab"), { recursive: true });
     writeFileSync(path.join(root, rel), "abc");
     await expect(storeLine(db.pool, root, row(KEY, rel, 4))).rejects.toThrow("not on disk"); // wrong size
-    expect(await storeLine(db.pool, root, row(KEY, rel, 3))).toBe(true);
+    expect((await storeLine(db.pool, root, row(KEY, rel, 3))).created).toBe(true);
     expect(await lookupLine(db.pool, KEY)).toMatchObject({ provider: "fake", bytes: 3, durationS: 1.5, priceMicroUsd: 7, timingsKind: "none", wordTimings: null });
     await expect(storeLine(db.pool, root, row(KEY, "../escape.wav", 3))).rejects.toThrow();
     expect(existsSync(path.join(root, rel))).toBe(true);
   });
 
   it("two_concurrent_misses_for_the_same_key_store_one_row", async () => {
-    const src = path.join(root, "src.wav");
-    writeFileSync(src, "abc");
     const k = "cd".repeat(32);
     const rs = await Promise.all(
-      Array.from({ length: 8 }, async () => storeLine(db.pool, root, row(k, await placeLineFile(root, k, "wav", src), 3))),
+      ["aaa", "bbbb"].map(async (content, i) => {
+        const src = path.join(root, `src${i}.wav`);
+        writeFileSync(src, content);
+        return storeLine(db.pool, root, row(k, await placeLineFile(root, k, "wav", src), content.length, content));
+      }),
     );
-    expect(rs.filter(Boolean)).toHaveLength(1);
-    expect((await db.pool.query("select 1 from voice_lines")).rowCount).toBe(1);
+    expect(rs.filter((r) => r.created)).toHaveLength(1);
+    expect(rs[0]!.row).toEqual(rs[1]!.row);
+    const stored = (await db.pool.query<{ sha256: string; file_path: string }>("select sha256, file_path from voice_lines")).rows;
+    expect(stored).toHaveLength(1);
+    expect(sha(await readFile(path.join(root, stored[0]!.file_path)))).toBe(stored[0]!.sha256);
+  });
+
+  it("app_role_may_only_touch_last_used_at", async () => {
+    const rel = `voice-cache/ab/${KEY}.wav`;
+    mkdirSync(path.join(root, "voice-cache/ab"), { recursive: true });
+    writeFileSync(path.join(root, rel), "abc");
+    await storeLine(db.pool, root, row(KEY, rel, 3));
+    await expect(db.pool.query("update voice_lines set file_path = 'x'")).rejects.toMatchObject({ code: "42501" });
+    await expect(db.pool.query("update voice_lines set price_micro_usd = 0")).rejects.toMatchObject({ code: "42501" });
+    await expect(db.pool.query("truncate voice_lines")).rejects.toMatchObject({ code: "42501" });
+    await touchLine(db.pool, KEY);
   });
 });

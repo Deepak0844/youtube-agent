@@ -39,14 +39,14 @@ function hardSplit(sentence: string, maxChars: number): string[] {
     if (cut < 0) {
       cut = maxChars;
       while (cut > 0 && !canCutBefore(cps, cut)) cut--;
-      // A single cluster longer than the limit: keep it whole (one line a little over) rather than split it.
-      if (cut === 0) for (cut = maxChars + 1; cut < cps.length && !canCutBefore(cps, cut); cut++);
+      // No safe boundary within the limit (one cluster longer than maxChars): cut at the limit. The limit is never exceeded.
+      if (cut === 0) cut = maxChars;
     }
-    out.push(cps.slice(0, cut).join(""));
+    out.push(cps.slice(0, cut).join("").trim());
     cps = Array.from(cps.slice(cut).join("").trimStart());
   }
-  if (cps.length > 0) out.push(cps.join(""));
-  return out;
+  if (cps.length > 0) out.push(cps.join("").trim());
+  return out.filter(Boolean);
 }
 
 /**

@@ -1,7 +1,8 @@
-import { copyFile, mkdir, rename, rm, stat } from "node:fs/promises";
+import { copyFile, link, mkdir, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type pg from "pg";
+import { hashStoredFile } from "@/server/storage/hash-file";
 import { safeJoin } from "@/server/storage/paths";
 
 type Db = pg.Pool | pg.PoolClient;
@@ -31,7 +32,7 @@ export async function touchLine(db: Db, cacheKey: string): Promise<void> {
   await db.query("update voice_lines set last_used_at = now() where cache_key = $1", [cacheKey]);
 }
 
-/** Moves a finished audio file to `<root>/voice-cache/<first two hex>/<key>.<ext>` (copy then rename, so no half file is ever at the final path). Returns the path relative to root. */
+/** Moves a finished audio file to `<root>/voice-cache/<first two hex>/<key>.<ext>` (copy, then hard-link without overwriting: no half file is ever at the final path and the first placed file is never replaced). Returns the path relative to root. */
 export async function placeLineFile(root: string, cacheKey: string, ext: string, from: string): Promise<string> {
   if (!KEY.test(cacheKey) || !/^[a-z0-9]{1,5}$/.test(ext)) throw new Error("invalid cache key or extension");
   const rel = `voice-cache/${cacheKey.slice(0, 2)}/${cacheKey}.${ext}`;
@@ -40,22 +41,38 @@ export async function placeLineFile(root: string, cacheKey: string, ext: string,
   const tmp = `${dest}.${randomUUID()}.tmp`;
   try {
     await copyFile(from, tmp);
-    await rename(tmp, dest);
+    await link(tmp, dest).catch((e: NodeJS.ErrnoException) => {
+      if (e.code !== "EEXIST") throw e; // already placed by another writer: keep theirs, ours is discarded below
+    });
   } finally {
     await rm(tmp, { force: true });
   }
   return rel;
 }
 
-/** Inserts the row (first writer wins) only after its file is on disk with the stated size. Returns false if the key was already stored. */
-export async function storeLine(db: Db, root: string, row: VoiceLineRow): Promise<boolean> {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Inserts the row (first writer wins) only after its file is on disk with the stated size and sha256. If the file at the path
+ * is another writer's (different bytes), our row is NOT stored: we wait briefly for theirs and return it. Always returns the
+ * row that is in the table, which describes the file on disk; `created` says whether it is ours.
+ */
+export async function storeLine(db: Db, root: string, row: VoiceLineRow): Promise<{ row: VoiceLineRow; created: boolean }> {
   if (!KEY.test(row.cacheKey)) throw new Error("invalid cache key");
-  const st = await stat(await safeJoin(root, ...row.filePath.split("/"))).catch(() => null);
-  if (!st?.isFile() || st.size !== row.bytes) throw new Error("the voice file is not on disk yet");
+  const onDisk = await hashStoredFile(root, row.filePath).catch(() => null);
+  if (!onDisk) throw new Error("the voice file is not on disk yet");
+  if (onDisk.sha256 !== row.sha256 || onDisk.bytes !== row.bytes) {
+    for (let i = 0; i < 40; i++) {
+      const theirs = await lookupLine(db, row.cacheKey);
+      if (theirs) return { row: theirs, created: false };
+      await sleep(50);
+    }
+    throw new Error("the voice file on disk is not the one described by this row");
+  }
   const r = await db.query(
     `insert into voice_lines (cache_key, provider, bytes, sha256, duration_s, word_timings, timings_kind, file_path, price_micro_usd)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (cache_key) do nothing`,
     [row.cacheKey, row.provider, row.bytes, row.sha256, row.durationS, row.wordTimings === null ? null : JSON.stringify(row.wordTimings), row.timingsKind, row.filePath, row.priceMicroUsd],
   );
-  return r.rowCount === 1;
+  return r.rowCount === 1 ? { row, created: true } : { row: (await lookupLine(db, row.cacheKey))!, created: false };
 }

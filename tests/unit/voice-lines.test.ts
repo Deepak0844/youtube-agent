@@ -56,6 +56,10 @@ describe("splitLines", () => {
     expect(l!.textSha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it("trims every piece, including hard-split ones", () => {
+    expect(splitLines("aaaa  bbbb  cccc", "en", 6).map((l) => l.text)).toEqual(["aaaa", "bbbb", "cccc"]);
+  });
+
   it("hard-splits at the last space before the limit", () => {
     expect(splitLines("aaaa bbbb cccc dddd", "en", 9).map((l) => l.text)).toEqual(["aaaa bbbb", "cccc dddd"]);
   });
