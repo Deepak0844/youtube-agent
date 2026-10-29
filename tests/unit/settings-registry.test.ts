@@ -26,7 +26,7 @@ describe("settings registry", () => {
     expect([...SAFETY_KEYS].sort()).toEqual(
       [
         "network.local_services", "policy.allow_public", "policy.require_evidence",
-        "assets.max_image_bytes", "assets.max_pixels", "assets.max_batch_files", "assets.total_bytes_cap",
+        "assets.max_image_bytes", "assets.max_audio_bytes", "assets.max_pixels", "assets.max_batch_files", "assets.total_bytes_cap",
         ...ENGINE_KEYS,
       ].sort(),
     );
@@ -38,10 +38,8 @@ describe("settings registry", () => {
       "jobs.concurrent_renders": 1,
       "jobs.concurrent_jobs": 2,
       "storage.warn_gb": 50,
-      "uploads.max_image_mb": 25,
-      "uploads.max_image_mp": 50,
-      "uploads.total_gb": 5,
       "assets.max_image_bytes": 26_214_400,
+      "assets.max_audio_bytes": 209_715_200,
       "assets.max_pixels": 50_000_000,
       "assets.max_batch_files": 100,
       "assets.total_bytes_cap": 5_368_709_120,

@@ -32,7 +32,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         log("ENGINE_DRY_RUN=1: stages run on fake providers");
         handlers = dryRunHandlers(defaultDryRunDeps(pool));
       }
-      const worker = startWorker({ log, pool, handlers, readers: approvalReaders });
+      const worker = startWorker({ log, pool, handlers, readers: approvalReaders, ingest: true });
       let exiting = false;
       const shutdown = () => {
         if (exiting) return;

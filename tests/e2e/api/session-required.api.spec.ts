@@ -73,7 +73,8 @@ function expectDenied(e: RouteEntry, method: string, state: string, r: Sent) {
 // Expected status of a request with a VALID session, per "METHOD /url". GET defaults to 200. A route with other methods must
 // declare its control here, so a new route cannot ship without a positive control (the spec fails and says so).
 const CONTROL_STATUS: Record<string, number> = {
-  "POST /api/uploads": 201, // valid session + same Origin, empty body -> stored as an empty upload (not 401, not 403)
+  "POST /api/uploads": 400, // valid session + same Origin, no batch id -> the route's own 400 (not 401, not 403)
+  "GET /api/uploads/x": 404, // valid session, no such upload
 };
 // Routes that answer with a never-ending stream (server-sent events).
 const STREAMING = new Set(["GET /api/events"]);

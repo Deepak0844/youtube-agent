@@ -19,7 +19,7 @@ import { createChildRegistry, holdWorkerLock, sweepOrphans, type WorkerLock } fr
 import type { ChildRegistry } from "@/server/render/child";
 import { markStalled } from "@/server/db/uploads";
 import { runStage } from "@/server/db/stage-runner-adapter";
-import { createJobQueue, type StageQueue, type UploadQueue } from "@/server/queue/job-queue";
+import { createJobQueue, type IngestQueue, type StageQueue, type UploadQueue } from "@/server/queue/job-queue";
 import type { Uploader } from "@/server/providers/uploader";
 import { handlePublishUpload } from "./stages/publish-upload";
 import { createEventBus, type EventBus } from "@/server/queue/event-bus";
@@ -27,7 +27,9 @@ import { pruneAgentSteps } from "@/server/db/agent-steps";
 import { emitEvent, pruneEvents, type EventType } from "@/server/db/events";
 import { openStageLog } from "@/server/logs/stage-log";
 import { storageRoot } from "@/server/db/system-status";
-import { createStageDispatcher, type StageHandlers } from "./handlers";
+import { queuedIngestIds } from "@/server/db/ingest-jobs";
+import { runChild } from "@/server/render/child";
+import { createStageDispatcher, handleIngestJob, recoverRunningIngest, sweepStaleUploads, type StageHandlers } from "./handlers";
 import { startReconcileLoop } from "./reconcile-loop";
 
 // Composition seams for boot cleanup (09), event retention/transitions (11), and notifications (12).
@@ -35,6 +37,8 @@ export interface WorkerHooks {
   connectQueue(redisUrl: string, log: (message: string) => void): Promise<StageQueue>;
   /** The `uploads` queue; connected only when an uploader was supplied. */
   connectUploadQueue(redisUrl: string, log: (message: string) => void): Promise<UploadQueue>;
+  /** The `ingest` queue; connected only when the options ask for it (the real worker does). */
+  connectIngestQueue(redisUrl: string, log: (message: string) => void): Promise<IngestQueue>;
   loadSettings(pool: pg.Pool): Promise<WorkerSettings>;
   checkVault(pool: pg.Pool): Promise<string>;
   reconcile(pool: pg.Pool, queue: StageQueue, config: EngineConfig): Promise<unknown>;
@@ -66,6 +70,8 @@ export interface WorkerOptions {
   handlers?: StageHandlers | ((env: { childRegistry: ChildRegistry }) => StageHandlers);
   /** Starts the `uploads` consumer. There is no default: with no uploader (real YouTube is Phase 5) approved uploads just wait. */
   uploader?: Uploader;
+  /** Starts the `ingest` consumer (checks files uploaded through /api/uploads). Off by default, like the uploader. */
+  ingest?: boolean;
   /** Where approved video files live; defaults to STORAGE_ROOT. */
   storageRoot?: string;
   workerId?: string;
@@ -89,8 +95,11 @@ async function connectQueue(redisUrl: string, log: (message: string) => void): P
 async function connectUploadQueue(redisUrl: string, log: (message: string) => void): Promise<UploadQueue> {
   return createJobQueue(redisUrl, "uploads", undefined, { onError: () => log("waiting for Redis") });
 }
+async function connectIngestQueue(redisUrl: string, log: (message: string) => void): Promise<IngestQueue> {
+  return createJobQueue(redisUrl, "ingest", undefined, { onError: () => log("waiting for Redis") });
+}
 const defaults: WorkerHooks = {
-  connectQueue, connectUploadQueue,
+  connectQueue, connectUploadQueue, connectIngestQueue,
   loadSettings: getWorkerSettings,
   checkVault: async (pool) => (await vaultStatus(pool, loadKeyring)).status,
   reconcile: (pool, queue, config) => reconcile(pool, queue, { maxAttempts: config.retryAttempts - 1, attemptBasis: "claim" }),
@@ -156,6 +165,8 @@ export function startRuntime(opts: WorkerOptions = {}) {
   let consumer: ReturnType<StageQueue["startWorker"]> | undefined;
   let uploadQueue: UploadQueue | undefined;
   let uploadConsumer: ReturnType<UploadQueue["startWorker"]> | undefined;
+  let ingestQueue: IngestQueue | undefined;
+  let ingestConsumer: ReturnType<IngestQueue["startWorker"]> | undefined;
   let loop: ReturnType<typeof startReconcileLoop> | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let stopping = false;
@@ -246,6 +257,12 @@ export function startRuntime(opts: WorkerOptions = {}) {
               }
             }
           }),
+          // Postgres decides what is queued; Redis may have lost the job (or the web process could not reach it). Job ids are unique per row, so re-adding is harmless.
+          guard("ingest sweep", async () => {
+            if (!ingestQueue || stopping) return;
+            for (const id of await queuedIngestIds(db)) await ingestQueue.enqueueIngest(id);
+            await sweepStaleUploads(db, opts.storageRoot ?? storageRoot());
+          }),
           guard("mark stalled uploads", () => hooks.markStalled(db)),
           guard("prune", () => hooks.prune(db)),
         ]);
@@ -279,6 +296,21 @@ export function startRuntime(opts: WorkerOptions = {}) {
                 try { await whole; } finally { active.delete(whole); }
               }, { concurrency: 1, onError: () => log("waiting for Redis") });
             } catch { log("uploads queue unavailable; approved uploads wait until the worker restarts"); }
+          }
+          if (opts.ingest && !ingestConsumer) {
+            try {
+              const iq = await hooks.connectIngestQueue(redisUrl, log);
+              if (stopping) { void Promise.resolve().then(() => iq.close(true)).catch(() => {}); return; }
+              ingestQueue = iq;
+              // One worker holds the lock, so a row still `running` belongs to a dead one: finished, requeued or ended.
+              await recoverRunningIngest(db, opts.storageRoot ?? storageRoot());
+              ingestConsumer = iq.startWorker(async (jobId) => {
+                if (stopping) throw new Error("worker is stopping; the ingest job was not started");
+                const whole = handleIngestJob(db, { root: opts.storageRoot ?? storageRoot(), runChild: (spec) => runChild(spec, { registry: childRegistry }) }, jobId).then(() => undefined);
+                active.add(whole);
+                try { await whole; } finally { active.delete(whole); }
+              }, { concurrency: 1, onError: () => log("waiting for Redis") });
+            } catch { log("ingest queue unavailable; uploaded files wait until the worker restarts"); }
           }
           // Without handlers there is no consumer: jobs wait in Redis and rows stay queued.
           if (hasHandlers) consumer = queue.startWorker(async (job) => {
@@ -355,7 +387,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
       clearTimeout(retry);
       // pause(true) stops fetching without waiting on active handlers. Abort only after consumption is paused.
       const safely = (fn: () => unknown) => { try { return Promise.resolve(fn()); } catch (err) { return Promise.reject(err); } };
-      const pause = Promise.allSettled([safely(() => consumer?.pause?.()), safely(() => uploadConsumer?.pause?.())]);
+      const pause = Promise.allSettled([safely(() => consumer?.pause?.()), safely(() => uploadConsumer?.pause?.()), safely(() => ingestConsumer?.pause?.())]);
       stopPromise = (async () => {
         const limitMs = opts.shutdownTimeoutMs ?? 10_000;
         const within = async (work: Promise<unknown>): Promise<boolean> => {
@@ -378,7 +410,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
         }
         // Teardown has its own fresh limit, so a slow drain cannot starve closing connections.
         const teardownExpired = await within(Promise.allSettled([
-          safely(() => consumer?.close(true)), safely(() => uploadConsumer?.close(true)), safely(() => queue?.close(true)), safely(() => uploadQueue?.close(true)), safely(() => bus?.close()), safely(async () => { await workerLock?.release(); await pool?.end(); }),
+          safely(() => consumer?.close(true)), safely(() => uploadConsumer?.close(true)), safely(() => ingestConsumer?.close(true)), safely(() => queue?.close(true)), safely(() => uploadQueue?.close(true)), safely(() => ingestQueue?.close(true)), safely(() => bus?.close()), safely(async () => { await workerLock?.release(); await pool?.end(); }),
         ]));
         if (teardownExpired) {
           if (pool) forceClosePool(pool);
