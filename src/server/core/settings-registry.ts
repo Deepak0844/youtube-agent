@@ -32,6 +32,11 @@ export const SETTINGS = {
   "uploads.max_image_mb": { schema: posInt, default: 25, safety: false, label: "Max image size (MB)" },
   "uploads.max_image_mp": { schema: posInt, default: 50, safety: false, label: "Max image size (megapixels)" },
   "uploads.total_gb": { schema: posInt, default: 5, safety: false, label: "Total uploads (GB)" },
+  // Asset ingest (Doc 13 9). All safety: raising them weakens the upload limits.
+  "assets.max_image_bytes": { schema: posInt, default: 26_214_400, safety: true, label: "Max image size (bytes)" },
+  "assets.max_pixels": { schema: posInt, default: 50_000_000, safety: true, label: "Max image size (pixels)" },
+  "assets.max_batch_files": { schema: posInt, default: 100, safety: true, label: "Max files per batch" },
+  "assets.total_bytes_cap": { schema: posInt, default: 5_368_709_120, safety: true, label: "Total uploaded bytes cap" },
   "video.max_long_minutes": { schema: posInt, default: 15, safety: false, label: "Max long video (minutes)" },
   // Hidden in the UI until their phases ship.
   "tracks.enabled": {
