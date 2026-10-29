@@ -110,7 +110,15 @@ describe("voicestudio", () => {
     for (const u of ["http://192.168.1.5:3900", "http://10.0.0.2:3900", "https://voice.example.com", "http://[::ffff:7f00:1]:3900", "http://localhost.evil.com:3900"])
       expect(() => assertVoiceStudioUrl(u, false), u).toThrow(/key/i);
     for (const u of ["http://127.0.0.1:3900", "http://localhost:3900", "http://[::1]:3900", "http://127.5.5.5:1"]) expect(() => assertVoiceStudioUrl(u, false)).not.toThrow();
-    expect(() => assertVoiceStudioUrl("http://192.168.1.5:3900", true)).not.toThrow();
+    expect(() => assertVoiceStudioUrl("https://192.168.1.5:3900", true)).not.toThrow();
+    expect(() => assertVoiceStudioUrl("http://192.168.1.5:3900", true)).toThrow(/https/);
+    expect(() => assertVoiceStudioUrl("http://127.0.0.1:3900", true)).not.toThrow();
+    for (const u of ["http://user:pw@127.0.0.1:3900", "https://user@voice.example.com"]) {
+      const e = (() => { try { assertVoiceStudioUrl(u, true); } catch (x) { return x as Error; } })();
+      expect(e?.message, u).toBeTruthy();
+      expect(e!.message).not.toContain("pw");
+      expect(e!.message).not.toContain("voice.example");
+    }
     expect(() => assertVoiceStudioUrl("ftp://127.0.0.1", true)).toThrow();
   });
   it("refuses a non-loopback url without a key before any request", async () => {
@@ -123,9 +131,11 @@ describe("voicestudio", () => {
     await cleanDir();
     const sentence = "The quick brown fox jumps over the lazy dog. ";
     const text = sentence.repeat(Math.ceil(7000 / sentence.length)).trim();
+    let last = "";
     handler = (q, res, body) => {
-      if (q.url === "/v1/audio/speech") return ok(res, wav(2));
-      const chunkWords = ["The", "quick", "brown"].map((w, i) => ({ word: w, start: i * 0.5, end: i * 0.5 + 0.4 }));
+      if (q.url === "/v1/audio/speech") { last = (JSON.parse(body) as { input: string }).input; return ok(res, wav(2)); }
+      const ws = last.split(/\s+/).filter(Boolean);
+      const chunkWords = ws.map((w, i) => ({ word: w, start: (i * 1.9) / ws.length, end: ((i + 1) * 1.9) / ws.length }));
       expect(body).toContain("timestamp_granularities[]");
       expect(body).toContain("verbose_json");
       res.writeHead(200, { "content-type": "application/json" });
@@ -150,6 +160,26 @@ describe("voicestudio", () => {
     expect(ts.at(-1)!.endS).toBeLessThanOrEqual(speech.length * 2 + 1e-6);
     expect(ts.at(-1)!.endS).toBeGreaterThan(2); // the second chunk is offset by the first chunk's length
     expect(await files()).toEqual([path.basename(r.audioPath)]); // chunk files removed
+  });
+});
+
+describe("voicestudio word matching", () => {
+  it("a chunk recognising only some words is never clean aligned", async () => {
+    await cleanDir();
+    handler = (q, res) => {
+      if (q.url === "/v1/audio/speech") return ok(res, wav(2));
+      res.writeHead(200); res.end(JSON.stringify({ words: [{ word: "The", start: 0, end: 0.3 }] }));
+    };
+    const v = createVoiceStudioVoice({ baseUrl: base, localServices: listed(), voice: "v" });
+    const r = await v.synthesise(ctx(), { text: "The quick brown fox jumps over the lazy dog.", lang: "en", voice: "v" });
+    expect(r.timingsKind).toBe("estimated");
+    expect(r.wordTimings!.some((w) => w.flags?.includes("interpolated"))).toBe(true);
+  });
+  it("userinfo in the url is refused without echoing it", async () => {
+    const v = createVoiceStudioVoice({ baseUrl: `http://u:SECRETPW@127.0.0.1:${new URL(base).port}`, localServices: listed(), voice: "v" });
+    const e = await v.synthesise(ctx(), { text: "x", lang: "en", voice: "v" }).catch((x: Error) => x);
+    expect(e).toBeInstanceOf(Error);
+    expect((e as Error).message).not.toContain("SECRETPW");
   });
 });
 
@@ -204,6 +234,33 @@ describe("custom http", () => {
       await expect(v.synthesise(ctx(), { text: "x", lang: "en", voice: "v" }), href).rejects.toThrow();
       expect(await files()).toEqual([]);
     }
+  });
+  it("json_url naming ANOTHER listed local service or a public http host is refused", async () => {
+    const other = createServer((_q, res) => { res.writeHead(200); res.end("secret"); });
+    await new Promise<void>((r) => other.listen(0, "127.0.0.1", r));
+    let hits = 0;
+    other.on("request", () => hits++);
+    const otherUrl = `http://127.0.0.1:${(other.address() as AddressInfo).port}/a.wav`;
+    try {
+      for (const href of [otherUrl, "http://example.com/a.wav", "https://10.0.0.5/a.wav"]) {
+        await cleanDir();
+        handler = (_q, res) => { res.writeHead(200); res.end(JSON.stringify({ url: href })); };
+        const v = createCustomHttpVoice({ ...base0, url: `${base}/tts`, localServices: [...listed(), new URL(otherUrl).host], responseKind: "json_url" });
+        await expect(v.synthesise(ctx(), { text: "x", lang: "en", voice: "v" }), href).rejects.toBeInstanceOf(NotProcessedError);
+        expect(await files()).toEqual([]);
+      }
+      expect(hits).toBe(0);
+    } finally { other.close(); }
+  });
+  it("refuses forbidden header names and a voice list on another origin", async () => {
+    for (const headerName of ["Host", "content-type", "Content-Length", "Transfer-Encoding", "CONNECTION"]) {
+      const v = createCustomHttpVoice({ ...base0, url: `${base}/tts`, localServices: listed(), responseKind: "audio", headerName, getKey: async () => KEY });
+      await expect(v.synthesise(ctx(), { text: "x", lang: "en", voice: "v" }), headerName).rejects.toBeInstanceOf(NotProcessedError);
+    }
+    const v = createCustomHttpVoice({ ...base0, url: `${base}/tts`, localServices: listed(), responseKind: "audio", listVoicesUrl: "https://example.com/voices", getKey: async () => KEY });
+    await expect(v.listVoices!()).rejects.toBeInstanceOf(NotProcessedError);
+    const u = createCustomHttpVoice({ ...base0, url: `http://a:b@127.0.0.1:${new URL(base).port}/tts`, localServices: listed(), responseKind: "audio" });
+    await expect(u.synthesise(ctx(), { text: "x", lang: "en", voice: "v" })).rejects.toBeInstanceOf(NotProcessedError);
   });
   it("json_url that redirects is refused", async () => {
     handler = (q, res) => {

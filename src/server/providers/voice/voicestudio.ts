@@ -37,6 +37,8 @@ export function assertVoiceStudioUrl(url: string, hasKey: boolean): void {
     throw new VoiceUrlError("The VoiceStudio address is not a valid URL.");
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new VoiceUrlError("The VoiceStudio address must start with http:// or https://.");
+  if (u.username !== "" || u.password !== "") throw new VoiceUrlError("The VoiceStudio address must not contain a user name or password.");
+  if (hasKey && u.protocol !== "https:" && !isLoopbackHost(u.hostname)) throw new VoiceUrlError("A key must not be sent over plain http to another computer. Use an https address.");
   if (!hasKey && !isLoopbackHost(u.hostname)) {
     throw new VoiceUrlError("VoiceStudio is not on this computer, so an API key is required. Add a key, or use the address 127.0.0.1.");
   }
@@ -119,9 +121,10 @@ export function createVoiceStudioVoice(cfg: VoiceStudioCfg): VoiceProvider {
             form.set("language", cfg.language ?? a.lang);
             const res = await callServer(`${base}/v1/audio/transcriptions`, { method: "POST", body: form as unknown as BodyInit }, cfg, signal);
             const script = chunk.split(/\s+/u).filter(Boolean);
-            const mapped = mapToScript(script, recognisedWords(await readJson(res)), dur).words;
-            if (mapped.length === 0) kind = "estimated"; // nothing recognised: spread evenly and say so
-            for (const w of mapped.length ? mapped : estimateTimings(script, dur)) words.push({ word: w.word, startS: w.startS + offset, endS: w.endS + offset });
+            const { words: mapped, stats } = mapToScript(script, recognisedWords(await readJson(res)), dur);
+            // Mostly unmatched is not "aligned": say estimated, and keep the per-word marks so QA can see where.
+            if (mapped.length === 0 || stats.matched < 0.7 * stats.scriptWords) kind = "estimated";
+            for (const w of mapped.length ? mapped : estimateTimings(script, dur)) words.push({ word: w.word, startS: w.startS + offset, endS: w.endS + offset, flags: w.flags, source: w.source });
             offset += dur;
             parts.push(wav);
           }

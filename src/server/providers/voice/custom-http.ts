@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { NotProcessedError } from "@/server/core/error-class";
 import { LANGS } from "@/server/core/lang";
 import type { StageContext } from "@/server/core/stage-handler";
 import { renderBodyTemplate } from "@/server/core/voice-template";
@@ -39,7 +40,12 @@ export function createCustomHttpVoice(cfg: CustomHttpCfg): VoiceProvider & { lis
         else {
           const href = pick(await readJson(res), cfg.urlJsonPath ?? "url");
           if (typeof href !== "string") throw new Error("The voice server's answer did not contain an audio address.");
-          await saveCapped(await callServer(href, { method: "GET" }, cfg, signal, false), audioPath);
+          // Same server: already allowed. Anything else the server names must be a public https address.
+          let to: URL;
+          try { to = new URL(href); } catch { throw new NotProcessedError("The voice server named an audio address that is not a valid URL."); }
+          const same = to.origin === new URL(cfg.url).origin;
+          if (!same && to.protocol !== "https:") throw new NotProcessedError("The voice server named an audio address that is not https.");
+          await saveCapped(await callServer(to.href, { method: "GET" }, cfg, signal, { withKey: false, indirect: !same }), audioPath);
         }
         return { result: null, actualMicroUsd: 0 };
       });
@@ -47,6 +53,7 @@ export function createCustomHttpVoice(cfg: CustomHttpCfg): VoiceProvider & { lis
     },
     ...(listUrl && {
       async listVoices() {
+        if (new URL(listUrl).origin !== new URL(cfg.url).origin) throw new NotProcessedError("The voice list address must be on the same server as the voice address.");
         const json = await readJson(await callServer(listUrl, { method: "GET" }, cfg, AbortSignal.timeout(30_000)));
         const items = Array.isArray(json) ? json : (json as { voices?: unknown })?.voices;
         if (!Array.isArray(items)) throw new Error("The voice list was not in a form this app understands.");
