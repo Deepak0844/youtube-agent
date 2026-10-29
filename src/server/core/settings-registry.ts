@@ -95,6 +95,18 @@ export const BUDGET_DEFAULTS: Record<string, number> = {
   draft_run: 3_000_000,
 };
 
+/** Plain words for each template on the Budgets page. Same keys as BUDGET_DEFAULTS. */
+export const BUDGET_LABELS: Record<string, { title: string; note: string }> = {
+  "video:scene_kit": { title: "Scene-kit video", note: "The most one scene-kit video may spend." },
+  "video:tsx": { title: "Code-scene video", note: "The most one code-scene video may spend." },
+  "video:collage": { title: "Collage video", note: "The most one collage video may spend." },
+  "video:ai": { title: "AI video", note: "The most one AI-generated video may spend." },
+  "video:long": { title: "Long video", note: "The most one long-form video may spend." },
+  day: { title: "Per day", note: "The most the whole studio may spend in one UTC day." },
+  month: { title: "Per month", note: "The most the whole studio may spend in one UTC month." },
+  draft_run: { title: "Per draft run", note: "The most one draft run may spend." },
+};
+
 export function isSettingKey(key: string): key is SettingKey {
   return Object.hasOwn(SETTINGS, key);
 }

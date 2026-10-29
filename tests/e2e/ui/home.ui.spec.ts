@@ -83,9 +83,9 @@ test("keyboard: landmarks exist and the nav links are reachable by Tab", async (
   await page.waitForLoadState("networkidle");
   for (const role of ["banner", "main"] as const) await expect(page.getByRole(role)).toBeVisible();
   const side = page.getByRole("navigation", { name: "Primary" });
-  await expect(side.getByRole("link")).toHaveCount(7);
+  await expect(side.getByRole("link")).toHaveCount(8);
   await side.getByRole("link", { name: "Home" }).focus();
-  for (const name of ["Queue", "Models", "Keys", "Google app", "Audit", "System"]) {
+  for (const name of ["Queue", "Models", "Keys", "Google app", "Budgets", "Audit", "System"]) {
     await page.keyboard.press("Tab");
     await expect(side.getByRole("link", { name })).toBeFocused();
   }

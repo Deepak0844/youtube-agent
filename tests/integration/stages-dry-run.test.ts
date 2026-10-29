@@ -391,7 +391,7 @@ describe("paid generation is bounded by the approved quote", () => {
     }
     const [dayScope] = (await periodScopes(db.pool))[0]!;
     const day = (await getBudget(db.pool, dayScope))!;
-    expect(day.spentMicroUsd).toBeLessThanOrEqual(day.capMicroUsd);
+    expect(day.spentMicroUsd).toBeLessThanOrEqual(day.capMicroUsd!);
     expect(day.reservedMicroUsd).toBe(0);
     expect(outcomes.filter((o) => o === "committed").length).toBeGreaterThan(0);
     expect(outcomes.filter((o) => o === "budget_refused").length).toBeGreaterThan(0); // the queue stopped, it did not overspend

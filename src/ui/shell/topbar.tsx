@@ -18,7 +18,8 @@ async function SpendToday() {
   let text: string;
   try {
     const b = await getBudget(getPool(), "day");
-    text = `${usd(b?.spentMicroUsd ?? 0)} of ${usd(b?.capMicroUsd ?? DEFAULT_DAY_CAP_USD * 1_000_000)} today`;
+    const cap = b ? b.capMicroUsd : DEFAULT_DAY_CAP_USD * 1_000_000; // a missing row uses the default; null is "no limit"
+    text = cap === null ? `${usd(b?.spentMicroUsd ?? 0)} today, no limit` : `${usd(b?.spentMicroUsd ?? 0)} of ${usd(cap)} today`;
   } catch {
     text = "Spend unavailable";
   }
