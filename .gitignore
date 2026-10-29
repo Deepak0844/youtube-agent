@@ -51,3 +51,6 @@ docs
 
 # local upload storage
 /.data/
+
+# local design-check output (never commit)
+/.taste-skill/
