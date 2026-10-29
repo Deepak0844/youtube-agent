@@ -21,11 +21,11 @@ export function buildMixGraph(plan: SfxPlan, a: MixArgs): { args: string[]; drop
   const duck = a.duckDb ?? 9;
   const droppedCues: string[] = [];
   const kept = plan.cues.filter((c) => {
-    const ok = c.atS < a.videoS && c.itemId in a.items;
+    const ok = c.atS < a.videoS && Object.hasOwn(a.items, c.itemId);
     if (!ok) droppedCues.push(c.id);
     return ok;
   });
-  const bed = plan.bed && plan.bed.item in a.items ? plan.bed : undefined;
+  const bed = plan.bed && Object.hasOwn(a.items, plan.bed.item) ? plan.bed : undefined;
 
   const inputs = [a.videoFile, a.voiceFile];
   const idx = (item: string) => {
@@ -67,12 +67,20 @@ export function buildMixGraph(plan: SfxPlan, a: MixArgs): { args: string[]; drop
 
 const GAP_DB = -45; // voice quieter than this counts as a gap
 const DENSE_DB = -20; // typical dense narration level
+const AUDIBLE_MIN_DB = 1; // old app: cue must lift the mix RMS by >= ~1 dB
+const SILENT_DB = -60;
 
 /**
- * Over speech a cue must sit at least 3 dB above its local floor (the voice level there); in a gap it must stay at least
- * 7 dB below dense narration. headroomDb is how far the cue is past that line (negative = fails).
+ * Audible = the cue lifts the mix. Over speech: lift of the voice level once the cue is added (power sum, an approximation;
+ * the owner's ear is the final gate). In a voice gap: the cue must stay at least 7 dB below dense narration but not be silent.
+ * headroomDb is how far past the line the cue is (negative = fails).
  */
 export function audibilityCheck(_cue: { id: string }, a: { cueRmsDb: number; voiceRmsDbAtCue: number }): { audible: boolean; headroomDb: number } {
-  const headroomDb = a.voiceRmsDbAtCue > GAP_DB ? a.cueRmsDb - a.voiceRmsDbAtCue - 3 : DENSE_DB - 7 - a.cueRmsDb;
+  if (a.voiceRmsDbAtCue > GAP_DB) {
+    const liftDb = 10 * Math.log10(10 ** (a.cueRmsDb / 10) + 10 ** (a.voiceRmsDbAtCue / 10)) - a.voiceRmsDbAtCue;
+    const headroomDb = liftDb - AUDIBLE_MIN_DB;
+    return { audible: headroomDb >= 0, headroomDb };
+  }
+  const headroomDb = Math.min(DENSE_DB - 7 - a.cueRmsDb, a.cueRmsDb - SILENT_DB);
   return { audible: headroomDb >= 0, headroomDb };
 }

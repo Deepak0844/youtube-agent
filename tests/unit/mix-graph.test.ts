@@ -44,12 +44,16 @@ describe("buildMixGraph", () => {
 });
 
 describe("audibilityCheck", () => {
-  it("over speech needs 3 dB above the local floor", () => {
-    expect(audibilityCheck({ id: "a" }, { cueRmsDb: -17, voiceRmsDbAtCue: -20 }).audible).toBe(true);
-    expect(audibilityCheck({ id: "a" }, { cueRmsDb: -19, voiceRmsDbAtCue: -20 })).toEqual({ audible: false, headroomDb: -2 });
+  it("over speech the cue must lift the mix by about 1 dB", () => {
+    const quiet = audibilityCheck({ id: "a" }, { cueRmsDb: -30, voiceRmsDbAtCue: -20 });
+    expect(quiet.audible).toBe(false);
+    expect(quiet.headroomDb).toBeCloseTo(0.41 - 1, 1);
+    expect(audibilityCheck({ id: "a" }, { cueRmsDb: -14, voiceRmsDbAtCue: -20 }).audible).toBe(true);
+    expect(audibilityCheck({ id: "a" }, { cueRmsDb: -24, voiceRmsDbAtCue: -20 }).audible).toBe(true);
   });
-  it("in a gap must sit 7 dB below dense narration", () => {
+  it("in a gap not silent and 7 dB below dense narration", () => {
     expect(audibilityCheck({ id: "a" }, { cueRmsDb: -30, voiceRmsDbAtCue: -80 }).audible).toBe(true);
+    expect(audibilityCheck({ id: "a" }, { cueRmsDb: -80, voiceRmsDbAtCue: -80 }).audible).toBe(false);
     expect(audibilityCheck({ id: "a" }, { cueRmsDb: -24, voiceRmsDbAtCue: -80 }).audible).toBe(false);
   });
 });

@@ -52,7 +52,16 @@ export async function muxNarration(mix: MixDeps, ctx: StageContext, qa: { meanDb
 
 /** Mixes the sound plan onto the voiced video. Required inaudible cues fail with their ids; optional ones are dropped. Writes cue-sheet.txt beside the video. */
 export async function mixPlan(mix: MixDeps, db: pg.Pool, ctx: StageContext, qa: { meanDbMin: number; peakDbMax: number }, f: { voiced: string; planFile: string; out: string }): Promise<{ droppedCues: string[]; usedItems: string[] }> {
-  let plan = SfxPlan.parse(JSON.parse(await readFile(f.planFile, "utf8").catch(() => '{"version":1,"cues":[]}')));
+  const raw = await readFile(f.planFile, "utf8").catch((e: NodeJS.ErrnoException) => {
+    if (e.code === "ENOENT") return '{"version":1,"cues":[]}';
+    throw e;
+  });
+  let plan: SfxPlan;
+  try {
+    plan = SfxPlan.parse(JSON.parse(raw));
+  } catch {
+    throw new KnownFailure("The sound plan (sfx-plan.json) is not valid.");
+  }
   const ids = [...new Set([...plan.cues.map((c) => c.itemId), ...(plan.bed ? [plan.bed.item] : [])])];
   const rel = await audioFilePaths(db, ids);
   const missing = ids.filter((i) => !rel.has(i));
@@ -66,8 +75,10 @@ export async function mixPlan(mix: MixDeps, db: pg.Pool, ctx: StageContext, qa: 
 
   const inaudible: string[] = [];
   const dropped: string[] = [];
+  const itemDb = new Map<string, number>();
   for (const c of plan.cues.filter((x) => x.atS < videoS)) {
-    const cueRmsDb = (await meanDb(mix, ctx, items[c.itemId]!)) + c.gainDb;
+    if (!itemDb.has(c.itemId)) itemDb.set(c.itemId, await meanDb(mix, ctx, items[c.itemId]!));
+    const cueRmsDb = itemDb.get(c.itemId)! + c.gainDb;
     const voiceRmsDbAtCue = await meanDb(mix, ctx, f.voiced, { from: c.atS, len: 1 });
     if (audibilityCheck(c, { cueRmsDb, voiceRmsDbAtCue }).audible) continue;
     (c.optional ? dropped : inaudible).push(c.id);
