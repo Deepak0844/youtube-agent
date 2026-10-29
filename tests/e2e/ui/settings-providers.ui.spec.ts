@@ -41,7 +41,8 @@ test("a visitor without a session sees no provider content", async ({ browser, b
 test("prices: free shows 'free', an unset price says so, nothing is invented", async ({ page }) => {
   await open(page);
   await expect(page.getByTestId("price-edge")).toHaveText("free");
-  await expect(page.getByTestId("price-elevenlabs")).toHaveText("price not set");
+  await expect(page.getByTestId("price-elevenlabs")).toHaveText("about $0.048"); // 600 chars at $0.08 per 1,000 (migration 0031)
+  await expect(page.getByTestId("price-google_tts")).toHaveText("price not set");
   await expect(row(page, "google_tts").getByRole("link", { name: "Key needed" })).toBeVisible();
 });
 
