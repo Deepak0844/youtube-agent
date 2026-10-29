@@ -1,0 +1,1 @@
+{"_unrecorded":true,"_source":"hand-written from the public Azure TTS REST docs; the real answer is raw mp3 bytes, the test sends the audioBase64 decoded","audioBase64":"SUQzBAAAAAAAAGZha2VhdWRpbw=="}
