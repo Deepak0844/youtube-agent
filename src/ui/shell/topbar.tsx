@@ -12,14 +12,20 @@ import { Mark } from "./mark";
 const DEFAULT_DAY_CAP_USD = 15; // Doc 2 §4.5; used only until the budgets row is seeded
 const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`;
 
+/** The top-bar sentence. A missing row uses the default cap; a null cap is "no limit" (never $0). */
+export function spendTodayText(b: { spentMicroUsd: number; capMicroUsd: number | null } | null): string {
+  const cap = b ? b.capMicroUsd : DEFAULT_DAY_CAP_USD * 1_000_000;
+  const spent = usd(b?.spentMicroUsd ?? 0);
+  return cap === null ? `${spent} today, no limit` : `${spent} of ${usd(cap)} today`;
+}
+
 // Real figure from `budgets` (scope "day"). Reads the session first (request-time data, so it sits inside <Suspense>).
 async function SpendToday() {
   await requireOwner();
   let text: string;
   try {
     const b = await getBudget(getPool(), "day");
-    const cap = b ? b.capMicroUsd : DEFAULT_DAY_CAP_USD * 1_000_000; // a missing row uses the default; null is "no limit"
-    text = cap === null ? `${usd(b?.spentMicroUsd ?? 0)} today, no limit` : `${usd(b?.spentMicroUsd ?? 0)} of ${usd(cap)} today`;
+    text = spendTodayText(b);
   } catch {
     text = "Spend unavailable";
   }

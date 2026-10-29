@@ -318,6 +318,10 @@ describe("eval harness: refusals", () => {
     expect(await count("stage_runs")).toBe(0);
     // a signed-in session may
     await expect(planEval(db.pool, { modelId, mode: "search_then_write", actor: { kind: "session" } }, {})).resolves.toMatchObject({ ceilingMicroUsd: 2_000_000 });
+    // a no-limit eval budget leaves only the script's own --max-usd as the ceiling (not zero, not an error)
+    await db.ownerPool.query("update budgets set cap_micro_usd = null where scope = 'eval'");
+    await expect(planEval(db.pool, { modelId, mode: "search_then_write", maxUsd: 3, actor: { kind: "session" } }, {})).resolves.toMatchObject({ ceilingMicroUsd: 3_000_000 });
+    await db.ownerPool.query("update budgets set cap_micro_usd = 2000000 where scope = 'eval'");
   });
 
   it("an_unpriced_model_a_bad_cap_and_bad_topic_counts_are_refused_before_anything_is_written", async () => {

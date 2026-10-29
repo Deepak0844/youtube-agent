@@ -323,6 +323,10 @@ describe("needs_decision resolution", () => {
     expect(await raise(SESSION, 2 ** 60)).toMatchObject({ ok: false }); // not a safe integer
     expect(await resolveDecision(db.pool, q, { stageRunId: d!.id, choice: "raise_cap_and_rerun", actor: SESSION })).toMatchObject({ ok: false }); // no new cap given
     expect(await resolveDecision(db.pool, q, { stageRunId: d!.id, choice: "release_and_rerun", actor: SESSION })).toMatchObject({ ok: false }); // not offered here
+    await db.ownerPool.query("update budgets set cap_micro_usd = null where scope = 'g'");
+    expect(await raise(SESSION)).toMatchObject({ ok: false, reason: expect.stringContaining("already has no limit") });
+    expect((await g()).capMicroUsd).toBeNull(); // not turned into a figure
+    await db.ownerPool.query("update budgets set cap_micro_usd = 100 where scope = 'g'");
     expect((await g()).capMicroUsd).toBe(100);
     expect((await getStage(db.pool, d!.id))!.status).toBe("needs_decision");
     expect(await auditRows()).toHaveLength(0);

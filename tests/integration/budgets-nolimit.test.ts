@@ -3,6 +3,7 @@ import { claimStage, insertQueuedStage, type Claim } from "@/server/db/stages";
 import { getBudget, reserveIntent, settleIntent } from "@/server/db/spend";
 import { ensureScopeCopies, listBudgetTemplates, setBudgetCap } from "@/server/db/budget-scopes";
 import { BUDGET_DEFAULTS } from "@/server/core/settings-registry";
+import { scopeHeadroom } from "@/worker/stages/deps";
 import { uuidv7 } from "@/server/core/ids";
 import { withTestDb, type TestDb } from "../support/db";
 
@@ -87,6 +88,15 @@ describe("no-limit caps", () => {
     await db.ownerPool.query("update budgets set cap_micro_usd = 99000000 where scope = 'day'");
     await ensureScopeCopies(db.pool, [["day:2030-01-01", "day"]]);
     expect(await capOf("day:2030-01-01")).toBe("15000000");
+  });
+});
+
+describe("callers of a null cap", () => {
+  it("scopeHeadroom treats no limit as unlimited room, never zero", async () => {
+    await setCapNull("day");
+    expect((await scopeHeadroom(db.pool, ["day"])).micro).toBe(Number.MAX_SAFE_INTEGER);
+    await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('zero', 0)");
+    expect((await scopeHeadroom(db.pool, ["day", "zero"]))).toEqual({ micro: 0, scope: "zero" });
   });
 });
 

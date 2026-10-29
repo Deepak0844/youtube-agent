@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { capAllows } from "@/server/core/spend";
+import { capAllows, dollarsToMicro, microToDollars } from "@/server/core/spend";
+import { spendTodayText } from "@/ui/shell/topbar";
 
 describe("capAllows", () => {
   it("a null cap (no limit) always allows, however much is wanted", () => {
@@ -23,8 +24,6 @@ describe("capAllows", () => {
   });
 });
 
-import { dollarsToMicro, microToDollars } from "@/server/core/spend";
-
 describe("dollars and micro-USD", () => {
   it("parses whole and fractional dollars", () => {
     expect(dollarsToMicro("2")).toBe(2_000_000);
@@ -40,5 +39,13 @@ describe("dollars and micro-USD", () => {
     expect(microToDollars(3_500)).toBe("$0.0035");
     expect(microToDollars(0)).toBe("$0.00");
     expect(microToDollars(1_234_500_000)).toBe("$1,234.50");
+  });
+});
+
+describe("top bar", () => {
+  it("says no limit for a null cap, uses the default for a missing row", () => {
+    expect(spendTodayText({ spentMicroUsd: 1_500_000, capMicroUsd: null })).toBe("$1.50 today, no limit");
+    expect(spendTodayText({ spentMicroUsd: 0, capMicroUsd: 0 })).toBe("$0.00 of $0.00 today");
+    expect(spendTodayText(null)).toBe("$0.00 of $15.00 today");
   });
 });
