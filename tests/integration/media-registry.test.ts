@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { RegistryError, getPriceRule, listProviders, resolveRoute, setMediaRoute, setProviderEnabled } from "@/server/db/media-registry";
-import { finishJob, markJobUnknown, storeProviderJobId, submitOnce } from "@/server/db/media-jobs";
+import { finishJob, markJobFailedKnown, markJobUnknown, storeProviderJobId, submitOnce } from "@/server/db/media-jobs";
 import { uuidv7 } from "@/server/core/ids";
 import type { MediaArtifact } from "@/server/providers/media-types";
 import { withTestDb, type TestDb } from "../support/db";
@@ -115,5 +116,29 @@ describe("providers page data layer", () => {
     await setMediaRoute(db.pool, { scope: "kind:tsx", provider: "edge", voice: " en-US-AriaNeural " }, "session");
     expect(await audits("route.changed")).toEqual([{ kind: "voice", scope: "kind:tsx", from: null, to: "edge", voice: "en-US-AriaNeural" }]);
     expect(await resolveRoute(db.pool, "voice", { format: "short", videoKind: "tsx" })).toEqual({ provider: "edge", voice: "en-US-AriaNeural" });
+  });
+});
+
+describe("media registry price and failed_known", () => {
+  it("migration_0031_prices_elevenlabs_voice_only_and_keeps_an_owner_price", async () => {
+    const sql = readFileSync("src/server/db/migrations/0031_elevenlabs_price.sql", "utf8");
+    await db.ownerPool.query("insert into media_providers (id, kind, label) values ('elevenlabs', 'voice', 'E'), ('elevenlabs_music', 'music', 'M')"); // reset() clears the seeds
+    await db.ownerPool.query(sql);
+    const price = async (id: string) => (await db.pool.query("select price from media_providers where id = $1", [id])).rows[0].price;
+    expect(await price("elevenlabs")).toEqual({ unit: "per_1k_chars", microUsd: 80000 });
+    expect(await price("elevenlabs_music")).toEqual({});
+    await db.ownerPool.query(`update media_providers set price = '{"unit":"per_1k_chars","microUsd":1}' where id = 'elevenlabs'`);
+    await db.ownerPool.query(sql);
+    expect(await price("elevenlabs")).toEqual({ unit: "per_1k_chars", microUsd: 1 });
+  });
+
+  it("markJobFailedKnown_works_once_from_submitting_and_not_after_done", async () => {
+    const { job } = await submitOnce(db.pool, key(), "elevenlabs", "voice", 5);
+    expect(await markJobFailedKnown(db.pool, job.id)).toBe(true);
+    expect(await markJobFailedKnown(db.pool, job.id)).toBe(false);
+    expect((await submitOnce(db.pool, { stageRunId: job.stageRunId, step: job.step }, "elevenlabs", "voice", 5)).job.state).toBe("failed_known");
+    const d = await submitOnce(db.pool, key(), "elevenlabs", "voice", 5);
+    await finishJob(db.pool, d.job.id, { actual: 5, artifact });
+    expect(await markJobFailedKnown(db.pool, d.job.id)).toBe(false);
   });
 });

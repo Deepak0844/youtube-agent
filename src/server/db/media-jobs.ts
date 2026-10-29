@@ -65,3 +65,12 @@ export async function markJobUnknown(db: Db, id: string): Promise<boolean> {
   );
   return r.rowCount === 1;
 }
+
+/** The provider refused the request before doing any work (nothing was charged). Terminal. */
+export async function markJobFailedKnown(db: Db, id: string): Promise<boolean> {
+  const r = await db.query(
+    `update media_jobs set state = 'failed_known', updated_at = now() where id = $1 and state in ('submitting', 'submitted')`,
+    [id],
+  );
+  return r.rowCount === 1;
+}
