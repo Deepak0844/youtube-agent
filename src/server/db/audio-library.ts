@@ -59,3 +59,9 @@ export async function findLibraryFirst(db: Db, q: { kind: AudioKind; tags: strin
 export async function markUsed(db: Db, itemId: string, videoId: string): Promise<void> {
   await db.query("update audio_items set used_in = used_in || to_jsonb($2::text) where id = $1 and not used_in ? $2::text", [itemId, videoId]);
 }
+
+/** Library file path (relative to the library root) for each id; ids not in the library are missing from the map. */
+export async function audioFilePaths(db: Db, ids: string[]): Promise<Map<string, string>> {
+  const { rows } = await db.query<{ id: string; file_path: string }>("select id, file_path from audio_items where id::text = any($1::text[])", [ids]);
+  return new Map(rows.map((r) => [r.id, r.file_path]));
+}

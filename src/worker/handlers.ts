@@ -20,7 +20,7 @@ import { dryRunDraftHandler } from "./stages/draft";
 import { generateAttempt } from "./stages/generate";
 import { qaAttempt } from "./stages/qa";
 import { renderAttempt } from "./stages/render";
-import { sfxAttempt } from "./stages/sfx";
+import { sfxHandler } from "./stages/sfx";
 import { ttsAttempt } from "./stages/tts";
 import { voiceAttempt } from "./stages/voice";
 
@@ -61,7 +61,7 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     tts: withAttempt(fin, ttsAttempt(deps)),
     render: withAttempt(fin, renderAttempt(deps)),
     voice: withAttempt(fin, voiceAttempt(deps)),
-    sfx: withAttempt(fin, sfxAttempt(deps)),
+    sfx: sfxHandler(fin, deps),
     qa: withAttempt(fin, qaAttempt(deps)),
   };
 }

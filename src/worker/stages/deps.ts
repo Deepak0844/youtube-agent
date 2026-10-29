@@ -7,6 +7,7 @@ import { latestContent, type ContentKind, type VideoFormat, type VideoKind, type
 import type { ImageProvider } from "@/server/providers/media";
 import type { Renderer } from "@/server/providers/renderer";
 import type { VoiceProvider } from "@/server/providers/voice";
+import type { MixDeps } from "@/server/render/mix";
 import type { probeVideo } from "@/server/render/probe";
 import { videoIdOf } from "./attempt";
 
@@ -29,6 +30,8 @@ export interface StageDeps {
   /** What a narration call reserves (default 10000 micro-USD). */
   ttsReserveMicroUsd?: number;
   voiceName?: string;
+  /** Real sound pass (ffmpeg). Absent = dry run: Voice and Sfx copy the file on. */
+  mix?: MixDeps;
 }
 
 export const DEFAULTS = { imageProvider: "fake-image", imageQuoteMicroUsd: 4000, maxImages: 3, ttsReserveMicroUsd: 10_000, voiceName: "fake" } as const;
