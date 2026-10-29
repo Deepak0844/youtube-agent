@@ -2,14 +2,14 @@
 // vault notice. Pure: no IO. The DB side is src/server/db/provider-keys.ts, the network side src/server/providers/key-test.ts.
 // Rule: a test is ONE read-only GET to a hard-coded https host (list models / key info). Nothing here can build a paid call.
 
-export const PROVIDER_IDS = ["anthropic", "openai", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom", "elevenlabs", "pexels", "pixabay"] as const;
+export const PROVIDER_IDS = ["anthropic", "openai", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom", "elevenlabs", "pexels", "pixabay", "google_tts", "azure_speech", "coverr", "fal", "voicestudio", "local_voice"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 export type KeyTestResult = "ok" | "rejected" | "unreachable";
 
 interface ProviderDef {
   id: ProviderId;
   label: string;
-  role: "Language model" | "Voice" | "Stock media";
+  role: "Language model" | "Voice" | "Image" | "Stock media";
   note: string;
   shape: RegExp;
   shapeHint: string;
@@ -34,6 +34,12 @@ export const PROVIDERS: readonly ProviderDef[] = [
   { id: "elevenlabs", label: "ElevenLabs", role: "Voice", note: "Used from Phase 3", shape: /^(sk_[A-Za-z0-9]{20,200}|[a-f0-9]{32})$/, shapeHint: "starts with sk_ (or 32 hex characters)" },
   { id: "pexels", label: "Pexels", role: "Stock media", note: "Free stock photos and video, used from Phase 3", shape: /^[A-Za-z0-9]{20,100}$/, shapeHint: "letters and digits only" },
   { id: "pixabay", label: "Pixabay", role: "Stock media", note: "Free stock images, used from Phase 3", shape: /^[0-9]{4,}-[A-Za-z0-9]{16,64}$/, shapeHint: "looks like 12345678-abcdef..." },
+  { id: "google_tts", label: "Google text to speech", role: "Voice", note: "Cloud Text-to-Speech API key", shape: /^AIza[\w-]{30,60}$/, shapeHint: "starts with AIza" },
+  { id: "azure_speech", label: "Azure speech", role: "Voice", note: "Speech resource key", shape: /^[A-Za-z0-9]{32,100}$/, shapeHint: "letters and digits only, 32 or more" },
+  { id: "coverr", label: "Coverr", role: "Stock media", note: "Stock video", shape: /^[A-Za-z0-9_-]{16,100}$/, shapeHint: "letters, digits, _ and - only" },
+  { id: "fal", label: "fal", role: "Image", note: "Image generation", shape: /^[\w-]{8,100}:[\w-]{8,200}$/, shapeHint: "two parts joined by a colon" },
+  { id: "voicestudio", label: "VoiceStudio", role: "Voice", note: "Optional. Needed only when the server is not on this machine.", shape: new RegExp(`^${printable}{8,300}$`), shapeHint: "8 or more visible characters" },
+  { id: "local_voice", label: "Local voice server", role: "Voice", note: "Optional. Needed only when the server is not on this machine.", shape: new RegExp(`^${printable}{8,300}$`), shapeHint: "8 or more visible characters" },
 ];
 
 const BY_ID = new Map<string, ProviderDef>(PROVIDERS.map((p) => [p.id, p]));
@@ -96,6 +102,14 @@ export function keyTestRequest(id: ProviderId, key: string): KeyTestRequest | nu
       return null;
     case "elevenlabs":
       return { url: "https://api.elevenlabs.io/v1/models", method: "GET", headers: { "xi-api-key": key } };
+    case "google_tts":
+      return { url: "https://texttospeech.googleapis.com/v1/voices", method: "GET", headers: { "x-goog-api-key": key } }; // list voices: free
+    case "azure_speech": // region-specific host, no free request without it
+    case "coverr":
+    case "fal":
+    case "voicestudio": // owner's own address: a key is never sent to a free-form URL here
+    case "local_voice":
+      return null; // "checked on first use"
     case "pexels":
       return { url: "https://api.pexels.com/v1/curated?per_page=1", method: "GET", headers: { authorization: key } };
     case "pixabay": {

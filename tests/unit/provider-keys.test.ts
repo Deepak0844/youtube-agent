@@ -24,13 +24,19 @@ const SAMPLES: Record<string, string> = {
   elevenlabs: "sk_abcdefghijklmnopqrstuvwxyz0123456789",
   pexels: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOP",
   pixabay: "12345678-abcdef0123456789abcdef012",
+  google_tts: "AIzaSyA-abcdefghijklmnopqrstuvwxyz01234",
+  azure_speech: "0123456789abcdef0123456789abcdef",
+  coverr: "abcdefghijklmnop0123456789",
+  fal: "12345678-abcd-4abc-8abc-123456789abc:0123456789abcdef0123456789abcdef",
+  voicestudio: "my-voicestudio-key-123",
+  local_voice: "my-local-voice-key-123",
 };
 
 describe("provider list", () => {
   it("is exactly the owner-approved providers, in order", () => {
     expect(PROVIDERS.map((p) => p.id)).toEqual([
       "anthropic", "openai", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom",
-      "elevenlabs", "pexels", "pixabay",
+      "elevenlabs", "pexels", "pixabay", "google_tts", "azure_speech", "coverr", "fal", "voicestudio", "local_voice",
     ]);
   });
   it("the new language-model slots are all role Language model", () => {
@@ -141,7 +147,8 @@ describe("test requests are fixed, free and key-bearing only for the provider", 
 describe("custom slot has no fixed host, so its key is never sent to a free-form URL by a key test", () => {
   it("keyTestRequest is null for custom and a non-null fixed https request for every other slot", () => {
     expect(keyTestRequest("custom", SAMPLES.custom!)).toBeNull();
-    for (const p of PROVIDERS.filter((x) => x.id !== "custom")) expect(keyTestRequest(p.id, SAMPLES[p.id]!), p.id).not.toBeNull();
+    const noTest = ["custom", "azure_speech", "coverr", "fal", "voicestudio", "local_voice"]; // Phase 3 slots: checked on first use
+    for (const p of PROVIDERS.filter((x) => !noTest.includes(x.id))) expect(keyTestRequest(p.id, SAMPLES[p.id]!), p.id).not.toBeNull();
   });
   it("runKeyTest for custom makes no request at all", async () => {
     let calls = 0;

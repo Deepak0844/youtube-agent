@@ -11,6 +11,7 @@ export const FLAGS: Record<string, boolean> = {
   // Phase 2.
   queue: true,
   "settings.budgets": true,
+  "settings.providers": true,
   // Not built yet (later phases).
   library: false,
   new: false,
@@ -24,7 +25,6 @@ export const FLAGS: Record<string, boolean> = {
   "publish.engagement": false,
   "publish.analytics": false,
   "settings.account": false,
-  "settings.providers": false,
   "settings.tokens": false,
   "settings.channels": false,
   "settings.assets": false,
