@@ -54,7 +54,7 @@ const ctx = (): StageContext =>
 
 const voice = (over: Partial<ElevenLabsDeps> = {}) =>
   createElevenLabsVoice({
-    fetch: (url, init, _o) => fetch(url.replace("https://api.elevenlabs.io", base), init),
+    fetch: (url, init) => fetch(url.replace("https://api.elevenlabs.io", base), init),
     getKey: async () => KEY,
     model: "eleven_multilingual_v2",
     voiceId: "voice1",
