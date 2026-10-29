@@ -27,7 +27,7 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
       { reserveMicroUsd: deps.ttsReserveMicroUsd ?? DEFAULTS.ttsReserveMicroUsd, budgetScopes: await videoMoneyScopes(deps.db, video), kind: "paid" },
       async () => {
         const r = await deps.voice.synthesise(ctx, { text, lang: video.language, voice: deps.voiceName ?? DEFAULTS.voiceName });
-        return { result: { name: path.basename(r.audioPath), b64: (await readFile(r.audioPath)).toString("base64"), wordTimings: r.wordTimings }, actualMicroUsd: r.priceMicroUsd };
+        return { result: { name: path.basename(r.audioPath), b64: (await readFile(r.audioPath)).toString("base64"), wordTimings: r.timingsKind }, actualMicroUsd: r.priceMicroUsd };
       },
     );
     assertProviderName(made.name, "voice");

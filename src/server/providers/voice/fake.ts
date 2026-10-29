@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { wordCount } from "@/server/core/lang";
+import { LANGS, wordCount } from "@/server/core/lang";
 import type { StageContext } from "@/server/core/stage-handler";
 import { createScript, type FakeCounters, type FakeOptions } from "../fake-base";
 import type { VoiceProvider } from "./index";
@@ -31,6 +31,8 @@ function silentWav(seconds: number): Buffer {
 export function createFakeVoice(opts: FakeOptions & { priceMicroUsd?: number } = {}): VoiceProvider & FakeCounters {
   const s = createScript(opts);
   return {
+    capability: { id: "fake", wordTimings: "estimated", local: true, languages: [...LANGS], maxChars: 3500, formats: ["wav"] },
+    quote: () => opts.priceMicroUsd ?? 1000,
     calls: s.calls,
     totalCalls: s.totalCalls,
     dbCalls: s.dbCalls,
@@ -38,8 +40,10 @@ export function createFakeVoice(opts: FakeOptions & { priceMicroUsd?: number } =
       const played = await s.play(`fake:voice:${ctx.claim.stageRunId}`, ctx.signal, { actualMicroUsd: opts.priceMicroUsd ?? 1000 });
       const name = `voice-${createHash("sha256").update(`${a.lang}\0${a.voice}\0${a.text}`).digest("hex").slice(0, 12)}.wav`;
       const audioPath = path.join(ctx.attemptDir, name);
+      const words = a.text.split(/\s+/u).filter(Boolean);
       await writeFile(audioPath, silentWav(wordCount(a.text) / WPS));
-      return { audioPath, wordTimings: "estimated", priceMicroUsd: played.actualMicroUsd };
+      const wordTimings = words.map((word, i) => ({ word, startS: i / WPS, endS: (i + 1) / WPS }));
+      return { audioPath, wordTimings, timingsKind: "estimated", priceMicroUsd: played.actualMicroUsd, quoted: false };
     },
   };
 }

@@ -34,7 +34,7 @@ describe("fake voice", () => {
     const v = createFakeVoice();
     const a = await v.synthesise(ctxFor(), { text: "one two three four", lang: "en", voice: "fake" });
     const b = await v.synthesise(ctxFor(), { text: "one two three four", lang: "en", voice: "fake" });
-    expect(a.wordTimings).toBe("estimated");
+    expect(a.timingsKind).toBe("estimated");
     expect(a.priceMicroUsd).toBeGreaterThanOrEqual(0);
     expect(path.dirname(a.audioPath)).toBe(dir);
     expect(readFileSync(a.audioPath).subarray(0, 4).toString()).toBe("RIFF");
