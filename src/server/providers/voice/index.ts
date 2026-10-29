@@ -2,7 +2,7 @@ import type { Lang } from "@/server/core/lang";
 import type { StageContext } from "@/server/core/stage-handler";
 
 export type TimingsKind = "native" | "aligned" | "estimated" | "none";
-export type WordTiming = { word: string; startS: number; endS: number };
+export type WordTiming = { word: string; startS: number; endS: number; flags?: string[]; source?: string }; // flags/source: alignment quality marks, when known
 
 export type VoiceCapability = { id: string; wordTimings: TimingsKind; local: boolean; languages: Lang[]; maxChars: number; formats: string[] };
 
