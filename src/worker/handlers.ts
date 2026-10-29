@@ -1,3 +1,5 @@
+import { mkdir, rm } from "node:fs/promises";
+import path from "node:path";
 import type pg from "pg";
 import { createDraftHandler } from "@/server/authoring/draft";
 import { DRY_RUN_NOTES } from "@/lib/dry-run";
@@ -5,6 +7,9 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { STAGE_NAMES, stagePlan, type StageName } from "@/server/core/pipeline-plan";
 import { createSemaphore } from "@/server/core/semaphore";
 import type { StageHandler } from "@/server/core/stage-handler";
+import { AssetRefused, registerAsset } from "@/server/db/assets";
+import { recordAudit } from "@/server/db/audit";
+import { claimIngestJob, loadLimits, markDone, markRejected } from "@/server/db/ingest-jobs";
 import { loadKeyring } from "@/server/db/master-key";
 import { createLlmClient } from "@/server/llm/client";
 import { defaultModelDeps } from "@/server/llm/default-deps";
@@ -12,6 +17,7 @@ import { createWebTools } from "@/server/llm/web-tools";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
 import { createFakeVoice } from "@/server/providers/voice/fake";
+import { ingestAudio, ingestImage, type IngestDeps } from "@/server/render/ingest";
 import { storageRoot } from "@/server/storage/paths";
 import { withAttempt } from "./stages/attempt";
 import { buildAttempt } from "./stages/build";
@@ -90,4 +96,47 @@ export function refuseDryRunVideos(pool: pg.Pool, inner: StageHandler): StageHan
     }
     return inner(ctx);
   };
+}
+
+class IngestRefused extends Error {}
+
+/**
+ * The `ingest` job: checks one spooled upload in the sandbox and writes the assets row, or rejects it with a plain reason.
+ * Redelivery-safe: only a `queued` row can be claimed, so a duplicate or replayed job does nothing. The spooled file is
+ * always gone afterwards (ingest deletes it), and nothing here builds a path from the file name: both folders are job ids.
+ */
+export async function handleIngestJob(pool: pg.Pool, deps: IngestDeps & { root: string }, jobId: string): Promise<{ ran: boolean }> {
+  const job = await claimIngestJob(pool, jobId);
+  if (!job || !job.kind) return { ran: false };
+  const src = path.join(deps.root, "assets-incoming", job.id);
+  const rel = `assets/${job.id}`;
+  const dest = path.join(deps.root, rel);
+  let assetId: string;
+  let duplicate: boolean;
+  try {
+    await mkdir(dest, { recursive: true });
+    const limits = await loadLimits(pool);
+    const args = { srcPath: src, destDir: dest, stageRunId: job.id };
+    const r = job.kind === "image"
+      ? await ingestImage(deps, { ...args, maxBytes: limits.maxImageBytes, maxPixels: limits.maxPixels })
+      : await ingestAudio(deps, { ...args, maxBytes: limits.maxAudioBytes });
+    if (!r.ok) throw new IngestRefused(r.message);
+    const refs = Object.fromEntries(Object.entries(r.files).map(([role, f]) => [role, `${rel}/${path.basename(f)}`]));
+    const { main, ...derivedRefs } = refs;
+    ({ asset: { id: assetId }, duplicate } = await registerAsset(pool, {
+      kind: r.kind, originalName: job.originalName, mime: r.mime, bytes: r.bytes, width: r.width, height: r.height, durationS: r.durationS,
+      sha256: r.sha256, storageRef: main!, derivedRefs, tags: job.tags, caption: job.caption, rights: job.rights, keep: job.keep,
+      containsPerson: job.containsPerson, voiceCloneReference: job.voiceClone,
+    }));
+  } catch (err) {
+    await rm(dest, { recursive: true, force: true });
+    await rm(src, { force: true });
+    await markRejected(pool, job.id, err instanceof AssetRefused || err instanceof IngestRefused ? err.message : "The file could not be processed.");
+    await recordAudit(pool, "asset.upload_refused", { job: job.id, kind: job.kind });
+    return { ran: true };
+  }
+  if (duplicate) await rm(dest, { recursive: true, force: true }); // the first copy's files stay; this run's identical outputs are not needed
+  await markDone(pool, job.id, assetId);
+  await recordAudit(pool, "asset.added", { job: job.id, kind: job.kind, assetId, duplicate });
+  return { ran: true };
 }

@@ -14,7 +14,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { chromium } from "@playwright/test";
 import { generateMasterKey } from "@/server/core/vault-crypto";
@@ -111,7 +110,6 @@ try {
     SEARXNG_URL: "http://127.0.0.1:48888",
     EGRESS_PROXY_URL: "http://127.0.0.1:43128",
     TRUST_PROXY: "1",
-    UPLOAD_DIR: path.join(os.tmpdir(), "ytstudio-design-check-uploads"),
   } as unknown as NodeJS.ProcessEnv; // NODE_ENV is left out on purpose: `next build`/`next start`/`next dev` each set their own
 
   await seedOwner(infra.databaseUrl, appUrl);

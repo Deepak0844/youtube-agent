@@ -37,6 +37,9 @@ export const AUDIT_EVENTS = {
   "budget.cap_changed": "A spending cap was changed",
   // Phase 3 providers page (detail: provider id, enabled; media route changes reuse route.changed with kind, scope, provider, voice)
   "provider.toggled": "A media provider was switched on or off",
+  // Phase 3 asset ingest (detail: ingest job id, kind, asset id, whether it was a duplicate; never a file name or path)
+  "asset.added": "An uploaded file was checked and added to the library",
+  "asset.upload_refused": "An uploaded file was refused",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",

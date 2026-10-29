@@ -24,6 +24,7 @@ const ALTERNATE: Record<string, unknown> = {
   "policy.allow_public": true,
   "network.local_services": ["localhost:11434"],
   "assets.max_image_bytes": 1_000_000,
+  "assets.max_audio_bytes": 1_000_000,
   "assets.max_pixels": 1_000_000,
   "assets.max_batch_files": 10,
   "assets.total_bytes_cap": 1_000_000_000,

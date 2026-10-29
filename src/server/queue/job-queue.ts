@@ -15,7 +15,7 @@ import type { StageJob } from "@/server/core/stage-runner";
 //   failure (moveStalledJobsToWait-9.lua) and the next worker to fetch it fails it WITHOUT running the processor
 //   (Worker.getUnrecoverableErrorMessage); a still-queued row is then re-enqueued by the reconciler under a new id.
 
-export type QueueKind = "stages" | "uploads";
+export type QueueKind = "stages" | "uploads" | "ingest";
 
 // Stage jobs and upload jobs never share a queue (BullMQ workers take any job on their queue): the kind fixes the
 // real queue name (`stages` / `uploads`, plus `-<suffix>` in tests), the handler type and the enqueue method.
@@ -53,6 +53,19 @@ export interface UploadQueue {
   disconnect?(): Promise<void>;
 }
 
+// Asset ingest: one job per ingest_jobs row, job id ingest.<id>. The payload is only the id; the handler reads everything from Postgres.
+export interface IngestQueue {
+  readonly kind: "ingest";
+  readonly name: string;
+  enqueueIngest(jobId: string): Promise<string>;
+  startWorker(
+    handler: (jobId: string) => Promise<void>,
+    opts?: { concurrency?: number; onError?: (err: Error) => void },
+  ): { close(force?: boolean): Promise<void>; pause?(): Promise<void> };
+  close(force?: boolean): Promise<void>;
+  disconnect?(): Promise<void>;
+}
+
 const LIVE: JobType[] = ["waiting", "active", "delayed", "prioritized", "waiting-children"];
 
 export const DEFAULT_KEEP_FAILED = 1000;
@@ -61,8 +74,9 @@ const SUFFIX = /^[a-z0-9-]{1,40}$/;
 
 export function createJobQueue(redisUrl: string, kind: "stages", suffix?: string, opts?: { keepFailed?: number; onError?: (err: Error) => void }): StageQueue;
 export function createJobQueue(redisUrl: string, kind: "uploads", suffix?: string, opts?: { keepFailed?: number; onError?: (err: Error) => void }): UploadQueue;
-export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: string, opts: { keepFailed?: number; onError?: (err: Error) => void } = {}): StageQueue | UploadQueue {
-  if (kind !== "stages" && kind !== "uploads") throw new RangeError(`unknown queue kind: ${String(kind)}`);
+export function createJobQueue(redisUrl: string, kind: "ingest", suffix?: string, opts?: { keepFailed?: number; onError?: (err: Error) => void }): IngestQueue;
+export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: string, opts: { keepFailed?: number; onError?: (err: Error) => void } = {}): StageQueue | UploadQueue | IngestQueue {
+  if (kind !== "stages" && kind !== "uploads" && kind !== "ingest") throw new RangeError(`unknown queue kind: ${String(kind)}`);
   if (suffix !== undefined && !SUFFIX.test(suffix)) throw new RangeError(`invalid queue suffix: ${String(suffix)}`);
   const name = suffix === undefined ? kind : `${kind}-${suffix}`;
   const keepFailed = opts.keepFailed ?? DEFAULT_KEEP_FAILED;
@@ -124,6 +138,30 @@ export function createJobQueue(redisUrl: string, kind: QueueKind, suffix?: strin
     };
     q.enqueueUpload = () => wrong("enqueueUpload");
     return q;
+  }
+
+  if (kind === "ingest") {
+    const i: IngestQueue = {
+      kind,
+      name,
+      async enqueueIngest(jobId) {
+        if (!/^[0-9a-f-]{36}$/i.test(jobId)) throw new RangeError(`invalid ingest id: ${jobId}`);
+        const id = `ingest.${jobId}`;
+        // Same as uploads: a failed job must not block a re-send; the one-shot claim in Postgres still decides.
+        const existing = await queue.getJob(id);
+        if (existing && (await existing.isFailed())) await existing.remove();
+        await queue.add("ingest", { jobId }, { jobId: id, attempts: 1, removeOnComplete: true, removeOnFail: { count: keepFailed } });
+        return id;
+      },
+      startWorker(handler, opts = {}) {
+        return makeWorker(async (job) => {
+          if (job.name !== "ingest") throw new Error(`unsupported job kind: ${job.name}`);
+          await handler((job.data as { jobId: string }).jobId);
+        }, opts);
+      },
+      close, disconnect,
+    };
+    return i;
   }
 
   const u: UploadQueue & { enqueue?: unknown; liveJobIds?: unknown } = {

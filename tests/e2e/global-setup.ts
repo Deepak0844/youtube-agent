@@ -53,8 +53,6 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     EGRESS_PROXY_URL: "http://127.0.0.1:43128",
     TRUST_PROXY: "1",
     AUTH_MAX_IN_FLIGHT: "1",
-    UPLOAD_MAX_BYTES: String(50 * 1024 * 1024), // lets the oversize test stay small
-    UPLOAD_DIR: path.join(os.tmpdir(), `ytstudio-e2e-uploads-${port}`),
     STORAGE_ROOT: storageRoot, // media route specs write real files here and read them back through signed URLs
   };
   process.env.E2E_SERVER_LOG = path.join(os.tmpdir(), `ytstudio-e2e-server-${port}.log`);

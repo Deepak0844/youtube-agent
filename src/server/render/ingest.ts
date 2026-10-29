@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { open, rm, stat } from "node:fs/promises";
+import { lstat, open, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ASSET_LIMIT_DEFAULTS } from "@/server/core/asset-rules";
@@ -86,7 +86,7 @@ interface Gate {
 async function gate(a: IngestArgs, want: "image" | "audio", maxBytes: number): Promise<IngestResult | Gate> {
   let size: number;
   try {
-    const st = await stat(a.srcPath);
+    const st = await lstat(a.srcPath); // lstat: a symlink is not a regular file, so it is refused rather than followed
     if (!st.isFile()) return reject("failed");
     size = st.size;
   } catch {
@@ -158,7 +158,7 @@ interface ProbeJson {
 export async function ingestAudio(deps: IngestDeps, a: IngestArgs): Promise<IngestResult> {
   let done = false;
   try {
-    const g = await gate(a, "audio", a.maxBytes ?? ASSET_LIMIT_DEFAULTS.totalBytesCap);
+    const g = await gate(a, "audio", a.maxBytes ?? ASSET_LIMIT_DEFAULTS.maxAudioBytes);
     if ("ok" in g) return g;
     const fmt = DEMUXER[g.mime];
     if (!fmt) return reject("unknown");

@@ -52,6 +52,7 @@ const input = z.object({
   rights: rightsSchema,
   keep: z.boolean().default(false),
   createdBy: z.string().nullable().default(null),
+  containsPerson: z.boolean().default(false),
   voiceCloneReference: z.boolean().default(false),
 });
 export type RegisterInput = z.input<typeof input>;
@@ -80,7 +81,7 @@ export async function registerAsset(db: Db, a: RegisterInput): Promise<{ asset: 
   const p = input.safeParse(a);
   if (!p.success) throw new AssetRefused("invalid");
   const v = p.data;
-  const verdict = checkRights(v.rights, { kind: v.kind, tags: v.tags, voiceCloneReference: v.voiceCloneReference });
+  const verdict = checkRights(v.rights, { kind: v.kind, tags: v.tags, containsPerson: v.containsPerson, voiceCloneReference: v.voiceCloneReference });
   if (!verdict.ok) throw new AssetRefused(verdict.reason);
   const { rows } = await db.query<Row>(
     `insert into assets (kind, original_name, mime, bytes, width, height, duration_s, sha256, storage_ref, derived_refs, tags, caption, source, rights, keep, created_by)

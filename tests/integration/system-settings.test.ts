@@ -205,7 +205,7 @@ describe("system settings form (app role)", () => {
 
 describe("setSessionSettings is limited to the keys this page writes", () => {
   const noAudit = async () => undefined;
-  it.each(["policy.allow_public", "policy.require_evidence", "display.currency", "uploads.total_gb", "uploads.max_image_mb"])(
+  it.each(["policy.allow_public", "policy.require_evidence", "display.currency", "assets.total_bytes_cap", "assets.max_image_bytes"])(
     "refuses %s and touches nothing",
     async (key) => {
       const value = key.startsWith("policy") ? true : key === "display.currency" ? "EUR" : 9;
