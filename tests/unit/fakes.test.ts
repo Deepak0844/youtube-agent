@@ -22,7 +22,7 @@ const fixtures = realpathSync(path.resolve(__dirname, "../fixtures/video"));
 const cfg = buildEngineConfig(new Map()).qa;
 
 const ctxFor = (signal: AbortSignal = new AbortController().signal, id = "run-1"): StageContext =>
-  ({ claim: { stageRunId: id }, attemptDir: dir, signal }) as unknown as StageContext;
+  ({ claim: { stageRunId: id }, attemptDir: dir, paid: async (_s: unknown, f: (k: string, s: AbortSignal) => Promise<{ result: unknown }>) => (await f("k", new AbortController().signal)).result, signal }) as unknown as StageContext;
 
 beforeAll(() => {
   dir = realpathSync(mkdtempSync(path.join(tmpdir(), "fakes-")));

@@ -25,7 +25,7 @@ afterAll(async () => {
 const ctx = (): StageContext => {
   const dir = path.join(root, "attempt");
   mkdirSync(dir, { recursive: true });
-  return { claim: { stageRunId: "s1" }, attemptDir: dir, signal: new AbortController().signal } as unknown as StageContext;
+  return { claim: { stageRunId: "s1" }, attemptDir: dir, paid: async (_s: unknown, f: (k: string, s: AbortSignal) => Promise<{ result: unknown }>) => (await f("k", new AbortController().signal)).result, signal: new AbortController().signal } as unknown as StageContext;
 };
 const settings = { speed: 1 };
 

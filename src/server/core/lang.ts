@@ -23,6 +23,9 @@ export function wordCount(text: string): number {
   return text.split(/\s+/u).filter(Boolean).length;
 }
 
+/** Spoken words per second at the language's normal pace. */
+export const speakingRate = (lang: Lang): number => INFO[lang].wps;
+
 export function wordRange(lang: Lang, speakingRate: number = INFO[lang].wps): { min: number; max: number } {
   if (!(speakingRate > 0) || !Number.isFinite(speakingRate)) throw new Error("speakingRate must be a positive number");
   const f = speakingRate / EN_WPS;

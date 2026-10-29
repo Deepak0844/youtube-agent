@@ -23,7 +23,7 @@ beforeEach(async () => {
   await db.ownerPool.query("truncate fake_provider_calls");
 });
 
-const ctx = (id: string): StageContext => ({ claim: { stageRunId: id }, attemptDir: dir, signal: new AbortController().signal }) as unknown as StageContext;
+const ctx = (id: string): StageContext => ({ claim: { stageRunId: id }, attemptDir: dir, paid: async (_s: unknown, f: (k: string, s: AbortSignal) => Promise<{ result: unknown }>) => (await f("k", new AbortController().signal)).result, signal: new AbortController().signal }) as unknown as StageContext;
 
 describe("fake call counts agree with the fake_provider_calls table", () => {
   it("voice, image and uploader count the same in memory and in Postgres", async () => {

@@ -4,10 +4,9 @@ import { createHash } from "node:crypto";
 import { LANGS, wordCount } from "@/server/core/lang";
 import type { StageContext } from "@/server/core/stage-handler";
 import { createScript, type FakeCounters, type FakeOptions } from "../fake-base";
-import type { VoiceProvider } from "./index";
+import type { TimingsKind, VoiceProvider } from "./index";
 
 const RATE = 1000; // Hz: tiny on purpose, the fake only needs a valid, deterministic audio file
-const WPS = 2.5;
 
 /** Silent mono 8-bit WAV, length from the word count. Byte-identical for the same input. */
 export function silentWav(seconds: number): Buffer {
@@ -28,22 +27,38 @@ export function silentWav(seconds: number): Buffer {
   return Buffer.concat([h, Buffer.alloc(n, 128)]);
 }
 
-export function createFakeVoice(opts: FakeOptions & { priceMicroUsd?: number } = {}): VoiceProvider & FakeCounters {
+export type FakeVoiceOptions = FakeOptions & {
+  priceMicroUsd?: number;
+  /** Speaking pace of the audio it makes (default 3 words a second: fast enough to fit every language's window). */
+  wps?: number;
+  /** What it reports: `native` word times, `estimated` ones (default), or `aligned` with none returned (the stage must align). */
+  timings?: "native" | "estimated" | "aligned";
+  /** Runs inside the paid call, after the reserve and before the audio is made (chaos harness hook). */
+  beforeCall?: (ctx: StageContext) => Promise<void>;
+};
+
+/** Pays through ctx.paid exactly as the real adapters do: one reserve per call, against the scopes it was built for. */
+export function createFakeVoice(opts: FakeVoiceOptions = {}): VoiceProvider & FakeCounters & { forScopes(scopes: string[]): VoiceProvider } {
   const s = createScript(opts);
-  return {
-    capability: { id: "fake", wordTimings: "estimated", local: true, languages: [...LANGS], maxChars: 3500, formats: ["wav"] },
-    quote: () => opts.priceMicroUsd ?? 1000,
-    calls: s.calls,
-    totalCalls: s.totalCalls,
-    dbCalls: s.dbCalls,
+  const price = opts.priceMicroUsd ?? 1000;
+  const wps = opts.wps ?? 3;
+  const timings = opts.timings ?? "estimated";
+  const make = (budgetScopes: string[]): VoiceProvider => ({
+    capability: { id: "fake", wordTimings: timings, local: true, languages: [...LANGS], maxChars: 3500, formats: ["wav"] },
+    quote: () => price,
     async synthesise(ctx: StageContext, a) {
-      const played = await s.play(`fake:voice:${ctx.claim.stageRunId}`, ctx.signal, { actualMicroUsd: opts.priceMicroUsd ?? 1000 });
-      const name = `voice-${createHash("sha256").update(`${a.lang}\0${a.voice}\0${a.text}`).digest("hex").slice(0, 12)}.wav`;
-      const audioPath = path.join(ctx.attemptDir, name);
-      const words = a.text.split(/\s+/u).filter(Boolean);
-      await writeFile(audioPath, silentWav(wordCount(a.text) / WPS));
-      const wordTimings = words.map((word, i) => ({ word, startS: i / WPS, endS: (i + 1) / WPS }));
-      return { audioPath, wordTimings, timingsKind: "estimated", priceMicroUsd: played.actualMicroUsd, quoted: false };
+      return ctx.paid({ reserveMicroUsd: price, budgetScopes, kind: "paid" }, async (_callKey, signal) => {
+        await opts.beforeCall?.(ctx);
+        const played = await s.play(`fake:voice:${ctx.claim.stageRunId}`, signal, { actualMicroUsd: price });
+        const name = `voice-${createHash("sha256").update(`${a.lang}\0${a.voice}\0${a.text}`).digest("hex").slice(0, 12)}.wav`;
+        const audioPath = path.join(ctx.attemptDir, name);
+        const words = a.text.split(/\s+/u).filter(Boolean);
+        await writeFile(audioPath, silentWav(wordCount(a.text) / wps));
+        const wordTimings = timings === "aligned" ? null : words.map((word, i) => ({ word, startS: i / wps, endS: (i + 1) / wps }));
+        const kind: TimingsKind = timings;
+        return { result: { audioPath, wordTimings, timingsKind: kind, priceMicroUsd: played.actualMicroUsd, quoted: false }, actualMicroUsd: played.actualMicroUsd };
+      });
     },
-  };
+  });
+  return { ...make([]), forScopes: make, calls: s.calls, totalCalls: s.totalCalls, dbCalls: s.dbCalls };
 }
