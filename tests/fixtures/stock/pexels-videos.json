@@ -1,0 +1,7 @@
+{"_unrecorded":"hand-written from the public Pexels API docs; not recorded from the live service","page":1,"per_page":2,"videos":[
+{"id":201,"width":2160,"height":3840,"url":"https://www.pexels.com/video/201/","duration":12,"user":{"id":1,"name":"Cy Day","url":"https://www.pexels.com/@cy"},"video_files":[
+{"id":1,"quality":"uhd","file_type":"video/mp4","width":2160,"height":3840,"link":"https://videos.pexels.com/video-files/201/uhd.mp4"},
+{"id":2,"quality":"hd","file_type":"video/mp4","width":1080,"height":1920,"link":"https://videos.pexels.com/video-files/201/hd.mp4"},
+{"id":3,"quality":"sd","file_type":"video/mp4","width":540,"height":960,"link":"https://videos.pexels.com/video-files/201/sd.mp4"}]},
+{"id":202,"width":1080,"height":1920,"url":"https://www.pexels.com/video/202/","duration":3,"user":{"name":"Di Fox","url":"https://www.pexels.com/@di"},"video_files":[
+{"id":4,"quality":"hd","file_type":"video/mp4","width":1080,"height":1920,"link":"https://videos.pexels.com/video-files/202/hd.mp4"}]}]}

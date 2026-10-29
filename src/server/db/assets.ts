@@ -104,3 +104,9 @@ export async function getAsset(db: Db, id: string): Promise<Asset | null> {
   const { rows } = await db.query<Row>("select * from assets where id = $1", [id]);
   return rows[0] ? toAsset(rows[0]) : null;
 }
+
+/** Live image assets carrying any of these tags, newest first. */
+export async function findAssetsByTag(db: Db, tags: string[], limit: number): Promise<Asset[]> {
+  const { rows } = await db.query<Row>("select * from assets where kind = 'image' and deleted_at is null and tags && $1::text[] order by created_at desc limit $2", [tags, limit]);
+  return rows.map(toAsset);
+}

@@ -1,0 +1,6 @@
+{"_unrecorded":"hand-written from the public Pixabay API docs; not recorded from the live service","total":1,"totalHits":1,"hits":[
+{"id":401,"pageURL":"https://pixabay.com/videos/401/","tags":"sea","duration":20,"user":"Fay","videos":{
+"large":{"url":"https://cdn.pixabay.com/video/401_large.mp4","width":2160,"height":3840,"size":9},
+"medium":{"url":"https://cdn.pixabay.com/video/401_medium.mp4","width":1080,"height":1920,"size":5},
+"small":{"url":"https://cdn.pixabay.com/video/401_small.mp4","width":720,"height":1280,"size":3},
+"tiny":{"url":"https://cdn.pixabay.com/video/401_tiny.mp4","width":360,"height":640,"size":1}}}]}

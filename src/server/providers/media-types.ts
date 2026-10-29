@@ -14,5 +14,6 @@ export type MediaArtifact = {
     quoted: boolean;
     licence?: string;
     sourceUrl?: string;
+    attribution?: string;
   };
 };
