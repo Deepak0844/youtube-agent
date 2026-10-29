@@ -4,7 +4,7 @@ import type { Lang } from "@/server/core/lang";
 // The script's spelling always wins (whisper's spelling is never used for captions). Anything that looks unsure is flagged
 // for a human check; estimated timings are always "approximate" so they can never look exact.
 
-export type AlignFlag = "low_confidence" | "too_short" | "too_long" | "loop" | "count_mismatch" | "language_unreliable";
+export type AlignFlag = "low_confidence" | "too_short" | "too_long" | "loop" | "count_mismatch" | "language_unreliable" | "interpolated";
 export type TimingsKind = "native" | "aligned" | "estimated";
 export interface Recognised { word: string; startS: number; endS: number; p: number }
 export interface CaptionWord { word: string; startS: number; endS: number; source: "recognised" | "interpolated" | "estimated"; flags: AlignFlag[] }
@@ -78,7 +78,8 @@ function tidy(words: CaptionWord[]): void {
   }
 }
 
-export function mapToScript(script: string[], recognised: Recognised[]): MapResult {
+/** Every word ends up inside [0, durationS], monotone and non-overlapping. */
+export function mapToScript(script: string[], recognised: Recognised[], durationS: number): MapResult {
   const pairs = pair(script, recognised);
   const stats = { scriptWords: script.length, recognisedWords: recognised.length, matched: pairs.length };
   if (pairs.length === 0) return { words: [], stats };
@@ -102,13 +103,14 @@ export function mapToScript(script: string[], recognised: Recognised[]): MapResu
     while (e < script.length && !words[e]) e++;
     const prev = words[i - 1], next = words[e];
     const from = prev ? prev.endS : Math.max(0, next!.startS - (e - i) * avg);
-    const to = next ? next.startS : from + (e - i) * avg;
+    const to = next ? next.startS : Math.min(from + (e - i) * avg, durationS);
     const step = (Math.max(to, from) - from) / (e - i);
-    for (let k = i; k < e; k++) words[k] = { word: script[k]!, startS: from + (k - i) * step, endS: from + (k - i + 1) * step, source: "interpolated", flags: [] };
+    for (let k = i; k < e; k++) words[k] = { word: script[k]!, startS: from + (k - i) * step, endS: from + (k - i + 1) * step, source: "interpolated", flags: ["interpolated"] };
     i = e;
   }
   const out = words as CaptionWord[];
   tidy(out);
+  for (const w of out) { w.startS = Math.min(w.startS, durationS); w.endS = Math.min(w.endS, durationS); } // min keeps order
   if (drift) for (const w of out) w.flags.push("count_mismatch");
   return { words: out, stats };
 }

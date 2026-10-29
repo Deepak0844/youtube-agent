@@ -21,9 +21,15 @@ interface WhisperJson {
 }
 
 export function parseWhisperJson(raw: string): Recognised[] {
-  const j = JSON.parse(raw) as WhisperJson;
+  let j: WhisperJson;
+  try {
+    j = JSON.parse(raw) as WhisperJson;
+    if (!Array.isArray(j.transcription)) throw new Error("no transcription");
+  } catch {
+    throw new AlignError("Word alignment failed; whisper's output could not be read.");
+  }
   return j.transcription
-    .filter((s) => s.text.trim() !== "")
+    .filter((s) => /[\p{L}\p{N}]/u.test(s.text) && !/^\s*[[(].*[\])]\s*$/.test(s.text)) // not silence/music markers or bare punctuation
     .map((s) => ({
       word: s.text.trim(),
       startS: s.offsets.from / 1000,
@@ -32,7 +38,7 @@ export function parseWhisperJson(raw: string): Recognised[] {
     }));
 }
 
-export interface AlignArgs { audioPath: string; durationS: number; lang: Lang; script: string[]; maxChunkS?: 15 }
+export interface AlignArgs { audioPath: string; durationS: number; lang: Lang; script: string[]; stageRunId: string; signal: AbortSignal }
 
 /** Aligned captions for one chunk, or estimated ones when whisper recognised nothing usable. A failed child throws. */
 export async function alignChunk(deps: { runChild: ChildRunner; modelPath: string }, a: AlignArgs): Promise<CaptionsBody> {
@@ -48,11 +54,17 @@ export async function alignChunk(deps: { runChild: ChildRunner; modelPath: strin
       envAllow: ["PATH"],
       timeoutMs: TIMEOUT_MS,
       maxOutputBytes: OUTPUT_CAP,
-      signal: new AbortController().signal,
-      stageRunId: "align",
+      signal: a.signal,
+      stageRunId: a.stageRunId,
     });
     if (r.timedOut || r.truncated || r.aborted || r.code !== 0) throw new AlignError("Word alignment failed; the audio was not aligned.");
-    const mapped = mapToScript(a.script, parseWhisperJson(await readFile(base + ".json", "utf8")));
+    let raw: string;
+    try {
+      raw = await readFile(base + ".json", "utf8");
+    } catch {
+      throw new AlignError("Word alignment failed; whisper wrote no output.");
+    }
+    const mapped = mapToScript(a.script, parseWhisperJson(raw), a.durationS);
     if (mapped.stats.matched === 0) return captionsBody("estimated", estimateTimings(a.script, a.durationS));
     flagLanguage(a.lang, mapped.words);
     return captionsBody("aligned", mapped.words);

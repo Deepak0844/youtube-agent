@@ -61,7 +61,7 @@ describe.skipIf(!can)("whisper-cli alignment (real)", () => {
       const file = path.join(dir, "clip.wav");
       writeFileSync(file, wav(all));
 
-      const r = await alignChunk({ runChild, modelPath: MODEL }, { audioPath: file, durationS: pos / SR, lang, script });
+      const r = await alignChunk({ runChild, modelPath: MODEL }, { audioPath: file, durationS: pos / SR, lang, script, stageRunId: "00000000-0000-4000-8000-000000000001", signal: new AbortController().signal });
       expect(r.timings_kind).toBe("aligned");
       expect(r.words.map((w) => w.word)).toEqual(script);
       const errs = r.words.map((w, i) => {
