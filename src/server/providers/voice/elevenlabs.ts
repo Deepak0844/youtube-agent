@@ -4,7 +4,7 @@ import path from "node:path";
 import { isPriced, quote as priceQuote } from "@/server/core/media-catalog";
 import { NotProcessedError } from "@/server/core/error-class";
 import { KnownFailure } from "@/server/core/paid-call";
-import { LANGS } from "@/server/core/lang";
+import { LANGS, type Lang } from "@/server/core/lang";
 import type { StageContext } from "@/server/core/stage-handler";
 import { BlockedAddressError } from "../net/safe-fetch";
 import { MODELS, type Alignment, type ElevenLabsDeps } from "./eleven-types";
@@ -17,8 +17,14 @@ const BEFORE_SEND = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]);
 
 /** Plain text before the line: control characters removed, at most 80 code points. */
 function tagPrefix(raw: string | undefined): string {
-  return Array.from((raw ?? "").replace(/\p{Cc}/gu, "").trim()).slice(0, MAX_TAG).join("");
+  let t = Array.from((raw ?? "").replace(/\p{Cc}/gu, "").trim()).slice(0, MAX_TAG).join("");
+  if (t.lastIndexOf("[") > t.lastIndexOf("]")) t = t.slice(0, t.lastIndexOf("[")).trim(); // drop a tag cut open by the cap
+  return t;
 }
+
+// v2 multilingual covers en/hi/ta; v3 covers every language we speak.
+const V2_LANGS: readonly Lang[] = ["en", "hi", "ta"];
+const isMpeg = (b: Buffer) => b.subarray(0, 3).toString("latin1") === "ID3" || (b.length > 1 && b[0] === 0xff && (b[1]! & 0xe0) === 0xe0);
 
 /** Character times to word times: words split on whitespace (works for Indic scripts, no spaces inside a word). */
 export function foldWords(a: Alignment): WordTiming[] {
@@ -78,7 +84,8 @@ async function readCapped(res: Response): Promise<Buffer> {
 
 export function createElevenLabsVoice(deps: ElevenLabsDeps): VoiceProvider {
   const prefix = tagPrefix(deps.tags?.prefix);
-  const sent = (text: string) => (prefix ? `${prefix} ${text}` : text);
+  // Emotion tags are a v3 feature: other models would speak "[excited]" aloud.
+  const sent = (text: string, model: string) => (prefix && model === "eleven_v3" ? `${prefix} ${text}` : text);
 
   // Everything refused before money is reserved or any request is built.
   function check(a: { voice: string; model?: string }) {
@@ -91,20 +98,20 @@ export function createElevenLabsVoice(deps: ElevenLabsDeps): VoiceProvider {
   }
 
   const quote: VoiceProvider["quote"] = (a) => {
-    const { price } = check(a);
-    return priceQuote(price, Array.from(sent(a.text)).length);
+    const { price, model } = check(a);
+    return priceQuote(price, Array.from(sent(a.text, model)).length);
   };
 
   async function request(key: string, signal: AbortSignal, model: string, voice: string, text: string): Promise<Response> {
     let res: Response;
     try {
+      // maxRedirects 0: a redirect would re-POST (a second paid request); it surfaces as an error after send = unknown.
       res = await deps.fetch(`${HOST}/v1/text-to-speech/${voice}/with-timestamps?output_format=mp3_44100_128`, {
         method: "POST",
         headers: { "xi-api-key": key, "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({ text, model_id: model }),
-        redirect: "manual",
         signal,
-      });
+      }, { timeoutMs: 120_000, maxRedirects: 0 });
     } catch (err) {
       if (signal.aborted) throw signal.reason; // cancel/timeout after send: unknown
       if (err instanceof BlockedAddressError) throw new NotProcessedError("ElevenLabs address was blocked.");
@@ -114,18 +121,18 @@ export function createElevenLabsVoice(deps: ElevenLabsDeps): VoiceProvider {
     }
     if (res.ok) return res;
     await res.body?.cancel().catch(() => undefined);
-    // 4xx = rejected before work (429 retried by the classifier, the rest permanent). 5xx may follow started work: unknown.
-    if (res.status >= 400 && res.status <= 499) throw new NotProcessedError(`ElevenLabs refused the request (${res.status}).`, { status: res.status });
+    // 4xx (not 408) = rejected before work (429 retried by the classifier, the rest permanent). 5xx may follow started work: unknown.
+    if (res.status >= 400 && res.status <= 499 && res.status !== 408) throw new NotProcessedError(`ElevenLabs refused the request (${res.status}).`, { status: res.status });
     throw new Error(`ElevenLabs answered ${res.status}; the outcome is unknown.`);
   }
 
   return {
-    capability: { id: "elevenlabs", wordTimings: "native", local: false, languages: [...LANGS], maxChars: 3500, formats: ["mp3"] },
+    capability: { id: "elevenlabs", wordTimings: "native", local: false, languages: deps.model === "eleven_v3" ? [...LANGS] : [...V2_LANGS], maxChars: 3500, formats: ["mp3"] },
     quote,
     async synthesise(ctx: StageContext, a) {
       const { model, voice } = check(a);
       const reserve = quote(a);
-      const text = sent(a.text);
+      const text = sent(a.text, model);
       return ctx.paid({ reserveMicroUsd: reserve, budgetScopes: deps.budgetScopes, kind: "paid" }, async (_callKey, signal) => {
         let key: string;
         try {
@@ -137,8 +144,9 @@ export function createElevenLabsVoice(deps: ElevenLabsDeps): VoiceProvider {
         const res = await request(key, signal, model, voice, text);
         const body = await readCapped(res);
         const json = JSON.parse(body.toString("utf8")) as { audio_base64?: unknown; alignment?: unknown };
-        if (typeof json.audio_base64 !== "string") throw new Error("ElevenLabs returned no audio.");
+        if (typeof json.audio_base64 !== "string" || json.audio_base64 === "") throw new Error("ElevenLabs returned no audio.");
         const audio = Buffer.from(json.audio_base64, "base64");
+        if (!isMpeg(audio)) throw new Error("ElevenLabs returned audio that is not MP3."); // billed: unknown, parks
         let words = foldWords(parseAlignment(json.alignment));
         const tagWords = prefix.split(/\s+/u).filter(Boolean);
         if (tagWords.length > 0 && tagWords.every((w, i) => words[i]?.word === w)) words = words.slice(tagWords.length);

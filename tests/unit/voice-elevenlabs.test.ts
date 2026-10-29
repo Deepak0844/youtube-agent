@@ -54,7 +54,7 @@ const ctx = (): StageContext =>
 
 const voice = (over: Partial<ElevenLabsDeps> = {}) =>
   createElevenLabsVoice({
-    fetch: (url, init) => fetch(url.replace("https://api.elevenlabs.io", base), init),
+    fetch: (url, init, _o) => fetch(url.replace("https://api.elevenlabs.io", base), init),
     getKey: async () => KEY,
     model: "eleven_multilingual_v2",
     voiceId: "voice1",
@@ -99,6 +99,10 @@ describe("elevenlabs voice", () => {
       expect(e).toBeInstanceOf(KnownFailure);
       expect(classifyError(e)).toBe("permanent");
     }
+    handler = (_q, res) => res.writeHead(408).end("timeout");
+    const e408 = await voice().synthesise(ctx(), args("Hi")).catch((x) => x);
+    expect(e408).not.toBeInstanceOf(KnownFailure);
+    expect(classifyError(e408)).toBe("unknown");
     handler = (_q, res) => res.writeHead(503).end("busy");
     const e5 = await voice().synthesise(ctx(), args("Hi")).catch((x) => x);
     expect(e5).not.toBeInstanceOf(KnownFailure);
@@ -136,15 +140,20 @@ describe("elevenlabs voice", () => {
 
   it("delivery_tag_is_inserted_and_capped", async () => {
     const long = "[" + "x".repeat(200) + "]";
-    await voice({ tags: { prefix: "[excited]\u0000\n" } }).synthesise(ctx(), args("Hi all"));
+    await voice({ model: "eleven_v3", tags: { prefix: "[excited]\u0000\n" } }).synthesise(ctx(), args("Hi all"));
     expect(reqs[0]!.body.text).toBe("[excited] Hi all");
-    await voice({ tags: { prefix: long } }).synthesise(ctx(), args("Hi all"));
-    const sentTag = reqs[1]!.body.text.slice(0, -" Hi all".length);
-    expect(Array.from(sentTag)).toHaveLength(80);
+    await voice({ model: "eleven_v3", tags: { prefix: long } }).synthesise(ctx(), args("Hi all"));
+    // the 80-code-point cut leaves an unclosed "[": it is dropped, so no tag is sent
+    expect(reqs[1]!.body.text).toBe("Hi all");
+    const near = "[" + "x".repeat(70) + "] [ab";
+    await voice({ model: "eleven_v3", tags: { prefix: near } }).synthesise(ctx(), args("Hi"));
+    expect(reqs[2]!.body.text).toBe("[" + "x".repeat(70) + "] Hi");
+    await voice({ tags: { prefix: "[excited]" } }).synthesise(ctx(), args("Hi")); // v2: tag not sent
+    expect(reqs[3]!.body.text).toBe("Hi");
     // tag words are dropped from the returned timings when the provider aligned them
     handler = (_q, res) =>
-      res.writeHead(200).end(JSON.stringify({ audio_base64: "AA==", alignment: { characters: [..."[a] Hi"], character_start_times_seconds: [0, 1, 2, 3, 4, 5], character_end_times_seconds: [1, 2, 3, 4, 5, 6] } }));
-    const r = await voice({ tags: { prefix: "[a]" } }).synthesise(ctx(), args("Hi"));
+      res.writeHead(200).end(JSON.stringify({ audio_base64: "SUQzAAAAAAAA", alignment: { characters: [..."[a] Hi"], character_start_times_seconds: [0, 1, 2, 3, 4, 5], character_end_times_seconds: [1, 2, 3, 4, 5, 6] } }));
+    const r = await voice({ model: "eleven_v3", tags: { prefix: "[a]" } }).synthesise(ctx(), args("Hi"));
     expect(r.wordTimings).toEqual([{ word: "Hi", startS: 4, endS: 6 }]);
   });
 
@@ -161,7 +170,7 @@ describe("elevenlabs voice", () => {
     const v = voice();
     expect(v.quote(args("नमस्ते"))).toBe(480); // 6 code points (18 bytes) x 80 micro-USD
     expect(v.quote(args("😀😀"))).toBe(160); // 2 code points
-    expect(voice({ tags: { prefix: "[a]" } }).quote(args("Hi"))).toBe(480); // "[a] Hi" = 6, tags included
+    expect(voice({ model: "eleven_v3", tags: { prefix: "[a]" } }).quote(args("Hi"))).toBe(480); // "[a] Hi" = 6, tags included
   });
 
   it("response_over_50MB_is_refused", async () => {
@@ -174,5 +183,24 @@ describe("elevenlabs voice", () => {
     const e = await voice().synthesise(ctx(), args("Hi")).catch((x) => x);
     expect(String(e)).toMatch(/50 MB/);
     expect(classifyError(e)).toBe("unknown");
+  });
+
+  it("empty_or_non_mp3_audio_is_unknown", async () => {
+    for (const audio of ["", "AAAA"]) {
+      handler = (_q, res) => res.writeHead(200).end(JSON.stringify({ ...en, audio_base64: audio }));
+      const e = await voice().synthesise(ctx(), args("Hi")).catch((x) => x);
+      expect(e).not.toBeInstanceOf(KnownFailure);
+      expect(classifyError(e)).toBe("unknown");
+    }
+  });
+
+  it("redirect_is_unknown_and_languages_follow_the_model", async () => {
+    handler = (_q, res) => res.writeHead(307, { location: "/elsewhere" }).end();
+    let opts: unknown;
+    const e = await voice({ fetch: (url, init, o) => ((opts = o), fetch(url.replace("https://api.elevenlabs.io", base), { ...init, redirect: "error" })) }).synthesise(ctx(), args("Hi")).catch((x) => x);
+    expect(classifyError(e)).toBe("unknown");
+    expect(opts).toEqual({ timeoutMs: 120_000, maxRedirects: 0 });
+    expect(voice().capability.languages).toEqual(["en", "hi", "ta"]);
+    expect(voice({ model: "eleven_v3" }).capability.languages).toEqual(["en", "hi", "ta", "te", "ml", "kn"]);
   });
 });

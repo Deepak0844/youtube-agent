@@ -1,7 +1,7 @@
 import type { PriceRule } from "@/server/core/media-catalog";
 
-/** Same shape as safeFetch with its options already bound (typed host api.elevenlabs.io). */
-export type SafeFetch = (url: string, init: RequestInit) => Promise<Response>;
+/** safeFetch bound to the typed host api.elevenlabs.io; the per-call options (no redirects, 120 s) are passed by the adapter. */
+export type SafeFetch = (url: string, init: RequestInit, opts: { timeoutMs: number; maxRedirects: number }) => Promise<Response>;
 
 /** v3 emotion tags: plain text put before the line. */
 export type DeliveryTags = { prefix?: string };
