@@ -40,6 +40,11 @@ export const AUDIT_EVENTS = {
   // Phase 3 asset ingest (detail: ingest job id, kind, asset id, whether it was a duplicate; never a file name or path)
   "asset.added": "An uploaded file was checked and added to the library",
   "asset.upload_refused": "An uploaded file was refused",
+  // Phase 3 assets page (detail: asset ids and counts only; never a file name or path)
+  "asset.kept": "An asset's Keep switch was changed",
+  "asset.deleted": "Assets were moved to the trash",
+  "asset.restored": "An asset was restored from the trash",
+  "asset.tagged": "Tags were added to assets",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",

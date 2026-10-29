@@ -76,7 +76,7 @@ const MAX_ITEMS = 50;
 const asObj = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
-async function mediaSigner(db: pg.Pool): Promise<((rel: string | null | undefined) => string | null) | null> {
+export async function mediaSigner(db: pg.Pool): Promise<((rel: string | null | undefined) => string | null) | null> {
   let key: Buffer | null = null;
   try {
     key = (await getCachedMediaKey(db)) ?? (await getOrCreateMediaKey(db));
