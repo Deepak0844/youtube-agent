@@ -21,7 +21,7 @@ export interface MediaJob {
 const COLS = `id, stage_run_id as "stageRunId", step, provider, kind, provider_job_id as "providerJobId", state,
   quote_micro_usd::float8 as "quoteMicroUsd", actual_micro_usd::float8 as "actualMicroUsd", artifact`;
 
-/** Records the job BEFORE any call. A second call for the same (stage run, step) gets the existing row and created=false. */
+/** Records the job BEFORE any call. Callers must compare job.provider/kind: an existing row is returned even if they differ. A second call for the same (stage run, step) gets the existing row and created=false. */
 export async function submitOnce(
   db: Db,
   key: { stageRunId: string; step: number },

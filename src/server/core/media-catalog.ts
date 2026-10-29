@@ -16,5 +16,7 @@ export function quote(rule: PriceRule, quantity: number): number {
   if (!Number.isFinite(quantity) || quantity < 0) throw new RangeError("quantity must be a finite number, 0 or more");
   if (rule.unit === "free") return 0;
   const divisor = rule.unit === "per_1k_chars" ? 1000 : 1;
-  return Math.ceil((rule.microUsd * quantity) / divisor);
+  const out = Math.ceil(+((rule.microUsd * quantity) / divisor).toFixed(6)); // toFixed drops float noise (1.1*10)
+  if (!Number.isSafeInteger(out)) throw new RangeError("quote is too large");
+  return out;
 }

@@ -44,7 +44,7 @@ create table if not exists media_routes (
   primary key (kind, scope)
 );
 
--- price '{}' = unrecorded. Free rules: edge, voicestudio, and the stock libraries (no per-call charge).
+-- price '{}' = unrecorded (coverr: free status unverified). Free rules: edge, voicestudio, pexels, pixabay, own_stock.
 insert into media_providers (id, kind, label, word_timings, local, price) values
   ('elevenlabs', 'voice', 'ElevenLabs voice', null, false, '{}'),
   ('elevenlabs_music', 'music', 'ElevenLabs music', null, false, '{}'),
@@ -60,6 +60,6 @@ insert into media_providers (id, kind, label, word_timings, local, price) values
   ('fal_image', 'image', 'fal images', null, false, '{}'),
   ('pexels', 'stock', 'Pexels', null, false, '{"unit":"free","microUsd":0}'),
   ('pixabay', 'stock', 'Pixabay', null, false, '{"unit":"free","microUsd":0}'),
-  ('coverr', 'stock', 'Coverr', null, false, '{"unit":"free","microUsd":0}'),
+  ('coverr', 'stock', 'Coverr', null, false, '{}'),
   ('own_stock', 'stock', 'Your own stock', null, true, '{"unit":"free","microUsd":0}')
 on conflict (id) do nothing;

@@ -8,6 +8,9 @@ describe("media price rules", () => {
     expect(quote({ unit: "per_second", microUsd: 7 }, 2.2)).toBe(16);
     expect(Number.isInteger(quote({ unit: "per_call", microUsd: 3 }, 0.1))).toBe(true);
     expect(quote({ unit: "free", microUsd: 0 }, 99)).toBe(0);
+    expect(quote({ unit: "per_second", microUsd: 1 }, 11.000000000000002)).toBe(11);
+    expect(quote({ unit: "per_call", microUsd: 10 }, 1.1)).toBe(11);
+    expect(() => quote({ unit: "per_call", microUsd: Number.MAX_SAFE_INTEGER }, 10)).toThrow(RangeError);
     for (const bad of [-1, NaN, Infinity]) expect(() => quote({ unit: "per_call", microUsd: 1 }, bad)).toThrow(RangeError);
   });
 
