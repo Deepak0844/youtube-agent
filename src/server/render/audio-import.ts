@@ -23,7 +23,7 @@ async function lines(deps: AudioImportDeps, dir: string, command: string, args: 
   return out;
 }
 
-async function measure(deps: AudioImportDeps, dir: string, file: string) {
+export async function measure(deps: AudioImportDeps, dir: string, file: string) {
   const dur = await lines(deps, dir, "ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=duration", "-of", "csv=p=0", file]);
   const log = await lines(deps, dir, "ffmpeg", ["-nostdin", "-hide_banner", "-protocol_whitelist", "file", "-i", file, "-af", "astats,loudnorm=print_format=json", "-f", "null", "-"]);
   const lufs = /"input_i"\s*:\s*"(-?[\d.]+|-inf)"/.exec(log.join("\n"));

@@ -7,7 +7,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { LANGS, type Lang } from "@/server/core/lang";
 import type { StageContext } from "@/server/core/stage-handler";
 import { BlockedAddressError } from "../net/safe-fetch";
-import { MODELS, type Alignment, type ElevenLabsDeps } from "./eleven-types";
+import { MODELS, type Alignment, type ElevenLabsDeps, type SafeFetch } from "./eleven-types";
 import type { VoiceProvider, WordTiming } from "./index";
 
 const HOST = "https://api.elevenlabs.io";
@@ -24,7 +24,7 @@ function tagPrefix(raw: string | undefined): string {
 
 // v2 multilingual covers en/hi/ta; v3 covers every language we speak.
 const V2_LANGS: readonly Lang[] = ["en", "hi", "ta"];
-const isMpeg = (b: Buffer) => b.subarray(0, 3).toString("latin1") === "ID3" || (b.length > 1 && b[0] === 0xff && (b[1]! & 0xe0) === 0xe0);
+export const isMpeg = (b: Buffer) => b.subarray(0, 3).toString("latin1") === "ID3" || (b.length > 1 && b[0] === 0xff && (b[1]! & 0xe0) === 0xe0);
 
 /** Character times to word times: words split on whitespace (works for Indic scripts, no spaces inside a word). */
 export function foldWords(a: Alignment): WordTiming[] {
@@ -59,7 +59,7 @@ function parseAlignment(v: unknown): Alignment {
   return a;
 }
 
-async function readCapped(res: Response): Promise<Buffer> {
+export async function readCapped(res: Response): Promise<Buffer> {
   const declared = Number(res.headers.get("content-length"));
   if (declared > MAX_BODY) {
     await res.body?.cancel().catch(() => undefined);
@@ -82,6 +82,30 @@ async function readCapped(res: Response): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+/** One POST to the ElevenLabs typed host. 4xx (not 408) = rejected before work (429 retried by the classifier, the rest permanent); 5xx, 408 and socket loss after send = unknown. */
+export async function elevenPost(fetch: SafeFetch, key: string, signal: AbortSignal, pathQuery: string, body: unknown, accept: string): Promise<Response> {
+  let res: Response;
+  try {
+    // maxRedirects 0: a redirect would re-POST (a second paid request); it surfaces as an error after send = unknown.
+    res = await fetch(`${HOST}${pathQuery}`, {
+      method: "POST",
+      headers: { "xi-api-key": key, "content-type": "application/json", accept },
+      body: JSON.stringify(body),
+      signal,
+    }, { timeoutMs: 120_000, maxRedirects: 0 });
+  } catch (err) {
+    if (signal.aborted) throw signal.reason; // cancel/timeout after send: unknown
+    if (err instanceof BlockedAddressError) throw new NotProcessedError("ElevenLabs address was blocked.");
+    const code = (err as { cause?: { code?: unknown } })?.cause?.code;
+    if (typeof code === "string" && BEFORE_SEND.has(code)) throw new NotProcessedError("ElevenLabs could not be reached.", { code });
+    throw new Error("ElevenLabs request failed after it was sent."); // fixed text: no cause, no URL, no key
+  }
+  if (res.ok) return res;
+  await res.body?.cancel().catch(() => undefined);
+  if (res.status >= 400 && res.status <= 499 && res.status !== 408) throw new NotProcessedError(`ElevenLabs refused the request (${res.status}).`, { status: res.status });
+  throw new Error(`ElevenLabs answered ${res.status}; the outcome is unknown.`);
+}
+
 export function createElevenLabsVoice(deps: ElevenLabsDeps): VoiceProvider {
   const prefix = tagPrefix(deps.tags?.prefix);
   // Emotion tags are a v3 feature: other models would speak "[excited]" aloud.
@@ -102,30 +126,6 @@ export function createElevenLabsVoice(deps: ElevenLabsDeps): VoiceProvider {
     return priceQuote(price, Array.from(sent(a.text, model)).length);
   };
 
-  async function request(key: string, signal: AbortSignal, model: string, voice: string, text: string): Promise<Response> {
-    let res: Response;
-    try {
-      // maxRedirects 0: a redirect would re-POST (a second paid request); it surfaces as an error after send = unknown.
-      res = await deps.fetch(`${HOST}/v1/text-to-speech/${voice}/with-timestamps?output_format=mp3_44100_128`, {
-        method: "POST",
-        headers: { "xi-api-key": key, "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({ text, model_id: model }),
-        signal,
-      }, { timeoutMs: 120_000, maxRedirects: 0 });
-    } catch (err) {
-      if (signal.aborted) throw signal.reason; // cancel/timeout after send: unknown
-      if (err instanceof BlockedAddressError) throw new NotProcessedError("ElevenLabs address was blocked.");
-      const code = (err as { cause?: { code?: unknown } })?.cause?.code;
-      if (typeof code === "string" && BEFORE_SEND.has(code)) throw new NotProcessedError("ElevenLabs could not be reached.", { code });
-      throw new Error("ElevenLabs request failed after it was sent."); // fixed text: no cause, no URL, no key
-    }
-    if (res.ok) return res;
-    await res.body?.cancel().catch(() => undefined);
-    // 4xx (not 408) = rejected before work (429 retried by the classifier, the rest permanent). 5xx may follow started work: unknown.
-    if (res.status >= 400 && res.status <= 499 && res.status !== 408) throw new NotProcessedError(`ElevenLabs refused the request (${res.status}).`, { status: res.status });
-    throw new Error(`ElevenLabs answered ${res.status}; the outcome is unknown.`);
-  }
-
   return {
     capability: { id: "elevenlabs", wordTimings: "native", local: false, languages: deps.model === "eleven_v3" ? [...LANGS] : [...V2_LANGS], maxChars: 3500, formats: ["mp3"] },
     quote,
@@ -141,7 +141,7 @@ export function createElevenLabsVoice(deps: ElevenLabsDeps): VoiceProvider {
           throw new NotProcessedError("The ElevenLabs key could not be read.");
         }
         if (!key) throw new NotProcessedError("No ElevenLabs key is saved.");
-        const res = await request(key, signal, model, voice, text);
+        const res = await elevenPost(deps.fetch, key, signal, `/v1/text-to-speech/${voice}/with-timestamps?output_format=mp3_44100_128`, { text, model_id: model }, "application/json");
         const body = await readCapped(res);
         const json = JSON.parse(body.toString("utf8")) as { audio_base64?: unknown; alignment?: unknown };
         if (typeof json.audio_base64 !== "string" || json.audio_base64 === "") throw new Error("ElevenLabs returned no audio.");
