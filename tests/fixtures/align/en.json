@@ -1,0 +1,13 @@
+{
+  "script": ["Hello", "friends", "today", "we", "will", "talk", "about", "the", "moon"],
+  "recognised": [
+    { "word": "hello", "startS": 0.3, "endS": 0.7, "p": 0.98 },
+    { "word": "friend", "startS": 0.7, "endS": 1.2, "p": 0.9 },
+    { "word": "today", "startS": 1.2, "endS": 1.8, "p": 0.95 },
+    { "word": "will", "startS": 2.3, "endS": 2.6, "p": 0.97 },
+    { "word": "talk", "startS": 2.6, "endS": 3.0, "p": 0.96 },
+    { "word": "about", "startS": 3.0, "endS": 3.4, "p": 0.99 },
+    { "word": "the", "startS": 3.4, "endS": 3.6, "p": 0.99 },
+    { "word": "moon", "startS": 3.6, "endS": 4.2, "p": 0.99 }
+  ]
+}

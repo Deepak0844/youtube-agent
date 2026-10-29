@@ -7,7 +7,7 @@ import type { GateId } from "@/server/core/gates";
 
 export type VideoFormat = "short" | "long";
 export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai";
-export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration";
+export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions";
 
 export const STAGE_NAMES = ["draft", "build", "generate", "tts", "render", "voice", "sfx", "qa"] as const;
 export type StageName = (typeof STAGE_NAMES)[number];
