@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import { assertSameOrigin } from "@/lib/auth/origin";
 import { requireOwnerApi } from "@/lib/auth/require-owner";
@@ -62,10 +63,11 @@ export async function POST(request: Request) {
     return fail(413, "too_large", "The file is larger than allowed.");
   }
 
+  const dir = path.join(storageRoot(), "assets-incoming");
   let kind: "image" | "audio" = "image";
   try {
     const r = await sinkUpload(request.body, {
-      dir: path.join(storageRoot(), "assets-incoming"),
+      dir,
       id,
       maxBytes: declared,
       signal: request.signal,
@@ -80,10 +82,11 @@ export async function POST(request: Request) {
         return declared;
       },
     });
-    await markQueued(pool, id, kind, r.bytes);
+    if (!(await markQueued(pool, id, kind, r.bytes))) throw new Error("upload row is no longer receiving");
     await enqueue(id);
     return Response.json({ id, status: "queued" }, { status: 201, headers: noStore });
   } catch (err) {
+    await rm(path.join(dir, id), { force: true }).catch(() => undefined); // a stored file with no queued job would never be cleaned up
     const refused = err instanceof Refused ? err : err instanceof UploadTooLargeError ? new Refused("The file is larger than allowed.", 413) : null;
     await markRejected(pool, id, refused?.message ?? "The upload was interrupted. Try again.").catch(() => undefined);
     return refused ? fail(refused.status, refused.status === 413 ? "too_large" : "rejected", refused.message) : fail(500, "upload_failed");

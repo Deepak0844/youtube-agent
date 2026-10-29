@@ -103,8 +103,9 @@ export async function reserveIngestJob(pool: pg.Pool, a: ReserveInput, limits: A
 }
 
 /** The whole file arrived and passed the sniff: the job now waits for the worker. */
-export async function markQueued(db: Db, id: string, kind: "image" | "audio", bytes: number): Promise<void> {
-  await db.query("update ingest_jobs set status = 'queued', kind = $2, bytes = $3, updated_at = now() where id = $1 and status = 'receiving'", [id, kind, bytes]);
+export async function markQueued(db: Db, id: string, kind: "image" | "audio", bytes: number): Promise<boolean> {
+  const r = await db.query("update ingest_jobs set status = 'queued', kind = $2, bytes = $3, updated_at = now() where id = $1 and status = 'receiving'", [id, kind, bytes]);
+  return r.rowCount === 1;
 }
 
 /** Ends a job that has not finished. `reason` is the plain sentence the owner reads; the space it held is released. */
@@ -127,9 +128,29 @@ export async function claimIngestJob(db: Db, id: string): Promise<IngestJob | nu
   return rows[0] ? toJob(rows[0]) : null;
 }
 
-/** Worker start only (one worker holds the lock): a job left `running` by a dead worker goes back to the queue; its file is still there. */
-export async function requeueRunning(db: Db): Promise<void> {
-  await db.query("update ingest_jobs set status = 'queued', updated_at = now() where status = 'running'");
+/** Back to the queue (the spooled file is still there). Only a `running` row moves. */
+export async function requeueJob(db: Db, id: string): Promise<void> {
+  await db.query("update ingest_jobs set status = 'queued', updated_at = now() where id = $1 and status = 'running'", [id]);
+}
+
+export async function runningIngestIds(db: Db): Promise<string[]> {
+  const { rows } = await db.query<{ id: string }>("select id from ingest_jobs where status = 'running'");
+  return rows.map((r) => r.id);
+}
+
+/** The asset this job already registered, if any (its files live under assets/<jobId>/). */
+export async function assetForJob(db: Db, jobId: string): Promise<string | null> {
+  const { rows } = await db.query<{ id: string }>("select id from assets where storage_ref like $1 limit 1", [`assets/${jobId}/%`]);
+  return rows[0]?.id ?? null;
+}
+
+/** Uploads that never finished arriving (the web process died) are ended; returns their ids so the caller can remove partial files. */
+export async function expireReceiving(db: Db): Promise<string[]> {
+  const { rows } = await db.query<{ id: string }>(
+    `update ingest_jobs set status = 'rejected', reason = 'The upload was interrupted. Try again.', bytes = 0, updated_at = now()
+     where status = 'receiving' and created_at < now() - interval '${RECEIVING_HOLD}' returning id`,
+  );
+  return rows.map((r) => r.id);
 }
 
 export async function queuedIngestIds(db: Db): Promise<string[]> {

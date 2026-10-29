@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type pg from "pg";
 import { createDraftHandler } from "@/server/authoring/draft";
@@ -9,7 +9,7 @@ import { createSemaphore } from "@/server/core/semaphore";
 import type { StageHandler } from "@/server/core/stage-handler";
 import { AssetRefused, registerAsset } from "@/server/db/assets";
 import { recordAudit } from "@/server/db/audit";
-import { claimIngestJob, loadLimits, markDone, markRejected } from "@/server/db/ingest-jobs";
+import { assetForJob, claimIngestJob, expireReceiving, loadLimits, markDone, markRejected, requeueJob, runningIngestIds } from "@/server/db/ingest-jobs";
 import { loadKeyring } from "@/server/db/master-key";
 import { createLlmClient } from "@/server/llm/client";
 import { defaultModelDeps } from "@/server/llm/default-deps";
@@ -100,14 +100,50 @@ export function refuseDryRunVideos(pool: pg.Pool, inner: StageHandler): StageHan
 
 class IngestRefused extends Error {}
 
+const exists = (f: string): Promise<boolean> => stat(f).then(() => true, () => false);
+const INTERRUPTED = "Interrupted. Upload it again.";
+
+/**
+ * Worker start (one worker holds the lock, so a `running` row belongs to a dead one). The asset may already be registered
+ * (done); else if the spooled file is still there the job goes back to the queue; else the bytes are gone and the owner
+ * is asked to upload again. Never deletes files.
+ */
+export async function recoverRunningIngest(pool: pg.Pool, root: string): Promise<void> {
+  for (const id of await runningIngestIds(pool)) {
+    if (await assetForJob(pool, id)) await finishRegistered(pool, id);
+    else if (await exists(path.join(root, "assets-incoming", id))) await requeueJob(pool, id);
+    else await markRejected(pool, id, INTERRUPTED);
+  }
+}
+
+/** Ends upload rows that never finished arriving and removes their partial files. */
+export async function sweepStaleUploads(pool: pg.Pool, root: string): Promise<void> {
+  for (const id of await expireReceiving(pool)) {
+    await rm(path.join(root, "assets-incoming", `${id}.part`), { force: true });
+    await rm(path.join(root, "assets-incoming", id), { force: true });
+  }
+}
+
+async function finishRegistered(pool: pg.Pool, jobId: string): Promise<void> {
+  const assetId = await assetForJob(pool, jobId);
+  if (!assetId) return;
+  await markDone(pool, jobId, assetId);
+  await recordAudit(pool, "asset.added", { job: jobId, assetId, recovered: true });
+}
+
 /**
  * The `ingest` job: checks one spooled upload in the sandbox and writes the assets row, or rejects it with a plain reason.
- * Redelivery-safe: only a `queued` row can be claimed, so a duplicate or replayed job does nothing. The spooled file is
- * always gone afterwards (ingest deletes it), and nothing here builds a path from the file name: both folders are job ids.
+ * Redelivery-safe: only a `queued` row can be claimed, so a duplicate or replayed job does nothing. Nothing here builds a
+ * path from the file name: both folders are job ids. The assets row and the job's `done` are one transaction, and once
+ * the row exists its files are never deleted here.
  */
 export async function handleIngestJob(pool: pg.Pool, deps: IngestDeps & { root: string }, jobId: string): Promise<{ ran: boolean }> {
   const job = await claimIngestJob(pool, jobId);
   if (!job || !job.kind) return { ran: false };
+  if (await assetForJob(pool, job.id)) {
+    await finishRegistered(pool, job.id); // a run that registered the asset but died before finishing: nothing to redo
+    return { ran: true };
+  }
   const src = path.join(deps.root, "assets-incoming", job.id);
   const rel = `assets/${job.id}`;
   const dest = path.join(deps.root, rel);
@@ -123,20 +159,40 @@ export async function handleIngestJob(pool: pg.Pool, deps: IngestDeps & { root: 
     if (!r.ok) throw new IngestRefused(r.message);
     const refs = Object.fromEntries(Object.entries(r.files).map(([role, f]) => [role, `${rel}/${path.basename(f)}`]));
     const { main, ...derivedRefs } = refs;
-    ({ asset: { id: assetId }, duplicate } = await registerAsset(pool, {
-      kind: r.kind, originalName: job.originalName, mime: r.mime, bytes: r.bytes, width: r.width, height: r.height, durationS: r.durationS,
-      sha256: r.sha256, storageRef: main!, derivedRefs, tags: job.tags, caption: job.caption, rights: job.rights, keep: job.keep,
-      containsPerson: job.containsPerson, voiceCloneReference: job.voiceClone,
-    }));
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const reg = await registerAsset(client, {
+        kind: r.kind, originalName: job.originalName, mime: r.mime, bytes: r.bytes, width: r.width, height: r.height, durationS: r.durationS,
+        sha256: r.sha256, storageRef: main!, derivedRefs, tags: job.tags, caption: job.caption, rights: job.rights, keep: job.keep,
+        containsPerson: job.containsPerson, voiceCloneReference: job.voiceClone,
+      });
+      assetId = reg.asset.id;
+      duplicate = reg.duplicate;
+      await markDone(client, job.id, assetId);
+      await client.query("commit");
+    } catch (e) {
+      await client.query("rollback").catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
   } catch (err) {
+    // Nothing was registered (the transaction is all-or-nothing), so this run's output can go.
     await rm(dest, { recursive: true, force: true });
-    await rm(src, { force: true });
-    await markRejected(pool, job.id, err instanceof AssetRefused || err instanceof IngestRefused ? err.message : "The file could not be processed.");
-    await recordAudit(pool, "asset.upload_refused", { job: job.id, kind: job.kind });
+    if (err instanceof AssetRefused || err instanceof IngestRefused) {
+      await rm(src, { force: true });
+      await markRejected(pool, job.id, err.message);
+      await recordAudit(pool, "asset.upload_refused", { job: job.id, kind: job.kind });
+    } else if (await exists(src)) {
+      await requeueJob(pool, job.id); // a transient failure before the file was touched: try again
+    } else {
+      await markRejected(pool, job.id, INTERRUPTED);
+      await recordAudit(pool, "asset.upload_refused", { job: job.id, kind: job.kind });
+    }
     return { ran: true };
   }
-  if (duplicate) await rm(dest, { recursive: true, force: true }); // the first copy's files stay; this run's identical outputs are not needed
-  await markDone(pool, job.id, assetId);
-  await recordAudit(pool, "asset.added", { job: job.id, kind: job.kind, assetId, duplicate });
+  if (duplicate) await rm(dest, { recursive: true, force: true }).catch(() => undefined); // the first copy's files stay
+  await recordAudit(pool, "asset.added", { job: job.id, kind: job.kind, assetId, duplicate }).catch(() => undefined);
   return { ran: true };
 }

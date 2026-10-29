@@ -27,9 +27,9 @@ import { pruneAgentSteps } from "@/server/db/agent-steps";
 import { emitEvent, pruneEvents, type EventType } from "@/server/db/events";
 import { openStageLog } from "@/server/logs/stage-log";
 import { storageRoot } from "@/server/db/system-status";
-import { queuedIngestIds, requeueRunning } from "@/server/db/ingest-jobs";
+import { queuedIngestIds } from "@/server/db/ingest-jobs";
 import { runChild } from "@/server/render/child";
-import { createStageDispatcher, handleIngestJob, type StageHandlers } from "./handlers";
+import { createStageDispatcher, handleIngestJob, recoverRunningIngest, sweepStaleUploads, type StageHandlers } from "./handlers";
 import { startReconcileLoop } from "./reconcile-loop";
 
 // Composition seams for boot cleanup (09), event retention/transitions (11), and notifications (12).
@@ -261,6 +261,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
           guard("ingest sweep", async () => {
             if (!ingestQueue || stopping) return;
             for (const id of await queuedIngestIds(db)) await ingestQueue.enqueueIngest(id);
+            await sweepStaleUploads(db, opts.storageRoot ?? storageRoot());
           }),
           guard("mark stalled uploads", () => hooks.markStalled(db)),
           guard("prune", () => hooks.prune(db)),
@@ -301,8 +302,8 @@ export function startRuntime(opts: WorkerOptions = {}) {
               const iq = await hooks.connectIngestQueue(redisUrl, log);
               if (stopping) { void Promise.resolve().then(() => iq.close(true)).catch(() => {}); return; }
               ingestQueue = iq;
-              // One worker holds the lock, so a row still `running` belongs to a dead one: back to queued (its file is still there).
-              await requeueRunning(db);
+              // One worker holds the lock, so a row still `running` belongs to a dead one: finished, requeued or ended.
+              await recoverRunningIngest(db, opts.storageRoot ?? storageRoot());
               ingestConsumer = iq.startWorker(async (jobId) => {
                 if (stopping) throw new Error("worker is stopping; the ingest job was not started");
                 const whole = handleIngestJob(db, { root: opts.storageRoot ?? storageRoot(), runChild: (spec) => runChild(spec, { registry: childRegistry }) }, jobId).then(() => undefined);

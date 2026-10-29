@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
@@ -6,11 +6,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { RIGHTS_TEXT } from "@/server/core/asset-rules";
 import { registerAsset } from "@/server/db/assets";
 import { login } from "@/server/db/auth";
-import { claimIngestJob, requeueRunning } from "@/server/db/ingest-jobs";
+import { assetForJob, claimIngestJob } from "@/server/db/ingest-jobs";
 import { consumeSetupLink, createSetupLink } from "@/server/db/owner";
 import { runChild } from "@/server/render/child";
 import { createJobQueue } from "@/server/queue/job-queue";
-import { handleIngestJob } from "@/worker/handlers";
+import { handleIngestJob, recoverRunningIngest, sweepStaleUploads } from "@/worker/handlers";
 import { GET as statusGet } from "@/app/api/uploads/[id]/route";
 import { POST } from "@/app/api/uploads/route";
 import { withTestDb, type TestDb } from "../support/db";
@@ -203,10 +203,56 @@ describe("POST /api/uploads", () => {
     const second = await (await post(await sharp({ create: { width: 9, height: 9, channels: 3, background: "#00ff00" } }).png().toBuffer())).json();
     expect(await claimIngestJob(db.pool, second.id)).not.toBeNull(); // worker 1 claimed, then died
     expect((await handleIngestJob(db.pool, runner, second.id)).ran).toBe(false); // nothing else may run it meanwhile
-    await requeueRunning(db.pool);
+    await recoverRunningIngest(db.pool, root);
     expect((await handleIngestJob(db.pool, runner, second.id)).ran).toBe(true);
     expect((await status(second.id).then((r) => r.json())).status).toBe("done");
     expect((await db.pool.query("select count(*)::int n from assets")).rows[0].n).toBe(2);
+  });
+
+  it("a_crash_after_the_asset_was_registered_finishes_done_with_files_intact", async () => {
+    const { id } = await (await post(await png())).json();
+    expect(await claimIngestJob(db.pool, id)).not.toBeNull();
+    // the dead worker had ingested (source deleted) and registered the asset, but never marked the job done
+    rmSync(path.join(incoming(), id));
+    mkdirSync(path.join(root, "assets", id), { recursive: true });
+    writeFileSync(path.join(root, "assets", id, "main.png"), "x");
+    await registerAsset(db.pool, {
+      kind: "image", originalName: "a.png", mime: "image/png", bytes: 1, sha256: "b".repeat(64), storageRef: `assets/${id}/main.png`,
+      rights: { attestations: [{ at: new Date().toISOString(), text: RIGHTS_TEXT }] },
+    });
+    await recoverRunningIngest(db.pool, root);
+    expect(await (await status(id)).json()).toMatchObject({ status: "done" });
+    expect(existsSync(path.join(root, "assets", id, "main.png"))).toBe(true);
+    // even if the row went back to the queue, a rerun redoes nothing and keeps the files
+    await db.pool.query("update ingest_jobs set status = 'queued' where id = $1", [id]);
+    expect((await handleIngestJob(db.pool, runner, id)).ran).toBe(true);
+    expect(existsSync(path.join(root, "assets", id, "main.png"))).toBe(true);
+    expect((await db.pool.query("select count(*)::int n from assets")).rows[0].n).toBe(1);
+    expect(await assetForJob(db.pool, id)).not.toBeNull();
+  });
+
+  it("a_running_job_whose_file_is_gone_asks_for_a_new_upload", async () => {
+    const { id } = await (await post(await png())).json();
+    await claimIngestJob(db.pool, id);
+    rmSync(path.join(incoming(), id));
+    await recoverRunningIngest(db.pool, root);
+    const j = await (await status(id)).json();
+    expect(j).toMatchObject({ status: "rejected" });
+    expect(j.reason).toContain("Upload it again");
+  });
+
+  it("uploads_that_never_finished_arriving_are_ended_and_cleaned", async () => {
+    const id = crypto.randomUUID();
+    await db.pool.query(
+      `insert into ingest_jobs (id, batch_id, status, original_name, contains_person, voice_clone, rights, created_at)
+       values ($1, $2, 'receiving', 'x', false, false, '{"attestations":[]}', now() - interval '2 hours')`,
+      [id, batch],
+    );
+    mkdirSync(incoming(), { recursive: true });
+    writeFileSync(path.join(incoming(), `${id}.part`), "partial");
+    await sweepStaleUploads(db.pool, root);
+    expect(listIncoming()).toEqual([]);
+    expect(await (await status(id)).json()).toMatchObject({ status: "rejected", reason: "The upload was interrupted. Try again." });
   });
 
   it("the_ingest_queue_delivers_a_duplicate_job_once", async () => {

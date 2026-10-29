@@ -51,7 +51,7 @@ const MESSAGES: Record<string, string> = {
   no_audio: "This file has no audio in it.",
   too_long: "The recording is longer than the allowed length.",
   probe_failed: "The audio could not be read; it may be damaged.",
-  failed: "The file could not be processed.",
+  failed: "The file could not be processed. Upload it again.",
 };
 const reject = (reason: IngestRejection, message?: string): IngestResult => ({
   ok: false,
