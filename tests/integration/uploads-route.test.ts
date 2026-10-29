@@ -231,6 +231,20 @@ describe("POST /api/uploads", () => {
     expect(await assetForJob(db.pool, id)).not.toBeNull();
   });
 
+  it("a_job_that_keeps_failing_for_other_reasons_ends_after_three_tries", async () => {
+    const { id } = await (await post(await png())).json();
+    writeFileSync(path.join(root, "assets"), "not a folder"); // every try fails to make its output folder (not the file's fault)
+    for (const want of ["queued", "queued", "rejected"]) {
+      expect((await handleIngestJob(db.pool, runner, id)).ran).toBe(true);
+      expect((await (await status(id)).json()).status).toBe(want);
+    }
+    expect((await handleIngestJob(db.pool, runner, id)).ran).toBe(false); // not requeued again
+    const j = await (await status(id)).json();
+    expect(j.reason).toBe("Could not be processed after several tries. Upload it again.");
+    expect(listIncoming()).toEqual([]);
+    rmSync(path.join(root, "assets"), { force: true });
+  });
+
   it("a_running_job_whose_file_is_gone_asks_for_a_new_upload", async () => {
     const { id } = await (await post(await png())).json();
     await claimIngestJob(db.pool, id);

@@ -10,6 +10,10 @@ export const RATE_PER_MINUTE = 60;
 // A row stuck in `receiving` (the web process died mid-upload) stops holding storage after this long.
 const RECEIVING_HOLD = "1 hour";
 
+// A job that fails for a reason that is not the file's fault is put back this many times in total (the engine's own
+// default stage tries, engine.retry_attempts = 3), then ended. A constant: this queue has no settings row of its own.
+export const MAX_INGEST_TRIES = 3;
+
 export type IngestStatus = "receiving" | "queued" | "running" | "done" | "rejected";
 export interface IngestJob {
   id: string;
@@ -25,15 +29,16 @@ export interface IngestJob {
   rights: Rights;
   assetId: string | null;
   reason: string | null;
+  attempts: number;
 }
 
 interface Row {
   id: string; batch_id: string; status: IngestStatus; kind: IngestJob["kind"]; original_name: string; tags: string[]; caption: string | null;
-  keep: boolean; contains_person: boolean; voice_clone: boolean; rights: Rights; asset_id: string | null; reason: string | null;
+  keep: boolean; contains_person: boolean; voice_clone: boolean; rights: Rights; asset_id: string | null; reason: string | null; attempts: number;
 }
 const toJob = (r: Row): IngestJob => ({
   id: r.id, batchId: r.batch_id, status: r.status, kind: r.kind, originalName: r.original_name, tags: r.tags, caption: r.caption, keep: r.keep,
-  containsPerson: r.contains_person, voiceClone: r.voice_clone, rights: r.rights, assetId: r.asset_id, reason: r.reason,
+  containsPerson: r.contains_person, voiceClone: r.voice_clone, rights: r.rights, assetId: r.asset_id, reason: r.reason, attempts: r.attempts,
 });
 
 export async function loadLimits(db: Db): Promise<AssetLimits> {
@@ -124,7 +129,7 @@ export async function getIngestJob(db: Db, id: string): Promise<IngestJob | null
 
 /** The one-shot start: only a `queued` row can be claimed, so a redelivered or duplicate job finds nothing and does nothing. */
 export async function claimIngestJob(db: Db, id: string): Promise<IngestJob | null> {
-  const { rows } = await db.query<Row>("update ingest_jobs set status = 'running', updated_at = now() where id = $1 and status = 'queued' returning *", [id]);
+  const { rows } = await db.query<Row>("update ingest_jobs set status = 'running', attempts = attempts + 1, updated_at = now() where id = $1 and status = 'queued' returning *", [id]);
   return rows[0] ? toJob(rows[0]) : null;
 }
 

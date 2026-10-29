@@ -9,7 +9,7 @@ import { createSemaphore } from "@/server/core/semaphore";
 import type { StageHandler } from "@/server/core/stage-handler";
 import { AssetRefused, registerAsset } from "@/server/db/assets";
 import { recordAudit } from "@/server/db/audit";
-import { assetForJob, claimIngestJob, expireReceiving, loadLimits, markDone, markRejected, requeueJob, runningIngestIds } from "@/server/db/ingest-jobs";
+import { assetForJob, claimIngestJob, expireReceiving, loadLimits, MAX_INGEST_TRIES, markDone, markRejected, requeueJob, runningIngestIds } from "@/server/db/ingest-jobs";
 import { loadKeyring } from "@/server/db/master-key";
 import { createLlmClient } from "@/server/llm/client";
 import { defaultModelDeps } from "@/server/llm/default-deps";
@@ -179,13 +179,17 @@ export async function handleIngestJob(pool: pg.Pool, deps: IngestDeps & { root: 
     }
   } catch (err) {
     // Nothing was registered (the transaction is all-or-nothing), so this run's output can go.
-    await rm(dest, { recursive: true, force: true });
+    await rm(dest, { recursive: true, force: true }).catch(() => undefined); // cleanup must not hide the real failure
     if (err instanceof AssetRefused || err instanceof IngestRefused) {
       await rm(src, { force: true });
       await markRejected(pool, job.id, err.message);
       await recordAudit(pool, "asset.upload_refused", { job: job.id, kind: job.kind });
-    } else if (await exists(src)) {
+    } else if (await exists(src) && job.attempts < MAX_INGEST_TRIES) {
       await requeueJob(pool, job.id); // a transient failure before the file was touched: try again
+    } else if (await exists(src)) {
+      await rm(src, { force: true });
+      await markRejected(pool, job.id, "Could not be processed after several tries. Upload it again.");
+      await recordAudit(pool, "asset.upload_refused", { job: job.id, kind: job.kind });
     } else {
       await markRejected(pool, job.id, INTERRUPTED);
       await recordAudit(pool, "asset.upload_refused", { job: job.id, kind: job.kind });

@@ -17,6 +17,7 @@ create table ingest_jobs (
   rights jsonb not null,
   asset_id uuid references assets(id),
   reason text,
+  attempts int not null default 0, -- claims so far; the worker stops retrying a job that keeps failing
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
