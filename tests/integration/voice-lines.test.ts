@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -65,7 +65,7 @@ describe("voice line cache", () => {
     expect(third[0]).toBe(first[0]);
     expect(third[1]).not.toBe(first[1]);
     expect(third[2]).toBe(first[2]);
-    expect(first[0]).toMatch(/^voice-cache\/[0-9a-f]{2}\/[0-9a-f]{64}\.wav$/);
+    expect(first[0]).toMatch(/^voice-cache\/[0-9a-f]{2}\/[0-9a-f]{64}\.[0-9a-f]{12}\.wav$/);
     expect((await db.pool.query("select 1 from voice_lines")).rowCount).toBe(4);
   });
 
@@ -96,6 +96,20 @@ describe("voice line cache", () => {
     const stored = (await db.pool.query<{ sha256: string; file_path: string }>("select sha256, file_path from voice_lines")).rows;
     expect(stored).toHaveLength(1);
     expect(sha(await readFile(path.join(root, stored[0]!.file_path)))).toBe(stored[0]!.sha256);
+    expect(readdirSync(path.join(root, "voice-cache", k.slice(0, 2)))).toEqual([path.basename(stored[0]!.file_path)]); // loser's file removed
+  });
+
+  it("an_orphan_file_for_the_key_does_not_block_a_later_miss", async () => {
+    const k = "ef".repeat(32);
+    mkdirSync(path.join(root, "voice-cache/ef"), { recursive: true });
+    writeFileSync(path.join(root, `voice-cache/ef/${k}.wav`), "orphan from a crashed writer");
+    const src = path.join(root, "src-orphan.wav");
+    writeFileSync(src, "fresh");
+    const rel = await placeLineFile(root, k, "wav", src);
+    const r = await storeLine(db.pool, root, row(k, rel, 5, "fresh"));
+    expect(r.created).toBe(true);
+    expect(rel).toBe(`voice-cache/ef/${k}.${sha("fresh").slice(0, 12)}.wav`);
+    expect((await lookupLine(db.pool, k))?.filePath).toBe(rel);
   });
 
   it("app_role_may_only_touch_last_used_at", async () => {

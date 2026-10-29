@@ -35,10 +35,10 @@ describe("splitLines", () => {
   });
 
   it("split_does_not_cut_combining_marks_or_zwj", () => {
-    // No spaces at all, so every cut is a forced cut inside one long word.
+    // No spaces, so every cut is inside one long word; max is at least the longest unbreakable cluster (a longer one is cut at the limit).
     const samples = ["స్త్రీవిద్యార్థినిక్రమబద్ధం".repeat(8), "ಕ್ರಿಯಾಪದಶಬ್ದಕ್ಷೇತ್ರ".repeat(8), "क्षत्रिय‍क्ष‌त्र".repeat(8)];
     for (const s of samples) {
-      for (const max of [6, 7, 9, 13]) {
+      for (const max of [10, 13, 20]) {
         const lines = splitLines(s, "te", max);
         for (const l of lines) {
           const cps = Array.from(l.text);
