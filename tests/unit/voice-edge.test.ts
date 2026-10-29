@@ -85,6 +85,20 @@ describe("edge voice", () => {
     expect(err).not.toBeInstanceOf(KnownFailure);
   });
 
+  it("audio_without_word_events_returns_null_timings_to_be_aligned", async () => {
+    const r = await say(scripted((s) => { s.onmessage?.({ data: audioFrame([1, 2]) }); s.onmessage?.({ data: TURN_END }); }).connect);
+    expect(r.wordTimings).toBeNull();
+    expect(r.timingsKind).toBe("aligned");
+    expect([...readFileSync(r.audioPath)]).toEqual([1, 2]);
+  });
+
+  it("unknown_voice_is_refused_without_connecting", async () => {
+    let connected = false;
+    const p = createEdgeVoice({ connect: () => { connected = true; throw new Error("x"); } });
+    await expect(p.synthesise(ctx(), { text: "a", lang: "en", voice: "evil'><x" })).rejects.toThrow("unsupported voice");
+    expect(connected).toBe(false);
+  });
+
   it("all_six_languages_have_a_default_voice", () => {
     for (const l of LANGS) expect(EDGE_VOICES[l]).toMatch(new RegExp(`^${l}-[A-Z]{2}-\\w+Neural$`));
   });

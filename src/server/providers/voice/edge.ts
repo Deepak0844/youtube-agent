@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { EDGE_VOICES } from "@/server/core/edge-voices";
 import { LANGS } from "@/server/core/lang";
 import { KnownFailure } from "@/server/core/paid-call";
 import { StageAbort, type StageContext } from "@/server/core/stage-handler";
@@ -59,9 +60,10 @@ export function createEdgeVoice(deps: {
   const now = deps.now ?? (() => new Date());
   return {
     // maxChars is kept small: the service takes about 4 KB of SSML per request and Indic text is 3 bytes a letter.
-    capability: { id: "edge", wordTimings: "native", local: false, languages: [...LANGS], maxChars: 1000, formats: ["mp3"] },
+    capability: { id: "edge", wordTimings: "aligned", local: false, languages: [...LANGS], maxChars: 1000, formats: ["mp3"] },
     quote: () => 0,
     async synthesise(ctx: StageContext, a) {
+      if (!Object.values(EDGE_VOICES).includes(a.voice)) throw new KnownFailure("unsupported voice");
       const t0 = now();
       const url = `${URL_BASE}?TrustedClientToken=${TOKEN}&Sec-MS-GEC=${secMsGec(t0)}&Sec-MS-GEC-Version=1-${CHROMIUM}&ConnectionId=${randomUUID().replaceAll("-", "")}`;
       const ssml =
@@ -73,10 +75,10 @@ export function createEdgeVoice(deps: {
         let bytes = 0;
         let done = false;
         let ws: WebSocketLike | undefined;
-        const timer = setTimeout(() => finish(new Error("Edge voice timed out")), deps.timeoutMs ?? 60_000);
+        const timer = setTimeout(() => finish(new Error("Edge voice timed out"), "timeout"), deps.timeoutMs ?? 60_000);
         const onAbort = () => finish(ctx.signal.reason instanceof Error ? ctx.signal.reason : new StageAbort("cancel"));
         // Before any audio byte the failure is a clear "not available" (nothing was produced); after, it is unknown.
-        function finish(err?: Error) {
+        function finish(err?: Error, why = "error") {
           if (done) return;
           done = true;
           clearTimeout(timer);
@@ -84,7 +86,7 @@ export function createEdgeVoice(deps: {
           try { ws?.close(); } catch { /* already closed */ }
           if (!err) return resolve({ chunks, words });
           if (err instanceof StageAbort || ctx.signal.aborted) return reject(err);
-          ctx.log(`edge voice failed after ${bytes} audio bytes`);
+          ctx.log(`edge voice failed (${why}) after ${bytes} audio bytes`);
           reject(bytes === 0 ? new KnownFailure(NOT_AVAILABLE) : err);
         }
         if (ctx.signal.aborted) return onAbort();
@@ -92,7 +94,7 @@ export function createEdgeVoice(deps: {
         try {
           ws = deps.connect(url, HEADERS);
         } catch (e) {
-          return finish(e instanceof Error ? e : new Error("connect failed"));
+          return finish(e instanceof Error ? e : new Error("connect failed"), "connect");
         }
         ws.binaryType = "arraybuffer";
         ws.onopen = () => {
@@ -102,20 +104,20 @@ export function createEdgeVoice(deps: {
               `X-Timestamp:${stamp(t0)}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
                 `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"true"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`,
             );
-            ws!.send(`X-RequestId:${id}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${t0.toISOString()}Z\r\nPath:ssml\r\n\r\n${ssml}`);
+            ws!.send(`X-RequestId:${id}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${stamp(t0)}\r\nPath:ssml\r\n\r\n${ssml}`);
           } catch (e) {
-            finish(e instanceof Error ? e : new Error("send failed"));
+            finish(e instanceof Error ? e : new Error("send failed"), "send");
           }
         };
-        ws.onerror = () => finish(new Error("Edge voice socket error"));
-        ws.onclose = () => finish(new Error("Edge voice closed before the end of the turn"));
+        ws.onerror = () => finish(new Error("Edge voice socket error"), "socket error");
+        ws.onclose = () => finish(new Error("Edge voice closed before the end of the turn"), "closed");
         ws.onmessage = ({ data }) => {
+          if (done) return;
           try {
             if (typeof data === "string") {
               const [head = "", body = ""] = data.split("\r\n\r\n", 2);
               if (/Path:turn\.end/.test(head)) {
                 if (bytes === 0) throw new Error("no audio received");
-                if (words.length === 0) throw new Error("no word timings received");
                 return finish();
               }
               if (!/Path:audio\.metadata/.test(head)) return;
@@ -133,14 +135,14 @@ export function createEdgeVoice(deps: {
               chunks.push(audio);
             }
           } catch (e) {
-            finish(e instanceof Error ? e : new Error("bad Edge message"));
+            finish(e instanceof Error ? e : new Error("bad Edge message"), "bad message");
           }
         };
       });
       const audioPath = path.join(ctx.attemptDir, `voice-${createHash("sha256").update(`${a.lang}\0${a.voice}\0${a.text}`).digest("hex").slice(0, 12)}.mp3`);
       await writeFile(audioPath, Buffer.concat(chunks));
       ctx.log(`edge voice: ${words.length} words, ${chunks.reduce((n, c) => n + c.length, 0)} bytes`);
-      return { audioPath, wordTimings: words, timingsKind: "native", priceMicroUsd: 0, quoted: true };
+      return { audioPath, wordTimings: words.length ? words : null, timingsKind: words.length ? "native" : "aligned", priceMicroUsd: 0, quoted: true };
     },
   };
 }
