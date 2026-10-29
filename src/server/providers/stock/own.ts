@@ -21,7 +21,7 @@ export function ownStock(deps: StockDeps): StockProvider {
     async fetch(_ctx, hit) {
       const { db, resolvePath } = own();
       const asset = await getAsset(db, hit.id);
-      if (!asset || asset.deletedAt) throw new StockError("That file is no longer in your library.");
+      if (!asset || asset.deletedAt || asset.kind !== "image") throw new StockError("That file is no longer in your library.");
       return {
         path: resolvePath(asset.storageRef), bytes: asset.bytes, sha256: asset.sha256,
         ...(asset.width ? { width: asset.width } : {}), ...(asset.height ? { height: asset.height } : {}),

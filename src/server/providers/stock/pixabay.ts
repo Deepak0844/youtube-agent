@@ -24,15 +24,15 @@ export function pixabayStock(deps: StockDeps): StockProvider {
       if (a.kind === "image") {
         const d = await get("/api/", { q: a.query, image_type: "photo", orientation: a.orientation === "portrait" ? "vertical" : "horizontal", per_page, safesearch: "true" });
         for (const i of (d.hits ?? []) as Image[]) {
-          // Documented: the 640 wide file can be had at 960 by changing the suffix; 960 stays under the 1080 cap.
+          // Documented: the 640 (longest edge) file can be had at 960 by changing the suffix; 960 stays under the 1080 cap.
           const big = i.webformatURL.includes("_640.");
-          const k = big ? 960 / i.webformatWidth : 1;
+          const k = big ? 960 / Math.max(i.webformatWidth, i.webformatHeight) : 1; // Pixabay scales the longest edge
           hits.push({ id: String(i.id), title: i.tags || `Pixabay image ${i.id}`, url: big ? i.webformatURL.replace("_640.", "_960.") : i.webformatURL, pageUrl: i.pageURL, ...(i.user ? { author: i.user } : {}), licence: LICENCE, attribution: `Image by ${i.user ?? "Pixabay"} on Pixabay`, width: Math.round(i.webformatWidth * k), height: Math.round(i.webformatHeight * k) });
         }
       } else {
         const d = await get("/api/videos/", { q: a.query, per_page });
         for (const v of (d.hits ?? []) as Video[]) {
-          const f = pickFile(Object.values(v.videos ?? {}), a.orientation);
+          const f = pickFile(Object.values(v.videos ?? {}).filter((x) => x.url), a.orientation);
           if (!f) continue;
           hits.push({ id: String(v.id), title: v.tags || `Pixabay video ${v.id}`, url: f.url, pageUrl: v.pageURL, ...(v.user ? { author: v.user } : {}), licence: LICENCE, attribution: `Video by ${v.user ?? "Pixabay"} on Pixabay`, width: f.width, height: f.height, ...(v.duration !== undefined ? { seconds: v.duration } : {}) });
         }

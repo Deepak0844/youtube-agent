@@ -30,6 +30,7 @@ export interface StockDeps {
   /** Reads the saved key for this provider at call time (never cached); null when none is saved. */
   getKey: () => Promise<string | null>;
   fetcher?: StockFetcher;
+  /** resolvePath must map a storageRef to a file inside the asset storage root (the caller owns that containment). */
   own?: { db: Db; resolvePath: (storageRef: string) => string };
 }
 

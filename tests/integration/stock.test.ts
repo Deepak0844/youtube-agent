@@ -51,7 +51,9 @@ describe("stock providers", () => {
     ]);
     expect((await px.search({ query: "sea", kind: "video", orientation: "portrait", count: 5, minSeconds: 10 })).map((h) => h.id)).toEqual(["201"]);
     body = { "/v1/search": fx("pexels-photos.json") };
-    const [p] = await px.search({ query: "sea", kind: "image", orientation: "portrait", count: 5 });
+    const photos = await px.search({ query: "sea", kind: "image", orientation: "portrait", count: 5 });
+    expect(photos).toHaveLength(1); // 102 is on an unknown host and dropped
+    const [p] = photos;
     expect(p!.width).toBe(1080);
     expect(p!.height).toBe(1620);
     expect(p!.url).toContain("w=1080");
@@ -60,7 +62,7 @@ describe("stock providers", () => {
     expect([pv!.width, pv!.url]).toEqual([1080, "https://cdn.pixabay.com/video/401_medium.mp4"]);
     body = { "/api/": fx("pixabay-images.json") };
     const [pi] = await createStockProvider("pixabay", deps("1234567-" + "a".repeat(20))).search({ query: "sea", kind: "image", orientation: "portrait", count: 3 });
-    expect([pi!.width, pi!.url]).toEqual([960, "https://pixabay.com/get/abc_960.jpg"]);
+    expect([pi!.width, pi!.height, pi!.url]).toEqual([641, 960, "https://pixabay.com/get/abc_960.jpg"]);
   });
 
   it("missing_key_and_unknown_provider_plain_errors", async () => {
@@ -132,5 +134,14 @@ describe("own stock", () => {
     expect(await own.search({ query: "boat", kind: "video", orientation: "portrait", count: 5 })).toEqual([]);
     const art = await own.fetch(ctx(), found[0]!);
     expect(art).toMatchObject({ sha256: sha, path: path.join(dir, "a/boat.png"), provenance: { provider: "own_stock", priceMicroUsd: 0, licence: "Own file" } });
+  });
+
+  it("refuses_deleted_and_non_image_assets", async () => {
+    const own = createStockProvider("own_stock", { ...deps(null), own: { db: db.pool, resolvePath: (r: string) => path.join(dir, r) } });
+    const [h] = await own.search({ query: "boat", kind: "image", orientation: "portrait", count: 1 });
+    await db.pool.query("update assets set deleted_at = now() where id = $1", [h!.id]);
+    await expect(own.fetch(ctx(), h!)).rejects.toThrow(/no longer in your library/);
+    await db.pool.query("update assets set deleted_at = null, kind = 'audio' where id = $1", [h!.id]);
+    await expect(own.fetch(ctx(), h!)).rejects.toThrow(/no longer in your library/);
   });
 });
