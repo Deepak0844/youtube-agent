@@ -20,6 +20,7 @@ async function Owned({ params }: { params: PageProps<"/assets/[id]">["params"] }
   await requireOwner();
   const id = z.uuid().safeParse((await params).id);
   const asset = id.success ? await getAsset(getPool(), id.data) : null;
+  // Deliberately a page with its own <h1>, not notFound(): the session-required spec needs a heading on every page to prove denied responses carry no content.
   if (!asset)
     return (
       <div className="flex min-w-0 flex-col gap-2">
@@ -69,7 +70,7 @@ async function Owned({ params }: { params: PageProps<"/assets/[id]">["params"] }
         <h2 id="use-h" className="text-title font-semibold">
           Used in
         </h2>
-        <p className="mt-2 text-body text-muted">No videos use this file yet.</p>
+        <p className="mt-2 text-body text-muted">Which videos use this file is not tracked yet.</p>
       </section>
 
       <section aria-labelledby="rights-h" className="rounded-card bg-surface p-pad">

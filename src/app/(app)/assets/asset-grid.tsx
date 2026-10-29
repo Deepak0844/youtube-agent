@@ -20,10 +20,10 @@ export function AssetGrid({ cards, trash }: { cards: AssetCard[]; trash: boolean
   const anyKeep = cards.some((c) => c.keep && picked.includes(c.id));
   const toggle = (id: string, on: boolean) => setPicked((p) => (on ? [...p, id] : p.filter((x) => x !== id)));
 
-  const run = (f: () => Promise<{ ok: boolean; message?: string }>, done: string) =>
+  const run = (f: () => Promise<{ ok: boolean; message?: string; keptBlocked?: string[] }>, done: string) =>
     start(async () => {
       const r = await f();
-      setMessage(r.ok ? done : (r.message ?? "Could not do that. Nothing was changed."));
+      setMessage(r.ok ? done : (r.message ?? ("keptBlocked" in r && r.keptBlocked ? "Some files are marked Keep. Try again and confirm." : "Could not do that. Nothing was changed.")));
       if (r.ok) setPicked([]);
     });
 
@@ -81,7 +81,7 @@ export function AssetGrid({ cards, trash }: { cards: AssetCard[]; trash: boolean
         <AlertDialogContent>
           <AlertDialogTitle>Move {picked.length === 1 ? "this file" : `${picked.length} files`} to the trash?</AlertDialogTitle>
           <AlertDialogDescription>
-            Videos using these files: none. {anyKeep ? "Some of these are marked Keep, and Keep files are normally never deleted. " : ""}
+            Which videos use these files is not tracked yet. {anyKeep ? "Some of these are marked Keep, and Keep files are normally never deleted. " : ""}
             They stay in the trash for 7 days and can be restored until then.
           </AlertDialogDescription>
           <div className="flex flex-wrap justify-end gap-2">
