@@ -116,10 +116,15 @@ async function runCollect(deps: IngestDeps, a: IngestArgs, command: string, args
   return { r, lines };
 }
 
+// Every file name ingest can create; on any failure all of them are removed (the caller should also delete destDir).
+const OUTPUT_NAMES = ["main.jpg", "main.png", "preview.webp", "thumb.webp", "crop_916.webp", "crop_169.webp", "main.flac", "preview.mp3"];
+const cleanOutputs = (dir: string): Promise<unknown> => Promise.all(OUTPUT_NAMES.map((n) => rm(path.join(dir, n), { force: true })));
+// ffmpeg/ffprobe otherwise guess the format from content and could pick another demuxer (HLS, concat) for a file that only starts like audio.
+const DEMUXER: Record<string, string> = { "audio/wav": "wav", "audio/flac": "flac", "audio/mpeg": "mp3", "audio/mp4": "mov" };
+
 const childOk = (r: ChildResult): boolean => r.code === 0 && !r.timedOut && !r.aborted && !r.truncated;
 
 export async function ingestImage(deps: IngestDeps, a: IngestArgs): Promise<IngestResult> {
-  const made: string[] = [];
   let done = false;
   try {
     const g = await gate(a, "image", a.maxBytes ?? ASSET_LIMIT_DEFAULTS.maxImageBytes);
@@ -132,7 +137,6 @@ export async function ingestImage(deps: IngestDeps, a: IngestArgs): Promise<Inge
     } catch {
       parsed = undefined;
     }
-    if (parsed?.files) made.push(...Object.values(parsed.files).map((f) => path.join(a.destDir, path.basename(f))));
     if (!childOk(r) || !parsed?.ok || !parsed.files || !parsed.mime) {
       const reason = parsed?.reason === "too_many_pixels" ? "too_many_pixels" : "decode_failed";
       return reject(reason);
@@ -141,7 +145,7 @@ export async function ingestImage(deps: IngestDeps, a: IngestArgs): Promise<Inge
     done = true;
     return { ok: true, kind: "image", mime: parsed.mime, width: parsed.width ?? null, height: parsed.height ?? null, durationS: null, bytes: parsed.bytes ?? 0, originalBytes: g.size, sha256: g.sha256, files };
   } finally {
-    if (!done) await Promise.all(made.map((f) => rm(f, { force: true })));
+    if (!done) await cleanOutputs(a.destDir);
     await rm(a.srcPath, { force: true });
   }
 }
@@ -152,13 +156,14 @@ interface ProbeJson {
 }
 
 export async function ingestAudio(deps: IngestDeps, a: IngestArgs): Promise<IngestResult> {
-  const made: string[] = [];
   let done = false;
   try {
     const g = await gate(a, "audio", a.maxBytes ?? ASSET_LIMIT_DEFAULTS.totalBytesCap);
     if ("ok" in g) return g;
+    const fmt = DEMUXER[g.mime];
+    if (!fmt) return reject("unknown");
     // ffprobe first, in the sandbox runner. Only the plain `file` protocol is allowed, so a crafted file cannot make ffmpeg open another URL or file.
-    const probeArgs = ["-v", "error", "-protocol_whitelist", "file", "-print_format", "json", "-show_streams", "-show_format", "-i", a.srcPath];
+    const probeArgs = ["-v", "error", "-protocol_whitelist", "file", "-f", fmt, "-print_format", "json", "-show_streams", "-show_format", "-i", a.srcPath];
     const p = await runCollect(deps, a, "ffprobe", probeArgs, a.destDir, 30_000);
     let info: ProbeJson;
     try {
@@ -177,8 +182,7 @@ export async function ingestAudio(deps: IngestDeps, a: IngestArgs): Promise<Inge
     const main = path.join(a.destDir, "main.flac");
     const preview = path.join(a.destDir, "preview.mp3");
     // -vn/-map 0:a:0: first audio stream only (cover art dropped); -map_metadata -1 and bitexact: no tags written; no -ar: sample rate preserved.
-    const common = ["-v", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-i", a.srcPath, "-vn", "-sn", "-dn", "-map", "0:a:0", "-map_metadata", "-1", "-map_chapters", "-1", "-fflags", "+bitexact", "-flags:a", "+bitexact"];
-    made.push(main, preview);
+    const common = ["-v", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-f", fmt, "-i", a.srcPath, "-vn", "-sn", "-dn", "-map", "0:a:0", "-map_metadata", "-1", "-map_chapters", "-1", "-fflags", "+bitexact", "-flags:a", "+bitexact"];
     const e1 = await runCollect(deps, a, "ffmpeg", [...common, "-c:a", "flac", main], a.destDir, 300_000);
     if (!childOk(e1.r)) return reject("probe_failed");
     const e2 = await runCollect(deps, a, "ffmpeg", [...common, "-c:a", "libmp3lame", "-b:a", "128k", "-id3v2_version", "0", "-write_xing", "0", preview], a.destDir, 300_000);
@@ -187,7 +191,7 @@ export async function ingestAudio(deps: IngestDeps, a: IngestArgs): Promise<Inge
     done = true;
     return { ok: true, kind: "audio", mime: "audio/flac", width: null, height: null, durationS, bytes: st.size, originalBytes: g.size, sha256: g.sha256, files: { main, preview } };
   } finally {
-    if (!done) await Promise.all(made.map((f) => rm(f, { force: true })));
+    if (!done) await cleanOutputs(a.destDir);
     await rm(a.srcPath, { force: true });
   }
 }

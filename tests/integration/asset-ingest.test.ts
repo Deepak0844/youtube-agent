@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, writeFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
@@ -196,6 +196,23 @@ describe("ingestAudio", () => {
     const { src, dest } = stage("tone.wav");
     const r = await ingestAudio(deps, { srcPath: src, destDir: dest, maxSeconds: 0.5 });
     expect(r).toMatchObject({ ok: false, reason: "too_long" });
+  });
+
+  it("ID3 bytes followed by an HLS playlist are not handed to another demuxer", async () => {
+    const { src, dest } = stage("tone.wav");
+    writeFileSync(src, Buffer.concat([Buffer.from("ID3\x04\x00\x00\x00\x00\x00\x00"), Buffer.from("#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:1,\nfile:///etc/hosts\n")]));
+    const r = await ingestAudio(deps, { srcPath: src, destDir: dest });
+    expect(r).toMatchObject({ ok: false });
+    expect(calls.every((c) => c.args.includes("-f") && c.args[c.args.indexOf("-f") + 1] === "mp3")).toBe(true); // demuxer forced from the sniffed type
+    expect(existsSync(src)).toBe(false);
+  });
+
+  it("a failed run removes every fixed output name", async () => {
+    const { src, dest } = stage("plain.png");
+    for (const n of ["main.jpg", "preview.webp", "preview.mp3"]) writeFileSync(path.join(dest, n), "x");
+    const failing = { runChild: async () => ({ code: null, signal: null, truncated: false, timedOut: true, aborted: false }) };
+    expect(await ingestImage(failing, { srcPath: src, destDir: dest })).toMatchObject({ ok: false });
+    expect(readdirSync(dest)).toEqual([]);
   });
 
   it("an image sent to the audio door is refused", async () => {
