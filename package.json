@@ -11,6 +11,7 @@
     "dry-run": "tsx --env-file-if-exists=.env.local scripts/dry-run.ts",
     "eval:llm": "tsx --env-file-if-exists=.env.local scripts/llm-eval.ts",
     "totp:backfill": "tsx --env-file-if-exists=.env.local scripts/totp-backfill.ts",
+    "audio:import": "tsx --env-file-if-exists=.env.local scripts/audio-library-import.ts",
     "vault:init": "tsx scripts/vault-init.ts",
     "vault:check": "tsx --env-file-if-exists=.env.local scripts/vault-check.ts",
     "vault:rotate": "tsx --env-file-if-exists=.env.local scripts/vault-rotate.ts",
