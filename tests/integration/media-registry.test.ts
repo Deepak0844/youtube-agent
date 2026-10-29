@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { getPriceRule, resolveRoute } from "@/server/db/media-registry";
+import { RegistryError, getPriceRule, listProviders, resolveRoute, setMediaRoute, setProviderEnabled } from "@/server/db/media-registry";
 import { finishJob, markJobUnknown, storeProviderJobId, submitOnce } from "@/server/db/media-jobs";
 import { uuidv7 } from "@/server/core/ids";
 import type { MediaArtifact } from "@/server/providers/media-types";
@@ -69,5 +69,51 @@ describe("media registry", () => {
     await submitOnce(db.pool, key(), "edge", "voice", 1);
     await expect(db.pool.query("delete from media_jobs")).rejects.toMatchObject({ code: "42501" });
     await expect(db.pool.query("truncate media_jobs")).rejects.toMatchObject({ code: "42501" });
+  });
+});
+
+describe("providers page data layer", () => {
+  beforeEach(async () => {
+    await db.ownerPool.query(`insert into media_providers (id, kind, label, local, price) values
+      ('edge', 'voice', 'Edge', false, '{"unit":"free","microUsd":0}'), ('voicestudio', 'voice', 'VoiceStudio', true, '{"unit":"free","microUsd":0}'),
+      ('google_tts', 'voice', 'Google', false, '{"unit":"per_1k_chars","microUsd":100}'), ('local_openai', 'voice', 'Local', true, '{}'),
+      ('pexels', 'stock', 'Pexels', false, '{"unit":"free","microUsd":0}')`);
+  });
+  const audits = async (event: string) => (await db.ownerPool.query("select detail from audit_log where event = $1 order by id", [event])).rows.map((r) => r.detail);
+
+  it("enabling_without_key_refused_except_free_and_loopback", async () => {
+    await expect(setProviderEnabled(db.pool, "google_tts", true, "session")).rejects.toBeInstanceOf(RegistryError); // paid, no key
+    await setProviderEnabled(db.pool, "edge", true, "session"); // free
+    await setProviderEnabled(db.pool, "voicestudio", true, "session"); // loopback-local
+    await db.ownerPool.query("insert into secrets (name, ciphertext, nonce, key_id, hint) values ('provider.google_tts.api_key', decode(repeat('00', 40), 'hex'), decode(repeat('00', 12), 'hex'), '0123abcd', '')");
+    await setProviderEnabled(db.pool, "google_tts", true, "session"); // key now saved
+    expect((await listProviders(db.pool)).filter((p) => p.enabled).map((p) => p.id).sort()).toEqual(["edge", "google_tts", "voicestudio"]);
+    expect(await audits("provider.toggled")).toEqual([
+      { provider: "edge", enabled: true }, { provider: "voicestudio", enabled: true }, { provider: "google_tts", enabled: true },
+    ]);
+    await expect(setProviderEnabled(db.pool, "edge", false, "token")).rejects.toBeInstanceOf(RegistryError);
+  });
+
+  it("disabled_provider_cannot_be_a_route_target", async () => {
+    const r = { scope: "default", provider: "edge" };
+    await expect(setMediaRoute(db.pool, r, "session")).rejects.toThrow("Switch the provider on first");
+    await setProviderEnabled(db.pool, "edge", true, "session");
+    await setMediaRoute(db.pool, r, "session");
+    expect(await resolveRoute(db.pool, "voice", { format: "short", videoKind: "tsx" })).toEqual({ provider: "edge" });
+  });
+
+  it("an unpriced provider, a voice on a non-voice provider and a bad scope are refused", async () => {
+    await db.ownerPool.query("update media_providers set enabled = true where id in ('local_openai', 'pexels')");
+    await expect(setMediaRoute(db.pool, { scope: "default", provider: "local_openai" }, "session")).rejects.toThrow("price is not set");
+    await expect(setMediaRoute(db.pool, { scope: "default", provider: "pexels", voice: "x" }, "session")).rejects.toThrow("Only voice");
+    await expect(setMediaRoute(db.pool, { scope: "kind:nope", provider: "edge" }, "session")).rejects.toThrow("Unknown route");
+    expect((await db.ownerPool.query("select 1 from media_routes")).rowCount).toBe(0);
+  });
+
+  it("route_change_writes_audit_row", async () => {
+    await setProviderEnabled(db.pool, "edge", true, "session");
+    await setMediaRoute(db.pool, { scope: "kind:tsx", provider: "edge", voice: " en-US-AriaNeural " }, "session");
+    expect(await audits("route.changed")).toEqual([{ kind: "voice", scope: "kind:tsx", from: null, to: "edge", voice: "en-US-AriaNeural" }]);
+    expect(await resolveRoute(db.pool, "voice", { format: "short", videoKind: "tsx" })).toEqual({ provider: "edge", voice: "en-US-AriaNeural" });
   });
 });

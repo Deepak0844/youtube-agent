@@ -35,6 +35,8 @@ export const AUDIT_EVENTS = {
   "notify.delivery_failed": "A notification channel failed to deliver",
   // Phase 3 budgets (detail: template scope, old and new cap in micro-USD; null means no limit)
   "budget.cap_changed": "A spending cap was changed",
+  // Phase 3 providers page (detail: provider id, enabled; media route changes reuse route.changed with kind, scope, provider, voice)
+  "provider.toggled": "A media provider was switched on or off",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",

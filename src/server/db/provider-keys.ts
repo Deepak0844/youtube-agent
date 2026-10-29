@@ -7,6 +7,7 @@ import {
   PROVIDERS,
   checkKeyShape,
   isProviderId,
+  keyTestRequest,
   secretName,
   type KeyTestResult,
   type ProviderId,
@@ -96,6 +97,7 @@ export async function removeProviderKey(db: Db, id: string): Promise<KeyOutcome>
 export async function testProviderKey(db: Db, loader: KeyringLoader, id: string, opts: { fetcher?: KeyFetcher; cooldownMs?: number } = {}): Promise<TestOutcome> {
   if (!isProviderId(id)) return { ok: false, message: "Unknown provider." };
   if (id === "custom") return { ok: false, message: "A custom key is checked by the Test button on its model, not here." };
+  if (keyTestRequest(id, "") === null) return { ok: false, message: "Checked on first use." }; // no free request exists: never a paid test
   try {
     const ring = await ringIfHealthy(db, loader);
     if (!ring) return { ok: false, message: "The vault is not ready, so the key cannot be tested." };

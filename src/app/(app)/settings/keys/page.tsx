@@ -19,7 +19,7 @@ export default function KeysPage() {
 const when = (d: Date): string =>
   `${d.getUTCDate()} ${d.toLocaleString("en-GB", { month: "short", timeZone: "UTC" })} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")} UTC`;
 
-const GROUPS = ["Language model", "Voice", "Stock media"] as const;
+const GROUPS = ["Language model", "Voice", "Image", "Stock media"] as const;
 
 async function Owned() {
   await requireOwner();
@@ -48,7 +48,7 @@ async function Owned() {
       {GROUPS.map((group) => (
         <section key={group} aria-labelledby={`g-${group.replace(" ", "-")}`} className="flex flex-col gap-gap">
           <h2 id={`g-${group.replace(" ", "-")}`} className="text-small font-semibold tracking-wide text-faint uppercase">
-            {group === "Language model" ? "Language models" : group}
+            {group === "Language model" ? "Language models" : group === "Image" ? "Images" : group}
           </h2>
           <ul className="m-0 flex list-none flex-col gap-gap p-0">
             {PROVIDERS.filter((p) => p.role === group).map((p) => {
