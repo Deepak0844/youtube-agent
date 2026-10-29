@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, stat } from "node:fs/promises";
 import path from "node:path";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
@@ -57,7 +57,11 @@ export async function ensureSound(ctx: StageContext, deps: SoundDeps, need: Soun
   const rawRel = `generated/raw-${art.sha256.slice(0, 16)}.mp3`;
   const raw = path.join(deps.audioRoot, rawRel);
   await mkdir(path.join(deps.audioRoot, "generated"), { recursive: true });
-  if (!(await stat(raw).then(() => true, () => false))) await copyFile(art.path, raw);
+  // Trusted only at the full size; copied under a temp name and renamed, so a crash mid-copy never leaves a partial raw file.
+  if ((await stat(raw).then((st) => st.size, () => -1)) !== art.bytes) {
+    await copyFile(art.path, `${raw}.tmp`);
+    await rename(`${raw}.tmp`, raw);
+  }
 
   const norm = path.join(ctx.attemptDir, `norm-${art.sha256.slice(0, 12)}.mp3`);
   const out: string[] = [];
@@ -65,7 +69,7 @@ export async function ensureSound(ctx: StageContext, deps: SoundDeps, need: Soun
     command: "ffmpeg", args: ["-nostdin", "-hide_banner", "-y", "-protocol_whitelist", "file", "-i", raw, "-af", `loudnorm=I=${TARGET_LUFS}:TP=${CEILING_DBFS}`, "-c:a", "libmp3lame", "-b:a", "128k", norm],
     cwd: ctx.attemptDir, cwdRoot: ctx.attemptDir, timeoutMs: 120_000, maxOutputBytes: 1024 * 1024, signal: ctx.signal, onLine: (l) => out.push(l), stageRunId: ctx.claim.stageRunId,
   });
-  if (r.code !== 0 || r.truncated || r.timedOut || r.aborted) throw new KnownFailure(`The clip was generated and paid for but could not be levelled; it is kept as ${rawRel} and a retry reuses it.`);
+  if (r.code !== 0 || r.truncated || r.timedOut || r.aborted) throw new KnownFailure(`The clip was generated and paid for. It is kept as ${rawRel}. Retrying will generate (and pay for) a new clip.`);
 
   const sha256 = createHash("sha256").update(await readFile(norm)).digest("hex");
   const rel = `generated/${sha256.slice(0, 16)}.mp3`;

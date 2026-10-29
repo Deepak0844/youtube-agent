@@ -68,6 +68,13 @@ describe("ensureSound", () => {
     expect(p.totalCalls()).toBe(0);
     expect((await ensureSound(ctx(), deps(p), { ...need, prompt: "soft\u0000 whoosh" })).name).toBe("soft whoosh");
   });
+  it("levelling_failure_says_paid_and_does_not_promise_reuse", async () => {
+    const d = { ...deps(createFakeSound()), runChild: async () => ({ code: 1, signal: null, truncated: false, timedOut: false, aborted: false }) };
+    const e = await ensureSound(ctx(), d, need).catch((x) => x);
+    expect(e).toBeInstanceOf(KnownFailure);
+    expect(e.message).toMatch(/paid for.*Retrying will generate \(and pay for\) a new clip/);
+    expect(await count()).toBe(0);
+  });
   it("generated_clip_is_catalogued_with_provenance_and_loudness", async () => {
     const item = await ensureSound(ctx(), deps(createFakeSound()), need);
     expect(item).toMatchObject({ kind: "sfx", source: "generated", tags: ["whoosh"] });
