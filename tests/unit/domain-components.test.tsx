@@ -294,9 +294,9 @@ describe("ChannelInitial", () => {
 describe("source rules", () => {
   const dir = "src/ui/domain";
   const files = readdirSync(dir).map((f) => ({ f, src: readFileSync(`${dir}/${f}`, "utf8") }));
-  it("has the twelve domain files (the eleven from Phase 1, plus queue-strip.ts for /queue)", () => {
+  it("has the thirteen domain files (the eleven from Phase 1, plus queue-strip.ts for /queue and the asset-picker.tsx island)", () => {
     expect(files.map((x) => x.f).sort()).toEqual(
-      ["channel-initial.tsx", "cut-strip.tsx", "decision-row.tsx", "empty-frame.tsx", "frame-strip.tsx", "gate.tsx", "kpi-strip.tsx", "log-tail.tsx", "queue-strip.ts", "spend-line.tsx", "stages.ts", "video-box.tsx"],
+      ["asset-picker.tsx", "channel-initial.tsx", "cut-strip.tsx", "decision-row.tsx", "empty-frame.tsx", "frame-strip.tsx", "gate.tsx", "kpi-strip.tsx", "log-tail.tsx", "queue-strip.ts", "spend-line.tsx", "stages.ts", "video-box.tsx"],
     );
   });
   for (const bad of [/shadow/, /gradient/, /\b(indigo|slate|zinc|purple|violet|blue|red|green|gray|neutral)-\d/, /backdrop-blur/, /ui\/sample/]) {
@@ -304,7 +304,7 @@ describe("source rules", () => {
       for (const { f, src } of files) expect(src.match(bad), f).toBeNull();
     });
   }
-  it("no client directive: all server-renderable", () => {
-    for (const { f, src } of files) expect(src, f).not.toMatch(/["']use client["']/);
+  it("no client directive: all server-renderable (except the asset-picker island)", () => {
+    for (const { f, src } of files.filter((x) => x.f !== "asset-picker.tsx")) expect(src, f).not.toMatch(/["']use client["']/);
   });
 });

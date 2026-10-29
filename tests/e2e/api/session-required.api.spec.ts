@@ -195,8 +195,9 @@ for (const e of PROTECTED) {
           const s = r.res.status();
           const strict = method === "HEAD" && e.methods.includes("GET");
           const emptyOptions = method === "OPTIONS" && s === 204 && r.body === "";
-          const ok = strict ? (() => { try { expectDenied(e, "HEAD", state, r); return true; } catch { return false; } })() : isLoginRedirect(r.res) || s === 401 || s === 405 || emptyOptions || (method === "HEAD" && s === 200 && r.body === "" && e.kind === "page");
+          const ok = strict ? (() => { try { expectDenied(e, "HEAD", state, r); return true; } catch { return false; } })() : isLoginRedirect(r.res) || s === 401 || s === 405 || emptyOptions || (method === "OPTIONS" && s === 400 && r.body === "") || (e.kind === "page" && redirectsToLogin(r.res, r.body)) || (method === "HEAD" && s === 200 && r.body === "" && e.kind === "page");
           expect(ok, `${method} ${e.url} (${state}) -> ${s} body=${r.body.slice(0, 80)}`).toBe(true);
+          if (s === 200) expectNoPageContent(e, r.body, `${method} ${e.url} (${state})`); // a dynamic page streams the redirect (200): still no page content
         });
       }
     }

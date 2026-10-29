@@ -110,3 +110,63 @@ export async function findAssetsByTag(db: Db, tags: string[], limit: number): Pr
   const { rows } = await db.query<Row>("select * from assets where kind = 'image' and deleted_at is null and tags && $1::text[] order by created_at desc limit $2", [tags, limit]);
   return rows.map(toAsset);
 }
+
+export interface AssetFilter {
+  kind?: Asset["kind"];
+  tag?: string;
+  source?: Asset["source"];
+  q?: string;
+  trash?: boolean;
+}
+
+const TRASH_DAYS = 7;
+
+/** Newest first. `trash` lists deleted ones still inside their 7 days; otherwise only live ones. The name search escapes LIKE wildcards. */
+export async function listAssets(db: Db, f: AssetFilter, limit = 200): Promise<Asset[]> {
+  const { rows } = await db.query<Row>(
+    `select * from assets
+      where ${f.trash ? "deleted_at is not null and purge_at > now()" : "deleted_at is null"}
+        and ($1::text is null or kind = $1) and ($2::text is null or $2 = any(tags)) and ($3::text is null or source = $3)
+        and ($4::text is null or original_name ilike '%' || replace(replace(replace($4, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%')
+      order by created_at desc, id limit $5`,
+    [f.kind ?? null, f.tag ?? null, f.source ?? null, f.q ?? null, limit],
+  );
+  return rows.map(toAsset);
+}
+
+export async function listTags(db: Db): Promise<string[]> {
+  const { rows } = await db.query<{ t: string }>("select distinct unnest(tags) as t from assets where deleted_at is null order by t");
+  return rows.map((r) => r.t);
+}
+
+export async function setKeep(db: Db, id: string, keep: boolean): Promise<boolean> {
+  const r = await db.query("update assets set keep = $2 where id = $1 and deleted_at is null", [id, keep]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+export async function tagAssets(db: Db, ids: string[], tags: string[]): Promise<string[]> {
+  const { rows } = await db.query<{ id: string }>(
+    `update assets set tags = (select coalesce(array_agg(distinct t), '{}') from unnest(tags || $2::text[]) as t)
+      where id = any($1::uuid[]) and deleted_at is null returning id`,
+    [ids, tags],
+  );
+  return rows.map((r) => r.id);
+}
+
+/** Moves to the trash for 7 days. A Keep asset is left alone unless `confirmKeep`; the ones held back are returned so the page can ask. */
+export async function trashAssets(db: Db, ids: string[], confirmKeep: boolean): Promise<{ trashed: string[]; keptBlocked: string[] }> {
+  const { rows } = await db.query<{ id: string; keep: boolean }>(
+    `update assets set deleted_at = now(), purge_at = now() + make_interval(days => $3)
+      where id = any($1::uuid[]) and deleted_at is null and ($2 or not keep) returning id, keep`,
+    [ids, confirmKeep, TRASH_DAYS],
+  );
+  const done = new Set(rows.map((r) => r.id));
+  const held = await db.query<{ id: string }>("select id from assets where id = any($1::uuid[]) and keep and deleted_at is null", [ids.filter((i) => !done.has(i))]);
+  return { trashed: [...done], keptBlocked: held.rows.map((r) => r.id) };
+}
+
+/** Works only while the safety window is open. */
+export async function restoreAsset(db: Db, id: string): Promise<boolean> {
+  const r = await db.query("update assets set deleted_at = null, purge_at = null where id = $1 and deleted_at is not null and purge_at > now()", [id]);
+  return (r.rowCount ?? 0) > 0;
+}
