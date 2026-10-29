@@ -14,6 +14,9 @@ export interface CloudVoiceDeps {
   budgetScopes: string[];
 }
 
+/** Typed so the cap is recognised by class, not by message text. */
+class BodyTooLargeError extends Error {}
+
 const MAX_BODY = 50 * 1024 * 1024;
 const BEFORE_SEND = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]);
 
@@ -44,7 +47,7 @@ export async function readCapped(name: string, res: Response): Promise<Buffer> {
   const declared = Number(res.headers.get("content-length"));
   if (declared > MAX_BODY) {
     await res.body?.cancel().catch(() => undefined);
-    throw new Error(`${name} response is over the 50 MB limit.`);
+    throw new BodyTooLargeError(`${name} response is over the 50 MB limit.`);
   }
   const reader = res.body?.getReader();
   if (!reader) throw new Error(`${name} sent no body.`);
@@ -57,12 +60,12 @@ export async function readCapped(name: string, res: Response): Promise<Buffer> {
       size += value.byteLength;
       if (size > MAX_BODY) {
         await reader.cancel().catch(() => undefined);
-        throw new Error(`${name} response is over the 50 MB limit.`);
+        throw new BodyTooLargeError(`${name} response is over the 50 MB limit.`);
       }
       chunks.push(value);
     }
   } catch (err) {
-    if (err instanceof Error && err.message.includes("50 MB")) throw err;
+    if (err instanceof BodyTooLargeError) throw err;
     throw new Error(`${name} response was cut off.`);
   }
   return Buffer.concat(chunks);

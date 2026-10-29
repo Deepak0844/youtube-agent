@@ -6,31 +6,37 @@ import { LANGS, type Lang } from "@/server/core/lang";
 import { isPriced, quote as priceQuote } from "@/server/core/media-catalog";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
-import { escapeXml, isVoiceFor, ttsLocale } from "@/server/core/tts-locales";
+import { escapeXml, isVoiceFor, TOO_LONG, ttsLocale, utf8Bytes } from "@/server/core/tts-locales";
 import { isMpeg, post, readCapped, type CloudVoiceDeps } from "./cloud-tts";
 import type { VoiceProvider } from "./index";
 
+// Documented limit: 5,000 bytes per request, text or SSML. Indic scripts are 3 bytes per character, so the character cap
+// is a conservative 80% of the byte limit at 3 bytes each.
+const MAX_BYTES = 5000;
 const URL_ = "https://texttospeech.googleapis.com/v1/text:synthesize";
 
 // Word marks need the v1beta1 API and a mark per word; not used. The caller aligns the audio (Task 09).
+const ssmlOf = (text: string) => `<speak>${escapeXml(text)}</speak>`;
+
 export function createGoogleVoice(deps: CloudVoiceDeps): VoiceProvider {
   // Everything refused before money is reserved or any request is built.
-  function check(a: { lang: Lang; voice: string }) {
+  function check(a: { lang: Lang; voice: string; text: string }) {
     const locale = ttsLocale(a.lang);
     if (!locale) throw new KnownFailure("Google voices do not support this language.");
     if (!isPriced(deps.price) || deps.price.unit !== "per_1k_chars") throw new KnownFailure("Google has no price set, so it cannot be used.");
     if (!isVoiceFor(locale, a.voice)) throw new KnownFailure("That Google voice is not known for this language.");
+    if (utf8Bytes(ssmlOf(a.text)) > MAX_BYTES) throw new KnownFailure(TOO_LONG);
     return { locale, price: deps.price };
   }
   const quote: VoiceProvider["quote"] = (a) => priceQuote(check(a).price, Array.from(a.text).length);
 
   return {
-    capability: { id: "google_tts", wordTimings: "aligned", local: false, languages: [...LANGS], maxChars: 3500, formats: ["mp3"] },
+    capability: { id: "google_tts", wordTimings: "aligned", local: false, languages: [...LANGS], maxChars: Math.floor((MAX_BYTES * 0.8) / 3), formats: ["mp3"] },
     quote,
     async synthesise(ctx: StageContext, a) {
       const { locale } = check(a);
       const reserve = quote(a);
-      const ssml = `<speak>${escapeXml(a.text)}</speak>`;
+      const ssml = ssmlOf(a.text);
       return ctx.paid({ reserveMicroUsd: reserve, budgetScopes: deps.budgetScopes, kind: "paid" }, async (_callKey, signal) => {
         let key: string;
         try {

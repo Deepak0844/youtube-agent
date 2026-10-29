@@ -143,6 +143,31 @@ describe.each(cases)("$name shared rules", ({ make, args, ok }) => {
     expect(reqs).toHaveLength(0);
   });
 
+  it("too_long_in_bytes_is_refused_before_any_call_and_a_line_at_the_limit_passes", async () => {
+    handler = ok;
+    const hiVoice = args("x").voice.replace("en-US", "hi-IN");
+    const hindi = "नमस्ते ".repeat(500); // 3,500 characters, about 10 KB in UTF-8
+    expect(Array.from(hindi).length).toBeLessThanOrEqual(3500);
+    const e = await make().synthesise(ctx(), { text: hindi, lang: "hi", voice: hiVoice }).catch((x) => x);
+    expect(e).toBeInstanceOf(KnownFailure);
+    expect(e.message).toBe("This line is too long for this voice; split it.");
+    expect(() => make().quote({ text: hindi, lang: "hi", voice: hiVoice })).toThrow(KnownFailure);
+    expect(reqs).toHaveLength(0);
+    const edge = make().capability.id === "google_tts" ? 5000 - "<speak></speak>".length : 9000 - 100;
+    await make().synthesise(ctx(), args("a".repeat(edge)));
+    expect(reqs).toHaveLength(1);
+    const cap = make().capability.maxChars;
+    expect(cap * 3).toBeLessThan(make().capability.id === "google_tts" ? 5000 : 9000);
+  });
+
+  it("xml_illegal_control_characters_are_dropped", async () => {
+    handler = ok;
+    await make().synthesise(ctx(), args("a\u0000b\u0008c\u001fd\te\nf"));
+    expect(reqs[0]!.body).toContain("abcd");
+    expect(reqs[0]!.body).toMatch(/abcd(\t|\\t)e(\n|\\n)f/);
+    expect(reqs[0]!.body).not.toMatch(/\\u00|[\u0000-\u0008\u001f]/);
+  });
+
   it("ssml_is_escaped", async () => {
     handler = ok;
     await make().synthesise(ctx(), args(`a & b <break/> "q" 'r' </speak><x>`));
