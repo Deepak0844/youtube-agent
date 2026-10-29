@@ -56,6 +56,18 @@ describe("ensureSound", () => {
     await expect(ensureSound(ctx(), deps(p), { ...need, tags: [] })).rejects.toBeInstanceOf(KnownFailure);
     expect(p.totalCalls()).toBe(0);
   });
+  it("library_clip_longer_than_asked_is_not_reused_for_sfx", async () => {
+    await seed(); // 1 s clip
+    const p = createFakeSound();
+    await ensureSound(ctx(), deps(p), { ...need, seconds: 0.5 });
+    expect(p.totalCalls()).toBe(1);
+  });
+  it("overlong_or_control_char_prompt_is_cleaned_or_refused_and_name_is_clean", async () => {
+    const p = createFakeSound();
+    await expect(ensureSound(ctx(), deps(p), { ...need, prompt: "a".repeat(501) })).rejects.toBeInstanceOf(KnownFailure);
+    expect(p.totalCalls()).toBe(0);
+    expect((await ensureSound(ctx(), deps(p), { ...need, prompt: "soft\u0000 whoosh" })).name).toBe("soft whoosh");
+  });
   it("generated_clip_is_catalogued_with_provenance_and_loudness", async () => {
     const item = await ensureSound(ctx(), deps(createFakeSound()), need);
     expect(item).toMatchObject({ kind: "sfx", source: "generated", tags: ["whoosh"] });
@@ -69,7 +81,7 @@ describe("ensureSound", () => {
     expect((await ensureSound(ctx(), deps(p), need)).id).toBe(item.id);
     expect(p.totalCalls()).toBe(0);
   });
-  it("unknown_outcome_parks", async () => {
+  it("unknown_outcome_is_not_a_known_failure_and_catalogues_nothing", async () => {
     const e = await ensureSound(ctx(), deps(createFakeSound({ script: [throwsUnknown()] })), need).catch((x) => x);
     expect(e).not.toBeInstanceOf(KnownFailure);
     expect(await count()).toBe(0);

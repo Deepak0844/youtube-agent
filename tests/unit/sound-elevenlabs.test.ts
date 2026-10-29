@@ -58,7 +58,7 @@ describe("elevenlabs sound", () => {
     const r = await sound().makeSfx(ctx(), a);
     expect(reqs).toHaveLength(1);
     expect(reqs[0]).toMatchObject({ url: "/v1/sound-generation?output_format=mp3_44100_128", key: KEY, body: { text: "soft whoosh", duration_seconds: 2, model_id: "eleven_text_to_sound_v2" } });
-    expect(r.provenance).toMatchObject({ provider: "elevenlabs_sfx", priceMicroUsd: 4000, quoted: true, licence: GENERATED_LICENCE });
+    expect(r.provenance).toMatchObject({ provider: "elevenlabs_sfx", priceMicroUsd: 120000, quoted: true, licence: GENERATED_LICENCE });
     expect(r.bytes).toBe(MP3.length);
   });
   it("music_is_one_synchronous_instrumental_request", async () => {
@@ -66,6 +66,20 @@ describe("elevenlabs sound", () => {
     expect(reqs).toHaveLength(1);
     expect(reqs[0]).toMatchObject({ url: "/v1/music?output_format=mp3_44100_128", body: { prompt: "calm pad", music_length_ms: 60000, force_instrumental: true } });
     expect(r.provenance.priceMicroUsd).toBe(150000);
+  });
+  it("quotes_whole_minutes_minimum_one", () => {
+    const p = sound();
+    expect(p.quoteSfx({ prompt: "x", seconds: 0.5 })).toBe(120000);
+    expect(p.quoteMusic({ prompt: "x", seconds: 61 })).toBe(2 * 150000);
+  });
+  it("prompt_is_cleaned_and_empty_or_over_500_refused_before_any_request", async () => {
+    await sound().makeSfx(ctx(), { prompt: "  soft\u0000 whoosh\n ", seconds: 2 });
+    expect(reqs[0]!.body.text).toBe("soft whoosh");
+    for (const prompt of ["", " \u0007 ", "a".repeat(501)]) {
+      await expect(sound().makeSfx(ctx(), { prompt, seconds: 2 })).rejects.toBeInstanceOf(KnownFailure);
+      expect(() => sound().quoteSfx({ prompt, seconds: 2 })).toThrow(KnownFailure);
+    }
+    expect(reqs).toHaveLength(1);
   });
   it("unpriced_or_out_of_range_is_refused_before_any_request", async () => {
     await expect(sound({ sfxPrice: null }).makeSfx(ctx(), a)).rejects.toBeInstanceOf(KnownFailure);

@@ -8,7 +8,7 @@ import type { StageContext } from "@/server/core/stage-handler";
 import type { MediaArtifact } from "../media-types";
 import type { SafeFetch } from "../voice/eleven-types";
 import { elevenPost, isMpeg, readCapped } from "../voice/elevenlabs";
-import type { SoundProvider } from "./index";
+import { cleanPrompt, MAX_PROMPT, type SoundProvider } from "./index";
 
 export interface ElevenLabsSoundDeps {
   fetch: SafeFetch;
@@ -32,14 +32,17 @@ export function createElevenLabsSound(deps: ElevenLabsSoundDeps): SoundProvider 
   function check(kind: Kind, a: { prompt: string; seconds: number }) {
     const price = kind === "sfx" ? deps.sfxPrice : deps.musicPrice;
     if (!isPriced(price) || price.unit !== "per_second") throw new KnownFailure(`ElevenLabs ${kind === "sfx" ? "sound effects have" : "music has"} no price set, so it cannot be used.`);
-    if (!a.prompt.trim()) throw new KnownFailure("A sound needs a description.");
+    if (cleanPrompt(a.prompt) === null) throw new KnownFailure(`A sound needs a description of 1 to ${MAX_PROMPT} characters.`);
     const [lo, hi] = RANGE[kind];
     if (!Number.isFinite(a.seconds) || a.seconds < lo || a.seconds > hi) throw new KnownFailure(`A ${kind === "sfx" ? "sound effect" : "music track"} must be ${lo} to ${hi} seconds long.`);
     return price;
   }
-  const quote = (kind: Kind, a: { prompt: string; seconds: number }) => priceQuote(check(kind, a), a.seconds);
+  // DELIBERATE OVER-QUOTE: the pricing page says "billed per generation", so the real unit is unconfirmed. Until the owner-run
+  // smoke (Task 20: compare the ElevenLabs dashboard usage) confirms it, quote whole minutes (minimum one) at the per-second rate.
+  const quote = (kind: Kind, a: { prompt: string; seconds: number }) => priceQuote(check(kind, a), Math.ceil(a.seconds / 60) * 60);
 
-  async function make(kind: Kind, ctx: StageContext, a: { prompt: string; seconds: number }): Promise<MediaArtifact> {
+  async function make(kind: Kind, ctx: StageContext, raw: { prompt: string; seconds: number }): Promise<MediaArtifact> {
+    const a = { ...raw, prompt: cleanPrompt(raw.prompt) ?? "" }; // check() inside quote() has refused an unusable prompt
     const reserve = quote(kind, a);
     const model = kind === "sfx" ? SFX_MODEL : MUSIC_MODEL;
     const [url, body] = kind === "sfx"
