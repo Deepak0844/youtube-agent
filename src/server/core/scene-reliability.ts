@@ -145,7 +145,7 @@ export function summarize(results: SheetResult[], planned: number, stopped: Stop
     stopped,
     verdict: notRun
       ? ("NOT RUN" as const)
-      : results.length < planned && results.length - withinRetries <= planned - Math.ceil(planned * GO_RATIO)
+      : stopped !== "none" && results.length < planned && results.length - withinRetries <= planned - Math.ceil(planned * GO_RATIO)
         ? ("INCOMPLETE" as const)
         : planned > 0 && withinRetries >= Math.ceil(planned * GO_RATIO) ? ("GO" as const) : ("NO-GO" as const),
     byKind,
