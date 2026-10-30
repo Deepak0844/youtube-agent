@@ -32,6 +32,8 @@ export interface SheetResult {
   inputTokens: number;
   outputTokens: number;
   costMicroUsd: number;
+  /** The provider refused the first call (nothing sent or charged). */
+  refused?: string;
 }
 export type Stopped = "none" | "cap" | "unclear" | "aborted";
 
@@ -76,7 +78,8 @@ export async function runSheets(sheets: BeatSheet[], ask: Ask, opts: { signal?: 
         res = await ask(messages, sheet);
       } catch (err) {
         if (err instanceof KnownFailure) {
-          r.errors.push("The model call was refused or failed (nothing charged).");
+          r.errors.push(err.message);
+          if (r.attempts === 0) r.refused = err.message;
           break;
         }
         if (r.attempts > 0) results.push(r);
@@ -110,13 +113,15 @@ export function summarize(results: SheetResult[], planned: number) {
   const counts = new Map<string, number>();
   for (const r of results) for (const e of r.errors) counts.set(e.replace(/\d+/g, "N"), (counts.get(e.replace(/\d+/g, "N")) ?? 0) + 1);
   const topErrors = [...counts].map(([message, count]) => ({ message, count })).sort((a, b) => b.count - a.count).slice(0, 5);
+  const notRun = results.length > 0 && results.every((r) => r.refused !== undefined);
   return {
+    notRunReason: notRun ? results[0]!.refused! : undefined,
     planned,
     ran: results.length,
     firstTry,
     withinRetries,
     costMicroUsd: results.reduce((s, r) => s + r.costMicroUsd, 0),
-    verdict: planned > 0 && withinRetries >= Math.ceil(planned * GO_RATIO) ? ("GO" as const) : ("NO-GO" as const),
+    verdict: notRun ? ("NOT RUN" as const) : planned > 0 && withinRetries >= Math.ceil(planned * GO_RATIO) ? ("GO" as const) : ("NO-GO" as const),
     topErrors,
   };
 }

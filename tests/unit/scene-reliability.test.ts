@@ -60,6 +60,7 @@ describe("runSheets", () => {
     const { results, stopped } = await runSheets([sheet("a"), sheet("b")], s.ask);
     expect(stopped).toBe("none");
     expect(results.map((r) => r.withinRetries)).toEqual([false, true]);
+    expect(results[0]!.errors).toEqual(["refused"]);
   });
 });
 
@@ -74,5 +75,14 @@ describe("summarize", () => {
     expect(sum.withinRetries).toBe(9);
     expect(sum.topErrors[0]!.count).toBeGreaterThanOrEqual(1);
     expect(summarize(results.slice(0, 5), 10).verdict).toBe("NO-GO");
+  });
+});
+
+describe("provider refusal", () => {
+  it("is NOT RUN, not NO-GO, when every sheet is refused", async () => {
+    const { results } = await runSheets([sheet("a"), sheet("b")], script(new KnownFailure("404 model not found")).ask);
+    const sum = summarize(results, 2);
+    expect(sum.verdict).toBe("NOT RUN");
+    expect(sum.notRunReason).toBe("404 model not found");
   });
 });

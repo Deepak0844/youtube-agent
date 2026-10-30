@@ -47,9 +47,10 @@ async function main(): Promise<void> {
     const s = out.summary;
     const pct = (n: number) => (s.ran ? Math.round((n / s.ran) * 100) : 0);
     process.stdout.write(
-      `\n${s.ran}/${s.planned} ran${out.stopped === "none" ? "" : ` (stopped early: ${out.stopped})`}. First try ${pct(s.firstTry)}%, within 2 retries ${pct(s.withinRetries)}%, cost $${microToUsd(s.costMicroUsd)}.\nVerdict: ${s.verdict}\n` +
+      `\n${s.ran}/${s.planned} ran${out.stopped === "none" ? "" : ` (stopped early: ${out.stopped})`}. First try ${pct(s.firstTry)}%, within 2 retries ${pct(s.withinRetries)}%, cost $${microToUsd(s.costMicroUsd)}.\nVerdict: ${s.notRunReason !== undefined ? `NOT RUN (provider refused: ${s.notRunReason})` : s.verdict}\n` +
         (s.topErrors.length ? `Top repeated errors:\n${s.topErrors.map((e) => `  ${e.count}x ${e.message}`).join("\n")}\n` : ""),
     );
+    if (s.notRunReason !== undefined) return;
     await mkdir(".data/scene-reliability", { recursive: true });
     const file = `.data/scene-reliability/${plan.model.modelId.replace(/[^a-z0-9._-]/gi, "_")}-${new Date().toISOString().slice(0, 10)}.json`;
     await writeFile(file, JSON.stringify(out, null, 2));
