@@ -39,7 +39,7 @@ export interface GateFields {
   seenVersions: string;
 }
 
-export function GateForms({ fields, approveLabel, canApprove, topic }: { fields: GateFields; approveLabel: string; canApprove: boolean; topic: string }) {
+export function GateForms({ fields, approveLabel, canApprove, topic, captionsTick = false }: { fields: GateFields; approveLabel: string; canApprove: boolean; topic: string; captionsTick?: boolean }) {
   const [approved, approve, approving] = useActionState<QueueState, FormData>(approveGateAction, {});
   const [sent, send, sending] = useActionState<QueueState, FormData>(sendBackAction, {});
   // What the owner was looking at when this card first rendered. A refresh that brings new content never swaps the hash the
@@ -62,6 +62,12 @@ export function GateForms({ fields, approveLabel, canApprove, topic }: { fields:
       ) : null}
       <form action={approve} className="flex flex-wrap items-center gap-3">
         {hidden}
+        {captionsTick ? (
+          <label className="flex min-h-11 items-center gap-3 text-body">
+            <input type="checkbox" name="captionsChecked" required className="size-5 accent-[var(--text)]" />
+            I checked the captions
+          </label>
+        ) : null}
         <Button type="submit" disabled={approving || !canApprove || changed} aria-label={`${approveLabel}: ${topic}`}>
           {approveLabel}
         </Button>

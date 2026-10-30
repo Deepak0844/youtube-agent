@@ -69,6 +69,7 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
       const durationS = await audioSeconds(deps.mix, ctx, r.audioPath);
       const rel = await placeLineFile(deps.root, key, path.extname(r.audioPath).slice(1).toLowerCase(), r.audioPath);
       const d = await hashStoredFile(deps.root, rel);
+      await rm(r.audioPath, { force: true }); // the cache holds the copy; nothing stray is left in the attempt folder
       const stored = await storeLine(deps.db, deps.root, { cacheKey: key, provider: providerId, bytes: d.bytes, sha256: d.sha256, durationS, wordTimings: r.wordTimings, timingsKind: r.timingsKind, filePath: rel, priceMicroUsd: r.priceMicroUsd });
       rows.push(stored.row);
       made++;

@@ -10,13 +10,15 @@ import { safeFetch } from "@/server/providers/net/safe-fetch";
 import { createEdgeVoice, connectEdge } from "@/server/providers/voice/edge";
 import { createElevenLabsVoice } from "@/server/providers/voice/elevenlabs";
 import { createGoogleVoice } from "@/server/providers/voice/google";
+import { alignChunk, type ChildRunner } from "@/server/render/whisper";
 import type { VoiceChoice, StageDeps } from "./deps";
 
 export const PICK_VOICE = "Pick a voice provider in Settings → Providers";
 
 /** Hosted providers are fixed https hosts: typed mode with no local services, and the per-call options (no redirects, 120 s) are FORWARDED. */
-export const hostedFetch = (url: string, init: RequestInit, opts: { timeoutMs: number; maxRedirects: number }): Promise<Response> =>
-  safeFetch(url, init, { mode: "typed", localServices: [], ...opts });
+export const makeHostedFetch = (sf: typeof safeFetch) => (url: string, init: RequestInit, opts: { timeoutMs: number; maxRedirects: number }): Promise<Response> =>
+  sf(url, init, { mode: "typed", localServices: [], ...opts });
+export const hostedFetch = makeHostedFetch(safeFetch);
 
 /**
  * The routed narration voice: route for (format, kind), the provider must be enabled and priced, and a key must be saved when it needs one.
@@ -56,4 +58,10 @@ export function createVoiceFor(db: pg.Pool, loader: () => Keyring, fetchFn: type
         throw new KnownFailure(`${PICK_VOICE} (${route.provider} is not set up for narration yet).`);
     }
   };
+}
+
+/** Whisper word alignment when WHISPER_MODEL names the model file; without it the stage falls back to estimated (approximate) times. */
+export function whisperAligner(runChild: ChildRunner, env: NodeJS.ProcessEnv = process.env): StageDeps["align"] {
+  const modelPath = env.WHISPER_MODEL;
+  return modelPath ? (a) => alignChunk({ runChild, modelPath }, a) : undefined;
 }

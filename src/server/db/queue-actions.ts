@@ -1,7 +1,9 @@
 import type pg from "pg";
-import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
+import { captionsNeedTick, actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { STALE_MESSAGE, versionsKey, type BreakerStage, type DecisionInput, type GateInput } from "@/server/core/queue-input";
 import { approvalReaders } from "@/server/db/approval-readers";
+import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
+import { addContent } from "@/server/db/videos";
 import { approveGate, liveGateHash, readSnapshot, sendBack } from "@/server/db/approvals";
 import { recordAudit } from "@/server/db/audit";
 import { resetBreaker } from "@/server/db/breakers";
@@ -43,6 +45,22 @@ async function advance(db: pg.Pool, queue: EnqueueOnly, videoId: string): Promis
   }
 }
 
+/**
+ * Approximate captions need the owner's tick before the video can be approved. The tick is a new captions version, which is
+ * hashed with the video: it is audited, and a later rewrite (a new captions version) voids it. Returns the new live hash when it ticked.
+ */
+export async function tickCaptions(db: pg.Pool, videoId: string, actor: GateActor, checked: boolean): Promise<{ ok: true; hash?: string } | { ok: false; message: string }> {
+  const snap = await readSnapshot(db, videoId, "video");
+  const caps = snap === "no_video" ? undefined : snap.inputs.content.captions;
+  if (!caps || !captionsNeedTick(caps.body)) return { ok: true };
+  if (!checked) return { ok: false, message: "Tick \"I checked the captions\" first. The captions are approximate: listen and check." };
+  const body = { ...(caps.body as Record<string, unknown>), checked_by_owner: true };
+  await addContent(db, videoId, "captions", { body, sha256: sha256Hex(canonicalJson(body)) });
+  await recordAudit(db, "captions.checked", { videoId, sessionId: actor.sessionId });
+  const fresh = await liveGateHash(db, videoId, "video");
+  return fresh ? { ok: true, hash: fresh.hash } : { ok: false, message: STALE_MESSAGE };
+}
+
 export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: GateInput, kind: "approve" | "send_back", opts: { root?: string } = {}): Promise<ActionResult> {
   if (actorProblem(actor)) return refuse(ACTOR_REASON);
   const status = await db.query<{ status: string }>("select status from videos where id = $1", [i.videoId]);
@@ -76,7 +94,13 @@ export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: Ga
     return { ok: true, message: r.queued ? "Approved. The upload is queued." : "Approved. The upload could not be queued just now; use Send again below." };
   }
 
-  const r = await approveGate(db, { videoId: i.videoId, gate: i.gate, seenHash: i.seenHash, actor });
+  let seenHash = i.seenHash;
+  if (i.gate === "video") {
+    const t = await tickCaptions(db, i.videoId, actor, i.captionsChecked === true);
+    if (!t.ok) return refuse(t.message);
+    if (t.hash) seenHash = t.hash;
+  }
+  const r = await approveGate(db, { videoId: i.videoId, gate: i.gate, seenHash, actor });
   if (!r.ok) return refuse(say(r.reason));
   await advance(db, q.stage, i.videoId);
   return { ok: true, message: "Approved." };

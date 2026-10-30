@@ -6,9 +6,12 @@ import { buildEngineConfig } from "@/server/core/engine-config";
 import { sha256Hex, canonicalJson } from "@/server/core/content-hash";
 import { uuidv7 } from "@/server/core/ids";
 import { createPgPaidCallPorts } from "@/server/db/paid-call-adapter";
-import { approveGate, liveGateHash } from "@/server/db/approvals";
+import { captionsNeedTick } from "@/server/core/approvals";
+import { tickCaptions } from "@/server/db/queue-actions";
+import { approvalState, approveGate, liveGateHash } from "@/server/db/approvals";
+import { createStageContext, StageAbort } from "@/server/core/stage-handler";
 import { runStage } from "@/server/db/stage-runner-adapter";
-import { insertQueuedStage } from "@/server/db/stages";
+import { claimStage, insertQueuedStage } from "@/server/db/stages";
 import { addContent, createVideoRow, latestContent } from "@/server/db/videos";
 import { createFakeVoice, type FakeVoiceOptions } from "@/server/providers/voice/fake";
 import { ok, throwsUnknown } from "@/server/providers/fake-base";
@@ -18,7 +21,6 @@ import { ttsAttempt } from "@/worker/stages/tts";
 import { createVoiceFor, hostedFetch } from "@/worker/stages/voice-for";
 import { withTestDb, type TestDb } from "../support/db";
 
-void createPgPaidCallPorts;
 let db: TestDb;
 let root: string;
 const config = buildEngineConfig(new Map());
@@ -98,8 +100,9 @@ describe("voice stage", () => {
   it("crash_after_line_3_resumes_without_repaying_lines_1_to_3", async () => {
     const fake = createFakeVoice(opts({ script: [ok(1000), ok(1000), ok(1000), throwsUnknown("socket hang up")] }));
     const v = await video();
-    expect((await run(v.id, deps(fake))).kind).toBe("needs_decision"); // unknown outcome parks
+    await expect(run(v.id, deps(fake))).rejects.toThrow("socket hang up"); // unknown outcome: intent stays pending, the reconciler parks it
     expect(fake.totalCalls()).toBe(4);
+    expect(Number((await db.pool.query("select count(*) n from voice_lines")).rows[0].n)).toBe(3);
     const again = createFakeVoice(opts());
     expect((await run(v.id, deps(again))).kind).toBe("committed");
     expect(again.totalCalls()).toBe(1); // only line 4
@@ -107,12 +110,16 @@ describe("voice stage", () => {
 
   it("cancel_mid_line_leaves_intent_pending_and_parks", async () => {
     const ctl = new AbortController();
-    const fake = createFakeVoice(opts({ beforeCall: async () => { ctl.abort(new Error("cancel")); await new Promise((r) => setTimeout(r, 50)); } }));
+    const fake = createFakeVoice(opts({ beforeCall: async () => { ctl.abort(new StageAbort("cancel")); await new Promise(() => undefined); } }));
     const v = await video();
-    const o = await run(v.id, deps(fake), ctl.signal);
-    expect(["needs_decision", "failed", "cancelled"]).toContain(o.kind);
+    const stageId = await insertQueuedStage(db.pool, { videoId: v.id, name: "tts", inputHash: "h" });
+    const claim = (await claimStage(db.pool, { id: stageId, inputHash: "h", workerId: "w1", ttlMs: 600_000 }))!;
+    const ctx = createStageContext({ stage: { id: stageId, name: "tts", inputHash: "h", videoId: v.id }, claim, config, signal: ctl.signal, paid: createPgPaidCallPorts(db.pool) }).ctx;
+    await expect(withAttempt({ db: db.pool, root }, ttsAttempt(deps(fake)))(ctx)).rejects.toBeInstanceOf(StageAbort);
     const pending = await db.pool.query("select count(*) n from spend_intents where status = 'pending'");
-    expect(Number(pending.rows[0].n)).toBeGreaterThanOrEqual(0);
+    expect(Number(pending.rows[0].n)).toBe(1); // never settled, never retried: the owner decides
+    expect(Number((await db.pool.query("select count(*) n from voice_lines")).rows[0].n)).toBe(0);
+    expect(fake.totalCalls()).toBe(0);
   });
 
   it("provider_without_timings_runs_alignment_and_flags_te_kn_ml", async () => {
@@ -185,5 +192,46 @@ describe("voice stage", () => {
   it("hosted_fetch_forwards_no_redirects_and_timeout", async () => {
     const src = hostedFetch.toString();
     expect(src).toContain("...opts");
+  });
+});
+
+describe("video gate and approximate captions", () => {
+  const approveVideo = async (id: string, checked: boolean) => {
+    const t = await tickCaptions(db.pool, id, SESSION, checked);
+    if (!t.ok) return { ok: false, message: t.message };
+    const live = await liveGateHash(db.pool, id, "video");
+    const r = await approveGate(db.pool, { videoId: id, gate: "video", seenHash: t.hash ?? live!.hash, actor: SESSION });
+    return { ok: r.ok, message: r.ok ? "" : r.reason };
+  };
+  async function ready() {
+    const v = await video();
+    await run(v.id, deps(createFakeVoice(opts({ timings: "aligned" })))); // estimated captions
+    await addContent(db.pool, v.id, "video", { filePath: "x.mp4", sha256: "a".repeat(64) });
+    await db.pool.query("update videos set status = 'active' where id = $1", [v.id]);
+    return v;
+  }
+
+  it("estimated_timings_block_video_gate_until_ticked", async () => {
+    const v = await ready();
+    expect((await approveGate(db.pool, { videoId: v.id, gate: "video", seenHash: "0".repeat(64), actor: SESSION })).ok).toBe(false); // core refuses too
+    const no = await approveVideo(v.id, false);
+    expect(no.ok).toBe(false);
+    expect(no.message).toMatch(/captions/);
+    expect((await approveVideo(v.id, true)).ok).toBe(true);
+    expect(Number((await db.pool.query("select count(*) n from audit_log where event = 'captions.checked'")).rows[0].n)).toBe(1);
+    expect((await approvalState(db.pool, v.id, "video")).approved).toBe(true);
+  });
+
+  it("ticking_then_rewriting_a_line_voids_the_tick", async () => {
+    const v = await ready();
+    await approveVideo(v.id, true);
+    expect((await db.pool.query("select 1 from approvals where video_id = $1 and gate = 'video'", [v.id])).rowCount).toBe(1);
+    await setScript(v.id, "One fine line. Two rewritten lines. Three fine lines. Four fine lines.");
+    await run(v.id, deps(createFakeVoice(opts({ timings: "aligned" })))); // new captions version, no tick
+    const live = await liveGateHash(db.pool, v.id, "video");
+    const state = await approvalState(db.pool, v.id, "video");
+    expect(state.approved).toBe(false);
+    expect(captionsNeedTick((await latestContent(db.pool, v.id, "captions"))!.body)).toBe(true);
+    expect(live).not.toBeNull();
   });
 });

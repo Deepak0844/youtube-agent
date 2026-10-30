@@ -23,7 +23,7 @@ export interface GateClaim {
 export type GateContent =
   | { kind: "script"; title: string; description: string | null; narration: string; words: number; beats: number; claims: GateClaim[]; readable: boolean }
   | { kind: "cost"; totalMicroUsd: number; path: string; models: Array<[string, string]>; items: Array<{ kind: string; provider: string; quoteMicroUsd: number }> }
-  | { kind: "video"; src: string | null; shaPrefix: string }
+  | { kind: "video"; src: string | null; shaPrefix: string; captions: "exact" | "approximate" | "check" | "checked" }
   | { kind: "evidence"; claims: GateClaim[]; fileSrc: string | null; shaPrefix: string }
   | { kind: "publish"; title: string; description: string | null; visibility: string; publishAt: string | null; channel: string; videoSrc: string | null; evidenceShaPrefix: string };
 
@@ -132,7 +132,11 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
     const items = Array.isArray(b.items) ? b.items.map(asObj).map((i) => ({ kind: str(i.kind), provider: str(i.provider), quoteMicroUsd: Number(i.quoteMicroUsd) || 0 })) : [];
     return { kind: "cost", totalMicroUsd: Number(str(quote.micro_usd)) || 0, path: str(b.path), models: Object.entries(asObj(b.providers_models)).map(([k, v]) => [k, str(v)] as [string, string]), items };
   }
-  if (gate === "video") return { kind: "video", src: src(c.video?.filePath), shaPrefix: (c.video?.sha256 ?? "").slice(0, 12) };
+  if (gate === "video") {
+    const cap = asObj(c.captions?.body);
+    const captions = cap.approximate === true ? (cap.checked_by_owner === true ? "checked" : "approximate") : cap.needs_check === true ? "check" : "exact";
+    return { kind: "video", src: src(c.video?.filePath), shaPrefix: (c.video?.sha256 ?? "").slice(0, 12), captions };
+  }
   const script = await latestContent(db, videoId, "script");
   const claims = claimsOf(script?.body).claims;
   if (gate === "evidence") return { kind: "evidence", claims, fileSrc: src(c.evidence?.filePath), shaPrefix: (c.evidence?.sha256 ?? "").slice(0, 12) };
