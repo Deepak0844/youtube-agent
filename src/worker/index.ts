@@ -2,7 +2,8 @@ import { fileURLToPath } from "node:url";
 import { createPool } from "@/server/db/pool";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { dryRunRefusal } from "./stages/guard";
-import { defaultDryRunDeps, dryRunHandlers, productionHandlers } from "./handlers";
+import type { ChildRegistry } from "@/server/render/child";
+import { defaultDryRunDeps, dryRunHandlers, productionHandlers, type StageHandlers } from "./handlers";
 import { startRuntime, type WorkerOptions } from "./runtime";
 
 // Retain startWorker(log) for existing callers, alongside the runtime options interface.
@@ -20,7 +21,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const pool = createPool(process.env.DATABASE_URL);
     void (async () => {
       // Fake providers only on an explicit opt-in that passes the guard; a refused opt-in stops the worker (no silent fallback).
-      let handlers = productionHandlers(pool);
+      let handlers: StageHandlers | ((env: { childRegistry: ChildRegistry }) => StageHandlers) = ({ childRegistry }) => productionHandlers(pool, { childRegistry });
       if (process.env.ENGINE_DRY_RUN === "1") {
         const refusal = await dryRunRefusal(pool, process.env).catch((e: unknown) => `The dry run guard could not check the database (${e instanceof Error ? e.message : "error"}).`);
         if (refusal) {

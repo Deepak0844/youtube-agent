@@ -145,6 +145,14 @@ describe("worker runtime with Postgres and Redis", () => {
     expect(rows).toEqual([{ event: "needs_decision", to_state: "needs_decision" }, { event: "video_failed", to_state: "failed" }]);
   });
 
+  it("lost_attempt_folders_are_swept_once_per_interval_not_every_tick", async () => {
+    const sweepLostAttempts = vi.fn(async () => 0);
+    const worker = boot({ intervalMs: 20, hooks: { sweepLostAttempts } }); await worker.ready;
+    await waitFor(async () => sweepLostAttempts.mock.calls.length >= 1, "swept");
+    await new Promise((r) => setTimeout(r, 150)); // many more ticks
+    expect(sweepLostAttempts).toHaveBeenCalledTimes(1);
+  });
+
   it("clean_stop_waits_for_the_in_flight_job_to_commit", async () => {
     const started = deferred();
     const worker = boot({ handlers: { draft: async () => { started.resolve(); await new Promise((r) => setTimeout(r, 400)); return { ok: true }; } } }); await worker.ready;

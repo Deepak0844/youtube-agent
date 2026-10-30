@@ -17,8 +17,10 @@ import { createWebTools } from "@/server/llm/web-tools";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
 import { createFakeVoice } from "@/server/providers/voice/fake";
+import { runChild, type ChildRegistry } from "@/server/render/child";
 import { ingestAudio, ingestImage, type IngestDeps } from "@/server/render/ingest";
 import { storageRoot } from "@/server/storage/paths";
+import { createVoiceFor, whisperAligner } from "./stages/voice-for";
 import { withAttempt } from "./stages/attempt";
 import { buildAttempt } from "./stages/build";
 import type { StageDeps } from "./stages/deps";
@@ -73,8 +75,25 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
   };
 }
 
-/** The handlers the real worker runs. Draft uses the routed model and the owner's SearXNG; the other stages arrive with Task 20. */
-export function productionHandlers(pool: pg.Pool): StageHandlers {
+const notWired = (): never => { throw new KnownFailure("This step is not wired in production yet."); };
+
+/**
+ * Real deps for the voice, mux and sound stages. Every ffmpeg/ffprobe/whisper child goes through the worker's registry
+ * (which already carries the worker id), so a crash leaves them in child_processes for the orphan sweep.
+ */
+export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildRegistry } = {}, root: string = storageRoot()): StageDeps {
+  const run = (spec: Parameters<typeof runChild>[0]) => runChild(spec, { registry: env.childRegistry });
+  return {
+    db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
+    mix: { runChild: run, audioRoot: path.join(root, "audio") },
+    // build/generate/render are not wired in production yet (Phase 4); these stages never call them, and if one ever did it refuses.
+    image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
+    renderer: { render: notWired },
+  };
+}
+
+/** The handlers the real worker runs: draft, tts, voice (mux) and sfx (mixer). build/generate/render/qa stay absent (refused as "missing stage handler"). */
+export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRegistry } = {}): StageHandlers {
   const draft: StageHandler = async (ctx) => {
     const searxUrl = process.env.SEARXNG_URL;
     if (!searxUrl) throw new KnownFailure("Web search is not set up (SEARXNG_URL), so a draft cannot be written.");
@@ -85,7 +104,14 @@ export function productionHandlers(pool: pg.Pool): StageHandlers {
       makeWeb: () => createWebTools({ searxUrl }),
     })(ctx);
   };
-  return { draft: refuseDryRunVideos(pool, draft) };
+  const deps = productionStageDeps(pool, env);
+  const fin = { db: deps.db, root: deps.root };
+  return {
+    draft: refuseDryRunVideos(pool, draft),
+    tts: refuseDryRunVideos(pool, withAttempt(fin, ttsAttempt(deps))),
+    voice: refuseDryRunVideos(pool, withAttempt(fin, voiceAttempt(deps))),
+    sfx: refuseDryRunVideos(pool, sfxHandler(fin, deps)),
+  };
 }
 
 /** A video made by the dry-run button must never reach a real provider, even if the worker was started without the dry-run opt-in. */

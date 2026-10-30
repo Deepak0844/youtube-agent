@@ -29,6 +29,7 @@ import { openStageLog } from "@/server/logs/stage-log";
 import { storageRoot } from "@/server/db/system-status";
 import { queuedIngestIds } from "@/server/db/ingest-jobs";
 import { runChild } from "@/server/render/child";
+import { sweepLostAttempts } from "@/server/storage/store";
 import { createStageDispatcher, handleIngestJob, recoverRunningIngest, sweepStaleUploads, type StageHandlers } from "./handlers";
 import { startReconcileLoop } from "./reconcile-loop";
 
@@ -45,6 +46,7 @@ export interface WorkerHooks {
   advanceAll(pool: pg.Pool, queue: StageQueue, readers?: PipelineReaders): Promise<unknown>;
   /** Retries for confirmed provider rejections: repairs a crash between "failed" and "retry row" and releases held ones. */
   sweepRetries(pool: pg.Pool, queue: StageQueue, readers?: PipelineReaders): Promise<unknown>;
+  sweepLostAttempts(db: pg.Pool, opts: { root: string }): Promise<unknown>;
   /** Breaker bookkeeping and the retry for one finished attempt. */
   afterOutcome: typeof afterStageOutcome;
   /** Breaker bookkeeping for stages the reconciler failed or parked. */
@@ -105,6 +107,7 @@ const defaults: WorkerHooks = {
   reconcile: (pool, queue, config) => reconcile(pool, queue, { maxAttempts: config.retryAttempts - 1, attemptBasis: "claim" }),
   advanceAll,
   sweepRetries: (pool, queue, readers) => sweepRetries(pool, queue, readers),
+  sweepLostAttempts,
   afterOutcome: afterStageOutcome,
   afterReconcile,
   runStage,
@@ -230,6 +233,8 @@ export function startRuntime(opts: WorkerOptions = {}) {
     };
     // DB-only upkeep starts before Redis and continues through outages. Queue-dependent transitions require
     // a successful availability check; one single-flight loop owns both halves.
+    let lastAttemptSweep = 0;
+    const ATTEMPT_SWEEP_MS = 10 * 60_000; // a folder walk, not a 15 s job
     loop = startReconcileLoop({
       intervalMs: opts.intervalMs, log,
       async run() {
@@ -262,6 +267,12 @@ export function startRuntime(opts: WorkerOptions = {}) {
             if (!ingestQueue || stopping) return;
             for (const id of await queuedIngestIds(db)) await ingestQueue.enqueueIngest(id);
             await sweepStaleUploads(db, opts.storageRoot ?? storageRoot());
+          }),
+          // Attempt folders whose fence was lost (a stale worker's output). DB read + file delete only; safe now that paid audio is fence-independent.
+          guard("attempt sweep", async () => {
+            if (stopping || Date.now() - lastAttemptSweep < ATTEMPT_SWEEP_MS) return;
+            lastAttemptSweep = Date.now();
+            await hooks.sweepLostAttempts(db, { root: opts.storageRoot ?? storageRoot() });
           }),
           guard("mark stalled uploads", () => hooks.markStalled(db)),
           guard("prune", () => hooks.prune(db)),
