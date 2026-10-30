@@ -112,10 +112,10 @@ export const Network: React.FC<NetworkProps> = ({ nodes, links }) => {
             textAlign: "center",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "center" }}>
+          <div style={{ display: "flex", justifyContent: "center", zoom: 1.5 }}>
             <Glyph type={n.type} />
           </div>
-          <div style={{ marginTop: 10, fontFamily: theme.fonts.mono, fontWeight: 600, fontSize: 28, color: theme.palette.text, whiteSpace: "nowrap" }}>{n.label}</div>
+          <div style={{ marginTop: 10, fontFamily: theme.fonts.mono, fontWeight: 700, fontSize: 40, color: theme.palette.text, whiteSpace: "nowrap" }}>{n.label}</div>
         </div>
       ))}
     </AbsoluteFill>

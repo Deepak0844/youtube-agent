@@ -197,3 +197,37 @@ export function inRegion(region: Region, lon: number, lat: number): boolean {
   const [west, south, east, north] = REGIONS[region];
   return lon >= west && lon <= east && lat >= south && lat <= north;
 }
+
+export type LabelSlot = { x: number; y: number; anchor: "start" | "end" | "middle" };
+
+/**
+ * Label position for each marker: tries right, left, above, below and keeps the first that stays inside the box,
+ * misses the route line, other markers and earlier labels. Falls back to "right". Positions are relative to the marker.
+ */
+export function placeLabels(pts: [number, number][], widths: number[], box: { w: number; h: number }, textH = 44, gap = 26): LabelSlot[] {
+  type R = { l: number; t: number; r: number; b: number };
+  const hit = (a: R, b: R) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+  const dots: R[] = pts.map(([x, y]) => ({ l: x - 16, r: x + 16, t: y - 16, b: y + 16 }));
+  const placed: R[] = [];
+  return pts.map(([px, py], i) => {
+    const w = widths[i] ?? 0;
+    const slots: { s: LabelSlot; r: R }[] = [
+      { s: { x: gap, y: textH / 3, anchor: "start" }, r: { l: px + gap, r: px + gap + w, t: py - textH / 2, b: py + textH / 2 } },
+      { s: { x: -gap, y: textH / 3, anchor: "end" }, r: { l: px - gap - w, r: px - gap, t: py - textH / 2, b: py + textH / 2 } },
+      { s: { x: 0, y: -gap, anchor: "middle" }, r: { l: px - w / 2, r: px + w / 2, t: py - gap - textH, b: py - gap } },
+      { s: { x: 0, y: gap + textH * 0.8, anchor: "middle" }, r: { l: px - w / 2, r: px + w / 2, t: py + gap, b: py + gap + textH } },
+    ];
+    const onRoute = (r: R) =>
+      pts.slice(1).some(([x2, y2], k) => {
+        const [x1, y1] = pts[k]!;
+        return Array.from({ length: 41 }, (_, j) => j / 40).some((t) => {
+          const x = x1 + (x2 - x1) * t;
+          const y = y1 + (y2 - y1) * t;
+          return x > r.l && x < r.r && y > r.t && y < r.b;
+        });
+      });
+    const free = slots.find(({ r }) => r.l >= 0 && r.r <= box.w && r.t >= 0 && r.b <= box.h && !onRoute(r) && !dots.some((d, k) => k !== i && hit(r, d)) && !placed.some((p) => hit(r, p))) ?? slots[0]!;
+    placed.push(free.r);
+    return free.s;
+  });
+}

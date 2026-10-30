@@ -133,8 +133,8 @@ export const DrawnObjects: React.FC<DrawnObjectsProps> = ({ objects }) => {
       {objects.map((o, i) => {
         const d = DRAWINGS[o.object];
         const { x, ys, rowH } = aligned(o.slot ?? "center");
-        const labelH = o.label ? 56 : 0;
-        const w = Math.min(360, ((rowH - 40 - labelH) * d.w) / d.h);
+        const labelH = o.label ? 68 : 0;
+        const w = Math.min(380, ((rowH - 40 - labelH) * d.w) / d.h);
         const en = enterStyle(o.enter ?? "fade", enterProgress(frame, i));
         const em = emphasisStyle(o.emphasis ?? "none", frame);
         return (
@@ -154,7 +154,7 @@ export const DrawnObjects: React.FC<DrawnObjectsProps> = ({ objects }) => {
               {d.body(frame)}
             </svg>
             {o.label ? (
-              <div style={{ marginTop: 14, fontFamily: theme.fonts.mono, fontSize: 34, fontWeight: 700, color: theme.palette.text, whiteSpace: "nowrap" }}>{o.label}</div>
+              <div style={{ marginTop: 14, fontFamily: theme.fonts.mono, fontSize: 44, fontWeight: 700, color: theme.palette.text, whiteSpace: "nowrap" }}>{o.label}</div>
             ) : null}
           </div>
         );

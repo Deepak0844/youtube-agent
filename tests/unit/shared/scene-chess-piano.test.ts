@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateScenes } from "@/shared/scene";
-import { parseFen, replayMoves, START_FEN } from "../../../remotion/kit/chessLogic";
+import { parseFen, replayMoves, squareCenter, START_FEN } from "../../../remotion/kit/chessLogic";
 import { noteMidi, pianoKeys } from "../../../remotion/kit/pianoLogic";
 
 const doc = (...scenes: unknown[]) => ({ version: 1, scenes });
@@ -86,5 +86,13 @@ describe("piano scene", () => {
     expect(errs(doc({ ...piano, events: [{ atMs: 0, notes: ["C4"], label: "x".repeat(25) }] }))[0]).toContain("label");
     expect(errs(doc({ ...piano, events: [{ atMs: 3000, notes: ["C4"] }, { atMs: 1000, notes: ["D4"] }] }))[0]).toContain("in time order");
     expect(errs(doc({ ...piano, events: [{ atMs: 0, notes: ["C4", "D4", "E4", "F4", "G4", "A4", "B4"] }] })).length).toBe(1);
+  });
+});
+
+describe("squareCenter", () => {
+  it("maps squares to pixel centres, flipped or not", () => {
+    expect(squareCenter("a1", 100)).toEqual({ x: 50, y: 750 });
+    expect(squareCenter("h8", 100)).toEqual({ x: 750, y: 50 });
+    expect(squareCenter("a1", 100, true)).toEqual({ x: 750, y: 50 });
   });
 });

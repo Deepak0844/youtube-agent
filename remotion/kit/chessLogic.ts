@@ -15,6 +15,12 @@ export const squareRC = (sq: string, flip = false) => {
   return { col: flip ? 7 - f : f, row: flip ? r : 7 - r };
 };
 
+/** Pixel centre of a square on a board whose squares are `s` px wide (top-left of the board is 0,0). */
+export const squareCenter = (sq: string, s: number, flip = false) => {
+  const { col, row } = squareRC(sq, flip);
+  return { x: col * s + s / 2, y: row * s + s / 2 };
+};
+
 /** Strict placement-field parser: 8 ranks, digits 1-8 sum to 8, one king each, no pawns on rank 1 or 8. */
 export function parseFen(fen: string): { ok: true; board: BoardMap } | { ok: false; error: string } {
   const ranks = fen.split("/");

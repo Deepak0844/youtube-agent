@@ -57,9 +57,14 @@ const browser: BrowserProps = {
   ],
   framesPerBlock: 30,
 };
-// A 1x1 transparent-safe data URI keeps the smoke render offline; real jobs pass a staged asset path.
+// Preview-only stand-in for footage: sky gradient, sun and two hill layers, all derived from one hue.
+const sceneArt = (h: number): string => {
+  const c = (dh: number, sat: number, l: number) => `hsl(${(h + dh) % 360},${sat}%25,${l}%25)`;
+  return `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1080' height='1920'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='${c(0, 55, 22)}'/><stop offset='0.6' stop-color='${c(30, 65, 55)}'/></linearGradient></defs><rect width='100%25' height='100%25' fill='url(%23g)'/><circle cx='760' cy='820' r='130' fill='${c(60, 90, 78)}'/><path d='M0 1180 Q300 1020 560 1130 T1080 1060 V1920 H0Z' fill='${c(10, 35, 18)}'/><path d='M0 1420 Q340 1280 640 1390 T1080 1340 V1920 H0Z' fill='${c(-10, 30, 11)}'/></svg>`;
+};
+// A data URI keeps the smoke render offline; real jobs pass a staged asset path.
 const story: StoryProps = {
-  image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1080' height='1920'><rect width='100%25' height='100%25' fill='%231e3a5f'/><circle cx='540' cy='960' r='300' fill='%235eead4'/></svg>",
+  image: sceneArt(215),
   motion: { zoomFrom: 1, zoomTo: 1.2, panX: 0.03, panY: 0.02 },
 };
 
@@ -200,7 +205,7 @@ export const kitCompositions = [
 const placeholder = (id: string): string => {
   let h = 0;
   for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1080' height='1920'><rect width='100%25' height='100%25' fill='hsl(${h},45%25,30%25)'/><circle cx='540' cy='960' r='300' fill='hsl(${(h + 40) % 360},70%25,60%25)'/></svg>`;
+  return sceneArt(h);
 };
 
 // One validated scene in, one kit piece out. Captions and terminal "output" lines are not drawn by the pieces yet.
