@@ -1,4 +1,4 @@
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { captionsBody, estimateTimings, flagLanguage, pickTimingsKind, splitForAlignment, type AlignFlag, type CaptionWord, type TimingsKind } from "@/server/core/alignment";
 import { speakingRate, wordCount, wordRange } from "@/server/core/lang";
@@ -26,6 +26,17 @@ async function cachedLine(deps: StageDeps, key: string): Promise<VoiceLineRow | 
   if (ok) return row;
   await dropLine(deps.db, key);
   return null;
+}
+
+/**
+ * A paid call replays by (stage run, step) only. The mark records which voice route paid for this line; a retry under a different
+ * route would store the old voice's audio under the new voice's cache key, so it refuses instead (the old audio stays put, never re-paid).
+ */
+export async function guardPaidLineVoice(pendingDir: string, lineIndex: number, key: string): Promise<void> {
+  const mark = path.join(pendingDir, `line-${lineIndex}.key`);
+  const prior = await readFile(mark, "utf8").catch(() => null);
+  if (prior === null) return writeFile(mark, key, { mode: 0o600 });
+  if (prior !== key) throw new KnownFailure("The voice changed after this line was paid for, so its saved audio belongs to the old voice. Switch the voice back, or check the provider's billing page before paying again.");
 }
 
 /**
@@ -58,7 +69,7 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
 
     const rows: VoiceLineRow[] = [];
     let made = 0;
-    for (const line of lines) {
+    for (const [lineIndex, line] of lines.entries()) {
       // The provider is part of the key, so a different provider (or a fake) can never be served this provider's line.
       const key = lineCacheKey({ text: line.text, voice, model: `${providerId}:${model ?? ""}`, lang: video.language, settings: {} });
       const hit = await cachedLine(deps, key);
@@ -73,6 +84,7 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
       // attempt folder swept) replaying this paid step still finds the file. It is deleted only after the line's row is stored.
       const pendingDir = await safeJoin(deps.root, "voice-pending", ctx.claim.stageRunId);
       await mkdir(pendingDir, { recursive: true, mode: 0o700 });
+      await guardPaidLineVoice(pendingDir, lineIndex, key);
       const r = await provider.synthesise({ ...ctx, attemptDir: pendingDir } as StageContext, { text: line.text, lang: video.language, voice, ...(model && { model }) });
       if (!(await stat(r.audioPath).then((f) => f.isFile(), () => false))) {
         throw new KnownFailure("The audio for a paid line is missing from disk. Check the provider's billing page before running this step again.");
@@ -82,6 +94,7 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
       const durationS = await audioSeconds(deps.mix, ctx, await safeJoin(deps.root, ...rel.split("/")));
       const d = await hashStoredFile(deps.root, rel);
       const stored = await storeLine(deps.db, deps.root, { cacheKey: key, provider: providerId, bytes: d.bytes, sha256: d.sha256, durationS, wordTimings: r.wordTimings, timingsKind: r.timingsKind, filePath: rel, priceMicroUsd: r.priceMicroUsd });
+      await rm(path.join(pendingDir, `line-${lineIndex}.key`), { force: true });
       await rm(r.audioPath, { force: true }); // the cache holds the copy and the row exists: a replay no longer needs the pending file
       rows.push(stored.row);
       made++;
