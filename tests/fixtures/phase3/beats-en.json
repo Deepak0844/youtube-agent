@@ -1,0 +1,9 @@
+{
+  "title": "Three hearts",
+  "beats": [
+    { "id": "b1", "text": "Octopuses have three hearts." },
+    { "id": "b2", "text": "Two of them pump blood through the gills." },
+    { "id": "b3", "text": "The third one sends it to the rest of the body." },
+    { "id": "b4", "text": "When an octopus swims, that third heart stops." }
+  ]
+}

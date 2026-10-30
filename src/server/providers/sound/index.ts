@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, rename, stat } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
@@ -51,7 +51,12 @@ export async function ensureSound(ctx: StageContext, deps: SoundDeps, need: Soun
   if (!deps.generateAllowed) throw new KnownFailure("No sound in the library matches, and generating a new one is not allowed. Choose \"generate\", or pick a library track yourself.");
 
   const a = { prompt, seconds: need.seconds };
-  const art = need.kind === "sfx" ? await deps.provider.makeSfx(ctx, a) : await deps.provider.makeMusic(ctx, a);
+  // The paid clip is written to a folder that does not depend on the attempt's fence: a resumed attempt (higher fence, the old attempt
+  // folder swept) replays the settled call and must still find the file. It is removed once the raw copy below is in place.
+  const staging = path.join(deps.audioRoot, "generated", "pending", ctx.claim.stageRunId);
+  await mkdir(staging, { recursive: true, mode: 0o700 });
+  const staged = { ...ctx, attemptDir: staging } as StageContext;
+  const art = need.kind === "sfx" ? await deps.provider.makeSfx(staged, a) : await deps.provider.makeMusic(staged, a);
 
   // Keep the paid clip outside the attempt folder (a retry gets a new one) and level from that copy.
   const rawRel = `generated/raw-${art.sha256.slice(0, 16)}.mp3`;
@@ -62,6 +67,7 @@ export async function ensureSound(ctx: StageContext, deps: SoundDeps, need: Soun
     await copyFile(art.path, `${raw}.tmp`);
     await rename(`${raw}.tmp`, raw);
   }
+  await rm(art.path, { force: true });
 
   const norm = path.join(ctx.attemptDir, `norm-${art.sha256.slice(0, 12)}.mp3`);
   const out: string[] = [];
