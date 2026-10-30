@@ -32,6 +32,7 @@ After migrating the local database and configuring `.env.local`:
 ### Portrait kit (needs `npm run image:render` once, Docker/OrbStack running)
 
 - `npm run kit:studio` opens Remotion Studio for `remotion/kit` at http://127.0.0.1:3100 (loopback only, kit mounted read-only, no secrets).
+- `npm run kit:sheet` renders frame 60 of every kit piece (same locked-down container as kit:studio) and tiles them into one grid (row-major; order printed in the terminal and captioned in `index.html`) at `.data/kit-sheet/contact-sheet.png`.
 - `npm run kit:preview -- scene.json` checks a scene file, then saves frame 0 / middle / last stills to `.data/kit-preview/`. Image ids show as coloured placeholders.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
