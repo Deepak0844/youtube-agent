@@ -5,7 +5,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { ensureCapScope } from "@/server/db/budget-scopes";
 import { approvedCostPlan, approvedScript } from "@/server/db/stage-content";
 import { assertProviderName, type AttemptHandler } from "./attempt";
-import { DEFAULTS, loadVideo, SIZE, videoMoneyScopes, type StageDeps } from "./deps";
+import { DEFAULTS, loadVideo, videoMoneyScopes, type StageDeps } from "./deps";
 
 /**
  * Generate: buys what the approved cost plan lists, one paid call per item, and nothing else.
@@ -42,19 +42,16 @@ export function generateAttempt(deps: StageDeps): AttemptHandler {
     const beats = script.beats;
 
     const files: string[] = [];
-    for (const [index, item] of plan.items.entries()) {
+    for (const index of plan.items.keys()) {
       const still = await approvedCostPlan(deps.db, video.id);
       if (!still.ok || still.hash !== approved.hash) throw new KnownFailure("The cost plan changed while images were being made. Approve it again; nothing more was bought.");
       const beat = Array.isArray(beats) ? beats[index] : undefined;
       const prompt = typeof beat?.id === "string" ? `scene ${beat.id}` : `scene ${index + 1}`;
-      const made = await ctx.paid<{ name: string; b64: string }>(
-        { reserveMicroUsd: item.quoteMicroUsd, budgetScopes: scopes, kind: "paid" },
-        async () => {
-          const r = await deps.image.generate(ctx, { prompt, size: SIZE });
-          const name = path.basename(r.imagePath);
-          return { result: { name, b64: (await readFile(r.imagePath)).toString("base64") }, actualMicroUsd: r.priceMicroUsd };
-        },
-      );
+      // The adapter reserves inside generate(), against the quote-cap scope passed here.
+      const r = await deps.image.generate(ctx, { prompt, aspect: "9:16", model: deps.imageModel ?? DEFAULTS.imageModel, budgetScopes: scopes });
+      // Real adapters keep the image under the storage root (outlives the attempt); the fake carries b64 instead. A missing file is never re-bought: the plain error parks the stage.
+      const b64 = (r as { b64?: string }).b64 ?? (await readFile(r.path).then((b) => b.toString("base64"), () => { throw new Error("A paid image's file is missing. It was not requested again; this needs the owner's decision."); }));
+      const made = { name: path.basename(r.path), b64 };
       assertProviderName(made.name, "image");
       await writeFile(path.join(ctx.attemptDir, made.name), Buffer.from(made.b64, "base64")); // also rebuilds the file after a resume
       if (!files.includes(made.name)) files.push(made.name);

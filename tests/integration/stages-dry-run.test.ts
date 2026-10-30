@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
-import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -246,6 +246,49 @@ describe("dry-run stage handlers", () => {
     expect(await intentCount()).toBe(3);
   });
 
+  it("replay of a done image intent in a new attempt, old attempt folder deleted, reads the stored file and never calls the provider", async () => {
+    const v = await newVideo();
+    await seedScript(v.id);
+    const store = path.join(root, "generated-media");
+    let calls = 0;
+    // Shaped like a real adapter: reserves itself, keeps the file under the storage root, returns no bytes.
+    const real: ImageProvider = {
+      ...createFakeImage(),
+      generate: (c, a) => c.paid({ reserveMicroUsd: 4000, budgetScopes: a.budgetScopes, kind: "paid" }, async () => {
+        calls++;
+        mkdirSync(store, { recursive: true });
+        const file = path.join(store, `image-${a.prompt.replace(/\W/g, "")}.png`);
+        writeFileSync(file, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"));
+        return { result: { path: file, bytes: 1, sha256: "x", provenance: { provider: "real", params: {}, priceMicroUsd: 4000, quoted: true } }, actualMicroUsd: 4000 };
+      }),
+    };
+    const deps = mkDeps({ image: real });
+    expect((await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(deps)))).kind).toBe("committed");
+    await approveCost(v.id);
+    const { ctx, stageId } = await stageCtx(v.id, "generate");
+    const attemptA = await prepareAttempt(ctx, root);
+    await generateAttempt(deps)(ctx);
+    expect(calls).toBe(3);
+    rmSync(attemptA, { recursive: true, force: true }); // the first attempt's folder is gone
+
+    await db.ownerPool.query("update stage_runs set status='queued', lease_owner=null, lease_until=null where id=$1", [stageId]);
+    const claim2 = (await claimStage(db.pool, { id: stageId, inputHash: "h", workerId: "w2", ttlMs: 600_000 }))!;
+    const ctx2 = createStageContext({ stage: ctx.stage, claim: claim2, config, signal: new AbortController().signal, paid: createPgPaidCallPorts(db.pool) }).ctx;
+    const done = (await withAttempt({ db: db.pool, root }, generateAttempt(deps))(ctx2)) as { files: string[] };
+    expect(calls).toBe(3);
+    expect(done.files).toHaveLength(3);
+    for (const f of done.files) expect(existsSync(path.join(root, "videos", v.id, f))).toBe(true);
+
+    // The kept file is lost: the replay parks with a plain error, and still nothing is bought again.
+    rmSync(store, { recursive: true, force: true });
+    await db.ownerPool.query("update stage_runs set status='queued', lease_owner=null, lease_until=null where id=$1", [stageId]);
+    const claim3 = (await claimStage(db.pool, { id: stageId, inputHash: "h", workerId: "w3", ttlMs: 600_000 }))!;
+    const ctx3 = createStageContext({ stage: ctx.stage, claim: claim3, config, signal: new AbortController().signal, paid: createPgPaidCallPorts(db.pool) }).ctx;
+    await prepareAttempt(ctx3, root);
+    await expect(generateAttempt(deps)(ctx3)).rejects.toThrow(/file is missing/);
+    expect(calls).toBe(3);
+  });
+
   it("a failed QA saves no video and says why", async () => {
     const v = await newVideo();
     const deps = mkDeps({ renderer: createFakeRenderer({ fixture: path.join(FIXTURES, "short.mp4") }) });
@@ -334,6 +377,7 @@ describe("paid generation is bounded by the approved quote", () => {
     const inner = deps.image;
     let first = true;
     const image: ImageProvider = {
+      ...inner,
       generate: async (c, a) => {
         const r = await inner.generate(c, a);
         if (first) {
@@ -491,7 +535,7 @@ describe("provider file names and video files", () => {
     expect(() => assertProviderName("image-abc.png", "image")).not.toThrow();
 
     const deps = mkDeps();
-    const evil: ImageProvider = { generate: async (c) => { const p = path.join(c.attemptDir, "final.mp4"); writeFileSync(p, "x"); return { imagePath: p, priceMicroUsd: 1 }; } };
+    const evil: ImageProvider = { ...deps.image, generate: async (c) => { const p = path.join(c.attemptDir, "final.mp4"); writeFileSync(p, "x"); return { path: p, bytes: 1, sha256: "", provenance: { provider: "evil", params: {}, priceMicroUsd: 1, quoted: true } }; } };
     const v = await newVideo();
     await seedScript(v.id);
     expect((await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(deps)))).kind).toBe("committed");
