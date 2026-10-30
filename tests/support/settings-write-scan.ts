@@ -33,6 +33,7 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
   "src/server/db/publish.ts": ["getSetting"],
   // Reads the assets.* upload limits for the upload route and the ingest job; never writes.
   "src/server/db/ingest-jobs.ts": ["getSetting"],
+  "src/worker/stages/voice-for.ts": ["getSetting"],
 };
 
 /** The only file(s) that may import the system-settings writers: the guarded server actions (requireOwner first). */
