@@ -1,3 +1,7 @@
+import { mkdtempSync, readdirSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { saveImage } from "@/server/providers/image";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildEngineConfig } from "@/server/core/engine-config";
 import type { StageHandler } from "@/server/core/stage-handler";
@@ -106,6 +110,7 @@ describe("check the job", () => {
     const { stageId } = await park();
     expect(await run(stageId, fakeFal([{ kind: "failed", reason: "fal says the job failed" }]))).toMatchObject({ ok: true, outcome: "failed" });
     expect(await budget()).toMatchObject({ reservedMicroUsd: RESERVE });
+    expect(await intents(stageId)).toMatchObject([{ status: "unknown" }]);
     expect((await getDecision(db.pool, stageId))!.choices).toContain("release_and_rerun");
     expect((await audits())[0]).toMatchObject({ outcome: "failed" });
   });
@@ -160,5 +165,47 @@ describe("check the job", () => {
   it("the_old_resolver_refuses_the_new_choice", async () => {
     const { stageId } = await park();
     expect(await resolveDecision(db.pool, q, { stageRunId: stageId, choice: "check_the_job", actor: SESSION })).toMatchObject({ ok: false });
+  });
+
+  it.each(["release_and_rerun", "keep_spent_and_rerun"] as const)("a_check_racing_%s_stops_and_never_settles_twice", async (choice) => {
+    const { stageId } = await park();
+    const racing: JobChecker = {
+      async check() {
+        // the owner resolves in another tab while the provider is being asked
+        expect(await resolveDecision(db.pool, q, { stageRunId: stageId, choice, actor: SESSION })).toMatchObject({ ok: true });
+        return { kind: "done", artifact: ART };
+      },
+    };
+    expect(await checkParkedJob(db.pool, { fal_image: racing }, { stageRunId: stageId, actor: SESSION })).toMatchObject({ ok: false });
+    const b = await budget();
+    expect(b.reservedMicroUsd).toBe(0);
+    expect(b.spentMicroUsd).toBe(choice === "keep_spent_and_rerun" ? RESERVE : 0);
+    expect(await intents(stageId)).toHaveLength(1);
+    expect((await job(stageId)).state).toBe("submitted");
+    expect(await audits()).toEqual([]);
+  });
+
+  it("a_crash_between_saving_the_file_and_the_transaction_settles_once_on_retry", async () => {
+    const { stageId } = await park();
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "jc-root-")));
+    const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    const paths: string[] = [];
+    let crash = true;
+    const checker: JobChecker = {
+      async check(j) {
+        const artifact = await saveImage(PNG, { provider: "fal_image", model: "m", prompt: "p", refs: [], root, priceMicroUsd: j.quoteMicroUsd });
+        paths.push(artifact.path);
+        if (crash) throw new Error("process died after the file was saved");
+        return { kind: "done", artifact };
+      },
+    };
+    expect(await checkParkedJob(db.pool, { fal_image: checker }, { stageRunId: stageId, actor: SESSION })).toMatchObject({ outcome: "unknown" });
+    expect(await budget()).toMatchObject({ reservedMicroUsd: RESERVE, spentMicroUsd: 0 });
+    crash = false;
+    expect(await checkParkedJob(db.pool, { fal_image: checker }, { stageRunId: stageId, actor: SESSION })).toMatchObject({ outcome: "done" });
+    expect(paths[1]).toBe(paths[0]);
+    expect(readdirSync(root, { recursive: true, withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith(".png"))).toHaveLength(1);
+    expect(await budget()).toMatchObject({ reservedMicroUsd: 0, spentMicroUsd: RESERVE });
+    expect(await intents(stageId)).toMatchObject([{ status: "done", actual: RESERVE }]);
   });
 });
