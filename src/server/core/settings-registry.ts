@@ -83,6 +83,10 @@ export const SETTINGS = {
   "notify.master": { schema: z.boolean(), default: true, safety: false, label: "Notifications on (master switch)" },
   "notify.quiet_hours": { schema: quietHours, default: { enabled: false, start: "22:00", end: "07:00", tz: "Asia/Kolkata" }, safety: false, label: "Quiet hours" },
   "notify.events": { schema: notifyEvents, default: DEFAULT_EVENT_SWITCHES as Record<string, unknown>, safety: false, label: "Notification switches per event and channel" },
+  // Voice servers (Doc 13 5): where the adapters without a fixed address live. Empty = not set up. Server addresses are safety keys (they decide where the script text is sent).
+  "voice.azure_region": { schema: z.string().regex(/^([a-z0-9-]{3,30})?$/), default: "", safety: false, label: "Azure speech region" },
+  "voice.local_url": { schema: z.string().max(300), default: "", safety: true, label: "Local voice server address" },
+  "voice.voicestudio_url": { schema: z.string().max(300), default: "", safety: true, label: "VoiceStudio address" },
   "display.currency": { schema: z.string().min(1), default: "USD", safety: false, label: "Display currency" },
 } satisfies Record<string, SettingDef>;
 

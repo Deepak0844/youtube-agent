@@ -27,7 +27,7 @@ describe("settings registry", () => {
       [
         "network.local_services", "policy.allow_public", "policy.require_evidence",
         "assets.max_image_bytes", "assets.max_audio_bytes", "assets.max_pixels", "assets.max_batch_files", "assets.total_bytes_cap",
-        "assets.retention_days", "assets.unused_days", "assets.trash_days",
+        "assets.retention_days", "assets.unused_days", "assets.trash_days", "voice.local_url", "voice.voicestudio_url",
         ...ENGINE_KEYS,
       ].sort(),
     );
@@ -52,6 +52,9 @@ describe("settings registry", () => {
       "policy.require_evidence": true,
       "policy.allow_public": false,
       "network.local_services": [],
+      "voice.azure_region": "",
+      "voice.local_url": "",
+      "voice.voicestudio_url": "",
       "display.currency": "USD",
     });
   });

@@ -99,6 +99,7 @@ describe("no code path in src writes a safety setting as anything but a session"
       "src/server/db/notify.ts": ["getSetting"],
       "src/server/db/publish.ts": ["getSetting"],
       "src/server/db/ingest-jobs.ts": ["getSetting"],
+      "src/worker/stages/voice-for.ts": ["getSetting"],
     });
     for (const names of Object.values(SETTINGS_IMPORT_ALLOW)) expect(names).not.toContain("setSetting");
     expect(SESSION_WRITER_IMPORT_ALLOW).toEqual({

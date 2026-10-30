@@ -5,6 +5,11 @@ import { secretName, type ProviderId } from "@/server/core/provider-keys";
 import { KEY_SLOT } from "@/server/core/media-catalog";
 import type { Keyring } from "@/server/core/vault-crypto";
 import { getPriceRule, resolveRoute } from "@/server/db/media-registry";
+import { getSetting } from "@/server/db/settings";
+import { loadLocalServices } from "@/server/db/system-settings";
+import { createAzureVoice } from "@/server/providers/voice/azure";
+import { createOpenAiCompatibleVoice } from "@/server/providers/voice/openai-compatible";
+import { assertVoiceStudioUrl, isLoopbackHost, createVoiceStudioVoice } from "@/server/providers/voice/voicestudio";
 import { getSecret, hasSecret } from "@/server/db/vault";
 import { safeFetch } from "@/server/providers/net/safe-fetch";
 import { createEdgeVoice, connectEdge } from "@/server/providers/voice/edge";
@@ -53,6 +58,37 @@ export function createVoiceFor(db: pg.Pool, loader: () => Keyring, fetchFn: type
       }
       case "edge":
         return { provider: createEdgeVoice({ connect: connectEdge }), providerId: "edge", voice: route.voice ?? EDGE_VOICES[lang] };
+      case "azure_tts": {
+        await needKey();
+        const region = String(await getSetting(db, "voice.azure_region"));
+        if (!region) throw new KnownFailure(`${PICK_VOICE} (set the Azure region).`);
+        if (!route.voice) throw new KnownFailure(`${PICK_VOICE} (choose an Azure voice).`);
+        return { provider: createAzureVoice({ fetch: fetchFn, getKey, price, budgetScopes, region }), providerId: "azure_tts", voice: route.voice };
+      }
+      case "local_openai":
+      case "voicestudio": {
+        const isLocal = route.provider === "local_openai";
+        const baseUrl = String(await getSetting(db, isLocal ? "voice.local_url" : "voice.voicestudio_url"));
+        if (!baseUrl) throw new KnownFailure(`${PICK_VOICE} (set the ${isLocal ? "local voice server" : "VoiceStudio"} address).`);
+        if (!route.voice) throw new KnownFailure(`${PICK_VOICE} (choose a voice).`);
+        const keySaved = Boolean(slot) && (await hasSecret(db, secretName(slot as ProviderId)));
+        try {
+          new URL(baseUrl);
+        } catch {
+          throw new KnownFailure(`${PICK_VOICE} (the ${isLocal ? "local voice server" : "VoiceStudio"} address is not a valid URL).`);
+        }
+        if (!isLocal) assertVoiceStudioUrl(baseUrl, keySaved);
+        else if (keySaved) {
+          const u = new URL(baseUrl);
+          if (u.protocol !== "https:" && !isLoopbackHost(u.hostname)) throw new KnownFailure(`${PICK_VOICE} (a key must not be sent over plain http to another computer; use an https address).`);
+        }
+        const localServices = await loadLocalServices(db);
+        const optKey = async () => (keySaved ? getKey() : null);
+        const provider = isLocal
+          ? createOpenAiCompatibleVoice({ baseUrl, localServices, model: route.model ?? "default", voice: route.voice, getKey: optKey, wordTimings: "estimated" })
+          : createVoiceStudioVoice({ baseUrl, localServices, voice: route.voice, getKey: optKey });
+        return { provider, providerId: route.provider, voice: route.voice, ...(route.model && { model: route.model }) };
+      }
       default:
         throw new KnownFailure(`${PICK_VOICE} (${route.provider} is not set up for narration yet).`);
     }
