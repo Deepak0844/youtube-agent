@@ -12,6 +12,7 @@ import type { VoiceProvider } from "@/server/providers/voice";
 import type { AlignArgs } from "@/server/render/whisper";
 import type { MixDeps } from "@/server/render/mix";
 import type { probeVideo } from "@/server/render/probe";
+import type { LlmClient } from "@/server/llm/client";
 import { videoIdOf } from "./attempt";
 
 /** `providerId` is the registry id: it is part of every cached line's key, so two providers never share a cached line. */
@@ -48,6 +49,10 @@ export interface StageDeps {
   imageQuoteMicroUsd?: number;
   /** How many beat images Build plans at most (default 3). */
   maxImages?: number;
+  /** Build only: the model client for scene JSON, given the budget scopes its calls reserve against. Absent = no scenes are made (old stub only). */
+  makeLlm?: (budgetScopes: string[]) => LlmClient;
+  /** Build only: asset ids that exist for this video. Scenes may use only these; none = image kinds are not offered. */
+  sceneAssets?: (videoId: string) => Promise<string[]>;
   /** Real sound pass (ffmpeg). Absent = dry run: Voice and Sfx copy the file on. */
   mix?: MixDeps;
 }

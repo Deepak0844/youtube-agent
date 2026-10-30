@@ -1,11 +1,14 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { buildCostPlan, costPlanBody, type CostItem } from "@/server/core/cost-plan";
-import { KnownFailure } from "@/server/core/paid-call";
-import type { AttemptHandler } from "./attempt";
+import { BudgetRefusedError, KnownFailure } from "@/server/core/paid-call";
+import { buildSceneDoc } from "@/server/core/scene-build";
+import type { Message } from "@/server/core/agent-loop";
+import type { AttemptHandler, OutContent } from "./attempt";
 import { approvedScript } from "@/server/db/stage-content";
 import { DEFAULTS, loadVideo, plainScope, scopeHeadroom, videoMoneyScopes, type StageDeps } from "./deps";
 
+const SCENE_MAX_OUTPUT_TOKENS = 1500;
 const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`;
 
 /**
@@ -38,12 +41,27 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
       throw new KnownFailure(`plan_over_the_cap: this plan would cost ${usd(plan.totalMicroUsd)} but only ${usd(room.micro)} is left under ${plainScope(room.scope)}. Nothing was spent.`);
     }
 
-    // A stub scene file: Phase 4 replaces it with the real scene kit. It names the beats the images are for.
+    // The old stub scene file (Render still reads it until it switches to scenes.json). It names the beats the images are for.
     await writeFile(path.join(ctx.attemptDir, "scene.json"), JSON.stringify({ version: 1, kind: video.kind, beats: beatIds, images: count }));
-    return {
-      files: ["scene.json"],
-      content: [{ kind: "cost_plan", body: costPlanBody(plan) }],
-      result: { items: items.length, totalMicroUsd: plan.totalMicroUsd },
-    };
+    const content: OutContent[] = [{ kind: "cost_plan", body: costPlanBody(plan) }];
+    const files = ["scene.json"];
+    if (deps.makeLlm) {
+      // Scenes: one reserved model call per attempt, per beat. A budget refusal or a bad scene fails the stage with no scenes file.
+      const llm = deps.makeLlm(await videoMoneyScopes(deps.db, video));
+      const beats = script.beats.map((b, i) => ({ id: beatIds[i]!, text: typeof (b as { text?: unknown })?.text === "string" ? (b as { text: string }).text : "" }));
+      const ask = async (messages: Message[]) => {
+        try {
+          return (await llm.agent(ctx, { stage: "build_scene_kit", tools: [], messages, maxSteps: 1, maxOutputTokens: SCENE_MAX_OUTPUT_TOKENS })).text;
+        } catch (e) {
+          if (e instanceof BudgetRefusedError) throw new KnownFailure("plan_over_the_cap: a spending cap refused the scene step. Nothing more was spent.");
+          throw e; // unclear outcome parks the stage; it is never retried here
+        }
+      };
+      const doc = await buildSceneDoc(beats, ask, { assets: (await deps.sceneAssets?.(video.id)) ?? [] });
+      await writeFile(path.join(ctx.attemptDir, "scenes.json"), JSON.stringify(doc));
+      files.push("scenes.json");
+      content.push({ kind: "scenes", body: doc });
+    }
+    return { files, content, result: { items: items.length, totalMicroUsd: plan.totalMicroUsd } };
   };
 }

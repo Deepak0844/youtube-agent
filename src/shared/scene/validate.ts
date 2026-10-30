@@ -29,12 +29,28 @@ export function sceneJsonSchema(): object {
   return z.toJSONSchema(sceneDocSchema, { io: "input", unrepresentable: "any" });
 }
 
-/** Short human text for a prompt: what to fill and the hard limits. */
-export function describeSceneFormat(): string {
+/** Kinds that point at library images/clips. Offered to a model only when the video has some. */
+export const ASSET_KINDS: readonly string[] = ["collage", "stock_clip", "story_kenburns"];
+
+/** Kinds a model may use: all of them with assets, else only those that need none. */
+export function usableKinds(hasAssets: boolean): string[] {
+  return KINDS.filter((k) => hasAssets || !ASSET_KINDS.includes(k));
+}
+
+/** Short human text for a prompt: what to fill and the hard limits. `only` limits the kind list (see usableKinds). */
+export function describeSceneFormat(only?: readonly string[]): string {
   return [
     `Return JSON: {"version": ${SCENE_SCHEMA_VERSION}, "scenes": [...]}. Portrait video. Times are whole milliseconds.`,
     `Every scene: id, kind, beat (script beat id), startMs, durationMs (${LIMITS.minSceneMs}-${LIMITS.maxSceneMs}). Scenes must not overlap; total at most ${LIMITS.maxTotalMs} ms.`,
-    ...Object.values(kinds).map((k) => k.describe),
+    ...Object.entries(kinds).filter(([n]) => !only || only.includes(n)).map(([, k]) => k.describe),
     `Never use URLs or file paths; refer to media by asset id only.`,
   ].join("\n");
+}
+
+/** One short line per kind (name plus the start of its description), for a cheap "which kind fits this beat" prompt. */
+export function kindBlurbs(only: readonly string[]): string {
+  return Object.entries(kinds)
+    .filter(([n]) => only.includes(n))
+    .map(([n, k]) => `- ${n}: ${k.describe.replace(/^kind "[^"]*":\s*/, "").slice(0, 70)}`)
+    .join("\n");
 }
