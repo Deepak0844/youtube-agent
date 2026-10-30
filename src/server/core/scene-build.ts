@@ -104,10 +104,14 @@ async function withRetries<T>(ask: AskScene, messages: Message[], check: (text: 
 export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, opts: { assets?: readonly string[] } = {}): Promise<SceneDoc> {
   const assets = opts.assets ?? [];
   const kinds = usableKinds(assets.length > 0);
+  // Everything that can be checked for free is checked BEFORE the first paid call.
+  if (beats.length > LIMITS.maxScenes) throw new KnownFailure(`The script has ${beats.length} beats; the scene format allows at most ${LIMITS.maxScenes}. Shorten the script and draft again.`);
+  for (const beat of beats) {
+    if (!BEAT_ID.test(beat.id)) throw new KnownFailure(`Beat '${beat.id.slice(0, 40)}' has an id the scene format cannot use (1-32 chars of a-z, 0-9, _ or -). Fix the script and draft again.`);
+  }
   const scenes: Record<string, unknown>[] = [];
   let startMs = 0;
   for (const [i, beat] of beats.entries()) {
-    if (!BEAT_ID.test(beat.id)) throw new KnownFailure(`Beat '${beat.id.slice(0, 40)}' has an id the scene format cannot use (1-32 chars of a-z, 0-9, _ or -). Fix the script and draft again.`);
     const fail = (errors: string[]) => new KnownFailure(`scenes_invalid: beat '${beat.id}' could not get a valid scene. Last problems: ${errors.slice(0, 5).join("; ")}`.slice(0, 600));
     const pick = await withRetries(ask, pickMessages(beat, kinds), (t) => checkPick(t, kinds));
     if ("errors" in pick) throw fail(pick.errors);

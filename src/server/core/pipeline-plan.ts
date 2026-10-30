@@ -7,7 +7,7 @@ import type { GateId } from "@/server/core/gates";
 
 export type VideoFormat = "short" | "long";
 export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai";
-export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions";
+export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes";
 
 export const STAGE_NAMES = ["draft", "build", "generate", "tts", "render", "voice", "sfx", "qa"] as const;
 export type StageName = (typeof STAGE_NAMES)[number];
@@ -61,6 +61,7 @@ export function postStageGates(plan: readonly PlanStep[], flags: PlanFlags): Gat
 }
 
 /** Content a stage reads, beyond the previous stage's hash. A new version of any of these makes the stage stale. */
+// Render still reads beats + narration + scene.json. When it switches to the `scenes` content, add "scenes" here.
 export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKindName[]>> = {
   draft: [],
   build: ["script"],

@@ -2,7 +2,7 @@ import type { LanguageModel } from "ai";
 import { describe, expect, it } from "vitest";
 import type { StepResult } from "@/server/core/agent-loop";
 import type { ModelRow } from "@/server/core/llm-catalog";
-import { BudgetRefusedError, KnownFailure } from "@/server/core/paid-call";
+import { BudgetRefusedError, KnownFailure, NeedsDecisionError } from "@/server/core/paid-call";
 import { beatDurationMs, buildSceneDoc } from "@/server/core/scene-build";
 import { fakeModelStep } from "@/server/llm/fake-step";
 import { createLlmClient, type LlmStageContext } from "@/server/llm/client";
@@ -128,5 +128,54 @@ describe("buildSceneDoc", () => {
     const again = harness([new Error("provider must not be called")], { ledger: first.ledger });
     expect((await buildSceneDoc(beats, again.ask)).scenes).toHaveLength(2);
     expect(first.ledger.providerCalls).toBe(4);
+  });
+
+  it("free checks run before any paid call: bad id on beat 5, or more than 40 beats", async () => {
+    const h = harness([pick(), ans(doc(term))]);
+    const five = Array.from({ length: 5 }, (_, n) => ({ id: n === 4 ? "Bad Id!" : `b${n + 1}`, text: "x" }));
+    await expect(buildSceneDoc(five, h.ask)).rejects.toThrow(/Bad Id/);
+    const many = Array.from({ length: 41 }, (_, n) => ({ id: `b${n + 1}`, text: "x" }));
+    await expect(buildSceneDoc(many, h.ask)).rejects.toThrow(/at most 40/);
+    expect(h.ledger.providerCalls).toBe(0);
+  });
+
+  it("an unclear outcome (NeedsDecisionError) goes up untouched and is not retried", async () => {
+    let calls = 0;
+    const ask = async (): Promise<string> => {
+      calls++;
+      throw new NeedsDecisionError("run", "k1", 5);
+    };
+    await expect(buildSceneDoc(beats, ask)).rejects.toBeInstanceOf(NeedsDecisionError);
+    expect(calls).toBe(1);
+  });
+
+  it("a bad kind pick is retried; the same bad pick twice stops", async () => {
+    const ok = harness([pick("bogus"), pick(), ans(doc(term))]);
+    expect((await buildSceneDoc([beats[0]!], ok.ask)).scenes).toHaveLength(1);
+    expect(ok.prompts[1]).toContain("kind must be one of");
+    const stuck = harness([pick("bogus")]);
+    await expect(buildSceneDoc([beats[0]!], stuck.ask)).rejects.toThrow(/beat 'b1'.*kind must be one of/);
+    expect(stuck.ledger.providerCalls).toBe(2);
+  });
+
+  it("a fill of another kind, or with more than one scene, is rejected", async () => {
+    const other = harness([pick("browser"), ans(doc(term))]);
+    await expect(buildSceneDoc([beats[0]!], other.ask)).rejects.toThrow(/must be 'browser'/);
+    const two = harness([pick(), ans(JSON.stringify({ version: 1, scenes: [term, { ...term, id: "s2", startMs: 3000 }] }))]);
+    await expect(buildSceneDoc([beats[0]!], two.ask)).rejects.toThrow(/exactly 1 scene/);
+  });
+
+  it("a code-fenced answer is accepted", async () => {
+    const h = harness([pick(), ans("```json\n" + doc(term) + "\n```")]);
+    expect((await buildSceneDoc([beats[0]!], h.ask)).scenes).toHaveLength(1);
+  });
+
+  it("an asset id nested in collage tiles is checked against the allow-list", async () => {
+    const tile = (asset: string) => ({ asset });
+    const col = (a: string, b: string) => doc({ id: "s1", kind: "collage", beat: "b1", startMs: 0, durationMs: 3000, layout: "grid2", tiles: [tile(a), tile(b)] });
+    const h = harness([pick("collage"), ans(col("img_1", "img_9")), ans(col("img_1", "img_2"))]);
+    const d = await buildSceneDoc([beats[0]!], h.ask, { assets: ["img_1", "img_2"] });
+    expect(h.prompts[2]).toContain("'img_9' does not exist");
+    expect(d.scenes[0]!.kind).toBe("collage");
   });
 });

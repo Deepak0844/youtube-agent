@@ -1,4 +1,5 @@
 import type { LanguageModel } from "ai";
+import { BudgetRefusedError, NeedsDecisionError } from "@/server/core/paid-call";
 import { createLlmClient } from "@/server/llm/client";
 import type { ModelRow } from "@/server/core/llm-catalog";
 import { execFile } from "node:child_process";
@@ -422,6 +423,35 @@ describe("paid generation is bounded by the approved quote", () => {
     const out = await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(mkDeps({ makeLlm: sceneLlm([pickT, "nope"]) }))));
     expect(out.kind).toBe("known_failure");
     expect((await stageResult(v.id, "build")).result).toMatchObject({ error: expect.stringMatching(/beat 'b1'.*not valid JSON/) });
+    expect(await contentCount(v.id, "scenes")).toBe(0);
+    expect(await contentCount(v.id, "cost_plan")).toBe(0);
+    expect(existsSync(path.join(root, "videos", v.id, "scenes.json"))).toBe(false);
+  });
+
+  it("Build without a model client says scenes were skipped in its result", async () => {
+    const v = await newVideo();
+    await seedScript(v.id, 1);
+    expect((await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(mkDeps())))).kind).toBe("committed");
+    expect((await stageResult(v.id, "build")).result).toMatchObject({ scenes: false });
+    expect(await contentCount(v.id, "scenes")).toBe(0);
+  });
+
+  // The second model call is refused / unclear: the runner parks the stage for the owner; no scenes file or row, no plan.
+  it.each([
+    ["a budget refusal", () => new BudgetRefusedError("k2"), "budget_refused"],
+    ["an unclear outcome", () => new NeedsDecisionError("run", "k2", 5), "needs_decision"],
+  ])("Build stops for the owner on %s mid-way and saves nothing", async (_n, mkErr, kind) => {
+    const v = await newVideo();
+    await seedScript(v.id, 2);
+    const inner = sceneLlm([pickT, fillT, pickT, fillT]);
+    let calls = 0;
+    const makeLlm = (scopes: string[]) => {
+      const llm = inner(scopes);
+      return { ...llm, agent: (...a: Parameters<typeof llm.agent>) => (++calls === 3 ? Promise.reject(mkErr()) : llm.agent(...a)) } as typeof llm;
+    };
+    const out = await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(mkDeps({ makeLlm }))));
+    expect(out.kind).toBe(kind);
+    if (kind === "budget_refused") expect((await stageResult(v.id, "build")).status).toBe("needs_decision");
     expect(await contentCount(v.id, "scenes")).toBe(0);
     expect(await contentCount(v.id, "cost_plan")).toBe(0);
     expect(existsSync(path.join(root, "videos", v.id, "scenes.json"))).toBe(false);
