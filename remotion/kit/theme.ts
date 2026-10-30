@@ -11,6 +11,10 @@ export const theme = {
     accent: "#5eead4",
     bubbleMe: "#2563eb",
     bubbleThem: "#252b38",
+    boardLight: "#c9d1e0",
+    boardDark: "#5b6b8c",
+    pieceLight: "#f2f4f8",
+    pieceDark: "#10131a",
   },
   fonts: { ui: "Inter", mono: "JetBrains Mono" },
   // Keep text inside these margins (px) so platform UI never covers it.

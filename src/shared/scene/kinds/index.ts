@@ -4,11 +4,15 @@
 // 2. Add ONE line below: an import and one entry in `kinds`, both alphabetical by kind.
 // 3. Add the Remotion component in remotion/kit/<Kind>.tsx and its entry in remotion/kit/registry.tsx.
 import * as chat_thread from "./chat_thread";
+import * as chess from "./chess";
+import * as piano from "./piano";
 import * as story_kenburns from "./story_kenburns";
 import * as terminal from "./terminal";
 
 export const kinds = {
   chat_thread,
+  chess,
+  piano,
   story_kenburns,
   terminal,
 };
