@@ -95,9 +95,11 @@ async function main(): Promise<void> {
     // Read-only GET with the saved key; one 30 s wait on 429 (free-tier rate limit). null = unreadable, never a failure.
     const elGet = async (name: string, pathQuery: string): Promise<Response | null> => {
       for (let n = 0; n < 2; n++) {
+        await sleep(2000); // free-tier rate limits: never two requests back to back
         label = name;
         try {
           const res = await elFetch(`https://api.elevenlabs.io${pathQuery}`, { method: "GET", headers: { "xi-api-key": await keyOf("elevenlabs") } }, { timeoutMs: 30_000, maxRedirects: 0 });
+          if (!res.ok) await res.body?.cancel().catch(() => undefined);
           if (res.status !== 429 || n === 1) return res;
         } catch {
           return null;
@@ -109,7 +111,7 @@ async function main(): Promise<void> {
     const account = async (name: string): Promise<Acct | null> => {
       try {
         const res = await elGet(name, "/v1/user/subscription");
-        const raw = res?.ok ? ((await res.json()) as Record<string, unknown>) : null;
+        const raw = res?.ok ? ((await res.json().catch(() => null)) as Record<string, unknown> | null) : null;
         return raw && Number.isFinite(raw.character_count) && Number.isFinite(raw.character_limit) ? { count: Number(raw.character_count), limit: Number(raw.character_limit), raw } : null;
       } catch {
         return null;
@@ -138,7 +140,7 @@ async function main(): Promise<void> {
     let voiceWhy = "";
     if (selected.has("elevenlabs") && !voiceId && !args.dryPlan && have.has("elevenlabs")) {
       const res = await elGet("voices", "/v1/voices?page_size=100");
-      if (res?.ok) voiceId = pickVoice(((await res.json()) as { voices?: unknown }).voices) ?? "";
+      if (res?.ok) voiceId = pickVoice(((await res.json().catch(() => ({}))) as { voices?: unknown }).voices) ?? "";
       voiceWhy = voiceId ? "" : res?.ok ? NO_VOICE : res && (res.status === 401 || res.status === 403) ? "The key cannot list voices (it needs the voices_read permission). Pass --voice <id>, or add that permission to the key." : "Your voices could not be listed. Pass --voice <id>.";
     } else if (!voiceId) voiceId = "dryplanvoice"; // dry plan only: quotes do not depend on the voice
     const base = { fetch: elFetch, getKey: () => keyOf("elevenlabs"), budgetScopes };
@@ -227,10 +229,12 @@ async function main(): Promise<void> {
         ctx.attemptDir = outDir;
         const before = job.provider === "elevenlabs" ? await account(`account-before-${job.id}`) : null;
         label = job.id;
+        await sleep(2000);
         let o: Outcome;
         try {
           let msg: string;
           try {
+            // The 429 is a NotProcessedError (a KnownFailure): the first attempt's reservation was released, and ctx.paid takes a fresh step for this one.
             msg = await job.run(ctx);
           } catch (e) {
             if (!(e instanceof NotProcessedError && e.status === 429)) throw e;

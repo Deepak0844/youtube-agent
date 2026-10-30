@@ -77,7 +77,7 @@ describe("voice choice", () => {
   it("prefers the account's own voices and never a library one", () => {
     const v = (voice_id: string, category: string) => ({ voice_id, category });
     expect(pickVoice([v("lib1", "professional_library"), v("pre1", "premade"), v("gen1", "generated")])).toBe("gen1");
-    expect(pickVoice([v("lib1", "famous"), v("pre1", "premade")])).toBe("pre1");
+    expect(pickVoice([v("lib1", "famous"), v("pre1", "premade")])).toBeNull();
     expect(pickVoice([v("lib1", "famous")])).toBeNull();
     expect(pickVoice(undefined)).toBeNull();
   });

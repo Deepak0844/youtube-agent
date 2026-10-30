@@ -13,7 +13,7 @@ import type { VoiceProvider, WordTiming } from "./index";
 const HOST = "https://api.elevenlabs.io";
 const MAX_BODY = 50 * 1024 * 1024;
 const MAX_TAG = 80;
-export const LIBRARY_VOICE = "This voice is a library voice: free accounts cannot use it via the API. Use a voice from your own account.";
+export const LIBRARY_VOICE = "ElevenLabs refused this request: it needs a paid plan (library voices are not available to free accounts via the API).";
 const BEFORE_SEND = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]);
 
 /** Plain text before the line: control characters removed, at most 80 code points. */

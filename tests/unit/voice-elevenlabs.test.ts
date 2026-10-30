@@ -93,9 +93,26 @@ describe("elevenlabs voice", () => {
     handler = (_q, res) => res.writeHead(402, { "content-type": "application/json" }).end(JSON.stringify(libraryVoice402));
     const e = await voice().synthesise(ctx(), args("Hi")).catch((x) => x);
     expect(e).toBeInstanceOf(KnownFailure);
-    expect(e.message).toBe("This voice is a library voice: free accounts cannot use it via the API. Use a voice from your own account.");
-    expect(JSON.stringify(e)).not.toContain("Upgrade");
+    expect(e.message).toBe("ElevenLabs refused this request: it needs a paid plan (library voices are not available to free accounts via the API).");
+    expect(`${e.message} ${String(e)}`).not.toContain("Upgrade");
     expect(classifyError(e)).toBe("permanent");
+  });
+
+  it("402_with_another_or_missing_code_stays_generic", async () => {
+    for (const body of [JSON.stringify({ detail: { code: "something_else", message: "Upgrade now" } }), "no json"]) {
+      handler = (_q, res) => res.writeHead(402).end(body);
+      const e = await voice().synthesise(ctx(), args("Hi")).catch((x) => x);
+      expect(e).toBeInstanceOf(KnownFailure);
+      expect(e.message).toBe("ElevenLabs refused the request (402).");
+    }
+  });
+
+  it("408_and_500_on_voice_stay_unknown", async () => {
+    for (const s of [408, 500]) {
+      handler = (_q, res) => res.writeHead(s).end(JSON.stringify(libraryVoice402));
+      const e = await voice().synthesise(ctx(), args("Hi")).catch((x) => x);
+      expect(e).not.toBeInstanceOf(KnownFailure);
+    }
   });
 
   it("429_is_known_failure_retry_and_socket_reset_after_send_is_unknown", async () => {
