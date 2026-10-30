@@ -17,6 +17,7 @@ export const LIMITS = {
   chatMessages: 6,
   chatText: 90,
   caption: 80,
+  sceneTextTotal: 320, // all on-screen text in one scene
   pauseQuestion: 80,
   pauseOption: 24,
   pauseMinOptions: 2,

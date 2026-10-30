@@ -68,6 +68,8 @@ export interface VoiceStudioCfg {
   localServices: readonly string[];
   getKey?: () => Promise<string | null>;
   voice: string;
+  /** Speech model id. VoiceStudio wants an OpenAI TTS id (tts-1, tts-1-hd, gpt-4o-mini-tts); "default" is refused (400). */
+  speechModel?: string;
   language?: string;
   speed?: number;
   seed?: number;
@@ -105,7 +107,7 @@ export function createVoiceStudioVoice(cfg: VoiceStudioCfg): VoiceProvider {
           let used = 0;
           for (const [i, chunk] of chunks.entries()) {
             const speech = JSON.stringify({
-              model: "default", input: chunk, voice: a.voice || cfg.voice, response_format: "wav", language: cfg.language ?? a.lang,
+              model: cfg.speechModel ?? "tts-1", input: chunk, voice: a.voice || cfg.voice, response_format: "wav", language: cfg.language ?? a.lang,
               ...(cfg.speed !== undefined && { speed: cfg.speed }), ...(cfg.seed !== undefined && { seed: cfg.seed }),
             });
             await saveCapped(await postJson(`${base}/v1/audio/speech`, speech, cfg, signal), partPaths[i]!, MAX_AUDIO_BYTES - used);

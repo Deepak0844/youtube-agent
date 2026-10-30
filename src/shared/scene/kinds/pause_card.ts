@@ -18,4 +18,4 @@ export const schema = z
     if (s.revealAtMs >= s.durationMs) ctx.addIssue({ code: "custom", path: ["revealAtMs"], message: "must be earlier than durationMs" });
   });
 
-export const describe = `kind "pause_card": quiz. question (max ${LIMITS.pauseQuestion}), options[] ${LIMITS.pauseMinOptions}-${LIMITS.pauseMaxOptions} short strings (max ${LIMITS.pauseOption} each), answer (0-based option index), revealAtMs (ms into the scene, less than durationMs).`;
+export const describe = `kind "pause_card": quiz. question (max ${LIMITS.pauseQuestion}), options[] (${LIMITS.pauseMinOptions} to ${LIMITS.pauseMaxOptions} options, never more than ${LIMITS.pauseMaxOptions}) short strings (max ${LIMITS.pauseOption} each), answer (0-based option index), revealAtMs (ms into the scene, less than durationMs).`;

@@ -147,7 +147,8 @@ describe("voicestudio", () => {
     expect(speech.length).toBeGreaterThanOrEqual(2);
     for (const b of speech) {
       expect((b.input as string).length).toBeLessThanOrEqual(3500);
-      expect(b).toMatchObject({ voice: "v", seed: 42, speed: 1.1, response_format: "wav" });
+      // A live VoiceStudio 0.5.7 rejected model "default" for speech (400); it wants an OpenAI TTS id such as tts-1.
+      expect(b).toMatchObject({ model: "tts-1", voice: "v", seed: 42, speed: 1.1, response_format: "wav" });
     }
     expect(speech.map((b) => b.input).join(" ").replace(/\s+/g, " ")).toBe(text.replace(/\s+/g, " "));
     expect(seen.filter((s) => s.url === "/v1/audio/transcriptions").length).toBe(speech.length);

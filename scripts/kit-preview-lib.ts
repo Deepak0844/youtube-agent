@@ -1,8 +1,9 @@
 // Pure parts of `npm run kit:preview`: no Docker, no files. Tested in tests/unit/kit-preview.test.ts.
 import { validateScenes, type Scene } from "../src/shared/scene";
+import { KIT_RENDERED_KINDS } from "../remotion/kit/rendered";
 
 const FPS = 30; // keep equal to remotion/kit/theme.ts
-export const RENDERABLE = ["terminal", "chat_thread", "story_kenburns"] as const;
+export const RENDERABLE: readonly string[] = KIT_RENDERED_KINDS;
 
 export function parseArgs(argv: string[]): { file: string } | { error: string } {
   const files = argv.filter((a) => a !== "--");
@@ -25,7 +26,7 @@ export function planPreview(text: string): { ok: true; plans: Plan[]; skipped: s
   const plans: Plan[] = [];
   const skipped: string[] = [];
   for (const scene of r.doc.scenes) {
-    if (!(RENDERABLE as readonly string[]).includes(scene.kind)) {
+    if (!RENDERABLE.includes(scene.kind)) {
       skipped.push(`${scene.id} (${scene.kind}) has no kit piece yet`);
       continue;
     }
