@@ -7,9 +7,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { classifyError, NotProcessedError } from "@/server/core/error-class";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
+import music402 from "../fixtures/sound/elevenlabs-402-music.json";
+import rate429 from "../fixtures/sound/elevenlabs-429.json";
+import sfxMeta from "../fixtures/sound/elevenlabs-sfx.meta.json";
 import { createElevenLabsSound, GENERATED_LICENCE, type ElevenLabsSoundDeps } from "@/server/providers/sound/elevenlabs";
 
-// Fixture is hand-written (unrecorded): an ID3-tagged stub, enough for the adapter's MP3 check. All HTTP goes to a local fake server.
+// The MP3 is a hand-written ID3 stub; the error bodies and the audio content type are recorded (2026-10-30, free tier), enough for the adapter's MP3 check. All HTTP goes to a local fake server.
 const MP3 = Buffer.concat([Buffer.from("ID3\u0004\u0000\u0000\u0000\u0000\u0000\u0000"), Buffer.alloc(64, 1)]);
 const KEY = "sk_test_SECRETKEY0123456789abcdef";
 let server: Server;
@@ -37,7 +40,7 @@ afterAll(async () => {
 });
 beforeEach(() => {
   reqs = [];
-  handler = (_q, res) => res.writeHead(200, { "content-type": "audio/mpeg" }).end(MP3);
+  handler = (_q, res) => res.writeHead(sfxMeta.status, { "content-type": sfxMeta.contentType }).end(MP3);
 });
 
 const ctx = () =>
@@ -95,12 +98,14 @@ describe("elevenlabs sound", () => {
     expect(reqs).toHaveLength(1);
   });
   it("429_is_transient", async () => {
-    handler = (_q, res) => res.writeHead(429).end("{}");
-    expect(classifyError(await sound().makeSfx(ctx(), a).catch((x) => x))).toBe("transient");
+    handler = (_q, res) => res.writeHead(429).end(JSON.stringify(rate429));
+    const e = await sound().makeSfx(ctx(), a).catch((x) => x);
+    expect(classifyError(e)).toBe("transient");
+    expect(e.code).toBe("rate_limited");
   });
   it("music_plan_refusal_is_a_plain_known_failure", async () => {
     for (const s of [402, 403]) {
-      handler = (_q, res) => res.writeHead(s).end("{}");
+      handler = (_q, res) => res.writeHead(s).end(s === 402 ? JSON.stringify(music402) : "{}");
       const e = await sound().makeMusic(ctx(), { prompt: "x", seconds: 10 }).catch((x) => x);
       expect(e).toBeInstanceOf(KnownFailure);
       expect(e.message).toBe("Music generation is not available on this ElevenLabs plan.");

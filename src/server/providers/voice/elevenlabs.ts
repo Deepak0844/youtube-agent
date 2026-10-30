@@ -13,6 +13,7 @@ import type { VoiceProvider, WordTiming } from "./index";
 const HOST = "https://api.elevenlabs.io";
 const MAX_BODY = 50 * 1024 * 1024;
 const MAX_TAG = 80;
+export const LIBRARY_VOICE = "ElevenLabs refused this request: it needs a paid plan (library voices are not available to free accounts via the API).";
 const BEFORE_SEND = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"]);
 
 /** Plain text before the line: control characters removed, at most 80 code points. */
@@ -120,8 +121,11 @@ export async function postJson(
     throw new Error(`${who} request failed after it was sent.`); // fixed text: no cause, no URL, no key
   }
   if (res.ok) return res;
-  const text = billedRefusal && res.status >= 400 && res.status <= 499 ? await readHead(res) : (await res.body?.cancel().catch(() => undefined), "");
-  if (res.status >= 400 && res.status <= 499 && res.status !== 408 && !billedRefusal?.(res.status, text)) throw new NotProcessedError(`${who} refused the request (${res.status}).`, { status: res.status });
+  const text = res.status >= 400 && res.status <= 499 ? await readHead(res) : (await res.body?.cancel().catch(() => undefined), "");
+  if (res.status >= 400 && res.status <= 499 && res.status !== 408 && !billedRefusal?.(res.status, text)) {
+    const code = /"code"\s*:\s*"([a-z_]{1,40})"/.exec(text)?.[1]; // the provider's short error word only; the body is never kept or shown
+    throw new NotProcessedError(`${who} refused the request (${res.status}).`, { status: res.status, ...(code ? { code } : {}) });
+  }
   throw new Error(`${who} answered ${res.status}; the outcome is unknown.`);
 }
 
@@ -163,7 +167,14 @@ export function createElevenLabsVoice(deps: ElevenLabsDeps): VoiceProvider {
           throw new NotProcessedError("The ElevenLabs key could not be read.");
         }
         if (!key) throw new NotProcessedError("No ElevenLabs key is saved.");
-        const res = await elevenPost(deps.fetch, key, signal, `/v1/text-to-speech/${voice}/with-timestamps?output_format=mp3_44100_128`, { text, model_id: model }, "application/json");
+        let res: Response;
+        try {
+          res = await elevenPost(deps.fetch, key, signal, `/v1/text-to-speech/${voice}/with-timestamps?output_format=mp3_44100_128`, { text, model_id: model }, "application/json");
+        } catch (err) {
+          // Live free-tier answer (2026-10-30): 402 paid_plan_required = a library voice, refused before any work.
+          if (err instanceof NotProcessedError && err.status === 402 && err.code === "paid_plan_required") throw new NotProcessedError(LIBRARY_VOICE, { status: 402, code: err.code });
+          throw err;
+        }
         const body = await readCapped(res);
         const json = JSON.parse(body.toString("utf8")) as { audio_base64?: unknown; alignment?: unknown };
         if (typeof json.audio_base64 !== "string" || json.audio_base64 === "") throw new Error("ElevenLabs returned no audio.");

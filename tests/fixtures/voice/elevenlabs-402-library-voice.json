@@ -1,0 +1,10 @@
+{
+ "_recorded": "recorded 2026-10-30 free tier",
+ "detail": {
+  "type": "payment_required",
+  "code": "paid_plan_required",
+  "message": "Free users cannot use library voices via the API. Upgrade to Creator or add $5 of credits to use this voice: https://elevenlabs.io/app/subscription/api?utm_source=api_error&utm_content=library_voice",
+  "status": "payment_required",
+  "docs_url": "https://elevenlabs.io/app/subscription/api?utm_source=api_error&utm_content=library_voice"
+ }
+}

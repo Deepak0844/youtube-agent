@@ -1,0 +1,10 @@
+{
+ "_recorded": "recorded 2026-10-30 free tier",
+ "detail": {
+  "type": "rate_limit_error",
+  "code": "rate_limited",
+  "message": "You have made too many requests. Please try again later.",
+  "status": "rate_limited",
+  "docs_url": "https://elevenlabs.io/docs/eleven-api/resources/errors#rate-limiting-and-concurrency"
+ }
+}

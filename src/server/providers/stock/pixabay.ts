@@ -1,7 +1,10 @@
 import { allowedUrl, defaultFetcher, downloadStock, failMessage, licensed, pickFile, requireKey, type StockDeps, type StockHit, type StockProvider, type StockSearch } from "./index";
 
-// Pixabay API (https://pixabay.com/api/docs/): the key is a query parameter. Hits: webformatURL (640 wide, may be swapped
-// for _960), videos{large,medium,small,tiny}.url, user, pageURL, tags. Licence: the Pixabay Content License.
+// Pixabay API (https://pixabay.com/api/docs/): the key is a query parameter. Hits: webformatURL with webformatWidth/Height
+// (640 on the longest edge), videos{large,medium,small,tiny}.url, user, pageURL, tags. URLs are used exactly as returned: they
+// are signed, and a changed suffix (_640 -> _960) answers 400 "invalid or expired" (live check, 2026-10-30). largeImageURL is
+// 1280 wide but no width for it is reported (imageWidth is the original), so it is not used.
+// Licence: the answer carries no licence text; every Pixabay file is under the Pixabay Content License, so the adapter stamps it.
 const HOSTS = { api: "pixabay.com", cdn: ["pixabay.com", "cdn.pixabay.com"] } as const;
 const LICENCE = "Pixabay Content License";
 
@@ -24,10 +27,7 @@ export function pixabayStock(deps: StockDeps): StockProvider {
       if (a.kind === "image") {
         const d = await get("/api/", { q: a.query, image_type: "photo", orientation: a.orientation === "portrait" ? "vertical" : "horizontal", per_page, safesearch: "true" });
         for (const i of (d.hits ?? []) as Image[]) {
-          // Documented: the 640 (longest edge) file can be had at 960 by changing the suffix; 960 stays under the 1080 cap.
-          const big = i.webformatURL.includes("_640.");
-          const k = big ? 960 / Math.max(i.webformatWidth, i.webformatHeight) : 1; // Pixabay scales the longest edge
-          hits.push({ id: String(i.id), title: i.tags || `Pixabay image ${i.id}`, url: big ? i.webformatURL.replace("_640.", "_960.") : i.webformatURL, pageUrl: i.pageURL, ...(i.user ? { author: i.user } : {}), licence: LICENCE, attribution: `Image by ${i.user ?? "Pixabay"} on Pixabay`, width: Math.round(i.webformatWidth * k), height: Math.round(i.webformatHeight * k) });
+          hits.push({ id: String(i.id), title: i.tags || `Pixabay image ${i.id}`, url: i.webformatURL, pageUrl: i.pageURL, ...(i.user ? { author: i.user } : {}), licence: LICENCE, attribution: `Image by ${i.user ?? "Pixabay"} on Pixabay`, width: i.webformatWidth, height: i.webformatHeight });
         }
       } else {
         const d = await get("/api/videos/", { q: a.query, per_page });

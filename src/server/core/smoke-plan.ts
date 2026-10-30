@@ -85,3 +85,14 @@ export function moneyAnomalies(capMicro: number, rows: Array<{ id: string; quote
 export type Verdict = "confirmed" | "differs" | "refused by plan" | "not run";
 export const formatSummary = (rows: Array<{ item: string; verdict: Verdict; detail: string }>): string =>
   rows.map((r) => `| ${r.item} | ${r.verdict} | ${r.detail} |`).join("\n");
+
+/**
+ * The ElevenLabs voice to narrate with: only a voice the account itself owns (made, cloned or professional).
+ * Premade, library, shared and famous voices are never picked: a free account got 402 paid_plan_required on premade "Rachel" too.
+ */
+export function pickVoice(voices: unknown): string | null {
+  if (!Array.isArray(voices)) return null;
+  const order = ["generated", "cloned", "professional"];
+  const ok = voices.filter((v): v is { voice_id: string; category?: string } => typeof v?.voice_id === "string" && /^[A-Za-z0-9]{1,64}$/.test(v.voice_id) && order.includes(v.category ?? ""));
+  return ok.sort((a, b) => order.indexOf(a.category!) - order.indexOf(b.category!))[0]?.voice_id ?? null;
+}

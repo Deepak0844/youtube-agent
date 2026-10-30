@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { moneyAnomalies, parseSmokeArgs, planSmoke, redactFixture, refuseEnvironment, SmokeRefusal, type Candidate } from "@/server/core/smoke-plan";
+import { moneyAnomalies, pickVoice, parseSmokeArgs, planSmoke, redactFixture, refuseEnvironment, SmokeRefusal, type Candidate } from "@/server/core/smoke-plan";
 
 const cand = (o: Partial<Candidate> & { id: string }): Candidate => ({ provider: "elevenlabs", label: o.id, quoteMicro: 3200, needsKey: true, ...o });
 const base = { selected: new Set(["elevenlabs", "pixabay"]), haveKey: () => true, capMicro: 500_000, interactive: true, yesSpend: false, allowanceChars: null };
@@ -70,5 +70,15 @@ describe("fixtures", () => {
     const out = redactFixture(raw, [key]);
     for (const s of [key, "abcdefghijklmnop1234", "sk_0123456789abcdef0123456789"]) expect(out).not.toContain(s);
     expect(out).toContain('{"a":1}');
+  });
+});
+
+describe("voice choice", () => {
+  it("prefers the account's own voices and never a library one", () => {
+    const v = (voice_id: string, category: string) => ({ voice_id, category });
+    expect(pickVoice([v("lib1", "professional_library"), v("pre1", "premade"), v("gen1", "generated")])).toBe("gen1");
+    expect(pickVoice([v("lib1", "famous"), v("pre1", "premade")])).toBeNull();
+    expect(pickVoice([v("lib1", "famous")])).toBeNull();
+    expect(pickVoice(undefined)).toBeNull();
   });
 });
