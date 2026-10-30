@@ -29,6 +29,7 @@ import { openStageLog } from "@/server/logs/stage-log";
 import { storageRoot } from "@/server/db/system-status";
 import { queuedIngestIds } from "@/server/db/ingest-jobs";
 import { runChild } from "@/server/render/child";
+import { sweepLostAttempts } from "@/server/storage/store";
 import { createStageDispatcher, handleIngestJob, recoverRunningIngest, sweepStaleUploads, type StageHandlers } from "./handlers";
 import { startReconcileLoop } from "./reconcile-loop";
 
@@ -263,6 +264,8 @@ export function startRuntime(opts: WorkerOptions = {}) {
             for (const id of await queuedIngestIds(db)) await ingestQueue.enqueueIngest(id);
             await sweepStaleUploads(db, opts.storageRoot ?? storageRoot());
           }),
+          // Attempt folders whose fence was lost (a stale worker's output). DB read + file delete only; safe now that paid audio is fence-independent.
+          guard("attempt sweep", async () => { if (!stopping) await sweepLostAttempts(db, { root: opts.storageRoot ?? storageRoot() }); }),
           guard("mark stalled uploads", () => hooks.markStalled(db)),
           guard("prune", () => hooks.prune(db)),
         ]);
