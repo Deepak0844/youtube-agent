@@ -9,8 +9,6 @@ import * as pause_card from "./pause_card";
 import * as stock_clip from "./stock_clip";
 import * as drawn_objects from "./drawn_objects";
 import * as network from "./network";
-import * as math from "./math";
-import * as probability from "./probability";
 import * as story_kenburns from "./story_kenburns";
 import * as terminal from "./terminal";
 
@@ -21,8 +19,6 @@ export const kinds = {
   stock_clip,
   drawn_objects,
   network,
-  math,
-  probability,
   story_kenburns,
   terminal,
 };

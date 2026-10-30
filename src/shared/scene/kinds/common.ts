@@ -28,12 +28,6 @@ export const LIMITS = {
   networkLinks: 8,
   nodeLabel: 14,
   packetLabel: 10,
-  mathSteps: 6,
-  mathText: 40,
-  mathHighlight: 12,
-  probTrials: 500,
-  probOutcomes: 6,
-  probLabel: 14,
 } as const;
 
 // Asset refs are opaque ids from the asset library, never URLs or paths.
