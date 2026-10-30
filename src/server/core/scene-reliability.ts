@@ -1,6 +1,7 @@
 import type { Message } from "@/server/core/agent-loop";
 import { BudgetRefusedError, KnownFailure } from "@/server/core/paid-call";
-import { describeSceneFormat, sceneJsonSchema, validateScenes } from "@/shared/scene";
+import { describeSceneFormat, sceneJsonSchema } from "@/shared/scene";
+import { validateAndCheck } from "@/shared/scene/rules";
 
 // Scene-JSON reliability check (Phase 4): can a model fill the scene format from a beat sheet? Pure loop: the caller's `ask`
 // does the paid, reserved model call. A schema-invalid answer is retried (max 2) with the plain-text errors fed back; the same
@@ -61,7 +62,7 @@ function check(text: string): string[] {
   } catch {
     return ["The answer was not valid JSON."];
   }
-  const r = validateScenes(raw);
+  const r = validateAndCheck(raw);
   return r.ok ? [] : r.errors;
 }
 
