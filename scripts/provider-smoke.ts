@@ -17,7 +17,7 @@ import { BudgetRefusedError, KnownFailure } from "@/server/core/paid-call";
 import { secretName, type ProviderId } from "@/server/core/provider-keys";
 import { createStageContext, type StageContext } from "@/server/core/stage-handler";
 import { EDGE_VOICES } from "@/server/core/edge-voices";
-import { formatSummary, moneyAnomalies, parseSmokeArgs, planSmoke, redactFixture, refuseEnvironment, SmokeRefusal, type Candidate, type Verdict } from "@/server/core/smoke-plan";
+import { formatSummary, moneyAnomalies, parseSmokeArgs, pickVoice, planSmoke, redactFixture, refuseEnvironment, SmokeRefusal, type Candidate, type Verdict } from "@/server/core/smoke-plan";
 import { ensureCapScope, ensureScopeCopies, periodScopes } from "@/server/db/budget-scopes";
 import { getPriceRule } from "@/server/db/media-registry";
 import { loadKeyring } from "@/server/db/master-key";
@@ -35,14 +35,15 @@ import { createElevenLabsVoice } from "@/server/providers/voice/elevenlabs";
 
 const ROOT = path.resolve(".data/smoke");
 const FIXTURES = path.join(ROOT, "fixtures");
-const VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // ElevenLabs premade "Rachel": premade voices work on the free plan
+const NO_VOICE = "Create a voice in ElevenLabs (Voice Design) and set its id as the default narration voice on the Providers page. Or pass --voice <id>.";
+const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
 const TAG = "[excited]";
 // ASSUMPTION: sound effects and music bill in credits at an unknown rate; 1000 is a conservative stand-in for the allowance check.
 const SOUND_CREDITS = 1000;
 const SENTENCES: Record<string, string> = { en: "Hello, this is a short voice test.", hi: "नमस्ते, यह एक छोटा आवाज़ परीक्षण है।", ta: "வணக்கம், இது ஒரு சிறிய குரல் சோதனை." };
 
 type State = "ok" | "plan" | "error" | "declined";
-interface Outcome { state: State; msg: string; status?: number; recorded?: number }
+interface Outcome { state: State; msg: string; status?: number; code?: string; recorded?: number }
 type Job = Candidate & { run(ctx: StageContext): Promise<string> };
 
 async function main(): Promise<void> {
@@ -91,11 +92,24 @@ async function main(): Promise<void> {
 
     // ElevenLabs account, read-only. Unreadable = no paid ElevenLabs call (the allowance cannot be checked).
     type Acct = { count: number; limit: number; raw: Record<string, unknown> };
+    // Read-only GET with the saved key; one 30 s wait on 429 (free-tier rate limit). null = unreadable, never a failure.
+    const elGet = async (name: string, pathQuery: string): Promise<Response | null> => {
+      for (let n = 0; n < 2; n++) {
+        label = name;
+        try {
+          const res = await elFetch(`https://api.elevenlabs.io${pathQuery}`, { method: "GET", headers: { "xi-api-key": await keyOf("elevenlabs") } }, { timeoutMs: 30_000, maxRedirects: 0 });
+          if (res.status !== 429 || n === 1) return res;
+        } catch {
+          return null;
+        }
+        await sleep(30_000);
+      }
+      return null;
+    };
     const account = async (name: string): Promise<Acct | null> => {
-      label = name;
       try {
-        const res = await elFetch("https://api.elevenlabs.io/v1/user/subscription", { method: "GET", headers: { "xi-api-key": await keyOf("elevenlabs") } }, { timeoutMs: 30_000, maxRedirects: 0 });
-        const raw = res.ok ? ((await res.json()) as Record<string, unknown>) : null;
+        const res = await elGet(name, "/v1/user/subscription");
+        const raw = res?.ok ? ((await res.json()) as Record<string, unknown>) : null;
         return raw && Number.isFinite(raw.character_count) && Number.isFinite(raw.character_limit) ? { count: Number(raw.character_count), limit: Number(raw.character_limit), raw } : null;
       } catch {
         return null;
@@ -119,7 +133,14 @@ async function main(): Promise<void> {
     const budgetScopes = [scope]; // the owner's day and month copies are added before the first call
     const price = (id: string) => getPriceRule(db, id);
     const [vp, sp, mp] = await Promise.all([price("elevenlabs"), price("elevenlabs_sfx"), price("elevenlabs_music")]);
-    const voiceId = args.voice ?? VOICE_ID;
+    // The narration voice must be one the account can use via the API: library voices are refused on the free plan (402).
+    let voiceId = args.voice ?? "";
+    let voiceWhy = "";
+    if (selected.has("elevenlabs") && !voiceId && !args.dryPlan && have.has("elevenlabs")) {
+      const res = await elGet("voices", "/v1/voices?page_size=100");
+      if (res?.ok) voiceId = pickVoice(((await res.json()) as { voices?: unknown }).voices) ?? "";
+      voiceWhy = voiceId ? "" : res?.ok ? NO_VOICE : res && (res.status === 401 || res.status === 403) ? "The key cannot list voices (it needs the voices_read permission). Pass --voice <id>, or add that permission to the key." : "Your voices could not be listed. Pass --voice <id>.";
+    } else if (!voiceId) voiceId = "dryplanvoice"; // dry plan only: quotes do not depend on the voice
     const base = { fetch: elFetch, getKey: () => keyOf("elevenlabs"), budgetScopes };
     const voice = createElevenLabsVoice({ ...base, model: "eleven_multilingual_v2", voiceId, price: vp });
     const tagged = createElevenLabsVoice({ ...base, model: "eleven_multilingual_v2", voiceId, price: vp, tags: { prefix: TAG } });
@@ -128,7 +149,8 @@ async function main(): Promise<void> {
     const unpriced: Array<{ id: string; why: string }> = [];
     const words = (n: number, text: string) => `${n} word times for ${text.split(/\s+/).length} words`;
     if (selected.has("elevenlabs")) {
-      if (vp) {
+      if (voiceWhy) unpriced.push({ id: "voice", why: voiceWhy });
+      else if (vp) {
         for (const model of ["eleven_multilingual_v2", "eleven_v3"]) for (const lang of args.langs) {
           const p = model === "eleven_v3" && lang === "en" ? tagged : voice;
           const a = { text: SENTENCES[lang]!, lang: lang as "en", voice: voiceId, model };
@@ -197,6 +219,7 @@ async function main(): Promise<void> {
     try {
       for (const [i, job] of plan.calls.entries()) {
         if (halted || stop.signal.aborted) break;
+        if (i > 0) await sleep(2000); // free-tier rate limits: strictly one call at a time, with a pause
         out.write(`\n${job.label}: quote $${microToUsd(job.quoteMicro)}\n`);
         if (!args.yesSpend && job.quoteMicro > 0 && !/^y(es)?$/i.test((await rl.question("Make this call? y/N ")).trim())) { results.set(job.id, { state: "declined", msg: "declined" }); continue; }
         const claim = await openEvalStage(db, `smoke-${runId}`, i);
@@ -206,16 +229,26 @@ async function main(): Promise<void> {
         label = job.id;
         let o: Outcome;
         try {
-          o = { state: "ok", msg: await job.run(ctx) };
+          let msg: string;
+          try {
+            msg = await job.run(ctx);
+          } catch (e) {
+            if (!(e instanceof NotProcessedError && e.status === 429)) throw e;
+            out.write("Rate limited: waiting 30 s, then one more try.\n");
+            await sleep(30_000);
+            msg = await job.run(ctx);
+          }
+          o = { state: "ok", msg };
           await commitStage(db, claim, { smoke: true });
         } catch (err) {
           const status = err instanceof NotProcessedError ? err.status : undefined;
+          const code = err instanceof NotProcessedError ? err.code : undefined;
           o = err instanceof BudgetRefusedError
             ? { state: "error", msg: "skipped: a day or month budget cap would be exceeded. Nothing was sent." }
-            : status === 402 || status === 403
-            ? { state: "plan", msg: "not available on this plan", status }
-            : { state: "error", msg: err instanceof Error ? redactFixture(err.message, secrets).slice(0, 200) : "unknown error", ...(status ? { status } : {}) };
-          if (err instanceof KnownFailure || err instanceof BudgetRefusedError) await failStage(db, claim, "smoke_call_refused").catch(() => undefined);
+            : (status === 402 || status === 403) && !job.id.startsWith("voice")
+            ? { state: "plan", msg: "not available on this plan", status, ...(code ? { code } : {}) }
+            : { state: "error", msg: code === "rate_limited" ? "rate limited" : err instanceof Error ? redactFixture(err.message, secrets).slice(0, 200) : "unknown error", ...(status ? { status } : {}), ...(code ? { code } : {}) };
+          if (err instanceof KnownFailure || err instanceof BudgetRefusedError || job.quoteMicro === 0) await failStage(db, claim, "smoke_call_refused").catch(() => undefined);
           else halted = true; // unclear outcome: it may have been charged, so nothing more is sent
         }
         const spent = await db.query<{ actual: string }>("select coalesce(sum(actual_micro_usd), 0)::bigint as actual from spend_intents where stage_run_id = $1 and status = 'done'", [claim.stageRunId]);
@@ -223,7 +256,7 @@ async function main(): Promise<void> {
         if (o.recorded > 0 || o.state === "ok") rows.push({ id: job.id, quoteMicro: job.quoteMicro, recordedMicro: o.recorded, failed: o.state !== "ok" });
         if (before) { const after = await account(`account-after-${job.id}`); delta.set(job.id, after ? after.count - before.count : null); usage.set(job.id, after ? `before ${before.count}, after ${after.count}` : `before ${before.count}, after unreadable`); }
         results.set(job.id, o);
-        out.write(o.state === "ok" ? `OK ${o.msg}\nRecorded $${microToUsd(o.recorded)} vs quoted $${microToUsd(job.quoteMicro)}${delta.has(job.id) ? `; ElevenLabs credits used: ${String(delta.get(job.id))}` : ""}\n` : `${o.state === "plan" ? "NOT AVAILABLE ON THIS PLAN" : o.state.toUpperCase()}: ${o.msg}${o.status ? ` (${o.status})` : ""}\n`);
+        out.write(o.state === "ok" ? `OK ${o.msg}\nRecorded $${microToUsd(o.recorded)} vs quoted $${microToUsd(job.quoteMicro)}${delta.has(job.id) ? `; ElevenLabs credits used: ${String(delta.get(job.id))}` : ""}\n` : `${o.state === "plan" ? "NOT AVAILABLE ON THIS PLAN" : o.state.toUpperCase()}: ${o.msg}${o.status ? ` (${o.status}${o.code ? ` ${o.code}` : ""})` : ""}\n`);
         if (halted) out.write("Stopped: a call ended with an unclear outcome and may have been charged. Nothing more was sent.\n");
       }
     } finally {

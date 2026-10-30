@@ -11,6 +11,7 @@ import { createElevenLabsVoice } from "@/server/providers/voice/elevenlabs";
 import type { ElevenLabsDeps } from "@/server/providers/voice/eleven-types";
 import en from "../fixtures/voice/elevenlabs-en.json";
 import hi from "../fixtures/voice/elevenlabs-hi.json";
+import libraryVoice402 from "../fixtures/voice/elevenlabs-402-library-voice.json"; // recorded 2026-10-30, free tier
 
 // Fixtures are hand-written from the public docs (unrecorded). All HTTP goes to a local fake server.
 const KEY = "sk_test_SECRETKEY0123456789abcdef";
@@ -86,6 +87,15 @@ describe("elevenlabs voice", () => {
     const h = await voice().synthesise(ctx(), { ...args("नमस्ते दोस्त"), lang: "hi" });
     expect(h.wordTimings?.map((w) => w.word)).toEqual(["नमस्ते", "दोस्त"]);
     expect(h.wordTimings![1]).toEqual({ word: "दोस्त", startS: 0.6, endS: 1.1 });
+  });
+
+  it("402_paid_plan_required_is_a_plain_library_voice_message_without_the_body", async () => {
+    handler = (_q, res) => res.writeHead(402, { "content-type": "application/json" }).end(JSON.stringify(libraryVoice402));
+    const e = await voice().synthesise(ctx(), args("Hi")).catch((x) => x);
+    expect(e).toBeInstanceOf(KnownFailure);
+    expect(e.message).toBe("This voice is a library voice: free accounts cannot use it via the API. Use a voice from your own account.");
+    expect(JSON.stringify(e)).not.toContain("Upgrade");
+    expect(classifyError(e)).toBe("permanent");
   });
 
   it("429_is_known_failure_retry_and_socket_reset_after_send_is_unknown", async () => {

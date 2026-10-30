@@ -9,7 +9,7 @@ import { registerAsset } from "@/server/db/assets";
 import { createStockProvider, StockError, type StockHit } from "@/server/providers/stock";
 import { withTestDb, type TestDb } from "../support/db";
 
-// Fixtures in tests/fixtures/stock are hand-written from public docs (header field `_unrecorded`). No network: a local
+// pixabay-images.json is recorded from the live API (2026-10-30, free tier); the other fixtures in tests/fixtures/stock are hand-written from public docs (header field `_unrecorded`). No network: a local
 // server answers, and the test fetcher maps each provider's fixed https host onto it AFTER the provider checked the host.
 const fx = (n: string) => readFileSync(path.join(process.cwd(), "tests/fixtures/stock", n), "utf8");
 const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 1)]);
@@ -62,7 +62,9 @@ describe("stock providers", () => {
     expect([pv!.width, pv!.url]).toEqual([1080, "https://cdn.pixabay.com/video/401_medium.mp4"]);
     body = { "/api/": fx("pixabay-images.json") };
     const [pi] = await createStockProvider("pixabay", deps("1234567-" + "a".repeat(20))).search({ query: "sea", kind: "image", orientation: "portrait", count: 3 });
-    expect([pi!.width, pi!.height, pi!.url]).toEqual([641, 960, "https://pixabay.com/get/abc_960.jpg"]);
+    expect([pi!.width, pi!.height]).toEqual([640, 480]);
+    expect(pi!.url).toMatch(/^https:\/\/pixabay\.com\/get\/\w+_640\.jpg$/); // exactly as returned: a changed suffix is "invalid or expired"
+    expect(pi!.licence).toBe("Pixabay Content License");
   });
 
   it("missing_key_and_unknown_provider_plain_errors", async () => {
