@@ -25,29 +25,8 @@ export function kenBurns(frame: number, total: number, k: KenBurns): { scale: nu
   };
 }
 
-export type AlgoStep = { at: number; type: "highlight" | "compare" | "swap" | "mark_done" | "pointer"; i: number; j?: number };
-
-/** Board state at `ms` after replaying every step with at <= ms. swap exchanges values; the last highlight/compare/swap stays lit until a newer one or a pointer move. */
-export function cellsAt(cells: readonly string[], steps: readonly AlgoStep[], ms: number) {
-  const values = [...cells];
-  let active: number[] = [];
-  let pointer: number | null = null;
-  const done: number[] = [];
-  for (const s of steps) {
-    if (s.at > ms) break;
-    if (s.type === "pointer") {
-      pointer = s.i;
-      active = [];
-    } else if (s.type === "mark_done") {
-      if (!done.includes(s.i)) done.push(s.i);
-    } else {
-      active = s.j === undefined ? [s.i] : [s.i, s.j];
-      if (s.type === "swap" && s.j !== undefined) {
-        const t = values[s.i]!;
-        values[s.i] = values[s.j]!;
-        values[s.j] = t;
-      }
-    }
-  }
-  return { values, active, pointer, done };
+/** Opacity of chat message `index` in a sliding window: 1 until `windowSize` newer messages exist, then fades to 0 over `fadeFrames`. */
+export function windowOpacity(frame: number, framesPer: number, index: number, windowSize: number, fadeFrames: number): number {
+  const leaves = (index + windowSize) * framesPer;
+  return 1 - clamp01((frame - leaves) / Math.max(1, fadeFrames));
 }
