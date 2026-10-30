@@ -8,7 +8,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const out = path.join(root, ".data", "kit-stills");
 mkdirSync(out, { recursive: true });
 const frames = [0, 60, 119];
-const ids = ["kit-terminal", "kit-chat", "kit-story", "kit-chess", "kit-piano"];
+const ids = ["kit-terminal", "kit-chat", "kit-story", "kit-stock", "kit-pause", "kit-chat-window", "kit-browser", "kit-drawn", "kit-network", "kit-math", "kit-prob", "kit-sheet", "kit-chart-bar", "kit-chart-line", "kit-chart-pie", "kit-algo", "kit-collage-grid2", "kit-collage-grid3", "kit-collage-hero", "kit-collage-stagger", "kit-chess", "kit-piano"];
 const cmd = ids
   .flatMap((id) => frames.map((f) => `npx remotion still kit/index.ts ${id} /out/${id}-${f}.png --frame=${f} --browser-executable=$REMOTION_BROWSER_EXECUTABLE --chrome-mode=headless-shell`))
   .join(" && ");

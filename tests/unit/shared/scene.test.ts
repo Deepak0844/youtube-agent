@@ -64,3 +64,42 @@ describe("terminal lines", () => {
     expect(describeSceneFormat()).toContain("max 56 characters per line");
   });
 });
+
+describe("drawn_objects and network kinds", () => {
+  const d = { id: "s9", beat: "b1", kind: "drawn_objects", startMs: 0, durationMs: 3000, objects: [{ object: "laptop", label: "dev" }] };
+  const n = {
+    id: "s8",
+    beat: "b1",
+    kind: "network",
+    startMs: 0,
+    durationMs: 4000,
+    nodes: [
+      { id: "me", type: "laptop", label: "Browser" },
+      { id: "dns", type: "resolver", label: "Resolver" },
+    ],
+    links: [{ from: "me", to: "dns", packet: "A?" }],
+  };
+  it("accepts valid scenes and fills defaults", () => {
+    const r = validateScenes(doc(d));
+    expect(r.ok).toBe(true);
+    if (r.ok && r.doc.scenes[0]?.kind === "drawn_objects") expect(r.doc.scenes[0].objects[0]).toMatchObject({ slot: "center", enter: "fade", emphasis: "none" });
+    expect(validateScenes(doc(n)).ok).toBe(true);
+  });
+  it("bounds drawn objects", () => {
+    const o = { object: "cloud" };
+    expect(errs(doc({ ...d, objects: [] })).length).toBe(1);
+    expect(errs(doc({ ...d, objects: [o, o, o, o, o] }))[0]).toBe("scene 1 > objects: must have at most 4 objects");
+    expect(errs(doc({ ...d, objects: [{ object: "dragon" }] })).length).toBe(1);
+    expect(errs(doc({ ...d, objects: [{ object: "cloud", label: "x".repeat(21) }] }))[0]).toContain("at most 20");
+    expect(errs(doc({ ...d, objects: [{ object: "https://x.io/a.svg" }] })).length).toBe(1);
+  });
+  it("bounds and checks network", () => {
+    const node = (i: number) => ({ id: `n${i}`, type: "rack", label: "x" });
+    expect(errs(doc({ ...n, nodes: Array.from({ length: 7 }, (_, i) => node(i)) }))[0]).toBe("scene 1 > nodes: must have at most 6 nodes");
+    expect(errs(doc({ ...n, nodes: [node(0)] }))[0]).toContain("at least 2");
+    expect(errs(doc({ ...n, links: [{ from: "me", to: "nope" }] }))).toEqual(["scene 1 > links > 0 > to: no node with id 'nope'"]);
+    expect(errs(doc({ ...n, links: [{ from: "me", to: "me" }] }))[0]).toContain("must differ");
+    expect(errs(doc({ ...n, nodes: [n.nodes[0], n.nodes[0]] }))[0]).toContain("duplicate node id");
+    expect(errs(doc({ ...n, links: [{ from: "me", to: "dns", packet: "x".repeat(11) }] }))[0]).toContain("at most 10");
+  });
+});
