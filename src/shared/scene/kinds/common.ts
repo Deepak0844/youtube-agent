@@ -14,6 +14,13 @@ export const LIMITS = {
   chatMessages: 6,
   chatText: 90,
   caption: 80,
+  orbitBodies: 6,
+  orbitLabel: 12,
+  orbitRadiusMax: 10,
+  orbitPeriodMin: 1,
+  orbitPeriodMax: 60,
+  mapMarkers: 6,
+  mapLabel: 16,
 } as const;
 
 // Asset refs are opaque ids from the asset library, never URLs or paths.

@@ -24,3 +24,59 @@ export function kenBurns(frame: number, total: number, k: KenBurns): { scale: nu
     y: k.panY * (2 * t - 1),
   };
 }
+
+// ---- orbit ----
+export type OrbitBody = { label: string; radius: number; periodS: number };
+export type OrbitPreset = "solar_system" | "moon_earth" | "custom";
+
+const PRESETS: Record<Exclude<OrbitPreset, "custom">, OrbitBody[]> = {
+  solar_system: [
+    { label: "Mercury", radius: 2, periodS: 4 },
+    { label: "Venus", radius: 3.5, periodS: 7 },
+    { label: "Earth", radius: 5, periodS: 10 },
+    { label: "Mars", radius: 7, periodS: 15 },
+    { label: "Jupiter", radius: 9.5, periodS: 30 },
+  ],
+  moon_earth: [{ label: "Moon", radius: 6, periodS: 8 }],
+};
+
+export function resolveBodies(preset: OrbitPreset, bodies: OrbitBody[] | undefined): OrbitBody[] {
+  return preset === "custom" ? (bodies ?? []) : PRESETS[preset];
+}
+
+/** Position on an ellipse centred on the origin; one lap per `periodS` seconds. */
+export function orbitPoint(frame: number, fps: number, periodS: number, rx: number, ry: number, phase = 0): [number, number] {
+  const a = phase + (2 * Math.PI * frame) / (fps * periodS);
+  return [rx * Math.cos(a), ry * Math.sin(a)];
+}
+
+// ---- map ----
+/** [west, south, east, north] in degrees. */
+export const REGIONS = {
+  world: [-180, -58, 180, 80],
+  europe: [-12, 35, 40, 71],
+  north_america: [-170, 7, -50, 72],
+  south_america: [-82, -56, -34, 13],
+  africa: [-20, -35, 52, 38],
+  asia: [25, -10, 150, 55],
+  oceania: [110, -48, 180, 0],
+} as const satisfies Record<string, readonly [number, number, number, number]>;
+export type Region = keyof typeof REGIONS;
+
+const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (Math.max(-85, Math.min(85, lat)) * Math.PI) / 360));
+
+/** Mercator-project lon/lat into a w x h box, fitting the whole region and centring it. */
+export function kitProject(region: Region, lon: number, lat: number, w: number, h: number): [number, number] {
+  const [west, south, east, north] = REGIONS[region];
+  const spanX = ((east - west) * Math.PI) / 180;
+  const spanY = mercY(north) - mercY(south);
+  const k = Math.min(w / spanX, h / spanY);
+  const ox = (w - spanX * k) / 2;
+  const oy = (h - spanY * k) / 2;
+  return [ox + (((lon - west) * Math.PI) / 180) * k, oy + (mercY(north) - mercY(lat)) * k];
+}
+
+export function inRegion(region: Region, lon: number, lat: number): boolean {
+  const [west, south, east, north] = REGIONS[region];
+  return lon >= west && lon <= east && lat >= south && lat <= north;
+}
