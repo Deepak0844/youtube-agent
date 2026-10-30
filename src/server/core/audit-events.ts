@@ -27,6 +27,8 @@ export const AUDIT_EVENTS = {
   "breaker.reset": "A paused stage was released by the owner",
   // Phase 2 parked stages (detail: stage run id, video id, choice, reason, session id, dollar figure; never a call key)
   "stage.decision": "The owner resolved a parked stage",
+  // Parked stage, "check the job" (detail: stage run id, video id, provider, provider job id, outcome, session id; never a key or a file path)
+  "stage.job_checked": "The owner asked a provider about a parked paid job",
   // Phase 2 queue page (detail: ids and session id only)
   "video.cancelled": "The owner cancelled a video",
   "upload.requeued": "An approved upload was sent to the uploader again",
