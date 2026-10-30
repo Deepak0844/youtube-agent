@@ -1,5 +1,5 @@
 import React from "react";
-import { Composition } from "remotion";
+import { AbsoluteFill, Audio, Composition, Sequence, staticFile } from "remotion";
 import { Browser, type BrowserProps } from "./Browser";
 import { ChatThread, type ChatThreadProps } from "./ChatThread";
 import { PauseCard, type PauseCardProps } from "./PauseCard";
@@ -20,7 +20,9 @@ import { START_FEN, parseFen } from "./chessLogic";
 import { Piano, type PianoProps } from "./Piano";
 import { MapPiece, type MapProps } from "./MapPiece";
 import { Orbit, type OrbitProps } from "./Orbit";
-import type { Scene } from "../../src/shared/scene";
+import { Captions } from "./Captions";
+import { collageStarts, docFrames, mediaOf, msToFrame, sceneRange, type CaptionWord } from "./timeline";
+import type { Scene, SceneDoc } from "../../src/shared/scene";
 
 const terminal: TerminalProps = {
   lines: [{ text: "npm run build" }, { text: "build ok", prompt: ">" }],
@@ -165,7 +167,7 @@ const map: MapProps = {
   route: true,
   framesPerMarker: 25,
 };
-// To make a new scene kind previewable (npm run kit:preview): add one `case "<kind>":` line to KitScene below.
+// To make a new scene kind previewable (npm run kit:preview): add a `case` to KitScene below and the kind to rendered.ts.
 // Type-only import: the render image has no zod, so nothing from src/ may be imported at runtime here.
 const common = { width: theme.width, height: theme.height, fps: theme.fps, durationInFrames: 120 };
 
@@ -203,19 +205,92 @@ const placeholder = (id: string): string => {
   return `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1080' height='1920'><rect width='100%25' height='100%25' fill='hsl(${h},45%25,30%25)'/><circle cx='540' cy='960' r='300' fill='hsl(${(h + 40) % 360},70%25,60%25)'/></svg>`;
 };
 
-// One validated scene in, one kit piece out. Captions and terminal "output" lines are not drawn by the pieces yet.
-export const KitScene: React.FC<{ scene: Scene }> = ({ scene }) => {
+type ResolveAsset = (id: string) => string;
+type KitSceneProps = { scene: Scene; resolveAsset?: ResolveAsset; fps?: number };
+
+// One validated scene in, one kit piece out. Terminal "output" lines are not drawn by the pieces yet.
+// Every kind in the schema registry needs a case; tests/unit/kit-scene.test.ts checks rendered.ts against it.
+export const KitScene: React.FC<KitSceneProps> = ({ scene, resolveAsset = placeholder, fps = theme.fps }) => {
+  const f = (ms: number) => msToFrame(ms, fps);
   switch (scene.kind) {
     case "terminal":
       return <Terminal lines={scene.lines} framesPerChar={2} gapFrames={15} />;
     case "chat_thread":
-      return <ChatThread messages={scene.messages.map((m) => ({ from: m.from === "user" ? "me" : "them", text: m.text }))} framesPerMessage={30} />;
+      return <ChatThread messages={scene.messages.map((m) => ({ from: m.from === "user" ? "me" : "them", text: m.text }))} framesPerMessage={30} windowSize={scene.windowSize} />;
     case "story_kenburns":
-      return <Story image={placeholder(scene.image)} motion={scene} />;
-    default:
-      return null;
+      return <Story image={resolveAsset(scene.image)} motion={scene} caption={scene.caption} captionZone={scene.captionZone} />;
+    case "algo_cells":
+      return <AlgoCells title={scene.title} cells={scene.cells} steps={scene.steps} />;
+    case "browser":
+      return (
+        <Browser
+          title={scene.title}
+          url={scene.url}
+          blocks={scene.blocks.map((b) => (b.type === "image" ? { type: "image" as const, src: resolveAsset(b.asset) } : b))}
+          framesPerBlock={30}
+        />
+      );
+    case "chart":
+      return <Chart chart={scene.chart} title={scene.title} labels={scene.labels} series={scene.series} drawFrames={60} />;
+    case "chess": {
+      const b = parseFen(scene.position);
+      return <Chess board={b.ok ? b.board : {}} moves={scene.moves} highlights={scene.highlights} arrows={scene.arrows} flip={scene.flip} caption={scene.caption} framesPerMove={30} />;
+    }
+    case "collage": {
+      const starts = collageStarts(scene.tiles.map((t) => t.delayMs), fps);
+      return (
+        <Collage
+          layout={scene.layout}
+          tiles={scene.tiles.map((t, i) => ({ src: resolveAsset(t.asset), media: t.media, enter: t.enter, startFrame: starts[i]!, caption: t.caption }))}
+        />
+      );
+    }
+    case "drawn_objects":
+      return <DrawnObjects objects={scene.objects} />;
+    case "map":
+      return <MapPiece title={scene.title} region={scene.region} markers={scene.markers} route={scene.route} framesPerMarker={25} />;
+    case "math":
+      return <MathSteps title={scene.title} steps={scene.steps} framesPerStep={30} />;
+    case "network":
+      return <Network nodes={scene.nodes} links={scene.links} />;
+    case "orbit":
+      return <Orbit title={scene.title} preset={scene.preset} center={scene.center} bodies={scene.bodies} />;
+    case "pause_card":
+      return <PauseCard question={scene.question} options={scene.options} answer={scene.answer} revealAtFrame={f(scene.revealAtMs)} />;
+    case "piano":
+      return <Piano from={scene.from} to={scene.to} events={scene.events.map((e) => ({ at: f(e.atMs), notes: e.notes, label: e.label }))} />;
+    case "probability":
+      return <Probability experiment={scene.experiment} title={scene.title} trials={scene.trials} outcomes={scene.outcomes} growFrames={90} />;
+    case "spreadsheet":
+      return <Spreadsheet rows={scene.rows} formula={scene.formula} highlight={scene.highlight} reveal={scene.reveal} framesPerStep={20} />;
+    case "stock_clip": {
+      const src = resolveAsset(scene.asset);
+      return <StockClip src={src} media={mediaOf(src)} dim={scene.dim} caption={scene.caption} captionZone={scene.captionZone} />;
+    }
+    default: {
+      const unhandled: never = scene;
+      throw new Error(`KitScene: no case for kind ${(unhandled as { kind: string }).kind}`);
+    }
   }
 };
+
+export type KitVideoProps = { doc: SceneDoc; resolveAsset?: ResolveAsset; audioSrc?: string; captions?: CaptionWord[]; fps?: number };
+
+// Whole video: scenes on a timeline, optional narration, optional karaoke captions on top.
+export const KitVideo: React.FC<KitVideoProps> = ({ doc, resolveAsset = placeholder, audioSrc, captions, fps = theme.fps }) => (
+  <AbsoluteFill style={{ background: theme.palette.bg }}>
+    {doc.scenes.map((scene) => {
+      const r = sceneRange(scene, fps);
+      return (
+        <Sequence key={scene.id} from={r.from} durationInFrames={r.duration}>
+          <KitScene scene={scene} resolveAsset={resolveAsset} fps={fps} />
+        </Sequence>
+      );
+    })}
+    {audioSrc ? <Audio src={/^(https?:|data:|blob:)/.test(audioSrc) ? audioSrc : staticFile(audioSrc)} /> : null}
+    {captions?.length ? <Captions words={captions} /> : null}
+  </AbsoluteFill>
+);
 
 export const KitRoot: React.FC = () => (
   <>
@@ -228,7 +303,17 @@ export const KitRoot: React.FC = () => (
       component={KitScene}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       defaultProps={{ scene: { id: "demo", kind: "terminal", beat: "b1", startMs: 0, durationMs: 4000, lines: [{ text: "npm run kit:studio", prompt: "$", output: false }] } as any }}
-      calculateMetadata={({ props }) => ({ durationInFrames: Math.max(1, Math.round((props.scene.durationMs * theme.fps) / 1000)) })}
+      calculateMetadata={({ props }) => ({ durationInFrames: Math.max(1, msToFrame(props.scene.durationMs, theme.fps)) })}
+      width={theme.width}
+      height={theme.height}
+      fps={theme.fps}
+      durationInFrames={120}
+    />
+    <Composition
+      id="kit-video"
+      component={KitVideo}
+      defaultProps={{ doc: { version: 1, scenes: [{ id: "demo", kind: "terminal", beat: "b1", startMs: 0, durationMs: 4000, lines: [{ text: "npm run kit:video", prompt: "$", output: false }] }] } as unknown as SceneDoc } as KitVideoProps}
+      calculateMetadata={({ props }) => ({ durationInFrames: docFrames(props.doc.scenes, props.fps ?? theme.fps), fps: props.fps ?? theme.fps })}
       width={theme.width}
       height={theme.height}
       fps={theme.fps}

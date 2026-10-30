@@ -33,6 +33,7 @@
     "kit:studio": "node scripts/kit-studio.mjs",
     "kit:sheet": "node scripts/kit-sheet.mjs",
     "kit:preview": "tsx scripts/kit-preview.ts",
+    "kit:video": "tsx scripts/kit-video.ts",
     "image:render": "docker build -f infra/Dockerfile.render -t ytstudio-render:dev .",
     "test:ui": "playwright test --project=ui-desktop --project=ui-phone",
     "image:egress-proxy": "docker build -f infra/Dockerfile.egress-proxy -t ytstudio-egress-proxy:dev ."
