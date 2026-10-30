@@ -12,6 +12,19 @@ export const theme = {
     bubbleMe: "#2563eb",
     bubbleThem: "#252b38",
   },
+  // Flat drawn-object colours (outline, metals, glass, status lights).
+  art: {
+    ink: "#0f1218",
+    steel: "#3a3f4b",
+    steelLight: "#5b6272",
+    glass: "#cfe6ec",
+    liquid: "#5eead4",
+    paper: "#e8dfc9",
+    cloud: "#e8f1f5",
+    ok: "#58e08a",
+    warn: "#fbbf24",
+    blue: "#2b7fc4",
+  },
   fonts: { ui: "Inter", mono: "JetBrains Mono" },
   // Keep text inside these margins (px) so platform UI never covers it.
   safe: { top: 220, bottom: 380, side: 72 },
