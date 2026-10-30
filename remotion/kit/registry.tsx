@@ -1,6 +1,8 @@
 import React from "react";
 import { Composition } from "remotion";
 import { ChatThread, type ChatThreadProps } from "./ChatThread";
+import { PauseCard, type PauseCardProps } from "./PauseCard";
+import { StockClip, type StockClipProps } from "./StockClip";
 import { Story, type StoryProps } from "./Story";
 import { Terminal, type TerminalProps } from "./Terminal";
 import { theme } from "./theme";
@@ -24,12 +26,17 @@ const story: StoryProps = {
   motion: { zoomFrom: 1, zoomTo: 1.2, panX: 0.03, panY: 0.02 },
 };
 
+const pause: PauseCardProps = { question: "Which one is real?", options: ["Left", "Right", "Both"], answer: 1, revealAtFrame: 70 };
+const stock: StockClipProps = { src: story.image, media: "image", dim: 0.3, caption: "Stock footage example" };
+
 const common = { width: theme.width, height: theme.height, fps: theme.fps, durationInFrames: 120 };
 
 export const kitCompositions = [
   { id: "kit-terminal", component: Terminal, defaultProps: terminal },
   { id: "kit-chat", component: ChatThread, defaultProps: chat },
   { id: "kit-story", component: Story, defaultProps: story },
+  { id: "kit-stock", component: StockClip, defaultProps: stock },
+  { id: "kit-pause", component: PauseCard, defaultProps: pause },
 ] as const;
 
 export const KitRoot: React.FC = () => (
