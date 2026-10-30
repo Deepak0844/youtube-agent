@@ -194,7 +194,7 @@ export async function ownerStep(w: World, videoId: string, o: OwnerOptions = {})
     if (next.gate === "evidence" || next.gate === "publish") await ensureLaterContent(db, videoId);
     const live = await liveGateHash(db, videoId, next.gate);
     if (!live) return { kind: "idle" };
-    const input = { videoId, gate: next.gate as never, seenHash: live.hash, seenVersions: versionsKey(live.versions), note: undefined };
+    const input = { videoId, gate: next.gate as never, seenHash: live.hash, seenVersions: versionsKey(live.versions), note: undefined, captionsChecked: true }; // the dry run's captions are estimated: the owner ticks
     const rs = await Promise.all(Array.from({ length: o.doubleApprove ? 2 : 1 }, () => decideGate(db, w.queues, w.session, input, "approve", { root: w.root })));
     const r = rs.find((x) => x.ok) ?? rs[0]!;
     return { kind: "gate", gate: next.gate, ok: r.ok, message: r.message };

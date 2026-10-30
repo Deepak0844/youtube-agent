@@ -126,7 +126,7 @@ describe("crash: SIGKILL at the five points", () => {
       expect(sup.crashes()).toBe(1);
       const parked = (await stageRow(videoId, "tts"))!;
       const d = await getDecision(db.pool, parked.id);
-      expect(d).toMatchObject({ reason: "paid_call_may_have_run", maxCostMicroUsd: 10_000 }); // the dollar figure is the reservation
+      expect(d).toMatchObject({ reason: "paid_call_may_have_run", maxCostMicroUsd: 1000 }); // the dollar figure is the reservation of the one line in flight
       const callsAtPark = await callsFor(videoId);
       await new Promise((r) => setTimeout(r, 1500)); // the reconciler keeps running; it must leave the parked stage alone
       expect(await callsFor(videoId)).toBe(callsAtPark);

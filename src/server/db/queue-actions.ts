@@ -3,7 +3,6 @@ import { captionsNeedTick, actorProblem, ACTOR_REASON, type GateActor } from "@/
 import { STALE_MESSAGE, versionsKey, type BreakerStage, type DecisionInput, type GateInput } from "@/server/core/queue-input";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
-import { addContent } from "@/server/db/videos";
 import { approveGate, liveGateHash, readSnapshot, sendBack } from "@/server/db/approvals";
 import { recordAudit } from "@/server/db/audit";
 import { resetBreaker } from "@/server/db/breakers";
@@ -51,12 +50,29 @@ async function advance(db: pg.Pool, queue: EnqueueOnly, videoId: string): Promis
  */
 export async function tickCaptions(db: pg.Pool, videoId: string, actor: GateActor, checked: boolean): Promise<{ ok: true; hash?: string } | { ok: false; message: string }> {
   const snap = await readSnapshot(db, videoId, "video");
-  const caps = snap === "no_video" ? undefined : snap.inputs.content.captions;
-  if (!caps || !captionsNeedTick(caps.body)) return { ok: true };
+  if (snap === "no_video" || !snap.inputs.content.captions || !captionsNeedTick(snap.inputs.content.captions.body)) return { ok: true };
   if (!checked) return { ok: false, message: "Tick \"I checked the captions\" first. The captions are approximate: listen and check." };
-  const body = { ...(caps.body as Record<string, unknown>), checked_by_owner: true };
-  await addContent(db, videoId, "captions", { body, sha256: sha256Hex(canonicalJson(body)) });
-  await recordAudit(db, "captions.checked", { videoId, sessionId: actor.sessionId });
+  // Under a per-video lock and re-read inside it, so two clicks at once add ONE tick (a second would void the first approval).
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`captions-tick:${videoId}`]);
+    const cur = await client.query<{ body: Record<string, unknown> }>("select body from video_content where video_id = $1 and kind = 'captions' order by version desc limit 1", [videoId]);
+    if (cur.rows[0] && captionsNeedTick(cur.rows[0].body)) {
+      const body = { ...cur.rows[0].body, checked_by_owner: true };
+      await client.query(
+        `insert into video_content (video_id, kind, version, sha256, body) values ($1, 'captions', (select coalesce(max(version), 0) + 1 from video_content where video_id = $1 and kind = 'captions'), $2, $3)`,
+        [videoId, sha256Hex(canonicalJson(body)), JSON.stringify(body)],
+      );
+      await recordAudit(client, "captions.checked", { videoId, sessionId: actor.sessionId });
+    }
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback").catch(() => undefined);
+    throw e;
+  } finally {
+    client.release();
+  }
   const fresh = await liveGateHash(db, videoId, "video");
   return fresh ? { ok: true, hash: fresh.hash } : { ok: false, message: STALE_MESSAGE };
 }
