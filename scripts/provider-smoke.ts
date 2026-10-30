@@ -190,7 +190,7 @@ async function main(): Promise<void> {
     const ports = createPgPaidCallPorts(db);
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     const results = new Map<string, Outcome>();
-    const rows: Array<{ id: string; quoteMicro: number; recordedMicro: number }> = [];
+    const rows: Array<{ id: string; quoteMicro: number; recordedMicro: number; failed?: boolean }> = [];
     const delta = new Map<string, number | null>();
     const usage = new Map<string, string>();
     let halted = false;
