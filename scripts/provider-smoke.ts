@@ -13,12 +13,12 @@ import { createInterface } from "node:readline/promises";
 import { buildEngineConfig } from "@/server/core/engine-config";
 import { NotProcessedError } from "@/server/core/error-class";
 import { microToUsd } from "@/server/core/llm-catalog";
-import { KnownFailure } from "@/server/core/paid-call";
+import { BudgetRefusedError, KnownFailure } from "@/server/core/paid-call";
 import { secretName, type ProviderId } from "@/server/core/provider-keys";
 import { createStageContext, type StageContext } from "@/server/core/stage-handler";
 import { EDGE_VOICES } from "@/server/core/edge-voices";
 import { formatSummary, moneyAnomalies, parseSmokeArgs, planSmoke, redactFixture, refuseEnvironment, SmokeRefusal, type Candidate, type Verdict } from "@/server/core/smoke-plan";
-import { ensureCapScope } from "@/server/db/budget-scopes";
+import { ensureCapScope, ensureScopeCopies, periodScopes } from "@/server/db/budget-scopes";
 import { getPriceRule } from "@/server/db/media-registry";
 import { loadKeyring } from "@/server/db/master-key";
 import { createPgPaidCallPorts } from "@/server/db/paid-call-adapter";
@@ -37,6 +37,8 @@ const ROOT = path.resolve(".data/smoke");
 const FIXTURES = path.join(ROOT, "fixtures");
 const VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // ElevenLabs premade "Rachel": premade voices work on the free plan
 const TAG = "[excited]";
+// ASSUMPTION: sound effects and music bill in credits at an unknown rate; 1000 is a conservative stand-in for the allowance check.
+const SOUND_CREDITS = 1000;
 const SENTENCES: Record<string, string> = { en: "Hello, this is a short voice test.", hi: "नमस्ते, यह एक छोटा आवाज़ परीक्षण है।", ta: "வணக்கம், இது ஒரு சிறிய குரல் சோதனை." };
 
 type State = "ok" | "plan" | "error" | "declined";
@@ -114,7 +116,7 @@ async function main(): Promise<void> {
 
     // One tiny call per capability. Prices come from the media registry; an unpriced capability is skipped.
     const scope = `smoke:${runId}`;
-    const budgetScopes = [scope];
+    const budgetScopes = [scope]; // the owner's day and month copies are added before the first call
     const price = (id: string) => getPriceRule(db, id);
     const [vp, sp, mp] = await Promise.all([price("elevenlabs"), price("elevenlabs_sfx"), price("elevenlabs_music")]);
     const voiceId = args.voice ?? VOICE_ID;
@@ -133,13 +135,13 @@ async function main(): Promise<void> {
           jobs.push({ id: `voice-${model === "eleven_v3" ? "v3" : "v2"}-${lang}`, provider: "elevenlabs", label: `voice ${model} ${lang}`, quoteMicro: p.quote(a), needsKey: true, chars: Array.from(a.text).length,
             run: async (ctx) => { const r = await p.synthesise(ctx, a); return `${r.audioPath} | timings ${r.timingsKind}, ${r.wordTimings ? words(r.wordTimings.length, a.text) : "none"} | recorded ${r.priceMicroUsd} (${r.quoted ? "our quote" : "provider-reported"})`; } });
         }
-      } else unpriced.push({ id: "voice", why: "ElevenLabs voice is not enabled or has no price on the Media page." });
+      } else unpriced.push({ id: "voice", why: "ElevenLabs voice is not usable. Providers page, ElevenLabs VOICE row: turn on 'enabled' (and give it a price)." });
       const sfx = { prompt: "a short soft click", seconds: 2 };
       const music = { prompt: "calm soft piano", seconds: 3 };
-      if (sp) jobs.push({ id: "sfx", provider: "elevenlabs", label: "sound effect, 2 s", quoteMicro: sound.quoteSfx(sfx), needsKey: true, chars: 1, run: async (ctx) => { const r = await sound.makeSfx(ctx, sfx); return `${r.path} | ${r.bytes} bytes | recorded ${r.provenance.priceMicroUsd}`; } });
-      else unpriced.push({ id: "sfx", why: "ElevenLabs sound effects are not enabled or have no price on the Media page." });
-      if (mp) jobs.push({ id: "music", provider: "elevenlabs", label: "music, 3 s (shortest)", quoteMicro: sound.quoteMusic(music), needsKey: true, chars: 1, optional: true, run: async (ctx) => { const r = await sound.makeMusic(ctx, music); return `${r.path} | ${r.bytes} bytes | recorded ${r.provenance.priceMicroUsd}`; } });
-      else unpriced.push({ id: "music", why: "ElevenLabs music is not enabled or has no price on the Media page." });
+      if (sp) jobs.push({ id: "sfx", provider: "elevenlabs", label: "sound effect, 2 s", quoteMicro: sound.quoteSfx(sfx), needsKey: true, chars: SOUND_CREDITS, run: async (ctx) => { const r = await sound.makeSfx(ctx, sfx); return `${r.path} | ${r.bytes} bytes | recorded ${r.provenance.priceMicroUsd}`; } });
+      else unpriced.push({ id: "sfx", why: "ElevenLabs sound effects are not usable. Providers page, ElevenLabs SOUND EFFECTS row: turn on 'enabled' (and give it a price)." });
+      if (mp) jobs.push({ id: "music", provider: "elevenlabs", label: "music, 3 s (shortest)", quoteMicro: sound.quoteMusic(music), needsKey: true, chars: SOUND_CREDITS, optional: true, run: async (ctx) => { const r = await sound.makeMusic(ctx, music); return `${r.path} | ${r.bytes} bytes | recorded ${r.provenance.priceMicroUsd}`; } });
+      else unpriced.push({ id: "music", why: "ElevenLabs music is not usable. Providers page, ElevenLabs MUSIC row: turn on 'enabled' (and give it a price)." });
     }
     if (selected.has("pixabay")) {
       jobs.push({ id: "pixabay", provider: "pixabay", label: "Pixabay: one search and one small image", quoteMicro: 0, needsKey: true,
@@ -171,7 +173,7 @@ async function main(): Promise<void> {
     }
 
     const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-    const plan = planSmoke({ candidates: jobs, selected, haveKey: (p) => have.has(p), capMicro, interactive: interactive && !args.dryPlan, yesSpend: args.yesSpend, allowanceChars: allowance });
+    const plan = planSmoke({ candidates: jobs, selected, haveKey: (p) => have.has(p), capMicro, interactive, dryPlan: args.dryPlan, yesSpend: args.yesSpend, allowanceChars: allowance });
     const out = process.stdout;
     for (const s of [...unpriced, ...plan.skipped]) out.write(`SKIPPED ${s.id}: ${s.why}\n`);
     for (const c of plan.calls) out.write(`QUOTE ${c.label}: $${microToUsd(c.quoteMicro)}\n`);
@@ -179,6 +181,7 @@ async function main(): Promise<void> {
     if (args.dryPlan) { out.write("Dry plan: nothing was called.\n"); return; }
 
     await ensureCapScope(db, scope, capMicro);
+    budgetScopes.push(...(await ensureScopeCopies(db, await periodScopes(db)))); // real day/month caps still apply
     await mkdir(outDir, { recursive: true });
     await mkdir(FIXTURES, { recursive: true });
     await writeFile(path.join(FIXTURES, "README.txt"), "Raw provider responses from `npm run smoke:providers` (keys and credentials stripped, check for anything personal before using).\nTo promote: copy a file into tests/fixtures/<area>/ replacing the matching `unrecorded` hand-written fixture (and drop its `unrecorded` marker) in a follow-up PR.\n");
@@ -189,6 +192,7 @@ async function main(): Promise<void> {
     const results = new Map<string, Outcome>();
     const rows: Array<{ id: string; quoteMicro: number; recordedMicro: number }> = [];
     const delta = new Map<string, number | null>();
+    const usage = new Map<string, string>();
     let halted = false;
     try {
       for (const [i, job] of plan.calls.entries()) {
@@ -206,16 +210,18 @@ async function main(): Promise<void> {
           await commitStage(db, claim, { smoke: true });
         } catch (err) {
           const status = err instanceof NotProcessedError ? err.status : undefined;
-          o = status === 402 || status === 403
+          o = err instanceof BudgetRefusedError
+            ? { state: "error", msg: "skipped: a day or month budget cap would be exceeded. Nothing was sent." }
+            : status === 402 || status === 403
             ? { state: "plan", msg: "not available on this plan", status }
-            : { state: "error", msg: err instanceof Error ? err.message.slice(0, 200) : "unknown error", ...(status ? { status } : {}) };
-          if (err instanceof KnownFailure) await failStage(db, claim, "smoke_call_refused").catch(() => undefined);
+            : { state: "error", msg: err instanceof Error ? redactFixture(err.message, secrets).slice(0, 200) : "unknown error", ...(status ? { status } : {}) };
+          if (err instanceof KnownFailure || err instanceof BudgetRefusedError) await failStage(db, claim, "smoke_call_refused").catch(() => undefined);
           else halted = true; // unclear outcome: it may have been charged, so nothing more is sent
         }
         const spent = await db.query<{ actual: string }>("select coalesce(sum(actual_micro_usd), 0)::bigint as actual from spend_intents where stage_run_id = $1 and status = 'done'", [claim.stageRunId]);
         o.recorded = Number(spent.rows[0]!.actual);
-        if (o.state === "ok") rows.push({ id: job.id, quoteMicro: job.quoteMicro, recordedMicro: o.recorded });
-        if (before) { const after = await account(`account-after-${job.id}`); delta.set(job.id, after ? after.count - before.count : null); }
+        if (o.recorded > 0 || o.state === "ok") rows.push({ id: job.id, quoteMicro: job.quoteMicro, recordedMicro: o.recorded, failed: o.state !== "ok" });
+        if (before) { const after = await account(`account-after-${job.id}`); delta.set(job.id, after ? after.count - before.count : null); usage.set(job.id, after ? `before ${before.count}, after ${after.count}` : `before ${before.count}, after unreadable`); }
         results.set(job.id, o);
         out.write(o.state === "ok" ? `OK ${o.msg}\nRecorded $${microToUsd(o.recorded)} vs quoted $${microToUsd(job.quoteMicro)}${delta.has(job.id) ? `; ElevenLabs credits used: ${String(delta.get(job.id))}` : ""}\n` : `${o.state === "plan" ? "NOT AVAILABLE ON THIS PLAN" : o.state.toUpperCase()}: ${o.msg}${o.status ? ` (${o.status})` : ""}\n`);
         if (halted) out.write("Stopped: a call ended with an unclear outcome and may have been charged. Nothing more was sent.\n");
@@ -243,8 +249,8 @@ async function main(): Promise<void> {
     const summary = [
       { item: "Sound-effect model eleven_text_to_sound_v2", verdict: v("sfx"), detail: d("sfx", "accepted") },
       { item: "Music model music_v2", verdict: v("music"), detail: d("music", "accepted") },
-      { item: "Sound-effect billing unit (credits used for a 2 s clip)", verdict: delta.get("sfx") ? "confirmed" : st("sfx") ? "differs" : "not run", detail: `${String(delta.get("sfx") ?? "unreadable")} credits; we quote a whole minute` },
-      { item: "Music billing unit (credits used for a 3 s clip)", verdict: delta.get("music") ? "confirmed" : st("music") ? "differs" : "not run", detail: `${String(delta.get("music") ?? "unreadable")} credits; we quote a whole minute` },
+      { item: "Sound-effect billing unit (credits used for a 2 s clip)", verdict: delta.get("sfx") ? "confirmed" : st("sfx") ? "differs" : "not run", detail: `${usage.get("sfx") ?? "usage unreadable"} (usage may lag: re-check the dashboard); we quote a whole minute` },
+      { item: "Music billing unit (credits used for a 3 s clip)", verdict: delta.get("music") ? "confirmed" : st("music") ? "differs" : "not run", detail: `${usage.get("music") ?? "usage unreadable"} (usage may lag: re-check the dashboard); we quote a whole minute` },
       { item: "Music answers with audio at once (no job id)", verdict: music ? (/audio/i.test(music.type) ? "confirmed" : "differs") : v("music"), detail: music ? `content-type ${music.type || "none"}` : "no response" },
       { item: "402/403 on the free plan", verdict: statuses.some((s) => s === 402 || s === 403) ? "refused by plan" : "not run", detail: `error statuses seen: ${statuses.join(", ") || "none"}` },
       { item: "v3 available on this plan", verdict: v("voice-v3-en") === "not run" ? v("voice-v3-hi") : v("voice-v3-en"), detail: d("voice-v3-en", "v3 line made") },

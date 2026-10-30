@@ -12,6 +12,16 @@ describe("smoke plan", () => {
     expect(() => planSmoke({ ...base, capMicro: 100_000, candidates: [cand({ id: "sfx", quoteMicro: 120_000 })] })).toThrow(SmokeRefusal);
   });
 
+  it("skips a call bigger than the remaining cap with a message and runs the rest", () => {
+    const p = planSmoke({ ...base, capMicro: 100_000, candidates: [cand({ id: "sfx", quoteMicro: 120_000 }), cand({ id: "v", quoteMicro: 3200 })] });
+    expect(p.calls.map((c) => c.id)).toEqual(["v"]);
+    expect(p.skipped[0]!.why).toBe("skipped: sfx quote $0.12 exceeds the remaining cap $0.10");
+  });
+
+  it("dry plan needs no terminal and no yes flag", () => {
+    expect(planSmoke({ ...base, interactive: false, dryPlan: true, candidates: [cand({ id: "v" })] }).calls).toHaveLength(1);
+  });
+
   it("drops an optional call that does not fit the cap", () => {
     const p = planSmoke({ ...base, capMicro: 200_000, candidates: [cand({ id: "sfx", quoteMicro: 120_000 }), cand({ id: "music", quoteMicro: 150_000, optional: true })] });
     expect(p.calls.map((c) => c.id)).toEqual(["sfx"]);
@@ -47,6 +57,8 @@ describe("smoke plan", () => {
   it("flags a recorded price above the quote or a total above the cap", () => {
     expect(moneyAnomalies(500_000, [{ id: "a", quoteMicro: 100, recordedMicro: 100 }])).toEqual([]);
     expect(moneyAnomalies(500_000, [{ id: "a", quoteMicro: 100, recordedMicro: 101 }])).toHaveLength(1);
+    expect(moneyAnomalies(500_000, [{ id: "a", quoteMicro: 100, recordedMicro: 99 }])).toHaveLength(1);
+    expect(moneyAnomalies(500_000, [{ id: "a", quoteMicro: 100, recordedMicro: 0, failed: true }])).toEqual([]);
     expect(moneyAnomalies(150, [{ id: "a", quoteMicro: 100, recordedMicro: 100 }, { id: "b", quoteMicro: 100, recordedMicro: 100 }])).toHaveLength(1);
   });
 });

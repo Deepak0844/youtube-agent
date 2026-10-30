@@ -1,3 +1,4 @@
+import { microToUsd } from "./llm-catalog";
 import { redactSecretShapes } from "./log-redact";
 
 // Pure planning and redaction for the owner-run live provider smoke (scripts/provider-smoke.ts). No IO.
@@ -42,26 +43,28 @@ export interface Plan<C extends Candidate = Candidate> { calls: C[]; skipped: Ar
 
 export function planSmoke<C extends Candidate>(a: {
   candidates: C[]; selected: ReadonlySet<string>; haveKey: (provider: string) => boolean; capMicro: number;
-  interactive: boolean; yesSpend: boolean; allowanceChars: number | null;
+  interactive: boolean; dryPlan?: boolean; yesSpend: boolean; allowanceChars: number | null;
 }): Plan<C> {
   const calls: C[] = [];
   const skipped: Plan["skipped"] = [];
   let total = 0;
   let chars = 0;
+  let overCap = false;
   for (const c of a.candidates) {
     if (!a.selected.has(c.provider)) continue;
     if (c.needsKey && !a.haveKey(c.provider)) { skipped.push({ id: c.id, why: `No ${c.provider} key is saved (Keys page), so this was skipped.` }); continue; }
     if (a.allowanceChars !== null && c.chars !== undefined && chars + c.chars > a.allowanceChars) { skipped.push({ id: c.id, why: "The ElevenLabs allowance cannot cover this call." }); continue; }
     if (total + c.quoteMicro > a.capMicro) {
-      if (!c.optional) throw new SmokeRefusal(`The quotes add up to more than the cap (${a.capMicro} micro-USD). Nothing was sent.`);
-      skipped.push({ id: c.id, why: "Its quote does not fit the cap." });
+      skipped.push({ id: c.id, why: `skipped: ${c.id} quote $${microToUsd(c.quoteMicro)} exceeds the remaining cap $${microToUsd(a.capMicro - total)}` });
+      overCap = true;
       continue;
     }
     calls.push(c);
     total += c.quoteMicro;
     chars += c.chars ?? 0;
   }
-  if (total > 0 && !a.interactive && !a.yesSpend) throw new SmokeRefusal("This run would spend money and there is no terminal to ask you. Re-run with --yes-spend, or run it in a terminal. Nothing was sent.");
+  if (calls.length === 0 && overCap) throw new SmokeRefusal("No call fits the cap. Raise --cap (hard max 2 USD). Nothing was sent.");
+  if (total > 0 && !a.interactive && !a.yesSpend && !a.dryPlan) throw new SmokeRefusal("This run would spend money and there is no terminal to ask you. Re-run with --yes-spend, or run it in a terminal. Nothing was sent.");
   return { calls, skipped, totalMicro: total };
 }
 
@@ -72,8 +75,8 @@ export function redactFixture(text: string, secrets: readonly string[]): string 
   return redactSecretShapes(out);
 }
 
-export function moneyAnomalies(capMicro: number, rows: Array<{ id: string; quoteMicro: number; recordedMicro: number }>): string[] {
-  const out = rows.filter((r) => r.recordedMicro > r.quoteMicro).map((r) => `${r.id}: recorded ${r.recordedMicro} is above the quote ${r.quoteMicro}`);
+export function moneyAnomalies(capMicro: number, rows: Array<{ id: string; quoteMicro: number; recordedMicro: number; failed?: boolean }>): string[] {
+  const out = rows.flatMap((r) => (r.recordedMicro > r.quoteMicro ? [`${r.id}: recorded ${r.recordedMicro} is above the quote ${r.quoteMicro}`] : !r.failed && r.recordedMicro < r.quoteMicro ? [`${r.id}: recorded ${r.recordedMicro} is below the quote ${r.quoteMicro}`] : []));
   const spent = rows.reduce((n, r) => n + r.recordedMicro, 0);
   if (spent > capMicro) out.push(`total spend ${spent} is above the cap ${capMicro}`);
   return out;
