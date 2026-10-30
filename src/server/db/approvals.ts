@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { ACTOR_REASON, GATE_KINDS, actorProblem, isImplementedGate, liveHash, noteProblem, type GateActor, type GateContentKind, type ImplementedGate, type LiveHash, type LiveInputs } from "@/server/core/approvals";
+import { captionsNeedTick, ACTOR_REASON, GATE_KINDS, actorProblem, isImplementedGate, liveHash, noteProblem, type GateActor, type GateContentKind, type ImplementedGate, type LiveHash, type LiveInputs } from "@/server/core/approvals";
 import type { GateId } from "@/server/core/gates";
 import { recordAudit } from "@/server/db/audit";
 import type { Db } from "@/server/db/stages";
@@ -19,6 +19,7 @@ export type ApprovalState = { approved: true; hash: string; versions: ContentVer
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH_RE = /^[0-9a-f]{64}$/;
+export const CAPTIONS_REASON = "tick \"I checked the captions\" first: the captions are approximate";
 const STALE_REASON = "this changed while you were looking; review again";
 
 const refuse = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
@@ -122,6 +123,8 @@ async function decide<T = undefined>(db: pg.Pool, d: Decision, decision: "approv
     if (decision === "approved" && snap.last?.decision === "approved" && snap.last.hash === live.hash) return await abort(client, "this is already approved");
     if (decision === "approved" && snap.last?.decision === "sent_back" && snap.last.hash === live.hash) return await abort(client, "you sent this back; wait for the new version before approving");
     const okSnap = snap as OkSnapshot;
+    // Approximate captions cannot be approved past, whichever door is used.
+    if (decision === "approved" && d.gate === "video" && captionsNeedTick(snap.inputs.content.captions?.body)) return await abort(client, CAPTIONS_REASON);
     if (hooks.guard) {
       const refusal = await hooks.guard(client, okSnap);
       if (refusal) return await abort(client, refusal);

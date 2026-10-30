@@ -40,6 +40,8 @@ export interface GateInput {
   seenHash: string;
   seenVersions: string;
   note: string | undefined;
+  /** The owner ticked "I checked the captions". */
+  captionsChecked?: boolean;
 }
 
 export function parseGateForm(f: FormLike, action: "approve" | "send_back"): Parsed<GateInput> {
@@ -56,7 +58,7 @@ export function parseGateForm(f: FormLike, action: "approve" | "send_back"): Par
     if (problem) return { ok: false, message: "Write a short note (3 to 1000 characters) so the rewrite knows what to change." };
     note = raw!.trim();
   }
-  return { ok: true, value: { videoId: videoId.data, gate: gate.data, seenHash: seenHash.data, seenVersions: seenVersions.data, note } };
+  return { ok: true, value: { videoId: videoId.data, gate: gate.data, seenHash: seenHash.data, seenVersions: seenVersions.data, note, captionsChecked: text(f.get("captionsChecked")) === "on" } };
 }
 
 export interface DecisionInput {

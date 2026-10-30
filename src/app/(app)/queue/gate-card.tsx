@@ -93,6 +93,10 @@ function Content({ c, lang }: { c: GateContent; lang: string }) {
       return (
         <div className="flex min-w-0 flex-col gap-2">
           <Player src={c.src} label="Video to review" />
+          {c.captions === "approximate" ? <p role="note" data-testid="captions-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">Captions approximate: listen and check</p> : null}
+          {c.rewriteLines.length > 0 ? <p role="note" data-testid="rewrite-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{c.rewriteLines.length === 1 ? "One line is" : `${c.rewriteLines.length} lines are`} too long for the video even sped up: send this back and rewrite line{c.rewriteLines.length === 1 ? "" : "s"} {c.rewriteLines.map((n) => n + 1).join(", ")} shorter.</p> : null}
+          {c.captions === "check" && c.rewriteLines.length === 0 ? <p role="note" data-testid="captions-note" className="m-0 max-w-[68ch] text-body text-muted">Some caption words are guesses: listen and check.</p> : null}
+          {c.captions === "checked" ? <p data-testid="captions-note" className="m-0 text-small text-muted">You checked the approximate captions.</p> : null}
           <p className="m-0 text-small text-faint">File fingerprint {c.shaPrefix}</p>
         </div>
       );
@@ -151,6 +155,7 @@ export function GateCard({ item, index }: { item: GateItem; index: number }) {
         fields={{ videoId: item.videoId, gate: item.gate, seenHash: item.hash, seenVersions: item.versions }}
         approveLabel={g.approve}
         canApprove={!sentBack}
+        captionsTick={item.content.kind === "video" && item.content.captions === "approximate"}
         topic={item.topic}
       />
       <CancelForm videoId={item.videoId} topic={item.topic} />

@@ -50,7 +50,8 @@ export function createStageDispatcher(handlers: StageHandlers, concurrentRenders
 
 /** Fake providers on the real storage root: what the dry run (and its tests) wire in. Never used by the production worker. */
 export function defaultDryRunDeps(pool: pg.Pool, root: string = storageRoot()): StageDeps {
-  return { db: pool, root, voice: createFakeVoice(), image: createFakeImage(), renderer: createFakeRenderer() };
+  const voice = createFakeVoice();
+  return { db: pool, root, voiceFor: async (a) => ({ provider: voice.forScopes(a.budgetScopes), providerId: "fake", voice: "fake" }), image: createFakeImage(), renderer: createFakeRenderer() };
 }
 
 /**

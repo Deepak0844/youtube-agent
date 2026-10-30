@@ -46,6 +46,8 @@ import { sha256Hex, canonicalJson } from "@/server/core/content-hash";
 import { assertFfprobeAvailable } from "../support/tools";
 import { withTestDb, type TestDb } from "../support/db";
 
+// The voice step also writes the paid audio to the content-addressed voice cache and, until stored, to a per-run folder that does not depend on the fence.
+const ENGINE_VOICE_DIRS = ["voice-cache", "voice-pending"];
 const execFileAsync = promisify(execFile);
 let db: TestDb;
 let root: string;
@@ -70,7 +72,8 @@ beforeEach(async () => {
 // --- helpers -----------------------------------------------------------------------------------------------------------
 
 function mkDeps(over: Partial<StageDeps> = {}): StageDeps & { voice: ReturnType<typeof createFakeVoice>; image: ReturnType<typeof createFakeImage>; renderer: ReturnType<typeof createFakeRenderer> } {
-  return { db: db.pool, root, voice: createFakeVoice(), image: createFakeImage(), renderer: createFakeRenderer(), ...over } as never;
+  const voice = createFakeVoice();
+  return { db: db.pool, root, voice, voiceFor: async (a: { budgetScopes: string[] }) => ({ provider: voice.forScopes(a.budgetScopes), providerId: "fake", voice: "fake" }), image: createFakeImage(), renderer: createFakeRenderer(), ...over } as never;
 }
 
 const newVideo = (language: "en" | "hi" = "en") => createVideoRow(db.pool, { format: "short", kind: "scene_kit", language, topic: "Why do octopuses have three hearts?" });
@@ -188,7 +191,7 @@ describe("dry-run stage handlers", () => {
       const before = snapshot(root);
       const out = await make(deps)(ctx);
       const after = snapshot(root);
-      for (const [p, sig] of after) if (before.get(p) !== sig) expect(p.startsWith(dir + path.sep), `${name} wrote ${p} outside ${dir}`).toBe(true);
+      for (const [p, sig] of after) if (before.get(p) !== sig) expect(p.startsWith(dir + path.sep) || (name === "tts" && ENGINE_VOICE_DIRS.some((d) => p.startsWith(path.join(root, d) + path.sep))), `${name} wrote ${p} outside ${dir}`).toBe(true);
       for (const p of before.keys()) expect(after.has(p), `${name} removed ${p}`).toBe(true);
       expect(out.files.length).toBeGreaterThan(0);
       for (const f of out.files) expect(after.has(path.join(dir, f)), `${name} promised ${f}`).toBe(true);
@@ -467,10 +470,13 @@ describe("stages use what the owner approved", () => {
     expect(Number((await db.pool.query("select spent_micro_usd s from budgets where scope = $1", [quote.scope])).rows[0].s)).toBe(4000); // untouched by narration
     expect(Number((await db.pool.query("select spent_micro_usd s from budgets where scope = $1", [`video:${v.id}`])).rows[0].s)).toBe(5000); // image 4000 + narration 1000
 
-    // Leave the video cap too small for the narration reserve: refused, nothing called.
+    // Leave the video cap too small for one line's reserve (1000): refused, nothing called.
     const w = await newVideo();
     await seedScript(w.id, 1);
-    await db.pool.query("insert into budgets (scope, cap_micro_usd) values ($1, 9000)", [`video:${w.id}`]);
+    await db.pool.query("insert into budgets (scope, cap_micro_usd) values ($1, 500)", [`video:${w.id}`]);
+    const other = { title: "Other", narration: "a brand new narration the cache has never heard" }; // an already-cached line needs no reserve
+    await addContent(db.pool, w.id, "script", { body: other, sha256: sha256Hex(canonicalJson(other)) });
+    await approveScript(w.id);
     const calls = deps.voice.totalCalls();
     expect((await play(w.id, "tts", withAttempt({ db: db.pool, root }, ttsAttempt(deps)))).kind).toBe("budget_refused");
     expect(deps.voice.totalCalls()).toBe(calls);

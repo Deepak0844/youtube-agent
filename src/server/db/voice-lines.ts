@@ -13,7 +13,7 @@ export interface VoiceLineRow {
   bytes: number;
   sha256: string;
   durationS: number;
-  wordTimings: Array<{ word: string; startS: number; endS: number }> | null;
+  wordTimings: Array<{ word: string; startS: number; endS: number; flags?: string[]; source?: string }> | null;
   timingsKind: "native" | "aligned" | "estimated" | "none";
   filePath: string;
   priceMicroUsd: number;
@@ -26,6 +26,11 @@ const KEY = /^[0-9a-f]{64}$/;
 export async function lookupLine(db: Db, cacheKey: string): Promise<VoiceLineRow | null> {
   const { rows } = await db.query<VoiceLineRow>(`select ${COLS} from voice_lines where cache_key = $1`, [cacheKey]);
   return rows[0] ?? null;
+}
+
+/** Removes a row whose file is gone, so the line can be made again (a row is never updated, only dropped). */
+export async function dropLine(db: Db, cacheKey: string): Promise<void> {
+  await db.query("delete from voice_lines where cache_key = $1", [cacheKey]);
 }
 
 export async function touchLine(db: Db, cacheKey: string): Promise<void> {

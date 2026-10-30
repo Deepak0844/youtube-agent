@@ -19,6 +19,7 @@ import { callKey } from "@/server/core/spend";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { createPool } from "@/server/db/pool";
 import { runStage } from "@/server/db/stage-runner-adapter";
+import { createFakeVoice } from "@/server/providers/voice/fake";
 import { createFakeUploader } from "@/server/providers/uploader/fake";
 import { startWorker } from "@/worker";
 import { defaultDryRunDeps, dryRunHandlers } from "@/worker/handlers";
@@ -97,9 +98,10 @@ async function onProviderCall(stageRunId: string, stage: string): Promise<void> 
 }
 
 const base = defaultDryRunDeps(pool, root);
+const fakeVoice = createFakeVoice({ beforeCall: (ctx) => onProviderCall(ctx.claim.stageRunId, ctx.stage.name) });
 const deps = {
   ...base,
-  voice: { ...base.voice, synthesise: async (ctx: Parameters<typeof base.voice.synthesise>[0], a: Parameters<typeof base.voice.synthesise>[1]) => { await onProviderCall(ctx.claim.stageRunId, ctx.stage.name); return base.voice.synthesise(ctx, a); } },
+  voiceFor: async (a: { budgetScopes: string[] }) => ({ provider: fakeVoice.forScopes(a.budgetScopes), providerId: "fake", voice: "fake" }),
   image: { ...base.image, generate: async (ctx: Parameters<typeof base.image.generate>[0], a: Parameters<typeof base.image.generate>[1]) => { await onProviderCall(ctx.claim.stageRunId, ctx.stage.name); return base.image.generate(ctx, a); } },
 };
 

@@ -21,7 +21,7 @@ describe("versionsKey", () => {
 describe("parseGateForm", () => {
   const ok = { videoId: V, gate: "script", seenHash: H, seenVersions: VERS };
   it("accepts the page's fields", () => {
-    expect(parseGateForm(form(ok), "approve")).toEqual({ ok: true, value: { videoId: V, gate: "script", seenHash: H, seenVersions: VERS, note: undefined } });
+    expect(parseGateForm(form(ok), "approve")).toEqual({ ok: true, value: { videoId: V, gate: "script", seenHash: H, seenVersions: VERS, note: undefined, captionsChecked: false } });
   });
   it("refuses a missing, short or non-hex hash with the stale message", () => {
     for (const seenHash of ["", "abc", "g".repeat(64), H + "0"]) expect(parseGateForm(form({ ...ok, seenHash }), "approve")).toEqual({ ok: false, message: STALE_MESSAGE });

@@ -30,6 +30,9 @@ export function noteProblem(note: unknown): string | null {
   return n < 3 || [...note].length > 1000 ? NOTE_REASON : null;
 }
 
+/** Captions the owner must listen to before the video can be approved: not exact, and not yet ticked. */
+export const captionsNeedTick = (captions: unknown): boolean => isObj(captions) && captions.approximate === true && captions.checked_by_owner !== true;
+
 /** Gates whose action exists in Phase 2. The others are refused until their phase ships. */
 export const IMPLEMENTED_GATES = ["script", "cost", "video", "evidence", "publish"] as const;
 export type ImplementedGate = (typeof IMPLEMENTED_GATES)[number];
@@ -42,7 +45,7 @@ export interface StoredContent {
 }
 export interface LiveInputs {
   /** Newest version of each content kind, absent when none exists. */
-  content: Partial<Record<"script" | "cost_plan" | "video" | "evidence" | "metadata", StoredContent>>;
+  content: Partial<Record<"script" | "cost_plan" | "video" | "evidence" | "metadata" | "captions", StoredContent>>;
   channelId: string | null;
 }
 export type LiveHash = { ok: true; hash: string } | { ok: false; reason: string };
@@ -84,7 +87,8 @@ function liveHashUnsafe(gate: GateId, i: LiveInputs): LiveHash {
     case "script":
       return c.script ? { ok: true, hash: gateHash("script", { script: contentDigest(c.script) }) } : NOTHING("script");
     case "video":
-      return c.video ? { ok: true, hash: gateHash("video", { video_file: contentDigest(c.video) }) } : NOTHING("video");
+      // Captions (when the voice stage made them) are part of what is approved, including the owner's "I checked the captions" tick.
+      return c.video ? { ok: true, hash: gateHash("video", { video_file: c.captions ? partHash({ video: contentDigest(c.video), captions: contentDigest(c.captions) }) : contentDigest(c.video) }) } : NOTHING("video");
     case "evidence":
       return c.evidence ? { ok: true, hash: gateHash("evidence", { evidence_file: contentDigest(c.evidence) }) } : NOTHING("evidence file");
     case "cost": {
@@ -130,12 +134,12 @@ function liveHashUnsafe(gate: GateId, i: LiveInputs): LiveHash {
   }
 }
 
-export type GateContentKind = "script" | "cost_plan" | "video" | "evidence" | "metadata";
+export type GateContentKind = "script" | "cost_plan" | "video" | "evidence" | "metadata" | "captions";
 /** The content kinds each implemented gate's hash is computed from (and records in the approval row). */
 export const GATE_KINDS: Readonly<Record<ImplementedGate, readonly GateContentKind[]>> = Object.freeze({
   script: ["script"],
   cost: ["cost_plan"],
-  video: ["video"],
+  video: ["video", "captions"],
   evidence: ["evidence"],
   publish: ["video", "metadata", "evidence"],
 });

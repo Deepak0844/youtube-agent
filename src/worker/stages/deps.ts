@@ -6,17 +6,34 @@ import { getBudget } from "@/server/db/spend";
 import { latestContent, type ContentKind, type VideoFormat, type VideoKind, type VideoLanguage } from "@/server/db/videos";
 import type { ImageProvider } from "@/server/providers/media";
 import type { Renderer } from "@/server/providers/renderer";
+import type { CaptionsBody } from "@/server/core/alignment";
+import type { Lang } from "@/server/core/lang";
 import type { VoiceProvider } from "@/server/providers/voice";
+import type { AlignArgs } from "@/server/render/whisper";
 import type { MixDeps } from "@/server/render/mix";
 import type { probeVideo } from "@/server/render/probe";
 import { videoIdOf } from "./attempt";
+
+/** `providerId` is the registry id: it is part of every cached line's key, so two providers never share a cached line. */
+export interface VoiceChoice {
+  provider: VoiceProvider;
+  providerId: string;
+  voice: string;
+  model?: string;
+}
 
 // Everything the Phase 2 stage handlers need, injected. The dry run passes the Task 15 fakes; real adapters arrive later.
 export interface StageDeps {
   db: pg.Pool;
   /** Absolute storage root (the same path for web, worker and render runner). */
   root: string;
-  voice: VoiceProvider;
+  /**
+   * The routed narration voice for this video, or a KnownFailure("Pick a voice provider in Settings → Providers") BEFORE anything is
+   * reserved. The adapter it returns reserves and pays inside its own ctx.paid, once per call, against `budgetScopes`.
+   */
+  voiceFor(a: { lang: Lang; format: VideoFormat; kind: VideoKind; budgetScopes: string[] }): Promise<VoiceChoice>;
+  /** Word times for audio whose provider gave none (whisper). Absent or failing = estimated times, never invented exact ones. */
+  align?: (a: AlignArgs) => Promise<CaptionsBody>;
   image: ImageProvider;
   renderer: Renderer;
   /** Defaults to the real ffprobe-based probe. */
@@ -27,14 +44,11 @@ export interface StageDeps {
   imageQuoteMicroUsd?: number;
   /** How many beat images Build plans at most (default 3). */
   maxImages?: number;
-  /** What a narration call reserves (default 10000 micro-USD). */
-  ttsReserveMicroUsd?: number;
-  voiceName?: string;
   /** Real sound pass (ffmpeg). Absent = dry run: Voice and Sfx copy the file on. */
   mix?: MixDeps;
 }
 
-export const DEFAULTS = { imageProvider: "fake-image", imageQuoteMicroUsd: 4000, maxImages: 3, ttsReserveMicroUsd: 10_000, voiceName: "fake" } as const;
+export const DEFAULTS = { imageProvider: "fake-image", imageQuoteMicroUsd: 4000, maxImages: 3 } as const;
 
 export const SIZE = { width: 1080, height: 1920 } as const;
 

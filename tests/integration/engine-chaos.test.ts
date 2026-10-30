@@ -71,6 +71,9 @@ export function planFor(seed: number): SeedPlan {
 }
 
 async function runSeed(world: World, p: SeedPlan): Promise<{ crashes: number; vios: string[] }> {
+  // Every seed is a new video whose narration has never been paid for. Without this the voice cache (shared by all seeds, same fake text)
+  // answers from seed 2 on, no paid narration call is made, and the crash points inside that call can never fire.
+  await db.ownerPool.query("delete from voice_lines");
   const sup = supervise(world, { crash: p.crash });
   const videoId = await world.newVideo(`Chaos seed ${p.seed}`);
   const faults: Array<Promise<void>> = [];
