@@ -20,7 +20,7 @@ export class VoiceUrlError extends KnownFailure {
   }
 }
 
-function isLoopbackHost(hostname: string): boolean {
+export function isLoopbackHost(hostname: string): boolean {
   const h = hostname.startsWith("[") ? hostname.slice(1, -1) : hostname;
   if (h.toLowerCase() === "localhost") return true;
   if (!ipaddr.isValid(h)) return false;

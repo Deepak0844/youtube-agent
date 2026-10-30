@@ -52,6 +52,15 @@ describe("voice settings for Azure, local and VoiceStudio", () => {
     await db.ownerPool.query("update media_routes set voice = null");
     await expect(pick()).rejects.toThrow(/choose a voice/);
   });
+  it("a saved key is never sent over plain http to another computer by the local server", async () => {
+    await route("local_openai", '{"unit":"free","microUsd":0}');
+    const ring = makeKeyring(randomBytes(32).toString("base64"));
+    await putSecret(db.pool, ring, "provider.local_voice.api_key", "k".repeat(12));
+    await set("voice.local_url", "http://voice.example.com:8880");
+    await expect(createVoiceFor(db.pool, () => ring)(args)).rejects.toThrow(/plain http/);
+    await set("voice.local_url", "https://voice.example.com:8880");
+    expect((await createVoiceFor(db.pool, () => ring)(args)).provider.capability.id).toBe("openai-compatible");
+  });
   it("VoiceStudio on another computer without a key is refused before any spend", async () => {
     await route("voicestudio", '{"unit":"free","microUsd":0}');
     await set("voice.voicestudio_url", "http://voice.example.com:8881");

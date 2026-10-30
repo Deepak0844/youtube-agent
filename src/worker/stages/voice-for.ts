@@ -9,7 +9,7 @@ import { getSetting } from "@/server/db/settings";
 import { loadLocalServices } from "@/server/db/system-settings";
 import { createAzureVoice } from "@/server/providers/voice/azure";
 import { createOpenAiCompatibleVoice } from "@/server/providers/voice/openai-compatible";
-import { assertVoiceStudioUrl, createVoiceStudioVoice } from "@/server/providers/voice/voicestudio";
+import { assertVoiceStudioUrl, isLoopbackHost, createVoiceStudioVoice } from "@/server/providers/voice/voicestudio";
 import { getSecret, hasSecret } from "@/server/db/vault";
 import { safeFetch } from "@/server/providers/net/safe-fetch";
 import { createEdgeVoice, connectEdge } from "@/server/providers/voice/edge";
@@ -78,6 +78,10 @@ export function createVoiceFor(db: pg.Pool, loader: () => Keyring, fetchFn: type
           throw new KnownFailure(`${PICK_VOICE} (the ${isLocal ? "local voice server" : "VoiceStudio"} address is not a valid URL).`);
         }
         if (!isLocal) assertVoiceStudioUrl(baseUrl, keySaved);
+        else if (keySaved) {
+          const u = new URL(baseUrl);
+          if (u.protocol !== "https:" && !isLoopbackHost(u.hostname)) throw new KnownFailure(`${PICK_VOICE} (a key must not be sent over plain http to another computer; use an https address).`);
+        }
         const localServices = await loadLocalServices(db);
         const optKey = async () => (keySaved ? getKey() : null);
         const provider = isLocal

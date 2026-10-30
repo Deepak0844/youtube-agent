@@ -23,6 +23,8 @@ const ALTERNATE: Record<string, unknown> = {
   "policy.require_evidence": false,
   "policy.allow_public": true,
   "network.local_services": ["localhost:11434"],
+  "voice.local_url": "http://127.0.0.1:8880",
+  "voice.voicestudio_url": "http://127.0.0.1:8881",
   "assets.max_image_bytes": 1_000_000,
   "assets.max_audio_bytes": 1_000_000,
   "assets.max_pixels": 1_000_000,
