@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { withTestDb, type TestDb } from "../support/db";
 import { getSetting, setSessionSettings } from "@/server/db/settings";
 import { listAudit } from "@/server/db/audit";
-import { loadLocalServices, loadSystemSettings, saveLocalServices, saveSystemSettings } from "@/server/db/system-settings";
+import { loadLocalServices, loadSystemSettings, saveAssetSettings, saveLocalServices, saveSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus } from "@/server/db/system-status";
 
 let db: TestDb;
@@ -205,7 +205,7 @@ describe("system settings form (app role)", () => {
 
 describe("setSessionSettings is limited to the keys this page writes", () => {
   const noAudit = async () => undefined;
-  it.each(["policy.allow_public", "policy.require_evidence", "display.currency", "assets.total_bytes_cap", "assets.max_image_bytes"])(
+  it.each(["policy.allow_public", "policy.require_evidence", "display.currency", "engine.retry_attempts", "breaker.threshold"])(
     "refuses %s and touches nothing",
     async (key) => {
       const value = key.startsWith("policy") ? true : key === "display.currency" ? "EUR" : 9;
@@ -213,6 +213,11 @@ describe("setSessionSettings is limited to the keys this page writes", () => {
       expect((await db.pool.query("select count(*)::int n from settings where key = $1", [key])).rows[0].n).toBe(0);
     },
   );
+  it("accepts the asset keys, which the asset settings writer saves", async () => {
+    const r = await saveAssetSettings(db.pool, { retention_days: 9, unused_days: 30, trash_days: 7, max_image_mb: 25, max_audio_mb: 200, max_megapixels: 50, max_batch_files: 100, total_gb: 5 });
+    expect(r.ok).toBe(true);
+    expect((await db.pool.query("select value from settings where key = 'assets.retention_days'")).rows[0].value).toBe(9);
+  });
   it("refuses an unknown key and a batch with one bad key as a whole", async () => {
     await expect(setSessionSettings(db.pool, [{ key: "nope", value: 1 }], noAudit)).rejects.toThrow();
     await expect(
