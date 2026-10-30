@@ -30,6 +30,6 @@ describe("plan from a cue sheet", () => {
   });
   it("drops an optional cue with no library clip, fails a required one", async () => {
     expect((await planFromCueSheet({ cues: [{ id: "a", sound: "boom", atS: 1 }] }, palette, hit)).cues).toEqual([]);
-    await expect(planFromCueSheet({ cues: [{ id: "a", sound: "boom", atS: 1, optional: false }] }, palette, hit)).rejects.toThrow(/a/);
+    await expect(planFromCueSheet({ cues: [{ id: "a", sound: "boom", atS: 1, optional: false }] }, palette, hit)).rejects.toThrow(/cue a: no library clip/);
   });
 });

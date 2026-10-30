@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { randomBytes } from "node:crypto";
+import { makeKeyring } from "@/server/core/vault-crypto";
+import { putSecret } from "@/server/db/vault";
 import { setSetting } from "@/server/db/settings";
 import { createVoiceFor } from "@/worker/stages/voice-for";
 import { withTestDb, type TestDb } from "../support/db";
@@ -29,8 +32,29 @@ describe("voice settings for Azure, local and VoiceStudio", () => {
     await set("voice.voicestudio_url", "http://127.0.0.1:8881");
     expect((await pick()).provider.capability.id).toBe("voicestudio");
   });
-  it("Azure needs its region (after the key)", async () => {
+  it("Azure needs its key, then its region, then a voice", async () => {
     await route("azure_tts", '{"unit":"per_1k_chars","microUsd":16000}');
     await expect(pick()).rejects.toThrow(/key/);
+    const ring = makeKeyring(randomBytes(32).toString("base64"));
+    await putSecret(db.pool, ring, "provider.azure_speech.api_key", "a".repeat(32));
+    const noRing = () => ring;
+    await expect(createVoiceFor(db.pool, noRing)(args)).rejects.toThrow(/region/);
+    await set("voice.azure_region", "westeurope");
+    await db.ownerPool.query("update media_routes set voice = null");
+    await expect(createVoiceFor(db.pool, noRing)(args)).rejects.toThrow(/Azure voice/);
+    expect(Number((await db.pool.query("select count(*) n from spend_intents")).rows[0].n)).toBe(0);
+  });
+  it("a local server with no voice chosen, or a bad address, is refused", async () => {
+    await route("local_openai", '{"unit":"free","microUsd":0}');
+    await set("voice.local_url", "not a url");
+    await expect(pick()).rejects.toThrow(/not a valid URL/);
+    await set("voice.local_url", "http://127.0.0.1:8880");
+    await db.ownerPool.query("update media_routes set voice = null");
+    await expect(pick()).rejects.toThrow(/choose a voice/);
+  });
+  it("VoiceStudio on another computer without a key is refused before any spend", async () => {
+    await route("voicestudio", '{"unit":"free","microUsd":0}');
+    await set("voice.voicestudio_url", "http://voice.example.com:8881");
+    await expect(pick()).rejects.toThrow(/key is required/);
   });
 });

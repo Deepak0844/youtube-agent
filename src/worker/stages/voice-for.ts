@@ -9,7 +9,7 @@ import { getSetting } from "@/server/db/settings";
 import { loadLocalServices } from "@/server/db/system-settings";
 import { createAzureVoice } from "@/server/providers/voice/azure";
 import { createOpenAiCompatibleVoice } from "@/server/providers/voice/openai-compatible";
-import { createVoiceStudioVoice } from "@/server/providers/voice/voicestudio";
+import { assertVoiceStudioUrl, createVoiceStudioVoice } from "@/server/providers/voice/voicestudio";
 import { getSecret, hasSecret } from "@/server/db/vault";
 import { safeFetch } from "@/server/providers/net/safe-fetch";
 import { createEdgeVoice, connectEdge } from "@/server/providers/voice/edge";
@@ -71,8 +71,15 @@ export function createVoiceFor(db: pg.Pool, loader: () => Keyring, fetchFn: type
         const baseUrl = String(await getSetting(db, isLocal ? "voice.local_url" : "voice.voicestudio_url"));
         if (!baseUrl) throw new KnownFailure(`${PICK_VOICE} (set the ${isLocal ? "local voice server" : "VoiceStudio"} address).`);
         if (!route.voice) throw new KnownFailure(`${PICK_VOICE} (choose a voice).`);
+        const keySaved = Boolean(slot) && (await hasSecret(db, secretName(slot as ProviderId)));
+        try {
+          new URL(baseUrl);
+        } catch {
+          throw new KnownFailure(`${PICK_VOICE} (the ${isLocal ? "local voice server" : "VoiceStudio"} address is not a valid URL).`);
+        }
+        if (!isLocal) assertVoiceStudioUrl(baseUrl, keySaved);
         const localServices = await loadLocalServices(db);
-        const optKey = async () => (slot && (await hasSecret(db, secretName(slot as ProviderId))) ? getKey() : null);
+        const optKey = async () => (keySaved ? getKey() : null);
         const provider = isLocal
           ? createOpenAiCompatibleVoice({ baseUrl, localServices, model: route.model ?? "default", voice: route.voice, getKey: optKey, wordTimings: "estimated" })
           : createVoiceStudioVoice({ baseUrl, localServices, voice: route.voice, getKey: optKey });

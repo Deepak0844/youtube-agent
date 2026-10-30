@@ -13,16 +13,25 @@ const readIfThere = (file: string) => readFile(file, "utf8").catch((e: NodeJS.Er
 
 /** No sfx-plan.json but an sfx-cues.json (recipe ids + times): turn it into a plan from the free library only (never a paid clip). Returns the plan file to mix. */
 async function planFile(deps: StageDeps, ctx: Parameters<AttemptHandler>[0], id: string, audioRoot: string): Promise<string> {
-  const plan = await promotedPath(deps.root, id, "sfx-plan.json");
+  const plan = await promotedPath(deps.root, id, "sfx-plan.json"); // an existing sfx-plan.json wins over sfx-cues.json
   const cues = await readIfThere(await promotedPath(deps.root, id, "sfx-cues.json"));
   if (cues === null || (await readIfThere(plan)) !== null) return plan;
   const pal = await readIfThere(path.join(audioRoot, "sfx", "palette.json"));
   if (pal === null) throw new KnownFailure("The sound cue sheet needs the sound palette (audio/sfx/palette.json), and it is missing.");
   const out = path.join(ctx.attemptDir, "sfx-plan.json");
+  let dbError: unknown; // a failed library lookup is transient: it propagates, only a bad sheet or palette is a known failure
   try {
-    const built = await planFromCueSheet(JSON.parse(cues), parsePalette("sfx", JSON.parse(pal)), async (tags) => (await findLibraryFirst(deps.db, { kind: "sfx", tags }))[0]?.id);
+    const built = await planFromCueSheet(JSON.parse(cues), parsePalette("sfx", JSON.parse(pal)), async (tags) => {
+      try {
+        return (await findLibraryFirst(deps.db, { kind: "sfx", tags }))[0]?.id;
+      } catch (e) {
+        dbError = e;
+        throw e;
+      }
+    });
     await writeFile(out, JSON.stringify(built));
   } catch (e) {
+    if (dbError !== undefined && e === dbError) throw e;
     throw new KnownFailure(`The sound cue sheet could not be used: ${e instanceof Error ? e.message : "not valid"}`);
   }
   return out;
