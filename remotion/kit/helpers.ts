@@ -25,6 +25,10 @@ export function kenBurns(frame: number, total: number, k: KenBurns): { scale: nu
   };
 }
 
+/** Opacity of chat message `index` in a sliding window: 1 until `windowSize` newer messages exist, then fades to 0 over `fadeFrames`. */
+export function windowOpacity(frame: number, framesPer: number, index: number, windowSize: number, fadeFrames: number): number {
+  const leaves = (index + windowSize) * framesPer;
+  return 1 - clamp01((frame - leaves) / Math.max(1, fadeFrames));
 /** Math steps shown at `frame`: one more every `framesPerStep`, the first at frame 0. */
 export const mathReveal = (frame: number, framesPerStep: number, total: number): number => visibleCount(frame, framesPerStep, total);
 
