@@ -31,6 +31,7 @@
     "test:e2e": "playwright test",
     "test:api": "playwright test --project=api",
     "kit:studio": "node scripts/kit-studio.mjs",
+    "kit:sheet": "node scripts/kit-sheet.mjs",
     "kit:preview": "tsx scripts/kit-preview.ts",
     "image:render": "docker build -f infra/Dockerfile.render -t ytstudio-render:dev .",
     "test:ui": "playwright test --project=ui-desktop --project=ui-phone",
