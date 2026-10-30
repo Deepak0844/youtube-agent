@@ -61,14 +61,24 @@ describe("elevenlabs sound", () => {
     const r = await sound().makeSfx(ctx(), a);
     expect(reqs).toHaveLength(1);
     expect(reqs[0]).toMatchObject({ url: "/v1/sound-generation?output_format=mp3_44100_128", key: KEY, body: { text: "soft whoosh", duration_seconds: 2, model_id: "eleven_text_to_sound_v2" } });
-    expect(r.provenance).toMatchObject({ provider: "elevenlabs_sfx", priceMicroUsd: 4000, quoted: true, licence: GENERATED_LICENCE });
+    expect(r.provenance).toMatchObject({ provider: "elevenlabs_sfx", priceMicroUsd: 8000, quoted: true, licence: GENERATED_LICENCE });
     expect(r.bytes).toBe(MP3.length);
   });
   it("sfx_spend_is_recorded_at_the_per_second_cost_not_a_minute", async () => {
     let settled: { reserveMicroUsd: number; actualMicroUsd?: number } | undefined;
     const c = { attemptDir: dir, signal: new AbortController().signal, paid: async (s: { reserveMicroUsd: number }, call: (k: string, sg: AbortSignal) => Promise<{ result: unknown; actualMicroUsd: number }>) => { const o = await call("k", new AbortController().signal); settled = { reserveMicroUsd: s.reserveMicroUsd, actualMicroUsd: o.actualMicroUsd }; return o.result; } } as unknown as StageContext;
     await sound().makeSfx(c, { prompt: "x", seconds: 0.5 });
-    expect(settled).toEqual({ reserveMicroUsd: 1000, actualMicroUsd: 1000 });
+    expect(settled).toEqual({ reserveMicroUsd: 2000, actualMicroUsd: 2000 });
+  });
+  it("sfx_duration_0_and_31_make_no_request_and_no_reserve", async () => {
+    let reserved = 0;
+    const c = { attemptDir: dir, signal: new AbortController().signal, paid: async () => { reserved++; } } as unknown as StageContext;
+    for (const seconds of [0, 31]) {
+      await expect(sound().makeSfx(c, { prompt: "x", seconds })).rejects.toBeInstanceOf(KnownFailure);
+      expect(() => sound().quoteSfx({ prompt: "x", seconds })).toThrow(KnownFailure);
+    }
+    expect(reserved).toBe(0);
+    expect(reqs).toHaveLength(0);
   });
   it("music_is_one_synchronous_instrumental_request", async () => {
     const r = await sound().makeMusic(ctx(), { prompt: "calm pad", seconds: 60 });
@@ -78,11 +88,13 @@ describe("elevenlabs sound", () => {
   });
   it("sfx_is_quoted_per_second_and_music_in_whole_minutes", () => {
     const p = sound();
-    // Documented API rate: 20 credits per second set (about $0.0001 a credit = 2000 micro-USD a second).
-    expect(p.quoteSfx({ prompt: "x", seconds: 0.5 })).toBe(1000);
-    expect(p.quoteSfx({ prompt: "x", seconds: 2 })).toBe(4000);
-    expect(p.quoteSfx({ prompt: "x", seconds: 10 })).toBe(20000);
-    expect(16 * p.quoteSfx({ prompt: "x", seconds: 10 })).toBeLessThan(2_000_000 / 5);
+    // Worst documented rate: 40 credits/s at an assumed $0.0001 a credit = 4000 micro-USD/s.
+    expect(p.quoteSfx({ prompt: "x", seconds: 0.5 })).toBe(2000);
+    expect(p.quoteSfx({ prompt: "x", seconds: 2 })).toBe(8000);
+    expect(p.quoteSfx({ prompt: "x", seconds: 10 })).toBe(40000);
+    expect(16 * p.quoteSfx({ prompt: "x", seconds: 10 })).toBe(640000);
+    for (const s of [0.5, 2, 10, 30]) expect(p.quoteSfx({ prompt: "x", seconds: s })).toBeGreaterThanOrEqual(s * 40 * 100); // 40 credits/s x 100 micro-USD
+    expect(p.quoteSfx({ prompt: "x", seconds: 10 })).toBeGreaterThanOrEqual(10 * 40 * 100);
     expect(p.quoteMusic({ prompt: "x", seconds: 61 })).toBe(2 * 150000);
   });
   it("prompt_is_cleaned_and_empty_or_over_500_refused_before_any_request", async () => {
