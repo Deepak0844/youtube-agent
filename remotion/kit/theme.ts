@@ -6,7 +6,12 @@ export type BrandTheme = {
   width: number;
   height: number;
   fps: number;
-  palette: Record<"bg" | "surface" | "text" | "muted" | "accent" | "bubbleMe" | "bubbleThem", string>;
+  palette: Record<"bg" | "surface" | "text" | "muted" | "accent" | "bubbleMe" | "bubbleThem" | "gridLine" | "highlight", string> & {
+    /** Series / slice colours, in order. */
+    chart: readonly string[];
+  };
+  /** Flat drawn-object colours (outline, metals, glass, status lights, board and pieces). */
+  art: Record<"ink" | "steel" | "steelLight" | "glass" | "liquid" | "paper" | "cloud" | "ok" | "warn" | "blue" | "boardLight" | "boardDark" | "pieceLight" | "pieceDark", string>;
   fonts: { ui: string; mono: string };
   /** Named cubic-bezier curves (x1, y1, x2, y2). Feed to Easing.bezier(...curve). */
   easings: Record<"easeOut" | "easeIn" | "easeInOut", Bezier>;
@@ -90,7 +95,10 @@ function validate(t: BrandTheme): BrandTheme {
   const bad = (m: string) => {
     throw new Error(`theme: ${m}`);
   };
-  for (const [k, v] of Object.entries(t.palette)) if (!HEX.test(v)) bad(`palette.${k} must be #rrggbb`);
+  for (const [k, v] of Object.entries(t.palette)) {
+    for (const c of Array.isArray(v) ? v : [v]) if (!HEX.test(c)) bad(`palette.${k} must be #rrggbb`);
+  }
+  for (const [k, v] of Object.entries(t.art)) if (!HEX.test(v)) bad(`art.${k} must be #rrggbb`);
   for (const [k, v] of Object.entries(t.fonts)) if (!v.trim()) bad(`fonts.${k} is empty`);
   for (const [k, c] of Object.entries(t.easings)) {
     if (c.length !== 4 || c.some((n) => !Number.isFinite(n))) bad(`easings.${k} needs 4 numbers`);
