@@ -7,7 +7,7 @@ import type { ProviderId as KeySlotId } from "@/server/core/provider-keys";
 // Gemini and the others use their OpenAI-compatible route (Phase 2 overview); Gemini's built-in web search is not available there.
 
 export interface ProviderEndpoint {
-  adapter: "anthropic" | "openai-compatible";
+  adapter: "anthropic" | "openai-compatible" | "claude-code";
   baseUrl: string | null;
   sourceNote: string;
 }
@@ -37,11 +37,12 @@ export const PROVIDER_ENDPOINTS: Record<ProviderId, ProviderEndpoint> = {
   siliconflow: { adapter: "openai-compatible", baseUrl: "https://api.siliconflow.com/v1", sourceNote: `https://docs.siliconflow.com/en/api-reference, ${CHECKED}` },
   ollama: { adapter: "openai-compatible", baseUrl: null, sourceNote: `https://github.com/ollama/ollama/blob/main/docs/openai.md, base URL comes from the model row (OpenAI route at /v1); 2026-10-27, address not probed` },
   lmstudio: { adapter: "openai-compatible", baseUrl: null, sourceNote: `https://lmstudio.ai/docs/app/api/endpoints/openai, base URL comes from the model row; 2026-10-27, address not probed` },
+  claude_code: { adapter: "claude-code", baseUrl: null, sourceNote: `https://docs.anthropic.com/en/docs/claude-code/cli-reference, local \`claude -p\` process, no address; flags checked against \`claude --help\` 2.1.207 on 2026-10-31 (ADR 0014)` },
   custom: { adapter: "openai-compatible", baseUrl: null, sourceNote: `https://platform.openai.com/docs/api-reference/chat, any OpenAI-compatible server; base URL comes from the model row; 2026-10-27, not probed` },
 };
 
 /** Providers that run on the owner's machine: no key slot, no key is ever read or sent. */
-export const LOCAL_PROVIDERS = ["ollama", "lmstudio"] as const;
+export const LOCAL_PROVIDERS = ["ollama", "lmstudio", "claude_code"] as const;
 
 const CATALOG_IDS: ReadonlySet<string> = new Set(PROVIDERS.map((p) => p.id));
 

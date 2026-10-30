@@ -17,12 +17,12 @@ describe("provider endpoints", () => {
     expect(Object.keys(PROVIDER_ENDPOINTS).sort()).toEqual(CATALOG.map((p) => p.id).sort());
   });
   it("anthropic_uses_the_native_adapter_the_rest_openai_compatible", () => {
-    for (const p of CATALOG) expect(PROVIDER_ENDPOINTS[p.id].adapter, p.id).toBe(p.id === "anthropic" ? "anthropic" : "openai-compatible");
+    for (const p of CATALOG) expect(PROVIDER_ENDPOINTS[p.id].adapter, p.id).toBe(p.id === "anthropic" ? "anthropic" : p.id === "claude_code" ? "claude-code" : "openai-compatible");
   });
   it("fixed hosted providers have an https base url with no credentials, query or trailing slash; the rest have none", () => {
     for (const p of CATALOG) {
       const e = PROVIDER_ENDPOINTS[p.id];
-      if (p.needsBaseUrl) expect(e.baseUrl, p.id).toBeNull();
+      if (p.needsBaseUrl || p.id === "claude_code") expect(e.baseUrl, p.id).toBeNull(); // claude_code is a local process (ADR 0014)
       else {
         const u = new URL(e.baseUrl!);
         expect(u.protocol, p.id).toBe("https:");
@@ -32,7 +32,7 @@ describe("provider endpoints", () => {
     }
   });
   it("every entry names its source with a docs url and the check date", () => {
-    for (const p of CATALOG) expect(PROVIDER_ENDPOINTS[p.id].sourceNote, p.id).toMatch(/https:\/\/\S+.*2026-10-27|2026-10-27.*https:\/\/\S+/);
+    for (const p of CATALOG) expect(PROVIDER_ENDPOINTS[p.id].sourceNote, p.id).toMatch(/https:\/\/\S+.*2026-10-(27|31)|2026-10-(27|31).*https:\/\/\S+/);
   });
   it("key slot lookup refuses non-catalog names", () => {
     for (const bad of ["elevenlabs", "pexels", "__proto__", "toString", ""]) expect(() => keySlotFor(bad as never)).toThrow();
