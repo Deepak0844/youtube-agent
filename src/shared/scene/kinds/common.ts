@@ -14,6 +14,12 @@ export const LIMITS = {
   chatMessages: 6,
   chatText: 90,
   caption: 80,
+  mathSteps: 6,
+  mathText: 40,
+  mathHighlight: 12,
+  probTrials: 500,
+  probOutcomes: 6,
+  probLabel: 14,
 } as const;
 
 // Asset refs are opaque ids from the asset library, never URLs or paths.
