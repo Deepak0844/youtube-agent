@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { KnownFailure } from "@/server/core/paid-call";
-import type { StageContext } from "@/server/core/stage-handler";
+import { StageAbort, type StageContext } from "@/server/core/stage-handler";
 import type { MixDeps } from "@/server/render/mix";
 import { joinWav, parseWav, wavSeconds, type Wav } from "@/server/providers/voice/wav";
 
@@ -16,6 +16,7 @@ async function tool(mix: MixDeps, ctx: StageContext, command: "ffmpeg" | "ffprob
     command, args, cwd: ctx.attemptDir, cwdRoot: ctx.attemptDir, timeoutMs: FF_TIMEOUT_MS, maxOutputBytes: 1024 * 1024,
     signal: ctx.signal, onLine: (l) => out.push(l), stageRunId: ctx.claim.stageRunId,
   });
+  if (r.aborted) throw ctx.signal.reason instanceof Error ? ctx.signal.reason : new StageAbort("cancel");
   if (r.code !== 0 || r.truncated || r.timedOut || r.aborted) throw new KnownFailure(`The voice audio could not be processed (${command} ${r.timedOut ? "timed out" : r.aborted ? "was stopped" : "returned an error"}).`);
   return out;
 }

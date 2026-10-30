@@ -23,7 +23,7 @@ export interface GateClaim {
 export type GateContent =
   | { kind: "script"; title: string; description: string | null; narration: string; words: number; beats: number; claims: GateClaim[]; readable: boolean }
   | { kind: "cost"; totalMicroUsd: number; path: string; models: Array<[string, string]>; items: Array<{ kind: string; provider: string; quoteMicroUsd: number }> }
-  | { kind: "video"; src: string | null; shaPrefix: string; captions: "exact" | "approximate" | "check" | "checked" }
+  | { kind: "video"; src: string | null; shaPrefix: string; captions: "exact" | "approximate" | "check" | "checked"; rewriteLines: number[] }
   | { kind: "evidence"; claims: GateClaim[]; fileSrc: string | null; shaPrefix: string }
   | { kind: "publish"; title: string; description: string | null; visibility: string; publishAt: string | null; channel: string; videoSrc: string | null; evidenceShaPrefix: string };
 
@@ -135,7 +135,7 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
   if (gate === "video") {
     const cap = asObj(c.captions?.body);
     const captions = cap.approximate === true ? (cap.checked_by_owner === true ? "checked" : "approximate") : cap.needs_check === true ? "check" : "exact";
-    return { kind: "video", src: src(c.video?.filePath), shaPrefix: (c.video?.sha256 ?? "").slice(0, 12), captions };
+    return { kind: "video", src: src(c.video?.filePath), shaPrefix: (c.video?.sha256 ?? "").slice(0, 12), captions, rewriteLines: Array.isArray(cap.rewrite_lines) ? cap.rewrite_lines.filter((n): n is number => Number.isInteger(n)) : [] };
   }
   const script = await latestContent(db, videoId, "script");
   const claims = claimsOf(script?.body).claims;

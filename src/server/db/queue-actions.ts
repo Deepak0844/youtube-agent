@@ -48,16 +48,29 @@ async function advance(db: pg.Pool, queue: EnqueueOnly, videoId: string): Promis
  * Approximate captions need the owner's tick before the video can be approved. The tick is a new captions version, which is
  * hashed with the video: it is audited, and a later rewrite (a new captions version) voids it. Returns the new live hash when it ticked.
  */
-export async function tickCaptions(db: pg.Pool, videoId: string, actor: GateActor, checked: boolean): Promise<{ ok: true; hash?: string } | { ok: false; message: string }> {
+export async function tickCaptions(
+  db: pg.Pool,
+  videoId: string,
+  actor: GateActor,
+  checked: boolean,
+  seen: { captionsId?: string; videoId?: string } = {},
+): Promise<{ ok: true; hash?: string } | { ok: false; message: string }> {
+  if (actorProblem(actor)) return { ok: false, message: ACTOR_REASON };
   const snap = await readSnapshot(db, videoId, "video");
   if (snap === "no_video" || !snap.inputs.content.captions || !captionsNeedTick(snap.inputs.content.captions.body)) return { ok: true };
   if (!checked) return { ok: false, message: "Tick \"I checked the captions\" first. The captions are approximate: listen and check." };
-  // Under a per-video lock and re-read inside it, so two clicks at once add ONE tick (a second would void the first approval).
+  // Under the same per-video, per-kind lock every version insert takes, and re-read inside it: two clicks at once add ONE tick, and
+  // only the captions and video the owner SAW can be ticked (a newer version landing in between is refused as changed).
   const client = await db.connect();
   try {
     await client.query("begin");
-    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`captions-tick:${videoId}`]);
-    const cur = await client.query<{ body: Record<string, unknown> }>("select body from video_content where video_id = $1 and kind = 'captions' order by version desc limit 1", [videoId]);
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`video_content:${videoId}:captions`]);
+    const cur = await client.query<{ id: string; body: Record<string, unknown> }>("select id, body from video_content where video_id = $1 and kind = 'captions' order by version desc limit 1", [videoId]);
+    const vid = await client.query<{ id: string }>("select id from video_content where video_id = $1 and kind = 'video' order by version desc limit 1", [videoId]);
+    if ((seen.captionsId && cur.rows[0]?.id !== seen.captionsId) || (seen.videoId && vid.rows[0]?.id !== seen.videoId)) {
+      await client.query("rollback");
+      return { ok: false, message: STALE_MESSAGE };
+    }
     if (cur.rows[0] && captionsNeedTick(cur.rows[0].body)) {
       const body = { ...cur.rows[0].body, checked_by_owner: true };
       await client.query(
@@ -112,7 +125,7 @@ export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: Ga
 
   let seenHash = i.seenHash;
   if (i.gate === "video") {
-    const t = await tickCaptions(db, i.videoId, actor, i.captionsChecked === true);
+    const t = await tickCaptions(db, i.videoId, actor, i.captionsChecked === true, { captionsId: live.versions.captions?.id, videoId: live.versions.video?.id });
     if (!t.ok) return refuse(t.message);
     if (t.hash) seenHash = t.hash;
   }

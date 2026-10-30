@@ -123,6 +123,8 @@ async function decide<T = undefined>(db: pg.Pool, d: Decision, decision: "approv
     if (decision === "approved" && snap.last?.decision === "approved" && snap.last.hash === live.hash) return await abort(client, "this is already approved");
     if (decision === "approved" && snap.last?.decision === "sent_back" && snap.last.hash === live.hash) return await abort(client, "you sent this back; wait for the new version before approving");
     const okSnap = snap as OkSnapshot;
+    // Approximate captions cannot be approved past, whichever door is used.
+    if (decision === "approved" && d.gate === "video" && captionsNeedTick(snap.inputs.content.captions?.body)) return await abort(client, CAPTIONS_REASON);
     if (hooks.guard) {
       const refusal = await hooks.guard(client, okSnap);
       if (refusal) return await abort(client, refusal);
@@ -152,8 +154,7 @@ async function abort(client: pg.PoolClient, reason: string): Promise<{ ok: false
 export async function approveGate(db: pg.Pool, a: { videoId: string; gate: GateId; seenHash: string; actor: GateActor }): Promise<GateResult> {
   // The publish approval carries policy checks and the upload row; approvePublish (db/publish.ts) is the only way to make one.
   if (a?.gate === "publish") return refuse("publishing is approved through the publish approval, not the generic gate");
-  const guard = a?.gate === "video" ? async (_c: pg.PoolClient, snap: OkSnapshot) => (captionsNeedTick(snap.inputs.content.captions?.body) ? CAPTIONS_REASON : null) : undefined;
-  const r = await decide(db, a, "approved", guard ? { guard } : {});
+  const r = await decide(db, a, "approved");
   return r.ok ? { ok: true, approvalId: r.approvalId } : r;
 }
 

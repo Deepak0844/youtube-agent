@@ -30,10 +30,10 @@ export function noteProblem(note: unknown): string | null {
   return n < 3 || [...note].length > 1000 ? NOTE_REASON : null;
 }
 
-/** Gates whose action exists in Phase 2. The others are refused until their phase ships. */
 /** Captions the owner must listen to before the video can be approved: not exact, and not yet ticked. */
 export const captionsNeedTick = (captions: unknown): boolean => isObj(captions) && captions.approximate === true && captions.checked_by_owner !== true;
 
+/** Gates whose action exists in Phase 2. The others are refused until their phase ships. */
 export const IMPLEMENTED_GATES = ["script", "cost", "video", "evidence", "publish"] as const;
 export type ImplementedGate = (typeof IMPLEMENTED_GATES)[number];
 export const isImplementedGate = (g: unknown): g is ImplementedGate => typeof g === "string" && (IMPLEMENTED_GATES as readonly string[]).includes(g);

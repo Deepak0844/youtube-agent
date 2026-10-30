@@ -5,7 +5,7 @@ import { secretName, type ProviderId } from "@/server/core/provider-keys";
 import { KEY_SLOT } from "@/server/core/media-catalog";
 import type { Keyring } from "@/server/core/vault-crypto";
 import { getPriceRule, resolveRoute } from "@/server/db/media-registry";
-import { getSecret } from "@/server/db/vault";
+import { getSecret, hasSecret } from "@/server/db/vault";
 import { safeFetch } from "@/server/providers/net/safe-fetch";
 import { createEdgeVoice, connectEdge } from "@/server/providers/voice/edge";
 import { createElevenLabsVoice } from "@/server/providers/voice/elevenlabs";
@@ -37,8 +37,7 @@ export function createVoiceFor(db: pg.Pool, loader: () => Keyring, fetchFn: type
     };
     const needKey = async () => {
       if (!slot) return;
-      const r = await db.query("select 1 from secrets where name = $1", [secretName(slot as ProviderId)]);
-      if (r.rowCount === 0) throw new KnownFailure(`${PICK_VOICE} (save its key first).`);
+      if (!(await hasSecret(db, secretName(slot as ProviderId)))) throw new KnownFailure(`${PICK_VOICE} (save its key first).`);
     };
     switch (route.provider) {
       case "elevenlabs": {

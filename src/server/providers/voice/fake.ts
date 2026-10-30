@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { LANGS, wordCount } from "@/server/core/lang";
+import { LANGS, wordCount, type Lang } from "@/server/core/lang";
 import type { StageContext } from "@/server/core/stage-handler";
 import { createScript, type FakeCounters, type FakeOptions } from "../fake-base";
 import type { TimingsKind, VoiceProvider } from "./index";
@@ -33,6 +33,10 @@ export type FakeVoiceOptions = FakeOptions & {
   wps?: number;
   /** What it reports: `native` word times, `estimated` ones (default), or `aligned` with none returned (the stage must align). */
   timings?: "native" | "estimated" | "aligned";
+  /** Languages it claims to speak (default all). */
+  languages?: Lang[];
+  /** File formats it claims to make (default wav). */
+  formats?: string[];
   /** Runs inside the paid call, after the reserve and before the audio is made (chaos harness hook). */
   beforeCall?: (ctx: StageContext) => Promise<void>;
 };
@@ -44,7 +48,7 @@ export function createFakeVoice(opts: FakeVoiceOptions = {}): VoiceProvider & Fa
   const wps = opts.wps ?? 3;
   const timings = opts.timings ?? "estimated";
   const make = (budgetScopes: string[]): VoiceProvider => ({
-    capability: { id: "fake", wordTimings: timings, local: true, languages: [...LANGS], maxChars: 3500, formats: ["wav"] },
+    capability: { id: "fake", wordTimings: timings, local: true, languages: opts.languages ?? [...LANGS], maxChars: 3500, formats: opts.formats ?? ["wav"] },
     quote: () => price,
     async synthesise(ctx: StageContext, a) {
       return ctx.paid({ reserveMicroUsd: price, budgetScopes, kind: "paid" }, async (_callKey, signal) => {

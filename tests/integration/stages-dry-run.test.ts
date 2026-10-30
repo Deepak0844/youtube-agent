@@ -46,6 +46,8 @@ import { sha256Hex, canonicalJson } from "@/server/core/content-hash";
 import { assertFfprobeAvailable } from "../support/tools";
 import { withTestDb, type TestDb } from "../support/db";
 
+// The voice step also writes the paid audio to the content-addressed voice cache and, until stored, to a per-run folder that does not depend on the fence.
+const ENGINE_VOICE_DIRS = ["voice-cache", "voice-pending"];
 const execFileAsync = promisify(execFile);
 let db: TestDb;
 let root: string;
@@ -189,7 +191,7 @@ describe("dry-run stage handlers", () => {
       const before = snapshot(root);
       const out = await make(deps)(ctx);
       const after = snapshot(root);
-      for (const [p, sig] of after) if (before.get(p) !== sig) expect(p.startsWith(dir + path.sep), `${name} wrote ${p} outside ${dir}`).toBe(true);
+      for (const [p, sig] of after) if (before.get(p) !== sig) expect(p.startsWith(dir + path.sep) || (name === "tts" && ENGINE_VOICE_DIRS.some((d) => p.startsWith(path.join(root, d) + path.sep))), `${name} wrote ${p} outside ${dir}`).toBe(true);
       for (const p of before.keys()) expect(after.has(p), `${name} removed ${p}`).toBe(true);
       expect(out.files.length).toBeGreaterThan(0);
       for (const f of out.files) expect(after.has(path.join(dir, f)), `${name} promised ${f}`).toBe(true);

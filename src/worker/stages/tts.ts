@@ -1,8 +1,9 @@
-import { rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { captionsBody, estimateTimings, flagLanguage, pickTimingsKind, splitForAlignment, type AlignFlag, type CaptionWord, type TimingsKind } from "@/server/core/alignment";
 import { speakingRate, wordCount, wordRange } from "@/server/core/lang";
 import { KnownFailure } from "@/server/core/paid-call";
+import type { StageContext } from "@/server/core/stage-handler";
 import { lineCacheKey, splitLines, tempoFitFactor } from "@/server/core/voice-lines";
 import { approvedScript } from "@/server/db/stage-content";
 import { dropLine, lookupLine, placeLineFile, storeLine, touchLine, type VoiceLineRow } from "@/server/db/voice-lines";
@@ -50,6 +51,8 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
       throw new KnownFailure("This voice gives no word timings, so captions cannot be made. Pick another voice provider in Settings → Providers.");
     }
     if (!cap.languages.includes(video.language)) throw new KnownFailure("The chosen voice does not speak this video's language. Pick a voice provider in Settings → Providers.");
+    // Compressed audio (mp3) needs ffprobe/ffmpeg to measure and join: refuse BEFORE paying, never after.
+    if (!deps.mix && !cap.formats.includes("wav")) throw new KnownFailure("This voice returns compressed audio and ffmpeg is not set up, so it cannot be used here.");
     const lines = splitLines(text, video.language, cap.maxChars);
     if (lines.length === 0) throw new KnownFailure("The script has no narration to read out.");
 
@@ -65,11 +68,19 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
         rows.push(hit);
         continue;
       }
-      const r = await provider.synthesise(ctx, { text: line.text, lang: video.language, voice, ...(model && { model }) });
-      const durationS = await audioSeconds(deps.mix, ctx, r.audioPath);
+      ctx.signal.throwIfAborted();
+      // The paid audio is written to a folder that does NOT depend on the attempt's fence, so a resumed attempt (higher fence, old
+      // attempt folder swept) replaying this paid step still finds the file. It is never deleted here.
+      const pendingDir = path.join(deps.root, "voice-pending", ctx.claim.stageRunId);
+      await mkdir(pendingDir, { recursive: true, mode: 0o700 });
+      const r = await provider.synthesise({ ...ctx, attemptDir: pendingDir } as StageContext, { text: line.text, lang: video.language, voice, ...(model && { model }) });
+      if (!(await stat(r.audioPath).then((f) => f.isFile(), () => false))) {
+        throw new KnownFailure("The audio for a paid line is missing from disk. Check the provider's billing page before running this step again.");
+      }
+      // Into the content-addressed cache first, then measured: a measuring failure after paying leaves the audio findable on replay.
       const rel = await placeLineFile(deps.root, key, path.extname(r.audioPath).slice(1).toLowerCase(), r.audioPath);
+      const durationS = await audioSeconds(deps.mix, ctx, await safeJoin(deps.root, ...rel.split("/")));
       const d = await hashStoredFile(deps.root, rel);
-      await rm(r.audioPath, { force: true }); // the cache holds the copy; nothing stray is left in the attempt folder
       const stored = await storeLine(deps.db, deps.root, { cacheKey: key, provider: providerId, bytes: d.bytes, sha256: d.sha256, durationS, wordTimings: r.wordTimings, timingsKind: r.timingsKind, filePath: rel, priceMicroUsd: r.priceMicroUsd });
       rows.push(stored.row);
       made++;
@@ -85,7 +96,7 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
     const rewrite: number[] = [];
     rows.forEach((r, i) => {
       const lineWindow = (windowS * lineWords[i]!) / allWords;
-      if (!over || r.durationS <= lineWindow) return void tempo.push(1);
+      if (!over || !(lineWindow > 0) || r.durationS <= lineWindow) return void tempo.push(1);
       const fit = tempoFitFactor(r.durationS, lineWindow);
       // Over the cap, or no ffmpeg to speed it up: flagged for a rewrite, never chopped.
       if (!fit.fits || !deps.mix) rewrite.push(i);
@@ -120,7 +131,7 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
           await writeFile(chunkFile, buf);
           const durationS = wavSeconds(parseWav(buf));
           const script = ids.flatMap((i) => lines[i]!.text.split(/\s+/u).filter(Boolean));
-          let body = deps.align ? await deps.align({ audioPath: chunkFile, durationS, lang: video.language, script, stageRunId: ctx.claim.stageRunId, signal: ctx.signal }).catch(() => null) : null;
+          let body = deps.align ? await deps.align({ audioPath: chunkFile, durationS, lang: video.language, script, stageRunId: ctx.claim.stageRunId, signal: ctx.signal }).catch((e: unknown) => { if (ctx.signal.aborted) throw e; return null; }) : null; // a cancel is never swallowed
           if (!body || body.words.length === 0) body = captionsBody("estimated", estimateTimings(script, durationS));
           if (body.timings_kind === "aligned") flagLanguage(video.language, body.words);
           note(body.timings_kind);
@@ -137,7 +148,7 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
         note(k);
         const lineWordsOut: CaptionWord[] = r.wordTimings.map((w) => ({
           word: w.word, startS: w.startS / tempo[i]! + starts[i]!, endS: w.endS / tempo[i]! + starts[i]!,
-          source: w.source === "interpolated" || w.source === "estimated" ? w.source : "recognised",
+          source: w.source === "interpolated" || w.source === "estimated" ? w.source : k === "estimated" ? "estimated" : "recognised",
           flags: (w.flags ?? []).filter((f): f is AlignFlag => FLAGS.includes(f)),
         }));
         if (k === "aligned") flagLanguage(video.language, lineWordsOut);
