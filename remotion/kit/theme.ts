@@ -11,6 +11,10 @@ export const theme = {
     accent: "#5eead4",
     bubbleMe: "#2563eb",
     bubbleThem: "#252b38",
+    gridLine: "#2a3040",
+    highlight: "#facc15",
+    // Series / slice colours, in order.
+    chart: ["#5eead4", "#60a5fa", "#f59e0b", "#f472b6", "#a78bfa", "#34d399", "#fb7185", "#fbbf24"],
   },
   fonts: { ui: "Inter", mono: "JetBrains Mono" },
   // Keep text inside these margins (px) so platform UI never covers it.

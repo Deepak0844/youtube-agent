@@ -3,12 +3,16 @@
 //    and `describe` (one prompt line for describeSceneFormat). Import helpers from ./common.
 // 2. Add ONE line below: an import and one entry in `kinds`, both alphabetical by kind.
 // 3. Add the Remotion component in remotion/kit/<Kind>.tsx and its entry in remotion/kit/registry.tsx.
+import * as chart from "./chart";
 import * as chat_thread from "./chat_thread";
+import * as spreadsheet from "./spreadsheet";
 import * as story_kenburns from "./story_kenburns";
 import * as terminal from "./terminal";
 
 export const kinds = {
+  chart,
   chat_thread,
+  spreadsheet,
   story_kenburns,
   terminal,
 };

@@ -24,3 +24,26 @@ export function kenBurns(frame: number, total: number, k: KenBurns): { scale: nu
     y: k.panY * (2 * t - 1),
   };
 }
+
+/** A1-style cell or range ("B2", "A1:B3") to zero-based inclusive bounds, or null if malformed. */
+export function cellRange(ref: string): { c1: number; r1: number; c2: number; r2: number } | null {
+  const m = /^([A-Z])([1-9]\d*)(?::([A-Z])([1-9]\d*))?$/.exec(ref);
+  if (!m) return null;
+  const a = [m[1]!.charCodeAt(0) - 65, Number(m[2]) - 1];
+  const b = m[3] ? [m[3].charCodeAt(0) - 65, Number(m[4]) - 1] : a;
+  return { c1: Math.min(a[0]!, b[0]!), r1: Math.min(a[1]!, b[1]!), c2: Math.max(a[0]!, b[0]!), r2: Math.max(a[1]!, b[1]!) };
+}
+
+/** Round a max value up to a tidy axis top (1, 2, 5 x 10^n style steps of 1/2/5/10). Bad input gives 1. */
+export function niceMax(max: number): number {
+  if (!Number.isFinite(max) || max <= 0) return 1;
+  const p = 10 ** Math.floor(Math.log10(max));
+  const n = max / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+
+/** Each value as a fraction of the total (all zero when the total is not positive). */
+export function pieSlices(values: number[]): number[] {
+  const total = values.reduce((a, b) => a + b, 0);
+  return values.map((v) => (total > 0 ? v / total : 0));
+}
