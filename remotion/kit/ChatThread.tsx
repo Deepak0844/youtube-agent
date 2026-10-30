@@ -1,14 +1,16 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
-import { visibleCount } from "./helpers";
+import { visibleCount, windowOpacity } from "./helpers";
 import { theme } from "./theme";
 
 export type ChatThreadProps = {
   messages: { from: "me" | "them"; text: string }[];
   framesPerMessage: number;
+  /** Keep only the newest N messages; older ones fade out. Omit to keep all. */
+  windowSize?: number;
 };
 
-export const ChatThread: React.FC<ChatThreadProps> = ({ messages, framesPerMessage }) => {
+export const ChatThread: React.FC<ChatThreadProps> = ({ messages, framesPerMessage, windowSize }) => {
   const frame = useCurrentFrame();
   const n = visibleCount(frame, framesPerMessage, messages.length);
   return (
@@ -22,10 +24,14 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ messages, framesPerMessa
         justifyContent: "flex-end",
       }}
     >
-      {messages.slice(0, n).map((m, i) => (
+      {messages.slice(0, n).map((m, i) => {
+        const opacity = windowSize ? windowOpacity(frame, framesPerMessage, i, windowSize, 10) : 1;
+        if (opacity <= 0) return null;
+        return (
         <div
           key={i}
           style={{
+            opacity,
             alignSelf: m.from === "me" ? "flex-end" : "flex-start",
             maxWidth: "80%",
             marginTop: 18,
@@ -36,7 +42,8 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ messages, framesPerMessa
         >
           {m.text}
         </div>
-      ))}
+        );
+      })}
     </AbsoluteFill>
   );
 };

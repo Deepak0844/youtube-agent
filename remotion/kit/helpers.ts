@@ -25,6 +25,71 @@ export function kenBurns(frame: number, total: number, k: KenBurns): { scale: nu
   };
 }
 
+/** Opacity of chat message `index` in a sliding window: 1 until `windowSize` newer messages exist, then fades to 0 over `fadeFrames`. */
+export function windowOpacity(frame: number, framesPer: number, index: number, windowSize: number, fadeFrames: number): number {
+  const leaves = (index + windowSize) * framesPer;
+  return 1 - clamp01((frame - leaves) / Math.max(1, fadeFrames));
+}
+
+/** Math steps shown at `frame`: one more every `framesPerStep`, the first at frame 0. */
+export const mathReveal = (frame: number, framesPerStep: number, total: number): number => visibleCount(frame, framesPerStep, total);
+
+/** Tally shown at `frame` for a final `count`, growing linearly over `growFrames` and rounded down. */
+export function tallyAt(frame: number, growFrames: number, count: number): number {
+  if (growFrames <= 0) return count;
+  return Math.min(count, Math.max(0, Math.floor((count * frame) / growFrames)));
+}
+
+/** A1-style cell or range ("B2", "A1:B3") to zero-based inclusive bounds, or null if malformed. */
+export function cellRange(ref: string): { c1: number; r1: number; c2: number; r2: number } | null {
+  const m = /^([A-Z])([1-9]\d*)(?::([A-Z])([1-9]\d*))?$/.exec(ref);
+  if (!m) return null;
+  const a = [m[1]!.charCodeAt(0) - 65, Number(m[2]) - 1];
+  const b = m[3] ? [m[3].charCodeAt(0) - 65, Number(m[4]) - 1] : a;
+  return { c1: Math.min(a[0]!, b[0]!), r1: Math.min(a[1]!, b[1]!), c2: Math.max(a[0]!, b[0]!), r2: Math.max(a[1]!, b[1]!) };
+}
+
+/** Round a max value up to a tidy axis top (1, 2, 5 x 10^n style steps of 1/2/5/10). Bad input gives 1. */
+export function niceMax(max: number): number {
+  if (!Number.isFinite(max) || max <= 0) return 1;
+  const p = 10 ** Math.floor(Math.log10(max));
+  const n = max / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+
+/** Each value as a fraction of the total (all zero when the total is not positive). */
+export function pieSlices(values: number[]): number[] {
+  const total = values.reduce((a, b) => a + b, 0);
+  return values.map((v) => (total > 0 ? v / total : 0));
+}
+
+export type AlgoStep = { at: number; type: "highlight" | "compare" | "swap" | "mark_done" | "pointer"; i: number; j?: number };
+
+/** Board state at `ms` after replaying every step with at <= ms. swap exchanges values; the last highlight/compare/swap stays lit until a newer one or a pointer move. */
+export function cellsAt(cells: readonly string[], steps: readonly AlgoStep[], ms: number) {
+  const values = [...cells];
+  let active: number[] = [];
+  let pointer: number | null = null;
+  const done: number[] = [];
+  for (const s of steps) {
+    if (s.at > ms) break;
+    if (s.type === "pointer") {
+      pointer = s.i;
+      active = [];
+    } else if (s.type === "mark_done") {
+      if (!done.includes(s.i)) done.push(s.i);
+    } else {
+      active = s.j === undefined ? [s.i] : [s.i, s.j];
+      if (s.type === "swap" && s.j !== undefined) {
+        const t = values[s.i]!;
+        values[s.i] = values[s.j]!;
+        values[s.j] = t;
+      }
+    }
+  }
+  return { values, active, pointer, done };
+}
+
 export type CollageLayout = "grid2" | "grid3" | "hero_plus_strip" | "stagger";
 export type Rect = { x: number; y: number; w: number; h: number };
 export type CollageEnter = "fade" | "pop" | "slide_left" | "slide_right" | "rise";
