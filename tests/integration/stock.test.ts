@@ -116,6 +116,26 @@ describe("stock providers", () => {
   });
 });
 
+describe("over-cap download", () => {
+  it("never_leaks_an_unhandled_error_or_a_partial_file", async () => {
+    const seen: unknown[] = [];
+    const on = (e: unknown) => seen.push(e);
+    process.on("uncaughtException", on);
+    process.on("unhandledRejection", on);
+    body = { "/x.jpg": Buffer.alloc(26 * 1024 * 1024, 0xff) };
+    const p = createStockProvider("pexels", deps());
+    for (let i = 0; i < 20; i++) {
+      const c = ctx();
+      await expect(p.fetch(c, hit({}))).rejects.toThrow(/too big/);
+      expect(readdirSync(c.attemptDir)).toEqual([]);
+    }
+    await new Promise((r) => setTimeout(r, 50));
+    process.off("uncaughtException", on);
+    process.off("unhandledRejection", on);
+    expect(seen).toEqual([]);
+  });
+});
+
 describe("own stock", () => {
   let db: TestDb;
   beforeAll(async () => { db = await withTestDb(); });
