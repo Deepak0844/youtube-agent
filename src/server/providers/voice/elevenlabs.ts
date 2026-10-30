@@ -59,52 +59,56 @@ function parseAlignment(v: unknown): Alignment {
   return a;
 }
 
-export async function readCapped(res: Response): Promise<Buffer> {
+export async function readCapped(res: Response, who = "ElevenLabs"): Promise<Buffer> {
   const declared = Number(res.headers.get("content-length"));
   if (declared > MAX_BODY) {
     await res.body?.cancel().catch(() => undefined);
-    throw new Error("ElevenLabs response is over the 50 MB limit.");
+    throw new Error(`${who} response is over the 50 MB limit.`);
   }
   const chunks: Uint8Array[] = [];
   let size = 0;
   const reader = res.body?.getReader();
-  if (!reader) throw new Error("ElevenLabs sent no body.");
+  if (!reader) throw new Error(`${who} sent no body.`);
   for (;;) {
     const { done, value } = await reader.read(); // a reset or truncated body throws here: outcome unknown
     if (done) break;
     size += value.byteLength;
     if (size > MAX_BODY) {
       await reader.cancel().catch(() => undefined);
-      throw new Error("ElevenLabs response is over the 50 MB limit.");
+      throw new Error(`${who} response is over the 50 MB limit.`);
     }
     chunks.push(value);
   }
   return Buffer.concat(chunks);
 }
 
-/** One POST to the ElevenLabs typed host. 4xx (not 408) = rejected before work (429 retried by the classifier, the rest permanent); 5xx, 408 and socket loss after send = unknown. */
-export async function elevenPost(fetch: SafeFetch, key: string, signal: AbortSignal, pathQuery: string, body: unknown, accept: string): Promise<Response> {
+/**
+ * One JSON POST to a typed provider host. 4xx (not 408) = rejected before work (429 retried by the classifier, the rest permanent);
+ * 5xx, 408 and socket loss after send = unknown. `billedRefusal` lets an adapter treat a 4xx body it knows may still be billed as unknown.
+ */
+export async function postJson(
+  who: string, fetch: SafeFetch, url: string, headers: Record<string, string>, body: unknown, signal: AbortSignal,
+  billedRefusal?: (status: number, text: string) => boolean,
+): Promise<Response> {
   let res: Response;
   try {
     // maxRedirects 0: a redirect would re-POST (a second paid request); it surfaces as an error after send = unknown.
-    res = await fetch(`${HOST}${pathQuery}`, {
-      method: "POST",
-      headers: { "xi-api-key": key, "content-type": "application/json", accept },
-      body: JSON.stringify(body),
-      signal,
-    }, { timeoutMs: 120_000, maxRedirects: 0 });
+    res = await fetch(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body), signal }, { timeoutMs: 120_000, maxRedirects: 0 });
   } catch (err) {
     if (signal.aborted) throw signal.reason; // cancel/timeout after send: unknown
-    if (err instanceof BlockedAddressError) throw new NotProcessedError("ElevenLabs address was blocked.");
+    if (err instanceof BlockedAddressError) throw new NotProcessedError(`${who} address was blocked.`);
     const code = (err as { cause?: { code?: unknown } })?.cause?.code;
-    if (typeof code === "string" && BEFORE_SEND.has(code)) throw new NotProcessedError("ElevenLabs could not be reached.", { code });
-    throw new Error("ElevenLabs request failed after it was sent."); // fixed text: no cause, no URL, no key
+    if (typeof code === "string" && BEFORE_SEND.has(code)) throw new NotProcessedError(`${who} could not be reached.`, { code });
+    throw new Error(`${who} request failed after it was sent.`); // fixed text: no cause, no URL, no key
   }
   if (res.ok) return res;
-  await res.body?.cancel().catch(() => undefined);
-  if (res.status >= 400 && res.status <= 499 && res.status !== 408) throw new NotProcessedError(`ElevenLabs refused the request (${res.status}).`, { status: res.status });
-  throw new Error(`ElevenLabs answered ${res.status}; the outcome is unknown.`);
+  const text = billedRefusal && res.status >= 400 && res.status <= 499 ? await res.text().then((t) => t.slice(0, 2000), () => "") : (await res.body?.cancel().catch(() => undefined), "");
+  if (res.status >= 400 && res.status <= 499 && res.status !== 408 && !billedRefusal?.(res.status, text)) throw new NotProcessedError(`${who} refused the request (${res.status}).`, { status: res.status });
+  throw new Error(`${who} answered ${res.status}; the outcome is unknown.`);
 }
+
+export const elevenPost = (fetch: SafeFetch, key: string, signal: AbortSignal, pathQuery: string, body: unknown, accept: string) =>
+  postJson("ElevenLabs", fetch, `${HOST}${pathQuery}`, { "xi-api-key": key, accept }, body, signal);
 
 export function createElevenLabsVoice(deps: ElevenLabsDeps): VoiceProvider {
   const prefix = tagPrefix(deps.tags?.prefix);

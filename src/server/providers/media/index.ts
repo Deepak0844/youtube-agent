@@ -1,6 +1,12 @@
 import type { StageContext } from "@/server/core/stage-handler";
+import type { MediaArtifact } from "../media-types";
 
-// Still-image generation. The file lands in ctx.attemptDir.
+export type Aspect = "9:16" | "16:9" | "1:1";
+
+// Still-image generation. The image and its sidecar JSON land in ctx.attemptDir. `refs` are asset ids the adapter's caller can resolve to files.
 export interface ImageProvider {
-  generate(ctx: StageContext, a: { prompt: string; size: { width: number; height: number } }): Promise<{ imagePath: string; priceMicroUsd: number }>;
+  capability: { id: string; refImages: boolean; seed: boolean; aspects: Aspect[]; maxRefs: number };
+  /** Micro-USD for one image; refuses (KnownFailure) when unpriced or the arguments are unusable. */
+  quote(a: { aspect: Aspect; refs: number; model: string }): number;
+  generate(ctx: StageContext, a: { prompt: string; aspect: Aspect; refs?: string[]; seed?: number; model: string }): Promise<MediaArtifact>;
 }

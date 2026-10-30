@@ -10,16 +10,19 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 
 export function createFakeImage(opts: FakeOptions & { priceMicroUsd?: number } = {}): ImageProvider & FakeCounters {
   const s = createScript(opts);
+  const price = opts.priceMicroUsd ?? 4000;
   return {
+    capability: { id: "fake-image", refImages: true, seed: true, aspects: ["9:16", "16:9", "1:1"], maxRefs: 3 },
+    quote: () => price,
     calls: s.calls,
     totalCalls: s.totalCalls,
     dbCalls: s.dbCalls,
     async generate(ctx: StageContext, a) {
-      const played = await s.play(`fake:image:${ctx.claim.stageRunId}`, ctx.signal, { actualMicroUsd: opts.priceMicroUsd ?? 4000 });
-      const name = `image-${createHash("sha256").update(`${a.size.width}x${a.size.height}\0${a.prompt}`).digest("hex").slice(0, 12)}.png`;
-      const imagePath = path.join(ctx.attemptDir, name);
+      const played = await s.play(`fake:image:${ctx.claim.stageRunId}`, ctx.signal, { actualMicroUsd: price });
+      const sha256 = createHash("sha256").update(`${a.aspect}\0${a.prompt}`).digest("hex");
+      const imagePath = path.join(ctx.attemptDir, `image-${sha256.slice(0, 12)}.png`);
       await writeFile(imagePath, PNG);
-      return { imagePath, priceMicroUsd: played.actualMicroUsd };
+      return { path: imagePath, bytes: PNG.length, sha256, provenance: { provider: "fake-image", model: a.model, params: { aspect: a.aspect }, priceMicroUsd: played.actualMicroUsd, quoted: true } };
     },
   };
 }

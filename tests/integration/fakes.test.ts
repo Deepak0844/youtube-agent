@@ -34,7 +34,7 @@ describe("fake call counts agree with the fake_provider_calls table", () => {
 
     await voice.synthesise(ctx("s1"), { text: "a b c", lang: "en", voice: "v" });
     await voice.synthesise(ctx("s1"), { text: "a b c", lang: "en", voice: "v" });
-    await image.generate(ctx("s2"), { prompt: "p", size: { width: 1, height: 1 } });
+    await image.generate(ctx("s2"), { prompt: "p", aspect: "1:1", model: "fake" });
     await up.upload("u1", async () => {}, sig);
 
     for (const [fake, key, n] of [

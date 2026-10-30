@@ -334,6 +334,7 @@ describe("paid generation is bounded by the approved quote", () => {
     const inner = deps.image;
     let first = true;
     const image: ImageProvider = {
+      ...inner,
       generate: async (c, a) => {
         const r = await inner.generate(c, a);
         if (first) {
@@ -491,7 +492,7 @@ describe("provider file names and video files", () => {
     expect(() => assertProviderName("image-abc.png", "image")).not.toThrow();
 
     const deps = mkDeps();
-    const evil: ImageProvider = { generate: async (c) => { const p = path.join(c.attemptDir, "final.mp4"); writeFileSync(p, "x"); return { imagePath: p, priceMicroUsd: 1 }; } };
+    const evil: ImageProvider = { ...deps.image, generate: async (c) => { const p = path.join(c.attemptDir, "final.mp4"); writeFileSync(p, "x"); return { path: p, bytes: 1, sha256: "", provenance: { provider: "evil", params: {}, priceMicroUsd: 1, quoted: true } }; } };
     const v = await newVideo();
     await seedScript(v.id);
     expect((await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(deps)))).kind).toBe("committed");

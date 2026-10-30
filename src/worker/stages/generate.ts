@@ -5,7 +5,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { ensureCapScope } from "@/server/db/budget-scopes";
 import { approvedCostPlan, approvedScript } from "@/server/db/stage-content";
 import { assertProviderName, type AttemptHandler } from "./attempt";
-import { DEFAULTS, loadVideo, SIZE, videoMoneyScopes, type StageDeps } from "./deps";
+import { DEFAULTS, loadVideo, videoMoneyScopes, type StageDeps } from "./deps";
 
 /**
  * Generate: buys what the approved cost plan lists, one paid call per item, and nothing else.
@@ -50,9 +50,9 @@ export function generateAttempt(deps: StageDeps): AttemptHandler {
       const made = await ctx.paid<{ name: string; b64: string }>(
         { reserveMicroUsd: item.quoteMicroUsd, budgetScopes: scopes, kind: "paid" },
         async () => {
-          const r = await deps.image.generate(ctx, { prompt, size: SIZE });
-          const name = path.basename(r.imagePath);
-          return { result: { name, b64: (await readFile(r.imagePath)).toString("base64") }, actualMicroUsd: r.priceMicroUsd };
+          const r = await deps.image.generate(ctx, { prompt, aspect: "9:16", model: wantProvider });
+          const name = path.basename(r.path);
+          return { result: { name, b64: (await readFile(r.path)).toString("base64") }, actualMicroUsd: r.provenance.priceMicroUsd };
         },
       );
       assertProviderName(made.name, "image");
