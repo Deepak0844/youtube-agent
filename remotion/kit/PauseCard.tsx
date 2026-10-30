@@ -24,16 +24,25 @@ export const PauseCard: React.FC<PauseCardProps> = ({ question, options, answer,
         color: theme.palette.text,
       }}
     >
-      <div style={{ fontSize: 68, fontWeight: 700, marginBottom: 24 }}>{question}</div>
+      <div
+        style={{
+          fontSize: theme.type.hero,
+          fontWeight: 700,
+          lineHeight: 1.2,
+          marginBottom: 24,
+        }}
+      >
+        {question}
+      </div>
       {options.map((o, i) => {
         const right = revealed && i === answer;
         return (
           <div
             key={i}
             style={{
-              padding: "28px 36px",
-              borderRadius: 28,
-              fontSize: 48,
+              padding: "32px 40px",
+              borderRadius: theme.radii.card + 12,
+              fontSize: theme.type.big,
               background: right ? theme.palette.accent : theme.palette.surface,
               color: right ? theme.palette.bg : theme.palette.text,
               opacity: revealed && !right ? 0.4 : 1,
