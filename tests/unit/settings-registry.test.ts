@@ -27,6 +27,7 @@ describe("settings registry", () => {
       [
         "network.local_services", "policy.allow_public", "policy.require_evidence",
         "assets.max_image_bytes", "assets.max_audio_bytes", "assets.max_pixels", "assets.max_batch_files", "assets.total_bytes_cap",
+        "assets.retention_days", "assets.unused_days", "assets.trash_days",
         ...ENGINE_KEYS,
       ].sort(),
     );
@@ -43,6 +44,9 @@ describe("settings registry", () => {
       "assets.max_pixels": 50_000_000,
       "assets.max_batch_files": 100,
       "assets.total_bytes_cap": 5_368_709_120,
+      "assets.retention_days": 7,
+      "assets.unused_days": 30,
+      "assets.trash_days": 7,
       "video.max_long_minutes": 15,
       "tracks.enabled": { scene_kit: true, tsx: true, collage: true, ai: true },
       "policy.require_evidence": true,

@@ -13,6 +13,7 @@ export const FLAGS: Record<string, boolean> = {
   "settings.budgets": true,
   assets: true,
   "settings.providers": true,
+  "settings.assets": true,
   // Not built yet (later phases).
   library: false,
   new: false,
@@ -27,7 +28,6 @@ export const FLAGS: Record<string, boolean> = {
   "settings.account": false,
   "settings.tokens": false,
   "settings.channels": false,
-  "settings.assets": false,
   "settings.policies": false,
   "settings.notifications": false,
   "settings.schedule": false, // Phase 6

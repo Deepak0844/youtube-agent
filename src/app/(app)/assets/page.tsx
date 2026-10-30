@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { z } from "zod";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { toCards } from "@/server/db/asset-cards";
+import { loadAssetDays } from "@/server/db/asset-settings";
 import { listAssets, listTags } from "@/server/db/assets";
 import { getPool } from "@/server/db/pool";
 import { EmptyFrame } from "@/ui/domain/empty-frame";
@@ -70,14 +71,14 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/assets">["sea
   const q = query.parse({ kind: first(raw.kind), source: first(raw.source), tag: first(raw.tag), q: first(raw.q), trash: first(raw.trash) });
   const db = getPool();
   const [assets, tags] = await Promise.all([listAssets(db, { kind: q.kind, source: q.source, tag: q.tag, q: q.q, trash: q.trash === "1" }), listTags(db)]);
-  const cards = await toCards(db, assets);
+  const [cards, { trashDays }] = await Promise.all([toCards(db, assets), loadAssetDays(db)]);
 
   return (
     <div className="flex min-w-0 flex-col gap-layout">
       <header>
         <h1 className="text-page-title font-semibold tracking-tight">Assets</h1>
         <p className="mt-2 max-w-prose text-body text-muted">
-          Photos and sound files for your videos. Deleted files stay in the trash for 7 days. Files marked Keep are never cleaned up automatically.
+          Photos and sound files for your videos. Deleted files stay in the trash for {trashDays} days. Files marked Keep are never cleaned up automatically. Each upload shows the day it will be deleted; the clean-up job arrives with publishing, so nothing is deleted on that day yet.
         </p>
       </header>
 
@@ -103,7 +104,7 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/assets">["sea
         {cards.length === 0 ? (
           <EmptyFrame message={q.trash ? "The trash is empty." : EMPTY[q.kind ?? "all"]} />
         ) : (
-          <AssetGrid cards={cards} trash={q.trash === "1"} />
+          <AssetGrid cards={cards} trash={q.trash === "1"} trashDays={trashDays} />
         )}
       </section>
     </div>

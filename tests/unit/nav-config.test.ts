@@ -34,7 +34,7 @@ describe("nav config", () => {
     const shown = visibleNav().flatMap((g) => g.items);
     expect(shown.every((i) => isEnabled(i.flag))).toBe(true);
     expect(shown.map((i) => i.href)).not.toContain("/videos");
-    expect(shown.map((i) => i.label)).toEqual(["Home", "Queue", "Assets", "Models", "Providers", "Keys", "Google app", "Budgets", "Audit", "System"]);
+    expect(shown.map((i) => i.label)).toEqual(["Home", "Queue", "Assets", "Models", "Providers", "Keys", "Google app", "Budgets", "Assets", "Audit", "System"]);
   });
   it("every enabled href resolves to an existing page file", () => {
     for (const i of NAV_ITEMS.filter((i) => isEnabled(i.flag) && !PAGE_ARRIVES_ON_ANOTHER_BRANCH.includes(i.href))) {
