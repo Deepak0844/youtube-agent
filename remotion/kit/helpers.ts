@@ -24,3 +24,9 @@ export function kenBurns(frame: number, total: number, k: KenBurns): { scale: nu
     y: k.panY * (2 * t - 1),
   };
 }
+
+/** Opacity of chat message `index` in a sliding window: 1 until `windowSize` newer messages exist, then fades to 0 over `fadeFrames`. */
+export function windowOpacity(frame: number, framesPer: number, index: number, windowSize: number, fadeFrames: number): number {
+  const leaves = (index + windowSize) * framesPer;
+  return 1 - clamp01((frame - leaves) / Math.max(1, fadeFrames));
+}
