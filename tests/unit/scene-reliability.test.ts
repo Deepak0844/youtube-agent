@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { BudgetRefusedError, KnownFailure } from "@/server/core/paid-call";
-import { runSheets, summarize, type Ask, type BeatSheet } from "@/server/core/scene-reliability";
+import { runSheets, selectSheets, summarize, type Ask, type BeatSheet } from "@/server/core/scene-reliability";
+import { fixedSheets } from "@/server/db/scene-eval";
+import { kinds } from "@/shared/scene/kinds";
 
 const sheet = (id: string, kind: BeatSheet["kind"] = "terminal"): BeatSheet => ({ id, kind, beats: [{ id: "b1", text: "Show it." }] });
 const GOOD = JSON.stringify({ version: 1, scenes: [{ id: "s1", kind: "chat_thread", beat: "b1", startMs: 0, durationMs: 2000, messages: [{ from: "user", text: "hi" }] }] });
@@ -84,5 +86,47 @@ describe("provider refusal", () => {
     const sum = summarize(results, 2);
     expect(sum.verdict).toBe("NOT RUN");
     expect(sum.notRunReason).toBe("404 model not found");
+  });
+});
+
+describe("per-kind reliability", () => {
+  it("every registered kind has at least 2 beat sheets", () => {
+    const have = new Map<string, number>();
+    for (const s of fixedSheets()) have.set(s.kind, (have.get(s.kind) ?? 0) + 1);
+    for (const k of Object.keys(kinds)) expect(have.get(k) ?? 0, `fixtures for ${k}`).toBeGreaterThanOrEqual(2);
+  });
+
+  it("summarize reports first-try and within-retries by kind", () => {
+    const r = (id: string, kind: BeatSheet["kind"], firstTry: boolean, withinRetries: boolean) => ({ id, kind, firstTry, withinRetries, attempts: 1, errors: [], inputTokens: 0, outputTokens: 0, costMicroUsd: 0 });
+    const s = summarize([r("a", "chess", true, true), r("b", "chess", false, true), r("c", "map", false, false)], 3);
+    expect(s.byKind).toEqual({ chess: { ran: 2, firstTry: 1, withinRetries: 2 }, map: { ran: 1, firstTry: 0, withinRetries: 0 } });
+  });
+
+  it("selectSheets picks n per kind, or the first N overall", () => {
+    const all = fixedSheets();
+    const per = selectSheets(all, { perKind: 1 });
+    expect(per).toHaveLength(Object.keys(kinds).length);
+    expect(new Set(per.map((s) => s.kind)).size).toBe(per.length);
+    expect(selectSheets(all, { perKind: 2 }).length).toBe(Object.keys(kinds).length * 2);
+    expect(selectSheets(all, { runs: 3 })).toEqual(all.slice(0, 3));
+    expect(selectSheets(all, {})).toEqual(all.slice(0, 10));
+  });
+});
+
+describe("partial runs and --kinds", () => {
+  const r = (id: string, ok: boolean) => ({ id, kind: "chess" as const, firstTry: ok, withinRetries: ok, attempts: 1, errors: [], inputTokens: 0, outputTokens: 0, costMicroUsd: 0 });
+  it("an all-pass partial run is INCOMPLETE, not GO or NO-GO", () => {
+    expect(summarize([r("a", true), r("b", true)], 5, "cap").verdict).toBe("INCOMPLETE");
+  });
+  it("a partial run with too many failures is still NO-GO", () => {
+    expect(summarize([r("a", false), r("b", false), r("c", true)], 5, "cap").verdict).toBe("NO-GO");
+  });
+  it("a full run still decides GO", () => {
+    expect(summarize([r("a", true), r("b", true)], 2).verdict).toBe("GO");
+  });
+  it("selectSheets filters by kind and combines with perKind", () => {
+    const all = fixedSheets();
+    expect(selectSheets(all, { kinds: ["chess", "map"] }).every((s) => ["chess", "map"].includes(s.kind))).toBe(true);
+    expect(selectSheets(all, { kinds: ["chess", "map"], perKind: 1 }).map((s) => s.kind)).toEqual(["chess", "map"]);
   });
 });
