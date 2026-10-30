@@ -1,5 +1,29 @@
-// One theme object for all kit pieces. Fonts are the families vendored in infra/render/fonts (no network).
-export const theme = {
+// Brand contract for all kit pieces, as plain data (no imports, so the render container can load it).
+// Values mirror the old kit's brand.md: calm, premium motion; safe areas for 1080x1920.
+export type Bezier = readonly [number, number, number, number];
+
+export type BrandTheme = {
+  width: number;
+  height: number;
+  fps: number;
+  palette: Record<"bg" | "surface" | "text" | "muted" | "accent" | "bubbleMe" | "bubbleThem" | "gridLine" | "highlight", string> & {
+    /** Series / slice colours, in order. */
+    chart: readonly string[];
+  };
+  /** Flat drawn-object colours (outline, metals, glass, status lights, board and pieces). */
+  art: Record<"ink" | "steel" | "steelLight" | "glass" | "liquid" | "paper" | "cloud" | "ok" | "warn" | "blue" | "boardLight" | "boardDark" | "pieceLight" | "pieceDark", string>;
+  fonts: { ui: string; mono: string };
+  /** Named cubic-bezier curves (x1, y1, x2, y2). Feed to Easing.bezier(...curve). */
+  easings: Record<"easeOut" | "easeIn" | "easeInOut", Bezier>;
+  radii: { card: number; window: number; bubble: number; pill: number };
+  /** Keep text inside these margins (px) so platform UI never covers it. */
+  safe: { top: number; bottom: number; side: number };
+  type: { caption: number; body: number; code: number; title: number };
+  /** On-screen copy rules, checked by checkCopy(). */
+  copy: { maxCharsPerLine: number; maxLines: number; bannedPhrases: readonly string[] };
+};
+
+export const defaultTheme: BrandTheme = {
   width: 1080,
   height: 1920,
   fps: 30,
@@ -11,9 +35,97 @@ export const theme = {
     accent: "#5eead4",
     bubbleMe: "#2563eb",
     bubbleThem: "#252b38",
+    gridLine: "#2a3040",
+    highlight: "#facc15",
+    // Series / slice colours, in order.
+    chart: ["#5eead4", "#60a5fa", "#f59e0b", "#f472b6", "#a78bfa", "#34d399", "#fb7185", "#fbbf24"],
+  },
+  // Flat drawn-object colours (outline, metals, glass, status lights).
+  art: {
+    ink: "#0f1218",
+    steel: "#3a3f4b",
+    steelLight: "#5b6272",
+    glass: "#cfe6ec",
+    liquid: "#5eead4",
+    paper: "#e8dfc9",
+    cloud: "#e8f1f5",
+    ok: "#58e08a",
+    warn: "#fbbf24",
+    blue: "#2b7fc4",
+    boardLight: "#c9d1e0",
+    boardDark: "#5b6b8c",
+    pieceLight: "#f2f4f8",
+    pieceDark: "#10131a",
   },
   fonts: { ui: "Inter", mono: "JetBrains Mono" },
-  // Keep text inside these margins (px) so platform UI never covers it.
+  easings: {
+    easeOut: [0.33, 1, 0.68, 1],
+    easeIn: [0.32, 0, 0.67, 0],
+    easeInOut: [0.37, 0, 0.63, 1],
+  },
+  radii: { card: 16, window: 10, bubble: 36, pill: 999 },
   safe: { top: 220, bottom: 380, side: 72 },
-} as const;
-export type Theme = typeof theme;
+  type: { caption: 54, body: 46, code: 44, title: 72 },
+  copy: {
+    maxCharsPerLine: 28,
+    maxLines: 3,
+    // Engagement-bait outro wording is off-brand on screen.
+    bannedPhrases: ["subscribe", "like and subscribe", "follow for more", "smash the like", "comment below", "link in bio"],
+  },
+};
+
+type DeepPartial<T> = { [K in keyof T]?: T[K] extends readonly unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+function merge(base: unknown, over: unknown): unknown {
+  if (over === undefined) return base;
+  if (!isObj(base) || !isObj(over)) return over;
+  const out: Record<string, unknown> = { ...base };
+  for (const k of Object.keys(over)) {
+    if (!(k in base)) throw new Error(`theme: unknown key "${k}"`);
+    out[k] = merge(base[k], over[k]);
+  }
+  return out;
+}
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+function validate(t: BrandTheme): BrandTheme {
+  const bad = (m: string) => {
+    throw new Error(`theme: ${m}`);
+  };
+  for (const [k, v] of Object.entries(t.palette)) {
+    for (const c of Array.isArray(v) ? v : [v]) if (!HEX.test(c)) bad(`palette.${k} must be #rrggbb`);
+  }
+  for (const [k, v] of Object.entries(t.art)) if (!HEX.test(v)) bad(`art.${k} must be #rrggbb`);
+  for (const [k, v] of Object.entries(t.fonts)) if (!v.trim()) bad(`fonts.${k} is empty`);
+  for (const [k, c] of Object.entries(t.easings)) {
+    if (c.length !== 4 || c.some((n) => !Number.isFinite(n))) bad(`easings.${k} needs 4 numbers`);
+    if (c[0] < 0 || c[0] > 1 || c[2] < 0 || c[2] > 1) bad(`easings.${k} x values must be 0..1`);
+  }
+  const positive = { width: t.width, height: t.height, fps: t.fps, ...t.radii, ...t.type, ...t.safe, c: t.copy.maxCharsPerLine, l: t.copy.maxLines };
+  for (const [k, v] of Object.entries(positive)) if (!Number.isFinite(v) || v < 0) bad(`${k} must be a non-negative number`);
+  if (t.safe.top + t.safe.bottom >= t.height || t.safe.side * 2 >= t.width) bad("safe areas leave no room");
+  return t;
+}
+
+/** Deep-merge a partial theme over the default and validate. Unknown keys and bad values throw. */
+export function defineTheme(partial: DeepPartial<BrandTheme> = {}): BrandTheme {
+  return validate(merge(defaultTheme, partial) as BrandTheme);
+}
+
+/** Problems with one on-screen text block, per the theme's copy rules. Empty array means fine. */
+export function checkCopy(text: string, t: BrandTheme = defaultTheme): string[] {
+  const out: string[] = [];
+  const lines = text.split("\n");
+  if (lines.length > t.copy.maxLines) out.push(`more than ${t.copy.maxLines} lines`);
+  if (lines.some((l) => [...l].length > t.copy.maxCharsPerLine)) out.push(`a line is over ${t.copy.maxCharsPerLine} characters`);
+  const low = text.toLowerCase();
+  for (const p of t.copy.bannedPhrases) if (low.includes(p)) out.push(`banned phrase "${p}"`);
+  return out;
+}
+
+/** The theme pieces read today. A series swaps this in Phase 6b. */
+export const theme = defaultTheme;
+export type Theme = BrandTheme;
