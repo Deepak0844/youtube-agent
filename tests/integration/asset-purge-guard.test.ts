@@ -34,16 +34,23 @@ describe("purge and revive guard", () => {
     const jobs = await db.pool.query("select asset_id from ingest_jobs");
     expect(jobs.rows).toEqual([{ asset_id: null }]);
   });
-  it("a duplicate upload cancels a pending deletion but cannot revive a row whose purge is due", async () => {
+  it("a duplicate upload revives a trashed asset even past its purge date; a later purge then skips it", async () => {
     const { asset } = await registerAsset(db.pool, input("c"));
     await trashAssets(db.pool, [asset.id], false);
+    await db.pool.query("update assets set purge_at = now() - interval '1 second' where id = $1", [asset.id]);
     const again = await registerAsset(db.pool, input("c"));
     expect(again.duplicate).toBe(true);
+    expect(again.asset.id).toBe(asset.id);
     expect(again.asset.deletedAt).toBeNull();
+    expect(await purgeDueAsset(db.pool, asset.id)).toBeNull();
+    expect((await db.pool.query("select 1 from assets where id = $1", [asset.id])).rowCount).toBe(1);
+  });
+  it("revive then force purge_at into the past: purge skips and the asset stays", async () => {
+    const { asset } = await registerAsset(db.pool, input("d"));
     await trashAssets(db.pool, [asset.id], false);
+    await registerAsset(db.pool, input("d"));
     await db.pool.query("update assets set purge_at = now() - interval '1 second' where id = $1", [asset.id]);
-    await expect(registerAsset(db.pool, input("c"))).rejects.toThrow(/being cleaned up/);
-    const row = await db.pool.query("select deleted_at from assets where id = $1", [asset.id]);
-    expect(row.rows[0].deleted_at).not.toBeNull();
+    expect(await purgeDueAsset(db.pool, asset.id)).toBeNull();
+    expect((await db.pool.query("select storage_ref from assets where id = $1", [asset.id])).rows[0].storage_ref).toBe(asset.storageRef);
   });
 });

@@ -93,14 +93,11 @@ export async function registerAsset(db: Db, a: RegisterInput): Promise<{ asset: 
        rights = jsonb_build_object('attestations', (assets.rights -> 'attestations') || (excluded.rights -> 'attestations')),
        deleted_at = null,
        purge_at = null
-     where assets.purge_at is null or assets.purge_at > now()
      returning *, (xmax = 0) as inserted`,
     [v.kind, cleanOriginalName(v.originalName), v.mime, v.bytes, v.width, v.height, v.durationS, v.sha256, v.storageRef, JSON.stringify(v.derivedRefs),
      v.tags, v.caption, v.source, JSON.stringify(v.rights), v.keep, v.createdBy],
   );
-  // No row back: the existing one is past its purge date, so it is being deleted and must not be revived (purgeDueAsset).
-  const row = rows[0];
-  if (!row) throw new Error("This file is being cleaned up. Try the upload again in a moment.");
+  const row = rows[0]!;
   return { asset: toAsset(row), duplicate: !row.inserted };
 }
 
@@ -123,7 +120,7 @@ export interface AssetFilter {
   trash?: boolean;
 }
 
-/** Newest first. `trash` lists deleted ones still inside their 7 days; otherwise only live ones. The name search escapes LIKE wildcards. */
+/** Newest first. `trash` lists deleted ones still inside their trash window; otherwise only live ones. The name search escapes LIKE wildcards. */
 export async function listAssets(db: Db, f: AssetFilter, limit = 200): Promise<Asset[]> {
   const { rows } = await db.query<Row>(
     `select * from assets
