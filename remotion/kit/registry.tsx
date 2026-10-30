@@ -4,11 +4,11 @@ import { Browser, type BrowserProps } from "./Browser";
 import { ChatThread, type ChatThreadProps } from "./ChatThread";
 import { PauseCard, type PauseCardProps } from "./PauseCard";
 import { StockClip, type StockClipProps } from "./StockClip";
-import { DrawnObjects, type DrawnObjectsProps } from "./DrawnObjects";
-import { Network, type NetworkProps } from "./Network";
 import { Story, type StoryProps } from "./Story";
 import { Terminal, type TerminalProps } from "./Terminal";
 import { theme } from "./theme";
+import { DrawnObjects, type DrawnObjectsProps } from "./DrawnObjects";
+import { Network, type NetworkProps } from "./Network";
 
 const terminal: TerminalProps = {
   lines: [{ text: "npm run build" }, { text: "build ok", prompt: ">" }],
@@ -44,24 +44,6 @@ const browser: BrowserProps = {
     { type: "image", src: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='300'><rect width='100%25' height='100%25' fill='%231e3a5f'/></svg>" },
   ],
   framesPerBlock: 30,
-const drawn: DrawnObjectsProps = {
-  objects: [
-    { object: "laptop", label: "dev", enter: "pop" },
-    { object: "server_rack", label: "prod", slot: "right", enter: "slide_up", emphasis: "pulse" },
-    { object: "jug", slot: "left" },
-    { object: "padlock", label: "TLS", emphasis: "wiggle" },
-const net: NetworkProps = {
-  nodes: [
-    { id: "me", type: "laptop", label: "Browser" },
-    { id: "dns", type: "resolver", label: "Resolver" },
-    { id: "root", type: "root", label: "Root" },
-    { id: "tld", type: "tld", label: ".com" },
-    { id: "web", type: "rack", label: "Server" },
-  links: [
-    { from: "me", to: "dns", packet: "A?" },
-    { from: "dns", to: "root", packet: ".com?" },
-    { from: "root", to: "tld" },
-    { from: "tld", to: "web", packet: "IP" },
 };
 // A 1x1 transparent-safe data URI keeps the smoke render offline; real jobs pass a staged asset path.
 const story: StoryProps = {
@@ -72,6 +54,29 @@ const story: StoryProps = {
 const pause: PauseCardProps = { question: "Which one is real?", options: ["Left", "Right", "Both"], answer: 1, revealAtFrame: 70 };
 const stock: StockClipProps = { src: story.image, media: "image", dim: 0.3, caption: "Stock footage example" };
 
+const drawn: DrawnObjectsProps = {
+  objects: [
+    { object: "laptop", label: "dev", enter: "pop" },
+    { object: "server_rack", label: "prod", slot: "right", enter: "slide_up", emphasis: "pulse" },
+    { object: "jug", slot: "left" },
+    { object: "padlock", label: "TLS", emphasis: "wiggle" },
+  ],
+};
+const net: NetworkProps = {
+  nodes: [
+    { id: "me", type: "laptop", label: "Browser" },
+    { id: "dns", type: "resolver", label: "Resolver" },
+    { id: "root", type: "root", label: "Root" },
+    { id: "tld", type: "tld", label: ".com" },
+    { id: "web", type: "rack", label: "Server" },
+  ],
+  links: [
+    { from: "me", to: "dns", packet: "A?" },
+    { from: "dns", to: "root", packet: ".com?" },
+    { from: "root", to: "tld" },
+    { from: "tld", to: "web", packet: "IP" },
+  ],
+};
 const common = { width: theme.width, height: theme.height, fps: theme.fps, durationInFrames: 120 };
 
 export const kitCompositions = [
@@ -79,11 +84,11 @@ export const kitCompositions = [
   { id: "kit-chat", component: ChatThread, defaultProps: chat },
   { id: "kit-chat-window", component: ChatThread, defaultProps: chatWindow },
   { id: "kit-browser", component: Browser, defaultProps: browser },
-  { id: "kit-drawn", component: DrawnObjects, defaultProps: drawn },
-  { id: "kit-network", component: Network, defaultProps: net },
   { id: "kit-story", component: Story, defaultProps: story },
   { id: "kit-stock", component: StockClip, defaultProps: stock },
   { id: "kit-pause", component: PauseCard, defaultProps: pause },
+  { id: "kit-drawn", component: DrawnObjects, defaultProps: drawn },
+  { id: "kit-network", component: Network, defaultProps: net },
 ] as const;
 
 export const KitRoot: React.FC = () => (
