@@ -40,6 +40,8 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
+    // A stray ~/package-lock.json made Turbopack watch the whole home folder (dev reloaded non-stop on any file change there).
+    root: process.cwd(),
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],
