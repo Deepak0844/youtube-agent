@@ -24,3 +24,30 @@ export function kenBurns(frame: number, total: number, k: KenBurns): { scale: nu
     y: k.panY * (2 * t - 1),
   };
 }
+
+export type AlgoStep = { at: number; type: "highlight" | "compare" | "swap" | "mark_done" | "pointer"; i: number; j?: number };
+
+/** Board state at `ms` after replaying every step with at <= ms. swap exchanges values; the last highlight/compare/swap stays lit until a newer one or a pointer move. */
+export function cellsAt(cells: readonly string[], steps: readonly AlgoStep[], ms: number) {
+  const values = [...cells];
+  let active: number[] = [];
+  let pointer: number | null = null;
+  const done: number[] = [];
+  for (const s of steps) {
+    if (s.at > ms) break;
+    if (s.type === "pointer") {
+      pointer = s.i;
+      active = [];
+    } else if (s.type === "mark_done") {
+      if (!done.includes(s.i)) done.push(s.i);
+    } else {
+      active = s.j === undefined ? [s.i] : [s.i, s.j];
+      if (s.type === "swap" && s.j !== undefined) {
+        const t = values[s.i]!;
+        values[s.i] = values[s.j]!;
+        values[s.j] = t;
+      }
+    }
+  }
+  return { values, active, pointer, done };
+}

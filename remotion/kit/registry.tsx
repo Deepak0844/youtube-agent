@@ -1,5 +1,6 @@
 import React from "react";
 import { Composition } from "remotion";
+import { AlgoCells, type AlgoCellsProps } from "./AlgoCells";
 import { ChatThread, type ChatThreadProps } from "./ChatThread";
 import { Story, type StoryProps } from "./Story";
 import { Terminal, type TerminalProps } from "./Terminal";
@@ -24,11 +25,23 @@ const story: StoryProps = {
   motion: { zoomFrom: 1, zoomTo: 1.2, panX: 0.03, panY: 0.02 },
 };
 
+const algo: AlgoCellsProps = {
+  title: "bubble sort",
+  cells: ["5", "2", "9", "1", "7", "3"],
+  steps: [
+    { at: 300, type: "compare", i: 0, j: 1 },
+    { at: 1000, type: "swap", i: 0, j: 1 },
+    { at: 1600, type: "pointer", i: 3 },
+    { at: 2400, type: "mark_done", i: 2 },
+  ],
+};
+
 const common = { width: theme.width, height: theme.height, fps: theme.fps, durationInFrames: 120 };
 
 export const kitCompositions = [
   { id: "kit-terminal", component: Terminal, defaultProps: terminal },
   { id: "kit-chat", component: ChatThread, defaultProps: chat },
+  { id: "kit-algo", component: AlgoCells, defaultProps: algo },
   { id: "kit-story", component: Story, defaultProps: story },
 ] as const;
 
