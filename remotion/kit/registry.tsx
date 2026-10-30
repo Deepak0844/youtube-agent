@@ -6,6 +6,8 @@ import { PauseCard, type PauseCardProps } from "./PauseCard";
 import { StockClip, type StockClipProps } from "./StockClip";
 import { DrawnObjects, type DrawnObjectsProps } from "./DrawnObjects";
 import { Network, type NetworkProps } from "./Network";
+import { MathSteps, type MathProps } from "./Math";
+import { Probability, type ProbabilityProps } from "./Probability";
 import { Story, type StoryProps } from "./Story";
 import { Terminal, type TerminalProps } from "./Terminal";
 import { theme } from "./theme";
@@ -62,6 +64,22 @@ const net: NetworkProps = {
     { from: "dns", to: "root", packet: ".com?" },
     { from: "root", to: "tld" },
     { from: "tld", to: "web", packet: "IP" },
+}
+
+}
+
+}
+
+const math: MathProps = {
+  title: "Solve for x",
+  steps: [{ text: "2x + 3 = 11" }, { text: "2x = 8", highlight: "8" }, { text: "x = 4", highlight: "4" }],
+  framesPerStep: 30,
+};
+const prob: ProbabilityProps = {
+  experiment: "coin",
+  trials: 100,
+  outcomes: [{ label: "Heads", count: 54, p: 0.5 }, { label: "Tails", count: 46, p: 0.5 }],
+  growFrames: 90,
 };
 // A 1x1 transparent-safe data URI keeps the smoke render offline; real jobs pass a staged asset path.
 const story: StoryProps = {
@@ -81,6 +99,8 @@ export const kitCompositions = [
   { id: "kit-browser", component: Browser, defaultProps: browser },
   { id: "kit-drawn", component: DrawnObjects, defaultProps: drawn },
   { id: "kit-network", component: Network, defaultProps: net },
+  { id: "kit-math", component: MathSteps, defaultProps: math },
+  { id: "kit-prob", component: Probability, defaultProps: prob },
   { id: "kit-story", component: Story, defaultProps: story },
   { id: "kit-stock", component: StockClip, defaultProps: stock },
   { id: "kit-pause", component: PauseCard, defaultProps: pause },

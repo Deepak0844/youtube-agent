@@ -30,3 +30,12 @@ export function windowOpacity(frame: number, framesPer: number, index: number, w
   const leaves = (index + windowSize) * framesPer;
   return 1 - clamp01((frame - leaves) / Math.max(1, fadeFrames));
 }
+
+/** Math steps shown at `frame`: one more every `framesPerStep`, the first at frame 0. */
+export const mathReveal = (frame: number, framesPerStep: number, total: number): number => visibleCount(frame, framesPerStep, total);
+
+/** Tally shown at `frame` for a final `count`, growing linearly over `growFrames` and rounded down. */
+export function tallyAt(frame: number, growFrames: number, count: number): number {
+  if (growFrames <= 0) return count;
+  return Math.min(count, Math.max(0, Math.floor((count * frame) / growFrames)));
+}
