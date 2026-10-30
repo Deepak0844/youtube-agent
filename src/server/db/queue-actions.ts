@@ -7,6 +7,8 @@ import { approveGate, liveGateHash, readSnapshot, sendBack } from "@/server/db/a
 import { recordAudit } from "@/server/db/audit";
 import { resetBreaker } from "@/server/db/breakers";
 import { getDecision, resolveDecision } from "@/server/db/decision";
+import { checkParkedJob } from "@/server/db/job-check";
+import type { JobCheckers } from "@/server/providers/media-types";
 import { DRY_RUN_NOTES } from "@/lib/dry-run";
 import { advanceVideo, cancelVideo, createVideo, readNextAction, type EnqueueOnly } from "@/server/db/pipeline";
 import { approvePublish, requeueUpload } from "@/server/db/publish";
@@ -141,12 +143,16 @@ export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: Ga
   return { ok: true, message: "Approved." };
 }
 
-export async function decideParkedStage(db: pg.Pool, q: Queues, actor: GateActor, i: DecisionInput): Promise<ActionResult> {
+export async function decideParkedStage(db: pg.Pool, q: Queues, actor: GateActor, i: DecisionInput, checkers: JobCheckers = {}): Promise<ActionResult> {
   if (actorProblem(actor)) return refuse(ACTOR_REASON);
-  const detail = await getDecision(db, i.stageRunId);
+  const detail = await getDecision(db, i.stageRunId, new Set(Object.keys(checkers)));
   if (!detail) return refuse(NOT_WAITING);
   if (detail.maxCostMicroUsd !== i.seenMaxMicroUsd || detail.reason !== i.seenReason) return refuse(STALE_MESSAGE);
   if (!detail.choices.includes(i.choice)) return refuse("That choice is not available for this step.");
+  if (i.choice === "check_the_job") {
+    const c = await checkParkedJob(db, checkers, { stageRunId: i.stageRunId, actor });
+    return c.ok ? { ok: c.outcome === "done" || c.outcome === "already_done" || c.outcome === "running", message: c.message } : refuse(say(c.message));
+  }
   // Saying "nothing was charged" (or "count it as spent") releases money: it needs the owner's explicit confirmation.
   if ((i.choice === "release_and_rerun" || i.choice === "keep_spent_and_rerun") && !i.confirmed) return refuse("Tick the box to confirm you checked the provider's billing page.");
   const r = await resolveDecision(db, q.stage, { stageRunId: i.stageRunId, choice: i.choice, actor }, approvalReaders);

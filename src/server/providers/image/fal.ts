@@ -3,6 +3,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import type { Db } from "@/server/db/stages";
 import { runAsyncMedia, stepOfKey } from "../async-media";
 import type { Aspect, ImageProvider } from "../media";
+import type { JobChecker } from "../media-types";
 import type { SafeFetch } from "../voice/eleven-types";
 import { postJson, readCapped } from "../voice/elevenlabs";
 import { checkImage, refsOf, scopesOf, readKey, saveImage } from "./index";
@@ -41,6 +42,65 @@ export function falCdnUrl(raw: unknown): string {
   return u.href;
 }
 
+/** A fal answer that was not 2xx; `status` lets a read-only check tell "no such job" (404) from "fal is having trouble". */
+class FalStatusError extends Error {
+  constructor(readonly status: number) {
+    super(`fal answered ${status}; the outcome is unknown.`);
+  }
+}
+
+// Every call after the submit is a plain Error on failure: the job exists and may bill.
+async function get(f: SafeFetch, url: string, headers: Record<string, string>, signal: AbortSignal): Promise<Buffer> {
+  let res: Response;
+  try {
+    res = await f(url, { method: "GET", headers, signal }, { timeoutMs: 120_000, maxRedirects: 0 });
+  } catch {
+    if (signal.aborted) throw signal.reason;
+    throw new Error("fal request failed after the job was submitted.");
+  }
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => undefined);
+    throw new FalStatusError(res.status);
+  }
+  return readCapped(res, "fal");
+}
+
+/**
+ * Read-only look at a job we already submitted (the owner's "check the job"): status, then result, then the file. Never submits.
+ * Only a clear fal answer is `failed` (404 = fal has no such job, or a status that carries an error); every other surprise is
+ * `unknown`, which keeps the money held. The file is saved content-addressed, so a repeat re-writes the same bytes.
+ */
+export function createFalJobChecker(deps: Pick<FalImageDeps, "fetch" | "fetchCdn" | "getKey" | "root">): JobChecker {
+  const [model, app] = Object.entries(APPS)[0]!; // the one supported model; the job row does not store which model it was
+  return {
+    async check(job) {
+      if (!REQUEST_ID.test(job.providerJobId)) return { kind: "unknown" };
+      const signal = AbortSignal.timeout(150_000);
+      try {
+        const auth = { authorization: `Key ${await readKey(deps.getKey, "fal")}` };
+        const base = `${HOST}/${app}/requests/${job.providerJobId}`;
+        let st: { status?: unknown; error?: unknown };
+        try {
+          st = JSON.parse((await get(deps.fetch, `${base}/status`, auth, signal)).toString("utf8"));
+        } catch (err) {
+          if (err instanceof FalStatusError && err.status === 404) return { kind: "failed", reason: "fal has no record of this job." };
+          throw err;
+        }
+        if (st.error) return { kind: "failed", reason: "fal reports that the job failed." };
+        if (st.status === "IN_QUEUE" || st.status === "IN_PROGRESS") return { kind: "running" };
+        if (st.status !== "COMPLETED") return { kind: "unknown" };
+        const out = JSON.parse((await get(deps.fetch, base, auth, signal)).toString("utf8")) as { images?: Array<{ url?: unknown }>; has_nsfw_concepts?: unknown[]; prompt?: unknown };
+        if (out.has_nsfw_concepts?.some((x) => x === true)) return { kind: "unknown" }; // replaced image, still billed: the owner decides
+        const bytes = await get(deps.fetchCdn, falCdnUrl(out.images?.[0]?.url), {}, signal); // no key to the CDN
+        const prompt = typeof out.prompt === "string" ? out.prompt.slice(0, 2000) : "";
+        return { kind: "done", artifact: await saveImage(bytes, { provider: "fal_image", model, prompt, refs: [], root: deps.root, priceMicroUsd: job.quoteMicroUsd }) };
+      } catch {
+        return { kind: "unknown" };
+      }
+    },
+  };
+}
+
 export function createFalImage(deps: FalImageDeps): ImageProvider {
   const capability: ImageProvider["capability"] = { id: "fal_image", refImages: false, seed: true, aspects: ["9:16", "16:9", "1:1"], maxRefs: 0 };
   const check = (a: { prompt?: string; aspect: string; refs?: string[]; seed?: number; model: string }) => {
@@ -51,22 +111,6 @@ export function createFalImage(deps: FalImageDeps): ImageProvider {
     check({ ...a, refs: refsOf(a.refs) });
     return priceQuote(deps.price as PriceRule, 1);
   };
-
-  // Every call after the submit is a plain Error on failure: the job exists and may bill.
-  async function get(f: SafeFetch, url: string, headers: Record<string, string>, signal: AbortSignal): Promise<Buffer> {
-    let res: Response;
-    try {
-      res = await f(url, { method: "GET", headers, signal }, { timeoutMs: 120_000, maxRedirects: 0 });
-    } catch {
-      if (signal.aborted) throw signal.reason;
-      throw new Error("fal request failed after the job was submitted.");
-    }
-    if (!res.ok) {
-      await res.body?.cancel().catch(() => undefined);
-      throw new Error(`fal answered ${res.status}; the outcome is unknown.`);
-    }
-    return readCapped(res, "fal");
-  }
 
   return {
     capability,

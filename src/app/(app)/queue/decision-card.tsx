@@ -7,6 +7,7 @@ import { ageLabel } from "./gate-card";
 import { DecisionForm } from "./forms";
 
 const CHOICE: Record<string, { label: string; hint: string; variant: "primary" | "secondary" | "destructive"; check: boolean }> = {
+  check_the_job: { label: "Ask the provider about this job", hint: "Asks the provider whether the job we already sent has finished. Nothing new is bought and nothing is released. If it finished, the result is saved and counted as paid.", variant: "primary", check: false },
   release_and_rerun: { label: "Nothing was charged: run it again", hint: "Choose this only after you checked the provider's billing page and saw no charge. The held money is released and the step runs again with new call keys.", variant: "primary", check: true },
   keep_spent_and_rerun: { label: "It was charged: count it and run again", hint: "The held amount is counted as spent, then the step runs again.", variant: "secondary", check: true },
   use_result: { label: "Use the result", hint: "Every paid call finished. Carry on with what was paid for, without paying again.", variant: "primary", check: false },

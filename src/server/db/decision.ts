@@ -67,16 +67,27 @@ async function loadIntents(c: pg.Pool | pg.PoolClient, stageRunId: string, lock:
 const toView = (rows: IntentRow[]): DecisionIntent[] => rows.map((r) => ({ status: r.status, reservedMicroUsd: Number(r.reserved) }));
 
 /** What the owner sees for a parked stage (plain words, dollar figure, the choices). null when the stage is not parked. Read only. */
-export async function getDecision(db: pg.Pool, stageRunId: string): Promise<DecisionDetail | null> {
+export async function getDecision(db: pg.Pool, stageRunId: string, checkable: ReadonlySet<string> = new Set()): Promise<DecisionDetail | null> {
   if (!UUID_RE.test(stageRunId)) return null;
   const r = await db.query<StageHead>("select id, video_id, name, status, input_hash, fence, attempt_seq, cancel_requested, result from stage_runs where id = $1", [stageRunId]);
   const s = r.rows[0];
   if (!s || s.status !== "needs_decision") return null;
-  const view = describeDecision({ name: s.name, status: s.status, result: s.result }, toView(await loadIntents(db, s.id, false)));
+  const jobs = checkable.size === 0 ? 0 : await countCheckableJobs(db, s.id, [...checkable]);
+  const view = describeDecision({ name: s.name, status: s.status, result: s.result }, toView(await loadIntents(db, s.id, false)), { checkableJobs: jobs });
   return { ...view, stageRunId: s.id, videoId: s.video_id, stage: s.name };
 }
 
-async function sessionIsLive(c: pg.PoolClient, sessionId: string): Promise<boolean> {
+/** Stored provider jobs of this stage that still hold an open paid call and whose provider can be asked. */
+async function countCheckableJobs(c: pg.Pool | pg.PoolClient, stageRunId: string, providers: string[]): Promise<number> {
+  const r = await c.query<{ n: string }>(
+    `select count(*) as n from media_jobs j join spend_intents i on i.stage_run_id = j.stage_run_id and i.step_index = j.step and i.status in ('pending','unknown')
+      where j.stage_run_id = $1 and j.provider_job_id is not null and j.state in ('submitted','unknown') and j.provider = any($2::text[])`,
+    [stageRunId, providers],
+  );
+  return Number(r.rows[0]!.n);
+}
+
+export async function sessionIsLive(c: pg.PoolClient, sessionId: string): Promise<boolean> {
   const r = await c.query("select 1 from sessions where id = $1 and revoked_at is null and expires_at > clock_timestamp() and absolute_expires_at > clock_timestamp()", [sessionId]);
   return r.rowCount === 1;
 }

@@ -17,3 +17,12 @@ export type MediaArtifact = {
     attribution?: string;
   };
 };
+
+/** What a read-only look at a stored provider job found. `failed` = the provider clearly says the job failed or does not know it. Anything unclear is `unknown`. */
+export type JobOutcome = { kind: "done"; artifact: MediaArtifact } | { kind: "running" } | { kind: "failed"; reason: string } | { kind: "unknown" };
+
+/** Asks a provider about a job it already holds. Read only: never submits, never reserves. `done` has already stored the file (content-addressed). */
+export interface JobChecker {
+  check(job: { providerJobId: string; quoteMicroUsd: number }): Promise<JobOutcome>;
+}
+export type JobCheckers = Readonly<Record<string, JobChecker>>;

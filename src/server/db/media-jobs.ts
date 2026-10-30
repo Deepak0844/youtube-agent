@@ -74,3 +74,13 @@ export async function markJobFailedKnown(db: Db, id: string): Promise<boolean> {
   );
   return r.rowCount === 1;
 }
+
+/** The owner asked the provider and it finished: records the result. Unlike finishJob it also accepts a job parked as `unknown`. False = already settled. */
+export async function settleCheckedJob(db: Db, id: string, r: { actual: number; artifact: MediaArtifact }): Promise<boolean> {
+  const res = await db.query(
+    `update media_jobs set state = 'done', actual_micro_usd = $2, artifact = $3, updated_at = now()
+     where id = $1 and state in ('submitted', 'unknown') and provider_job_id is not null`,
+    [id, r.actual, JSON.stringify(r.artifact)],
+  );
+  return res.rowCount === 1;
+}

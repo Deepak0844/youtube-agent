@@ -60,7 +60,21 @@ describe("describeDecision", () => {
   });
 
   it("the_choice_list_is_closed_and_the_audit_event_exists", () => {
-    expect([...DECISION_CHOICES].sort()).toEqual(["cancel_video", "keep_spent_and_rerun", "raise_cap_and_rerun", "release_and_rerun", "use_result"]);
+    expect([...DECISION_CHOICES].sort()).toEqual(["cancel_video", "check_the_job", "keep_spent_and_rerun", "raise_cap_and_rerun", "release_and_rerun", "use_result"]);
     expect(isAuditEvent("stage.decision")).toBe(true);
+    expect(isAuditEvent("stage.job_checked")).toBe(true);
+  });
+});
+
+describe("check_the_job choice", () => {
+  it("is_offered_first_only_when_an_open_call_has_a_stored_provider_job", () => {
+    const withJob = describeDecision(stage(), [i("unknown", 400_000)], { checkableJobs: 1 });
+    expect(withJob.choices).toEqual(["check_the_job", "release_and_rerun", "keep_spent_and_rerun", "cancel_video"]);
+    expect(withJob.summary).toMatch(/ask the provider/i);
+    expect(describeDecision(stage(), [i("unknown", 400_000)]).choices).not.toContain("check_the_job");
+    expect(describeDecision(stage(), [i("done", 1)], { checkableJobs: 1 }).choices).not.toContain("check_the_job");
+  });
+  it("is_a_known_choice", () => {
+    expect(DECISION_CHOICES).toContain("check_the_job");
   });
 });
