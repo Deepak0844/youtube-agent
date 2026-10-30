@@ -11,7 +11,7 @@ import { Pill } from "@/ui/primitives/pill";
 import { restoreAction, tagAction, trashAction } from "./actions";
 
 /** The cards, with pick boxes for bulk tag and delete. In the trash view each card has Restore instead. */
-export function AssetGrid({ cards, trash }: { cards: AssetCard[]; trash: boolean }) {
+export function AssetGrid({ cards, trash, trashDays }: { cards: AssetCard[]; trash: boolean; trashDays: number }) {
   const [picked, setPicked] = useState<string[]>([]);
   const [tag, setTag] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -65,6 +65,7 @@ export function AssetGrid({ cards, trash }: { cards: AssetCard[]; trash: boolean
                 <Pill key={t}>{t}</Pill>
               ))}
             </div>
+            {!trash && c.deletesOn ? <p className="text-small text-muted">Deletes on {c.deletesOn.slice(0, 10)}</p> : null}
             {trash ? (
               <>
                 <p className="text-small text-muted">Removed for good on {c.purgeAt?.slice(0, 10)}</p>
@@ -82,7 +83,7 @@ export function AssetGrid({ cards, trash }: { cards: AssetCard[]; trash: boolean
           <AlertDialogTitle>Move {picked.length === 1 ? "this file" : `${picked.length} files`} to the trash?</AlertDialogTitle>
           <AlertDialogDescription>
             Which videos use these files is not tracked yet. {anyKeep ? "Some of these are marked Keep, and Keep files are normally never deleted. " : ""}
-            They stay in the trash for 7 days and can be restored until then.
+            They stay in the trash for {trashDays} days and can be restored until then.
           </AlertDialogDescription>
           <div className="flex flex-wrap justify-end gap-2">
             <AlertDialogCancel>Not now</AlertDialogCancel>

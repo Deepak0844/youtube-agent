@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { checkRights, cleanOriginalName, refusalMessage, rightsSchema, type Rights, type RightsRefusal } from "@/server/core/asset-rules";
+import { loadAssetDays } from "./asset-settings";
 import type { Db } from "./stages";
 
 // SQL for the assets table (migration 0028). Dedupe is one INSERT ... ON CONFLICT (sha256) DO UPDATE statement, so two
@@ -92,11 +93,14 @@ export async function registerAsset(db: Db, a: RegisterInput): Promise<{ asset: 
        rights = jsonb_build_object('attestations', (assets.rights -> 'attestations') || (excluded.rights -> 'attestations')),
        deleted_at = null,
        purge_at = null
+     where assets.purge_at is null or assets.purge_at > now()
      returning *, (xmax = 0) as inserted`,
     [v.kind, cleanOriginalName(v.originalName), v.mime, v.bytes, v.width, v.height, v.durationS, v.sha256, v.storageRef, JSON.stringify(v.derivedRefs),
      v.tags, v.caption, v.source, JSON.stringify(v.rights), v.keep, v.createdBy],
   );
-  const row = rows[0]!;
+  // No row back: the existing one is past its purge date, so it is being deleted and must not be revived (purgeDueAsset).
+  const row = rows[0];
+  if (!row) throw new Error("This file is being cleaned up. Try the upload again in a moment.");
   return { asset: toAsset(row), duplicate: !row.inserted };
 }
 
@@ -118,8 +122,6 @@ export interface AssetFilter {
   q?: string;
   trash?: boolean;
 }
-
-const TRASH_DAYS = 7;
 
 /** Newest first. `trash` lists deleted ones still inside their 7 days; otherwise only live ones. The name search escapes LIKE wildcards. */
 export async function listAssets(db: Db, f: AssetFilter, limit = 200): Promise<Asset[]> {
@@ -153,12 +155,13 @@ export async function tagAssets(db: Db, ids: string[], tags: string[]): Promise<
   return rows.map((r) => r.id);
 }
 
-/** Moves to the trash for 7 days. A Keep asset is left alone unless `confirmKeep`; the ones held back are returned so the page can ask. */
+/** Moves to the trash for `assets.trash_days` (7 by default). A Keep asset is left alone unless `confirmKeep`; the ones held back are returned so the page can ask. */
 export async function trashAssets(db: Db, ids: string[], confirmKeep: boolean): Promise<{ trashed: string[]; keptBlocked: string[] }> {
+  const { trashDays } = await loadAssetDays(db);
   const { rows } = await db.query<{ id: string; keep: boolean }>(
     `update assets set deleted_at = now(), purge_at = now() + make_interval(days => $3)
       where id = any($1::uuid[]) and deleted_at is null and ($2 or not keep) returning id, keep`,
-    [ids, confirmKeep, TRASH_DAYS],
+    [ids, confirmKeep, trashDays],
   );
   const done = new Set(rows.map((r) => r.id));
   const held = await db.query<{ id: string }>("select id from assets where id = any($1::uuid[]) and keep and deleted_at is null", [ids.filter((i) => !done.has(i))]);
@@ -169,4 +172,16 @@ export async function trashAssets(db: Db, ids: string[], confirmKeep: boolean): 
 export async function restoreAsset(db: Db, id: string): Promise<boolean> {
   const r = await db.query("update assets set deleted_at = null, purge_at = null where id = $1 and deleted_at is not null and purge_at > now()", [id]);
   return (r.rowCount ?? 0) > 0;
+}
+
+/**
+ * For the cleanup job (Phase 5). One statement locks the row and re-checks that it is still in the trash and past its
+ * purge date, so a duplicate upload that revived it first wins and nothing is deleted. Returns the files to remove, or null.
+ */
+export async function purgeDueAsset(db: Db, id: string): Promise<{ storageRef: string; derivedRefs: Record<string, string> } | null> {
+  const { rows } = await db.query<{ storage_ref: string; derived_refs: Record<string, string> }>(
+    "delete from assets where id = $1 and deleted_at is not null and purge_at <= now() returning storage_ref, derived_refs",
+    [id],
+  );
+  return rows[0] ? { storageRef: rows[0].storage_ref, derivedRefs: rows[0].derived_refs } : null;
 }

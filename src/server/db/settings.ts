@@ -51,7 +51,7 @@ async function getSettingForUpdate(client: pg.PoolClient, key: string): Promise<
   return rows.length > 0 ? rows[0]!.value : (SETTINGS as Record<string, SettingDef>)[key]!.default;
 }
 
-/** The only keys setSessionSettings may write: what /settings/system saves. Other safety keys (policies) need their own reviewed path. */
+/** The only keys setSessionSettings may write: what /settings/system and /settings/assets save. Other safety keys (policies) need their own reviewed path. */
 export const SESSION_BATCH_KEYS: readonly string[] = [
   "network.local_services",
   "jobs.concurrent_renders",
@@ -59,6 +59,14 @@ export const SESSION_BATCH_KEYS: readonly string[] = [
   "storage.warn_gb",
   "video.max_long_minutes",
   "tracks.enabled",
+  "assets.max_image_bytes",
+  "assets.max_audio_bytes",
+  "assets.max_pixels",
+  "assets.max_batch_files",
+  "assets.total_bytes_cap",
+  "assets.retention_days",
+  "assets.unused_days",
+  "assets.trash_days",
 ];
 
 export interface SessionWrite {

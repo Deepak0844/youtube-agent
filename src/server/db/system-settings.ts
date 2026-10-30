@@ -73,6 +73,45 @@ export async function saveSystemSettings(db: pg.Pool, input: unknown): Promise<S
   }
 }
 
+const MB = 1024 ** 2;
+const GB = 1024 ** 3;
+
+// /settings/assets: same rules as above. The page shows sizes in MB / GB / megapixels; they are stored as bytes and pixels.
+
+export const assetFormSchema = z
+  .object({
+    retention_days: int(60),
+    unused_days: int(365),
+    trash_days: int(60),
+    max_image_mb: int(1024),
+    max_audio_mb: int(4096),
+    max_megapixels: int(500),
+    max_batch_files: int(1000),
+    total_gb: int(1000),
+  })
+  .strict();
+
+export async function saveAssetSettings(db: pg.Pool, input: unknown): Promise<SaveResult> {
+  const p = assetFormSchema.safeParse(input);
+  if (!p.success) return { ok: false, error: "Check the numbers: whole numbers only, within the allowed range." };
+  const v = p.data;
+  try {
+    const changed = await writeAudited(db, [
+      { key: "assets.retention_days", value: v.retention_days },
+      { key: "assets.unused_days", value: v.unused_days },
+      { key: "assets.trash_days", value: v.trash_days },
+      { key: "assets.max_image_bytes", value: v.max_image_mb * MB },
+      { key: "assets.max_audio_bytes", value: v.max_audio_mb * MB },
+      { key: "assets.max_pixels", value: v.max_megapixels * 1_000_000 },
+      { key: "assets.max_batch_files", value: v.max_batch_files },
+      { key: "assets.total_bytes_cap", value: v.total_gb * GB },
+    ]);
+    return { ok: true, changed };
+  } catch {
+    return { ok: false, error: GENERIC };
+  }
+}
+
 type Env = Record<string, string | undefined>;
 
 /** Saves the allow-list from textarea text. All-or-nothing: one bad line saves nothing. */

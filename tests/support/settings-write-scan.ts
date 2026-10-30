@@ -24,6 +24,8 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
   // Reads network.local_services with getSetting to derive a model endpoint kind and uses the Actor type; never writes.
   "src/server/db/llm-models.ts": ["getSetting", "Actor"],
   "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],
+  // Reads the asset day counts and limits with getSetting; its writer goes through system-settings (writeAudited).
+  "src/server/db/asset-settings.ts": ["getSetting"],
   // Reads policy.require_evidence to decide whether the route has an evidence gate; never writes.
   "src/server/db/pipeline.ts": ["getSetting"],
   "src/server/db/notify.ts": ["getSetting"],
@@ -36,8 +38,9 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
 /** The only file(s) that may import the system-settings writers: the guarded server actions (requireOwner first). */
 export const SESSION_WRITER_IMPORT_ALLOW: ImportAllow = {
   "src/app/(app)/settings/system/actions.ts": ["saveLocalServices", "saveSystemSettings"],
+  "src/app/(app)/settings/assets/actions.ts": ["saveAssetSettings"],
 };
-export const SESSION_WRITERS = ["saveLocalServices", "saveSystemSettings"] as const;
+export const SESSION_WRITERS = ["saveLocalServices", "saveSystemSettings", "saveAssetSettings"] as const;
 const GUARDED: readonly string[] = ["setSetting", "setSessionSettings", ...SESSION_WRITERS];
 
 const SETTINGS_MODULE = "src/server/db/settings";

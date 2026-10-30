@@ -35,6 +35,10 @@ export const SETTINGS = {
   "assets.max_pixels": { schema: posInt, default: 50_000_000, safety: true, label: "Max image size (pixels)" },
   "assets.max_batch_files": { schema: posInt, default: 100, safety: true, label: "Max files per batch" },
   "assets.total_bytes_cap": { schema: posInt, default: 5_368_709_120, safety: true, label: "Total uploaded bytes cap" },
+  // Auto-delete of uploads (Doc 13 4). Safety: they decide when files are removed.
+  "assets.retention_days": { schema: posInt.max(60), default: 7, safety: true, label: "Days to keep a finished video's uploads" },
+  "assets.unused_days": { schema: posInt.max(365), default: 30, safety: true, label: "Days to keep an upload no video uses" },
+  "assets.trash_days": { schema: posInt.max(60), default: 7, safety: true, label: "Days a deleted file stays in the trash" },
   "video.max_long_minutes": { schema: posInt, default: 15, safety: false, label: "Max long video (minutes)" },
   // Hidden in the UI until their phases ship.
   "tracks.enabled": {
