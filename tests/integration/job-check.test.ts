@@ -9,6 +9,7 @@ import type { StageRunnerDeps } from "@/server/core/stage-runner";
 import { getDecision, resolveDecision } from "@/server/db/decision";
 import { checkParkedJob } from "@/server/db/job-check";
 import { advanceVideo } from "@/server/db/pipeline";
+import { loadQueue } from "@/server/db/queue-data";
 import { reconcile } from "@/server/db/reconciler";
 import { getBudget } from "@/server/db/spend";
 import { runStage } from "@/server/db/stage-runner-adapter";
@@ -78,6 +79,16 @@ const job = async (id: string) => (await db.pool.query("select state, artifact f
 const budget = async () => (await getBudget(db.pool, "g"))!;
 const audits = async () => (await db.ownerPool.query("select detail from audit_log where event = 'stage.job_checked' order by id")).rows.map((r) => r.detail);
 const stageCount = async (videoId: string) => Number((await db.pool.query("select count(*) from stage_runs where video_id = $1 and name = 'draft'", [videoId])).rows[0].count);
+
+describe("queue page data", () => {
+  it("loadQueue offers check_the_job only when a checker covers the parked job", async () => {
+    await park();
+    const choices = async (s?: Set<string>) => ((await loadQueue(db.pool, s)).items[0] as unknown as { decision: { choices: string[] } }).decision.choices;
+    expect(await choices(new Set(["fal_image"]))).toContain("check_the_job");
+    expect(await choices()).not.toContain("check_the_job");
+    expect(await choices(new Set(["other"]))).not.toContain("check_the_job");
+  });
+});
 
 describe("check the job", () => {
   it("done_settles_the_same_reservation_with_the_stored_result_and_offers_use_result", async () => {

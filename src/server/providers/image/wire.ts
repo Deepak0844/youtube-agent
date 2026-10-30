@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import type pg from "pg";
 import { KEY_SLOT } from "@/server/core/media-catalog";
 import { KnownFailure } from "@/server/core/paid-call";
@@ -19,7 +19,7 @@ import { createOpenAIImage } from "./openai";
 type Sf = typeof safeFetch;
 
 /** Hosted API calls: fixed https hosts, typed mode with no local services; the adapter's per-call options (no redirects, timeout) are forwarded. */
-export const hostedApiFetch = (sf: Sf = safeFetch): SafeFetch => (url, init, opts) => sf(url, init, { mode: "typed", localServices: [], ...opts });
+export const hostedApiFetch = (sf: Sf = safeFetch): SafeFetch => (url, init, opts) => sf(url, init, { ...opts, mode: "typed", localServices: [], maxRedirects: 0 });
 
 /**
  * The fal file host: indirect mode (public addresses only), https and *.fal.media only, and the key is never sent. The adapter
@@ -27,10 +27,23 @@ export const hostedApiFetch = (sf: Sf = safeFetch): SafeFetch => (url, init, opt
  */
 export const falCdnFetch = (sf: Sf = safeFetch): SafeFetch => async (url, init, opts) => {
   const checked = falCdnUrl(url);
-  const headers = new Headers(init.headers);
-  headers.delete("authorization");
-  headers.delete("x-goog-api-key");
-  return sf(checked, { ...init, headers }, { mode: "indirect", ...opts });
+  return sf(checked, { ...init, headers: undefined }, { ...opts, mode: "indirect", maxRedirects: 0 }); // no headers at all: nothing secret can reach the file host
+};
+
+const MAX_REF_BYTES = 10 * 1024 * 1024;
+
+/** An asset's file bytes for a reference image: the path must stay inside the storage root and the size is checked before reading. */
+export const readAssetRef = (db: pg.Pool, root: string) => async (assetId: string): Promise<Buffer> => {
+  const a = await getAsset(db, assetId);
+  if (!a) throw new KnownFailure("A reference image no longer exists.");
+  let file: string;
+  try {
+    file = await safeJoin(root, a.storageRef);
+  } catch {
+    throw new KnownFailure("A reference image could not be read.");
+  }
+  if ((await stat(file)).size > MAX_REF_BYTES) throw new KnownFailure("A reference image is too big.");
+  return readFile(file);
 };
 
 const PICK = "Pick an image provider in Settings → Providers";
@@ -55,12 +68,7 @@ export function createImageFor(db: pg.Pool, loader: () => Keyring, root: string 
     const getKey = keyReader(db, loader, id);
     if (id === "openai_image") return createOpenAIImage({ fetch, getKey, price, root });
     if (id === "fal_image") return createFalImage({ fetch, fetchCdn: falCdnFetch(sf), db, getKey, price, root });
-    const readRef = async (assetId: string): Promise<Buffer> => {
-      const a = await getAsset(db, assetId);
-      if (!a) throw new KnownFailure("A reference image no longer exists.");
-      return readFile(await safeJoin(root, a.storageRef));
-    };
-    return createGeminiImage({ fetch, getKey, price, root, readRef });
+    return createGeminiImage({ fetch, getKey, price, root, readRef: readAssetRef(db, root) });
   };
 }
 
