@@ -214,8 +214,11 @@ describe("voice stage", () => {
     const port = (srv.address() as { port: number }).port;
     // the real safeFetch, allowed to reach this one local server; the per-call options come through makeHostedFetch
     const f = makeHostedFetch((u, i, o) => safeFetch(u, i, { ...o, mode: "typed", localServices: [`127.0.0.1:${port}`] }));
-    await expect(f(`http://127.0.0.1:${port}/x`, { method: "POST", body: "{}" }, { timeoutMs: 5000, maxRedirects: 0 })).rejects.toThrow();
-    srv.close();
+    try {
+      await expect(f(`http://127.0.0.1:${port}/x`, { method: "POST", body: "{}" }, { timeoutMs: 5000, maxRedirects: 0 })).rejects.toThrow();
+    } finally {
+      srv.close();
+    }
     expect(hits).toBe(1); // a followed 307 would have re-sent the paid POST
   });
 
@@ -309,5 +312,31 @@ describe("video gate and approximate captions", () => {
     const s = { captionsId: seen!.versions.captions?.id, videoId: seen!.versions.video?.id };
     await Promise.all([tickCaptions(db.pool, v.id, SESSION, true, s), tickCaptions(db.pool, v.id, SESSION, true, s)]);
     expect(Number((await db.pool.query("select count(*) n from video_content where video_id = $1 and kind = 'captions'", [v.id])).rows[0].n)).toBe(2); // the estimate and ONE tick
+  });
+
+  it("a_video_version_landing_after_the_tick_commit_is_not_approved_unseen", async () => {
+    const v = await ready();
+    const seen = await liveGateHash(db.pool, v.id, "video");
+    // A pool whose connections add a new video version right after the tick's transaction commits.
+    const racing = new Proxy(db.pool, {
+      get(t, k) {
+        if (k !== "connect") return Reflect.get(t, k).bind ? (Reflect.get(t, k) as (...a: unknown[]) => unknown).bind(t) : Reflect.get(t, k);
+        return async () => {
+          const c = await t.connect();
+          return new Proxy(c, {
+            get(ct, ck) {
+              if (ck !== "query") return typeof Reflect.get(ct, ck) === "function" ? (Reflect.get(ct, ck) as (...a: unknown[]) => unknown).bind(ct) : Reflect.get(ct, ck);
+              return async (...a: unknown[]) => {
+                const r = await (ct.query as (...x: unknown[]) => Promise<unknown>)(...a);
+                if (a[0] === "commit") await addContent(db.pool, v.id, "video", { filePath: "late.mp4", sha256: "c".repeat(64) });
+                return r;
+              };
+            },
+          });
+        };
+      },
+    });
+    const t = await tickCaptions(racing as never, v.id, SESSION, true, { captionsId: seen!.versions.captions?.id, videoId: seen!.versions.video?.id });
+    expect(t.ok).toBe(false);
   });
 });

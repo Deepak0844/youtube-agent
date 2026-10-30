@@ -53,7 +53,7 @@ export async function tickCaptions(
   videoId: string,
   actor: GateActor,
   checked: boolean,
-  seen: { captionsId?: string; videoId?: string } = {},
+  seen: { captionsId: string | undefined; videoId: string | undefined },
 ): Promise<{ ok: true; hash?: string } | { ok: false; message: string }> {
   if (actorProblem(actor)) return { ok: false, message: ACTOR_REASON };
   const snap = await readSnapshot(db, videoId, "video");
@@ -61,6 +61,7 @@ export async function tickCaptions(
   if (!checked) return { ok: false, message: "Tick \"I checked the captions\" first. The captions are approximate: listen and check." };
   // Under the same per-video, per-kind lock every version insert takes, and re-read inside it: two clicks at once add ONE tick, and
   // only the captions and video the owner SAW can be ticked (a newer version landing in between is refused as changed).
+  let expectCaptions: string | undefined;
   const client = await db.connect();
   try {
     await client.query("begin");
@@ -71,23 +72,28 @@ export async function tickCaptions(
       await client.query("rollback");
       return { ok: false, message: STALE_MESSAGE };
     }
+    let captionsAfter = cur.rows[0]?.id;
     if (cur.rows[0] && captionsNeedTick(cur.rows[0].body)) {
       const body = { ...cur.rows[0].body, checked_by_owner: true };
-      await client.query(
-        `insert into video_content (video_id, kind, version, sha256, body) values ($1, 'captions', (select coalesce(max(version), 0) + 1 from video_content where video_id = $1 and kind = 'captions'), $2, $3)`,
+      const ins = await client.query<{ id: string }>(
+        `insert into video_content (video_id, kind, version, sha256, body) values ($1, 'captions', (select coalesce(max(version), 0) + 1 from video_content where video_id = $1 and kind = 'captions'), $2, $3) returning id`,
         [videoId, sha256Hex(canonicalJson(body)), JSON.stringify(body)],
       );
+      captionsAfter = ins.rows[0]!.id;
       await recordAudit(client, "captions.checked", { videoId, sessionId: actor.sessionId });
     }
     await client.query("commit");
+    expectCaptions = captionsAfter;
   } catch (e) {
     await client.query("rollback").catch(() => undefined);
     throw e;
   } finally {
     client.release();
   }
+  // The hash is read after the commit, so it only counts if it covers exactly the video the owner saw and the tick row just written.
   const fresh = await liveGateHash(db, videoId, "video");
-  return fresh ? { ok: true, hash: fresh.hash } : { ok: false, message: STALE_MESSAGE };
+  if (!fresh || fresh.versions.video?.id !== seen.videoId || fresh.versions.captions?.id !== expectCaptions) return { ok: false, message: STALE_MESSAGE };
+  return { ok: true, hash: fresh.hash };
 }
 
 export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: GateInput, kind: "approve" | "send_back", opts: { root?: string } = {}): Promise<ActionResult> {

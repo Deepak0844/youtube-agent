@@ -70,8 +70,8 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
       }
       ctx.signal.throwIfAborted();
       // The paid audio is written to a folder that does NOT depend on the attempt's fence, so a resumed attempt (higher fence, old
-      // attempt folder swept) replaying this paid step still finds the file. It is never deleted here.
-      const pendingDir = path.join(deps.root, "voice-pending", ctx.claim.stageRunId);
+      // attempt folder swept) replaying this paid step still finds the file. It is deleted only after the line's row is stored.
+      const pendingDir = await safeJoin(deps.root, "voice-pending", ctx.claim.stageRunId);
       await mkdir(pendingDir, { recursive: true, mode: 0o700 });
       const r = await provider.synthesise({ ...ctx, attemptDir: pendingDir } as StageContext, { text: line.text, lang: video.language, voice, ...(model && { model }) });
       if (!(await stat(r.audioPath).then((f) => f.isFile(), () => false))) {
@@ -82,6 +82,7 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
       const durationS = await audioSeconds(deps.mix, ctx, await safeJoin(deps.root, ...rel.split("/")));
       const d = await hashStoredFile(deps.root, rel);
       const stored = await storeLine(deps.db, deps.root, { cacheKey: key, provider: providerId, bytes: d.bytes, sha256: d.sha256, durationS, wordTimings: r.wordTimings, timingsKind: r.timingsKind, filePath: rel, priceMicroUsd: r.priceMicroUsd });
+      await rm(r.audioPath, { force: true }); // the cache holds the copy and the row exists: a replay no longer needs the pending file
       rows.push(stored.row);
       made++;
     }
