@@ -1,6 +1,7 @@
 import type { Message } from "@/server/core/agent-loop";
 import { KnownFailure } from "@/server/core/paid-call";
 import { describeSceneFormat, kindBlurbs, LIMITS, usableKinds, validateScenes, type SceneDoc } from "@/shared/scene";
+import { checkSceneRules, validateAndCheck } from "@/shared/scene/rules";
 
 // Build, scene kit: one model answer per script beat, each checked against the scene format, then assembled into one
 // document. The app (not the model) sets scene id, beat id and timing, so the model cannot break the timeline. A wrong
@@ -83,6 +84,8 @@ function check(text: string, kind: string, assets: readonly string[]): { ok: tru
   if (scene.kind !== kind) return { ok: false, errors: [`scene 1 > kind: must be '${kind}'`] };
   const bad = [...new Set(assetRefs(scene).filter((a) => !assets.includes(a)))];
   if (bad.length > 0) return { ok: false, errors: [`scene 1: asset id ${bad.map((b) => `'${b}'`).join(", ")} does not exist for this video${assets.length ? `; allowed: ${assets.join(", ")}` : ""}`] };
+  const rules = checkSceneRules({ ...r.doc, scenes: [{ ...scene, startMs: 0 }] }, { assetIds: [...assets] }); // the app sets timing, so judge the scene at 0 ms; house rules (no CTA wording, text cap, frame 0...) feed the same retry
+  if (rules.length > 0) return { ok: false, errors: rules };
   return { ok: true, scene: scene as unknown as Record<string, unknown> };
 }
 
@@ -124,7 +127,7 @@ export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, 
     scenes.push({ ...fill.value, id: `s${i + 1}`, beat: beat.id, startMs, durationMs });
     startMs += durationMs;
   }
-  const doc = validateScenes({ version: 1, scenes });
+  const doc = validateAndCheck({ version: 1, scenes }, { beats: beats.map((b) => b.id), assetIds: [...assets] });
   if (!doc.ok) throw new KnownFailure(`scenes_invalid: the assembled scenes do not fit. ${doc.errors.slice(0, 3).join("; ")}`.slice(0, 600));
   return doc.doc;
 }

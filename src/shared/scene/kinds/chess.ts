@@ -9,8 +9,12 @@ export const schema = z
   .object({
     ...base,
     kind: z.literal("chess"),
-    // Piece placement only (first FEN field). Default: the starting position.
-    position: z.string().trim().default(START_FEN),
+    // Piece placement (first FEN field); extra FEN fields are dropped. Default: the starting position.
+    position: z
+      .string()
+      .trim()
+      .default(START_FEN)
+      .transform((f) => f.split(/\s+/)[0] ?? f), // a full FEN is accepted; keep the placement field only
     moves: z.array(pair).max(LIMITS.chessMoves, `must have at most ${LIMITS.chessMoves} moves`).default([]),
     highlights: z.array(square).max(LIMITS.chessMarks, `must have at most ${LIMITS.chessMarks} squares`).default([]),
     arrows: z.array(pair).max(LIMITS.chessArrows, `must have at most ${LIMITS.chessArrows} arrows`).default([]),
