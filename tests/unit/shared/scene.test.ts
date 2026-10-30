@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { describeSceneFormat, sceneJsonSchema, validateScenes } from "@/shared/scene";
+import { kinds } from "@/shared/scene/kinds";
 
 const t = { id: "s1", beat: "b1", kind: "terminal", startMs: 0, durationMs: 3000, lines: [{ prompt: "~/app $", text: "npm test" }] };
 const c = { id: "s2", beat: "b2", kind: "chat_thread", startMs: 3000, durationMs: 4000, messages: [{ from: "user", text: "hi" }] };
@@ -17,7 +18,7 @@ describe("scene schema", () => {
     if (r.ok && r.doc.scenes[2]?.kind === "story_kenburns") expect(r.doc.scenes[2].captionZone).toBe("lower_safe");
   });
   it("rejects unknown kind in plain text", () => {
-    expect(errs(doc({ ...t, kind: "hologram" }))[0]).toBe("scene 1 > kind: must be one of terminal, chat_thread, story_kenburns");
+    expect(errs(doc({ ...t, kind: "hologram" }))[0]).toBe(`scene 1 > kind: must be one of ${Object.keys(kinds).join(", ")}`);
   });
   it("rejects overlong copy with location", () => {
     expect(errs(doc({ ...c, messages: [{ from: "user", text: "x".repeat(91) }] }))).toEqual([
@@ -40,5 +41,26 @@ describe("scene schema", () => {
   it("exposes prompt text and JSON schema", () => {
     expect(describeSceneFormat()).toContain("story_kenburns");
     expect(JSON.stringify(sceneJsonSchema())).toContain("chat_thread");
+  });
+});
+
+describe("terminal lines", () => {
+  const line = (l: unknown) => ({ ...t, lines: [l] });
+  it("defaults a missing prompt to $", () => {
+    const r = validateScenes(doc(line({ text: "ls" })));
+    expect(r.ok).toBe(true);
+    if (r.ok && r.doc.scenes[0]?.kind === "terminal") expect(r.doc.scenes[0].lines[0]?.prompt).toBe("$");
+  });
+  it("treats an empty prompt as $", () => {
+    const r = validateScenes(doc(line({ prompt: "", text: "ls" })));
+    expect(r.ok).toBe(true);
+    if (r.ok && r.doc.scenes[0]?.kind === "terminal") expect(r.doc.scenes[0].lines[0]?.prompt).toBe("$");
+  });
+  it("allows 56 chars, rejects 57 with the limit in the error", () => {
+    expect(errs(doc(line({ text: "x".repeat(56) })))).toEqual([]);
+    expect(errs(doc(line({ text: "x".repeat(57) })))).toEqual(["scene 1 > lines > 0 > text: must be at most 56 characters"]);
+  });
+  it("states the text limit in the prompt text", () => {
+    expect(describeSceneFormat()).toContain("max 56 characters per line");
   });
 });

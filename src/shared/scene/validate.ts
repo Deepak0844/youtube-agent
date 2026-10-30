@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { kinds } from "./kinds";
 import { LIMITS, SCENE_SCHEMA_VERSION, sceneDocSchema, type SceneDoc } from "./schema";
 
 export type ValidateResult = { ok: true; doc: SceneDoc } | { ok: false; errors: string[] };
 
-const KINDS = ["terminal", "chat_thread", "story_kenburns"];
+const KINDS = Object.keys(kinds);
 
 function where(path: PropertyKey[]): string {
   if (path[0] === "scenes" && typeof path[1] === "number") {
@@ -33,9 +34,7 @@ export function describeSceneFormat(): string {
   return [
     `Return JSON: {"version": ${SCENE_SCHEMA_VERSION}, "scenes": [...]}. Portrait video. Times are whole milliseconds.`,
     `Every scene: id, kind, beat (script beat id), startMs, durationMs (${LIMITS.minSceneMs}-${LIMITS.maxSceneMs}). Scenes must not overlap; total at most ${LIMITS.maxTotalMs} ms.`,
-    `kind "terminal": lines[] (max ${LIMITS.terminalLines}), each {prompt (max ${LIMITS.terminalPrompt} chars, default "$"), text (max ${LIMITS.terminalText}), output (bool)}; optional title (max ${LIMITS.title}).`,
-    `kind "chat_thread": messages[] (max ${LIMITS.chatMessages}), each {from: "user"|"assistant", text (max ${LIMITS.chatText})}.`,
-    `kind "story_kenburns": image (asset id, never a URL or path), optional caption (max ${LIMITS.caption}), captionZone "upper_safe"|"lower_safe", zoomFrom/zoomTo 1-1.5, panX/panY -0.15..0.15.`,
+    ...Object.values(kinds).map((k) => k.describe),
     `Never use URLs or file paths; refer to media by asset id only.`,
   ].join("\n");
 }
