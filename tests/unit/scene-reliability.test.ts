@@ -112,3 +112,21 @@ describe("per-kind reliability", () => {
     expect(selectSheets(all, {})).toEqual(all.slice(0, 10));
   });
 });
+
+describe("partial runs and --kinds", () => {
+  const r = (id: string, ok: boolean) => ({ id, kind: "chess" as const, firstTry: ok, withinRetries: ok, attempts: 1, errors: [], inputTokens: 0, outputTokens: 0, costMicroUsd: 0 });
+  it("an all-pass partial run is INCOMPLETE, not GO or NO-GO", () => {
+    expect(summarize([r("a", true), r("b", true)], 5, "cap").verdict).toBe("INCOMPLETE");
+  });
+  it("a partial run with too many failures is still NO-GO", () => {
+    expect(summarize([r("a", false), r("b", false), r("c", true)], 5, "cap").verdict).toBe("NO-GO");
+  });
+  it("a full run still decides GO", () => {
+    expect(summarize([r("a", true), r("b", true)], 2).verdict).toBe("GO");
+  });
+  it("selectSheets filters by kind and combines with perKind", () => {
+    const all = fixedSheets();
+    expect(selectSheets(all, { kinds: ["chess", "map"] }).every((s) => ["chess", "map"].includes(s.kind))).toBe(true);
+    expect(selectSheets(all, { kinds: ["chess", "map"], perKind: 1 }).map((s) => s.kind)).toEqual(["chess", "map"]);
+  });
+});

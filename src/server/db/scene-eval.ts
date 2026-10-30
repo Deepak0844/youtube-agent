@@ -38,6 +38,8 @@ export interface SceneEvalRequest {
   runs?: number;
   /** Pick n sheets from each kind instead of the first `runs`. */
   perKind?: number;
+  /** Only these kinds. */
+  kinds?: string[];
   maxUsd?: number;
 }
 export interface SceneEvalDeps {
@@ -51,6 +53,8 @@ export interface SceneEvalDeps {
 export async function planSceneEval(db: pg.Pool, req: SceneEvalRequest) {
   if (typeof req.modelId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.modelId)) throw new EvalRefusal("Give the model id of the model to test.");
   const all = fixedSheets();
+  const bad = (req.kinds ?? []).filter((k) => !Object.keys(kinds).includes(k));
+  if (bad.length || req.kinds?.length === 0) throw new EvalRefusal(`--kinds: unknown kind ${bad.join(", ") || "(none given)"}. Known kinds: ${Object.keys(kinds).join(", ")}.`);
   const n = req.runs ?? 10;
   if (!Number.isInteger(n) || n < 1 || n > all.length) throw new EvalRefusal(`--runs must be a whole number from 1 to ${all.length}.`);
   if (req.perKind !== undefined && (!Number.isInteger(req.perKind) || req.perKind < 1)) throw new EvalRefusal("--per-kind must be a whole number, 1 or more.");
@@ -65,7 +69,7 @@ export async function planSceneEval(db: pg.Pool, req: SceneEvalRequest) {
   const fit = eligibleForStage("build_scene_kit", model);
   if (!fit.ok) throw new EvalRefusal(`${model.label} lacks: ${fit.missing.join(", ")}.`);
   const ceilingMicroUsd = evalCeilingMicroUsd(await evalCap(db), maxUsd);
-  return { model, sheets: selectSheets(all, req.perKind === undefined ? { runs: n } : { perKind: req.perKind }), ceilingMicroUsd };
+  return { model, sheets: selectSheets(all, { ...(req.perKind === undefined ? { runs: n } : { perKind: req.perKind }), ...(req.kinds ? { kinds: req.kinds } : {}) }), ceilingMicroUsd };
 }
 
 export interface SceneEvalOutcome {
@@ -119,5 +123,5 @@ export async function runSceneEval(db: pg.Pool, req: SceneEvalRequest, deps: Sce
   };
   const { results, stopped } = await runSheets(plan.sheets, ask, { signal });
   for (const { claim } of stages.values()) await commitStage(db, claim, { evaluated: true }).catch(() => false);
-  return { model: row.modelId, stopped, summary: summarize(results, plan.sheets.length), results };
+  return { model: row.modelId, stopped, summary: summarize(results, plan.sheets.length, stopped), results };
 }

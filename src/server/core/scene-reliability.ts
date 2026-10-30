@@ -12,7 +12,8 @@ export const GO_RATIO = 0.8;
 const ASSET_KINDS = new Set<string>(["story_kenburns", "stock_clip", "collage", "browser"]);
 
 /** Which sheets to run: `perKind` = first n of each kind (file order); else the first `runs` (default 10). */
-export function selectSheets(all: BeatSheet[], o: { runs?: number; perKind?: number }): BeatSheet[] {
+export function selectSheets(all: BeatSheet[], o: { runs?: number; perKind?: number; kinds?: string[] }): BeatSheet[] {
+  if (o.kinds) all = all.filter((s) => o.kinds!.includes(s.kind));
   if (o.perKind === undefined) return all.slice(0, o.runs ?? 10);
   const seen = new Map<string, number>();
   return all.filter((s) => {
@@ -120,7 +121,7 @@ export async function runSheets(sheets: BeatSheet[], ask: Ask, opts: { signal?: 
   return { results, stopped: "none" };
 }
 
-export function summarize(results: SheetResult[], planned: number) {
+export function summarize(results: SheetResult[], planned: number, stopped: Stopped = "none") {
   const firstTry = results.filter((r) => r.firstTry).length;
   const withinRetries = results.filter((r) => r.withinRetries).length;
   const byKind: Record<string, { ran: number; firstTry: number; withinRetries: number }> = {};
@@ -141,7 +142,12 @@ export function summarize(results: SheetResult[], planned: number) {
     firstTry,
     withinRetries,
     costMicroUsd: results.reduce((s, r) => s + r.costMicroUsd, 0),
-    verdict: notRun ? ("NOT RUN" as const) : planned > 0 && withinRetries >= Math.ceil(planned * GO_RATIO) ? ("GO" as const) : ("NO-GO" as const),
+    stopped,
+    verdict: notRun
+      ? ("NOT RUN" as const)
+      : results.length < planned && results.length - withinRetries <= planned - Math.ceil(planned * GO_RATIO)
+        ? ("INCOMPLETE" as const)
+        : planned > 0 && withinRetries >= Math.ceil(planned * GO_RATIO) ? ("GO" as const) : ("NO-GO" as const),
     byKind,
     topErrors,
   };

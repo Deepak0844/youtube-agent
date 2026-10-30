@@ -1,6 +1,6 @@
 // Scene-JSON reliability eval (Phase 4). OWNER-RUN, spends real money on a hosted model.
 //
-//   npm run eval:scenes -- --model <model id> [--runs 10 | --per-kind 1] [--max-usd 0.5] [--yes]
+//   npm run eval:scenes -- --model <model id> [--runs 10 | --per-kind 1] [--kinds chess,map] [--max-usd 0.5] [--yes]
 //
 // Without --yes it only prints the model, runs and cost ceiling, then exits (nothing is reserved or sent). With --yes it asks the
 // model for scene JSON for each fixed beat sheet (retry twice with the errors fed back), every call reserved first against a
@@ -23,11 +23,12 @@ async function main(): Promise<void> {
   if (!modelId) throw new EvalRefusal("Give the model to test: --model <model id> (see the Models page). Nothing was sent.");
   const runs = arg("runs") === undefined ? undefined : Number(arg("runs"));
   const perKind = arg("per-kind") === undefined ? undefined : Number(arg("per-kind"));
+  const kindsArg = arg("kinds")?.split(",").map((k) => k.trim());
   const maxUsd = arg("max-usd") === undefined ? undefined : Number(arg("max-usd"));
   const yes = process.argv.includes("--yes");
   const db = getPool();
   try {
-    const req = { modelId, ...(runs !== undefined ? { runs } : {}), ...(perKind !== undefined ? { perKind } : {}), ...(maxUsd !== undefined ? { maxUsd } : {}) };
+    const req = { modelId, ...(runs !== undefined ? { runs } : {}), ...(perKind !== undefined ? { perKind } : {}), ...(kindsArg ? { kinds: kindsArg } : {}), ...(maxUsd !== undefined ? { maxUsd } : {}) };
     const plan = await planSceneEval(db, req);
     process.stdout.write(`Model: ${plan.model.label} (${plan.model.provider}/${plan.model.modelId})\nRuns: ${plan.sheets.length}\nCost ceiling: up to $${microToUsd(plan.ceilingMicroUsd)} (the run stops there)\n`);
     if (!yes) {
@@ -50,7 +51,7 @@ async function main(): Promise<void> {
     if (kindLines) process.stdout.write(`\nBy kind:\n${kindLines}`);
     const pct = (n: number) => (s.ran ? Math.round((n / s.ran) * 100) : 0);
     process.stdout.write(
-      `\n${s.ran}/${s.planned} ran${out.stopped === "none" ? "" : ` (stopped early: ${out.stopped})`}. First try ${pct(s.firstTry)}%, within 2 retries ${pct(s.withinRetries)}%, cost $${microToUsd(s.costMicroUsd)}.\nVerdict: ${s.notRunReason !== undefined ? `NOT RUN (provider refused: ${s.notRunReason})` : s.verdict}\n` +
+      `\n${s.ran}/${s.planned} ran${out.stopped === "none" ? "" : ` (stopped early: ${out.stopped})`}. First try ${pct(s.firstTry)}%, within 2 retries ${pct(s.withinRetries)}%, cost $${microToUsd(s.costMicroUsd)}, input tokens ${out.results.reduce((a, r) => a + r.inputTokens, 0)} (${s.ran ? Math.round(out.results.reduce((a, r) => a + r.inputTokens, 0) / Math.max(1, out.results.reduce((a, r) => a + r.attempts, 0))) : 0} per call).\nVerdict: ${s.notRunReason !== undefined ? `NOT RUN (provider refused: ${s.notRunReason})` : s.verdict === "INCOMPLETE" ? `INCOMPLETE (ran ${s.ran} of ${s.planned}; stopped: ${out.stopped})` : s.verdict}\n` +
         (s.topErrors.length ? `Top repeated errors:\n${s.topErrors.map((e) => `  ${e.count}x ${e.message}`).join("\n")}\n` : ""),
     );
     if (s.notRunReason !== undefined) return;
