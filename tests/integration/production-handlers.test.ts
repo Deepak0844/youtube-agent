@@ -31,7 +31,8 @@ describe("production handlers", () => {
   it("every ffmpeg/ffprobe child goes through the worker's registry", async () => {
     const { calls, reg } = registry();
     const deps = productionStageDeps(db.pool, { childRegistry: reg });
-    const r = await deps.mix!.runChild({ command: process.execPath, args: ["-e", "0"], cwd: process.cwd(), timeoutMs: 10_000, maxOutputBytes: 1024, signal: new AbortController().signal, stageRunId: "00000000-0000-0000-0000-000000000000" });
+    // The child must outlive runChild's process-info read, or it is (correctly) not tracked: an instant exit made this flaky on CI.
+    const r = await deps.mix!.runChild({ command: process.execPath, args: ["-e", "setTimeout(() => {}, 500)"], cwd: process.cwd(), timeoutMs: 10_000, maxOutputBytes: 1024, signal: new AbortController().signal, stageRunId: "00000000-0000-0000-0000-000000000000" });
     expect(r.code).toBe(0);
     expect(calls).toEqual([expect.stringMatching(/^register /), "unregister"]);
   });
