@@ -14,6 +14,7 @@ import { loadKeyring } from "@/server/db/master-key";
 import { createLlmClient } from "@/server/llm/client";
 import { defaultModelDeps } from "@/server/llm/default-deps";
 import { createWebTools } from "@/server/llm/web-tools";
+import { createImageFor } from "@/server/providers/image/wire";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
 import { createFakeVoice } from "@/server/providers/voice/fake";
@@ -87,6 +88,7 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
     mix: { runChild: run, audioRoot: path.join(root, "audio") },
     // build/generate/render are not wired in production yet (Phase 4); these stages never call them, and if one ever did it refuses.
+    imageFor: createImageFor(pool, () => loadKeyring(), root),
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
     renderer: { render: notWired },
   };

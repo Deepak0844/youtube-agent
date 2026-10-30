@@ -153,7 +153,7 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
   };
 }
 
-export async function loadQueue(db: pg.Pool): Promise<QueueData> {
+export async function loadQueue(db: pg.Pool, checkable: ReadonlySet<string> = new Set()): Promise<QueueData> {
   const sign = await mediaSigner(db);
   const vids = await db.query<{ id: string; topic: string; language: string; channel_id: string | null; updated_at: Date }>(
     "select id, topic, language, channel_id, updated_at from videos where status in ('waiting','active') and format = 'short' order by updated_at, id limit $1",
@@ -167,7 +167,7 @@ export async function loadQueue(db: pg.Pool): Promise<QueueData> {
     const base = { videoId: v.id, topic: v.topic, language: v.language, channelId: v.channel_id, waitingSince: v.updated_at.toISOString() };
     const parkedId = parkedByVideo.get(v.id);
     if (parkedId) {
-      const decision = await getDecision(db, parkedId);
+      const decision = await getDecision(db, parkedId, checkable);
       if (decision) items.push({ ...base, kind: "decision", decision, strip: { runs: await runsFor(db, v.id), openGate: null, upload: await uploadFor(db, v.id) } });
       continue;
     }
