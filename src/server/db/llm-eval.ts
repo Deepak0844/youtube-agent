@@ -97,7 +97,7 @@ function assertOwner(actor: { kind: string }): void {
   if (actor?.kind !== "session" && actor?.kind !== "owner_cli") throw new EvalRefusal("Only the owner can run a model eval.");
 }
 
-async function evalCap(db: pg.Pool): Promise<number> {
+export async function evalCap(db: pg.Pool): Promise<number> {
   const r = await db.query<{ cap_micro_usd: string | null }>("select cap_micro_usd from budgets where scope = 'eval'");
   if (!r.rows[0]) throw new EvalRefusal("The eval budget is not set up, so nothing was sent.");
   // no limit on the seeded eval budget leaves only the script's own --max-usd as the ceiling
@@ -160,7 +160,7 @@ export async function openEvalStage(db: pg.Pool, runId: string, index: number): 
 }
 
 /** Budget scopes of one run: its own capped copy of `eval` (lowered to the ceiling), then the UTC day and month copies. */
-async function evalScopes(db: pg.Pool, runId: string, ceilingMicroUsd: number): Promise<string[]> {
+export async function evalScopes(db: pg.Pool, runId: string, ceilingMicroUsd: number): Promise<string[]> {
   const run = `eval_run:${runId}`;
   const scopes = await ensureScopeCopies(db, [[run, "eval"], ...(await periodScopes(db))]);
   await db.query("update budgets set cap_micro_usd = least(cap_micro_usd, $2::bigint) where scope = $1", [run, ceilingMicroUsd]);

@@ -1,0 +1,12 @@
+[
+  { "id": "t1", "kind": "terminal", "beats": [{ "id": "b1", "text": "Install the tool with one command." }, { "id": "b2", "text": "Run it and see the first output." }] },
+  { "id": "t2", "kind": "terminal", "beats": [{ "id": "b1", "text": "Clone a git repo." }, { "id": "b2", "text": "List the files inside." }, { "id": "b3", "text": "Start the dev server." }] },
+  { "id": "t3", "kind": "terminal", "beats": [{ "id": "b1", "text": "A build fails with a red error." }, { "id": "b2", "text": "The fix is a one-line change and the build passes." }] },
+  { "id": "t4", "kind": "terminal", "beats": [{ "id": "b1", "text": "Check the disk space with df." }] },
+  { "id": "c1", "kind": "chat_thread", "beats": [{ "id": "b1", "text": "A user asks an assistant how to save money." }, { "id": "b2", "text": "The assistant gives three short tips." }] },
+  { "id": "c2", "kind": "chat_thread", "beats": [{ "id": "b1", "text": "Two friends argue about pizza toppings." }, { "id": "b2", "text": "One of them gives in." }] },
+  { "id": "c3", "kind": "chat_thread", "beats": [{ "id": "b1", "text": "A customer reports a late parcel." }, { "id": "b2", "text": "Support apologises and offers a refund." }, { "id": "b3", "text": "The customer says thanks." }] },
+  { "id": "s1", "kind": "story_kenburns", "beats": [{ "id": "b1", "text": "An old lighthouse at dawn." }, { "id": "b2", "text": "A small boat heads out to sea." }] },
+  { "id": "s2", "kind": "story_kenburns", "beats": [{ "id": "b1", "text": "A busy market street." }, { "id": "b2", "text": "A vendor smiles at the camera." }, { "id": "b3", "text": "The sun sets behind the stalls." }] },
+  { "id": "s3", "kind": "story_kenburns", "beats": [{ "id": "b1", "text": "A mountain trail in the fog." }] }
+]
