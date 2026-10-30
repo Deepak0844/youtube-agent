@@ -29,6 +29,11 @@ After migrating the local database and configuring `.env.local`:
 | `npm run smoke:providers -- --providers elevenlabs,pixabay --cap 0.50 --lang en,hi,ta` | Owner-run live check of the voice, sound and stock providers on a local database. Prints every quote and asks y/N; `--dry-plan` calls nothing, `--yes-spend` is needed without a terminal, hard cap 2 USD. Saves raw responses (keys stripped) under `.data/smoke/`. |
 | `npm run check:phase3` | Owner-run listening sheet: prints the produced audio files, captions with their flags and the mix to check by ear, from the local database and storage. No network, no paid call. |
 
+### Portrait kit (needs `npm run image:render` once, Docker/OrbStack running)
+
+- `npm run kit:studio` opens Remotion Studio for `remotion/kit` at http://127.0.0.1:3100 (loopback only, kit mounted read-only, no secrets).
+- `npm run kit:preview -- scene.json` checks a scene file, then saves frame 0 / middle / last stills to `.data/kit-preview/`. Image ids show as coloured placeholders.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

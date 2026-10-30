@@ -1,6 +1,8 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { visibleCount, windowOpacity } from "./helpers";
+import { visibleCount } from "./helpers";
+import { ScriptText } from "./ScriptText";
 import { theme } from "./theme";
 
 export type ChatThreadProps = {
@@ -40,7 +42,7 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ messages, framesPerMessa
             background: m.from === "me" ? theme.palette.bubbleMe : theme.palette.bubbleThem,
           }}
         >
-          {m.text}
+          <ScriptText text={m.text} />
         </div>
         );
       })}
