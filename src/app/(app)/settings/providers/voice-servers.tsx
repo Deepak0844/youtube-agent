@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
 import { Label } from "@/ui/primitives/label";
@@ -40,6 +40,7 @@ function AddToList({ field, entry }: { field: string; entry: string }) {
 
 function Field({ v }: { v: VoiceServerView }) {
   const [state, action, pending] = useActionState<VoiceFormState, FormData>(saveVoiceServerAction, {});
+  const [val, setVal] = useState(v.value); // controlled: React 19 resets uncontrolled fields after an action, which would wipe a refused value
   const id = `voice-${v.field}`;
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -47,7 +48,7 @@ function Field({ v }: { v: VoiceServerView }) {
         <Label htmlFor={id}>{v.label}</Label>
         <input type="hidden" name="field" value={v.field} />
         <div className="flex flex-wrap items-center gap-3">
-          <Input id={id} name="value" defaultValue={v.value} placeholder={v.placeholder} maxLength={300} autoComplete="off" spellCheck={false} aria-describedby={`${id}-help`} aria-invalid={state.error ? true : undefined} className="max-w-md flex-1" />
+          <Input id={id} name="value" value={val} onChange={(e) => setVal(e.target.value)} placeholder={v.placeholder} maxLength={300} autoComplete="off" spellCheck={false} aria-describedby={`${id}-help`} aria-invalid={state.error ? true : undefined} className="max-w-md flex-1" />
           <Button type="submit" disabled={pending}>Save</Button>
         </div>
         <p id={`${id}-help`} className="max-w-[60ch] text-small text-faint">{v.help}</p>

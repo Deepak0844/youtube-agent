@@ -26,9 +26,21 @@ describe("VoiceStudio address (same rule as the voice stage)", () => {
   it("refuses plain http to another computer even with a key", () => {
     bad("voicestudio_url", "http://192.168.1.5:3900", true);
   });
-  it("quotes the typed text only as a short clip", () => {
-    const e = bad("voicestudio_url", "x".repeat(200));
-    expect(e.length).toBeLessThan(200);
+  it("never echoes what was typed", () => {
+    for (const f of ["voicestudio_url", "local_url"] as const) {
+      const e = bad(f, "https://user:pw@host.example");
+      expect(e).not.toMatch(/user:|\bpw\b|host\.example|@/);
+    }
+    expect(bad("voicestudio_url", "x".repeat(200))).not.toContain("xxx");
+    expect(bad("azure_region", "SECRETvalue")).not.toContain("SECRET");
+  });
+  it.each(["http://127.0.0.1:3900/?token=abc", "http://127.0.0.1:3900#x", "http://127.0.0.1:3900/v1", "http://127.0.0.1:3900?a=1"])("refuses path, query or fragment: %s", (v) => {
+    const e = bad("voicestudio_url", v);
+    bad("local_url", v);
+    expect(e).not.toMatch(/token|abc/);
+  });
+  it("allows a bare trailing slash", () => {
+    okv("voicestudio_url", "http://127.0.0.1:3900/");
   });
 });
 
@@ -62,6 +74,8 @@ describe("helpers", () => {
     expect(hostPortOf("http://LOCALHOST")).toBe("localhost:80");
     expect(hostPortOf("https://x.test")).toBe("x.test:443");
     expect(hostPortOf("http://[::1]:3900")).toBe("[::1]:3900");
+    expect(hostPortOf("http://2130706433:3900")).toBe("127.0.0.1:3900");
+    expect(hostPortOf("http://[0:0:0:0:0:0:0:1]:3900")).toBe("[::1]:3900");
     expect(hostPortOf("ftp://x")).toBeNull();
     expect(hostPortOf("junk")).toBeNull();
   });

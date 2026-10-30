@@ -269,6 +269,8 @@ describe("voice servers and the add-needs-confirmation rule", () => {
     ["voicestudio_url", "http://192.168.1.5:3900"],
     ["voicestudio_url", "http://u:p@127.0.0.1:3900"],
     ["local_url", "file:///etc/passwd"],
+    ["local_url", "http://127.0.0.1:3900/?token=abc"],
+    ["local_url", "http://127.0.0.1:3900#x"],
     ["azure_region", "West Europe"],
     ["network.local_services", "localhost:11434"],
     ["__proto__", "x"],

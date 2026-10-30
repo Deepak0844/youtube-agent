@@ -12,19 +12,23 @@ export const VOICE_FIELDS = {
 export type VoiceField = keyof typeof VOICE_FIELDS;
 export const isVoiceField = (f: unknown): f is VoiceField => typeof f === "string" && Object.hasOwn(VOICE_FIELDS, f);
 
-const clip = (s: string) => (s.length > 40 ? `${s.slice(0, 40)}...` : s);
-
 export type VoiceCheck = { ok: true; value: string } | { ok: false; error: string };
 
 /** Empty clears the setting. `hasKey` = a key is saved for this server (the rules differ for another computer). */
 export function checkVoiceField(field: VoiceField, raw: string, hasKey: boolean): VoiceCheck {
   const value = raw.trim();
   if (value === "") return { ok: true, value };
-  if (value.length > 300 || /[\x00-\x20\x7f]/.test(value)) return { ok: false, error: `"${clip(value)}" is not a valid address.` };
+  if (value.length > 300 || /[\x00-\x20\x7f]/.test(value)) return { ok: false, error: "That is not a valid address." };
   if (field === "azure_region") {
-    return REGION.test(value) ? { ok: true, value } : { ok: false, error: `"${clip(value)}" is not an Azure region. Use letters, digits and hyphens, like westeurope.` };
+    return REGION.test(value) ? { ok: true, value } : { ok: false, error: "That is not an Azure region. Use letters, digits and hyphens, like westeurope." };
   }
   try {
+    // A base address only: no user name, password, path, query or fragment, so no secret can sit in a saved address or the audit.
+    const base = new URL(value);
+    if (base.username !== "" || base.password !== "") throw new VoiceUrlError("The address must not contain a user name or password.");
+    if (base.search !== "" || base.hash !== "" || (base.pathname !== "" && base.pathname !== "/")) {
+      throw new VoiceUrlError("The address must be just the server, like http://127.0.0.1:3900, with no path, ? or #.");
+    }
     if (field === "voicestudio_url") assertVoiceStudioUrl(value, hasKey);
     else {
       const u = new URL(value);
@@ -36,7 +40,7 @@ export function checkVoiceField(field: VoiceField, raw: string, hasKey: boolean)
     }
   } catch (e) {
     const msg = e instanceof VoiceUrlError ? e.message : "That is not a valid URL, like http://127.0.0.1:3900.";
-    return { ok: false, error: `${msg} (you typed "${clip(value)}")` };
+    return { ok: false, error: msg };
   }
   return { ok: true, value };
 }
