@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import { rename, rm, writeFile } from "node:fs/promises";
+import { open, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { rejectionMessage, sniff, SNIFF_HEAD_BYTES } from "@/server/core/sniff";
 import type { MediaArtifact } from "@/server/providers/media-types";
@@ -85,7 +84,8 @@ export async function downloadStock(deps: StockDeps, ctx: StockCtx, name: string
   if (Number(res.headers.get("content-length") ?? 0) > max) { await res.body.cancel(); throw new StockError("That file is too big."); }
 
   const tmp = path.join(ctx.attemptDir, `${id}-${safeId(hit.id)}.part`);
-  const out = createWriteStream(tmp);
+  // An awaited file handle, not a stream: no error event can fire after we stop listening.
+  const out = await open(tmp, "w");
   const hash = createHash("sha256");
   let bytes = 0;
   const head: number[] = [];
@@ -95,9 +95,9 @@ export async function downloadStock(deps: StockDeps, ctx: StockCtx, name: string
       if (bytes > max) throw new StockError("That file is too big.");
       if (head.length < SNIFF_HEAD_BYTES) head.push(...chunk.subarray(0, SNIFF_HEAD_BYTES - head.length));
       hash.update(chunk);
-      if (!out.write(chunk)) await new Promise<void>((r) => out.once("drain", () => r()));
+      await out.write(chunk);
     }
-    await new Promise<void>((r, j) => out.end((e: Error | null | undefined) => (e ? j(e) : r())));
+    await out.close();
     const ext = extensionFor(Uint8Array.from(head), kind);
     const final = path.join(ctx.attemptDir, `${id}-${safeId(hit.id)}.${ext}`);
     await rename(tmp, final);
@@ -109,7 +109,7 @@ export async function downloadStock(deps: StockDeps, ctx: StockCtx, name: string
       provenance: { provider: id, params: { id: hit.id, title: hit.title, author: hit.author ?? null }, priceMicroUsd: 0, quoted: true, licence, sourceUrl: hit.pageUrl, ...(hit.attribution ? { attribution: hit.attribution } : {}) },
     };
   } catch (e) {
-    out.destroy();
+    await out.close().catch(() => undefined);
     await rm(tmp, { force: true });
     throw e;
   }
