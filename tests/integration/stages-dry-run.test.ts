@@ -1,3 +1,7 @@
+import type { LanguageModel } from "ai";
+import { BudgetRefusedError, NeedsDecisionError } from "@/server/core/paid-call";
+import { createLlmClient } from "@/server/llm/client";
+import type { ModelRow } from "@/server/core/llm-catalog";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
@@ -19,7 +23,7 @@ import { runStage } from "@/server/db/stage-runner-adapter";
 import { getBudget } from "@/server/db/spend";
 import { claimStage, insertQueuedStage } from "@/server/db/stages";
 import { addContent, createVideoRow, latestContent } from "@/server/db/videos";
-import { fakeDraft } from "@/server/llm/fake-step";
+import { fakeDraft, fakeModelStep } from "@/server/llm/fake-step";
 import { createFakeImage } from "@/server/providers/media/fake";
 import type { ImageProvider } from "@/server/providers/media";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
@@ -392,6 +396,65 @@ describe("paid generation is bounded by the approved quote", () => {
     expect(out.kind).toBe("known_failure");
     expect(inner.totalCalls()).toBe(1);
     expect((await stageResult(id, "generate")).result).toMatchObject({ error: expect.stringMatching(/changed while images were being made/) });
+  });
+
+  const SCENE_ROW: ModelRow = { id: "00000000-0000-4000-8000-0000000000bb", provider: "anthropic", modelId: "m", label: "Fake", baseUrl: null, prices: { inputPerMTokMicro: 1_000_000, outputPerMTokMicro: 1_000_000 }, isFree: false, capabilities: { structuredOutput: true, toolUse: true, vision: false, nativeWebSearch: false, contextWindow: 128000 }, enabled: true, endpointKind: "hosted" };
+  const sceneLlm = (texts: string[]) => {
+    const step = fakeModelStep({ script: texts.map((text) => ({ text, toolCalls: [], usage: { inputTokens: 100, outputTokens: 50 } })) });
+    return (scopes: string[]) => createLlmClient({ db: db.pool, catalog: { route: async () => SCENE_ROW, localServices: async () => [] }, getKey: async () => null, buildModel: () => ({}) as LanguageModel, budgetScopes: () => scopes, makeStep: () => step });
+  };
+  const pickT = JSON.stringify({ kind: "terminal" });
+  const fillT = JSON.stringify({ version: 1, scenes: [{ id: "s1", kind: "terminal", beat: "b1", startMs: 0, durationMs: 3000, lines: [{ text: "ls" }] }] });
+
+  it("Build with a model writes scenes.json and a scenes content row, next to the cost plan", async () => {
+    const v = await newVideo();
+    await seedScript(v.id, 2);
+    const out = await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(mkDeps({ makeLlm: sceneLlm([pickT, fillT, pickT, fillT]) }))));
+    expect(out.kind).toBe("committed");
+    const doc = JSON.parse(readFileSync(path.join(root, "videos", v.id, "scenes.json"), "utf8"));
+    expect(doc.scenes.map((x: { id: string; beat: string }) => [x.id, x.beat])).toEqual([["s1", "b1"], ["s2", "b2"]]);
+    expect((await latestContent(db.pool, v.id, "scenes"))?.body).toEqual(doc);
+    expect(await contentCount(v.id, "cost_plan")).toBe(1);
+  });
+
+  it("Build with a scene that stays invalid fails in plain words and saves no scenes and no plan", async () => {
+    const v = await newVideo();
+    await seedScript(v.id, 1);
+    const out = await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(mkDeps({ makeLlm: sceneLlm([pickT, "nope"]) }))));
+    expect(out.kind).toBe("known_failure");
+    expect((await stageResult(v.id, "build")).result).toMatchObject({ error: expect.stringMatching(/beat 'b1'.*not valid JSON/) });
+    expect(await contentCount(v.id, "scenes")).toBe(0);
+    expect(await contentCount(v.id, "cost_plan")).toBe(0);
+    expect(existsSync(path.join(root, "videos", v.id, "scenes.json"))).toBe(false);
+  });
+
+  it("Build without a model client says scenes were skipped in its result", async () => {
+    const v = await newVideo();
+    await seedScript(v.id, 1);
+    expect((await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(mkDeps())))).kind).toBe("committed");
+    expect((await stageResult(v.id, "build")).result).toMatchObject({ scenes: false });
+    expect(await contentCount(v.id, "scenes")).toBe(0);
+  });
+
+  // The second model call is refused / unclear: the runner parks the stage for the owner; no scenes file or row, no plan.
+  it.each([
+    ["a budget refusal", () => new BudgetRefusedError("k2"), "budget_refused"],
+    ["an unclear outcome", () => new NeedsDecisionError("run", "k2", 5), "needs_decision"],
+  ])("Build stops for the owner on %s mid-way and saves nothing", async (_n, mkErr, kind) => {
+    const v = await newVideo();
+    await seedScript(v.id, 2);
+    const inner = sceneLlm([pickT, fillT, pickT, fillT]);
+    let calls = 0;
+    const makeLlm = (scopes: string[]) => {
+      const llm = inner(scopes);
+      return { ...llm, agent: (...a: Parameters<typeof llm.agent>) => (++calls === 3 ? Promise.reject(mkErr()) : llm.agent(...a)) } as typeof llm;
+    };
+    const out = await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(mkDeps({ makeLlm }))));
+    expect(out.kind).toBe(kind);
+    if (kind === "budget_refused") expect((await stageResult(v.id, "build")).status).toBe("needs_decision");
+    expect(await contentCount(v.id, "scenes")).toBe(0);
+    expect(await contentCount(v.id, "cost_plan")).toBe(0);
+    expect(existsSync(path.join(root, "videos", v.id, "scenes.json"))).toBe(false);
   });
 
   it("plan_over_the_cap_is_blocked_before_spending", async () => {
