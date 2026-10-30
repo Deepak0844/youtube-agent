@@ -75,6 +75,8 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
   };
 }
 
+const notWired = (): never => { throw new KnownFailure("This step is not wired in production yet."); };
+
 /**
  * Real deps for the voice, mux and sound stages. Every ffmpeg/ffprobe/whisper child goes through the worker's registry
  * (which already carries the worker id), so a crash leaves them in child_processes for the orphan sweep.
@@ -84,7 +86,9 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
   return {
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
     mix: { runChild: run, audioRoot: path.join(root, "audio") },
-    image: {} as never, renderer: {} as never, // build/generate/render are not wired here (Phase 4); these stages never touch them
+    // build/generate/render are not wired in production yet (Phase 4); these stages never call them, and if one ever did it refuses.
+    image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
+    renderer: { render: notWired },
   };
 }
 
