@@ -5,7 +5,7 @@ import { runAsyncMedia, stepOfKey } from "../async-media";
 import type { Aspect, ImageProvider } from "../media";
 import type { SafeFetch } from "../voice/eleven-types";
 import { postJson, readCapped } from "../voice/elevenlabs";
-import { checkImage, refsOf, readKey, saveImage } from "./index";
+import { checkImage, refsOf, scopesOf, readKey, saveImage } from "./index";
 
 export interface FalImageDeps {
   /** Typed host queue.fal.run. */
@@ -17,7 +17,8 @@ export interface FalImageDeps {
   getKey: () => Promise<string>;
   /** The `fal_image` registry price; null = unpriced, refused. */
   price: PriceRule | null;
-  budgetScopes: string[];
+  /** Absolute storage root; images are kept under generated-media/. */
+  root: string;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
@@ -72,11 +73,12 @@ export function createFalImage(deps: FalImageDeps): ImageProvider {
     quote,
     async generate(ctx, a) {
       const prompt = check(a);
+      const scopes = scopesOf(a.budgetScopes);
       const reserve = quote({ aspect: a.aspect, refs: 0, model: a.model });
       const app = APPS[a.model]!;
       const meta = { provider: "fal_image", model: a.model, prompt, refs: [] as string[], seed: a.seed, aspect: a.aspect };
       let flaky = 0; // status polls that failed in a row; not a money risk (the job id is stored), so a few are tolerated
-      return ctx.paid({ reserveMicroUsd: reserve, budgetScopes: [...deps.budgetScopes, ...(a.budgetScopes ?? [])], kind: "paid" }, async (callKey, signal) => {
+      return ctx.paid({ reserveMicroUsd: reserve, budgetScopes: scopes, kind: "paid" }, async (callKey, signal) => {
         const auth = async () => ({ authorization: `Key ${await readKey(deps.getKey, "fal")}` });
         const result = await runAsyncMedia(ctx, { db: deps.db, provider: "fal_image", kind: "image", step: stepOfKey(callKey), quoteMicroUsd: reserve, signal, sleep: deps.sleep }, {
           async submit() {
@@ -103,7 +105,7 @@ export function createFalImage(deps: FalImageDeps): ImageProvider {
             return falCdnUrl(out.images?.[0]?.url);
           },
           download: (url) => get(deps.fetchCdn, falCdnUrl(url), {}, signal), // no key to the CDN
-          save: (bytes) => saveImage(ctx, bytes, { ...meta, priceMicroUsd: reserve }),
+          save: (bytes) => saveImage(bytes, { ...meta, root: deps.root, priceMicroUsd: reserve }),
         });
         return { result, actualMicroUsd: reserve };
       });

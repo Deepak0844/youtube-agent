@@ -4,7 +4,7 @@ import { sniff, SNIFF_HEAD_BYTES } from "@/server/core/sniff";
 import type { ImageProvider } from "../media";
 import type { SafeFetch } from "../voice/eleven-types";
 import { postJson, readCapped } from "../voice/elevenlabs";
-import { checkImage, refsOf, paidImage } from "./index";
+import { checkImage, refsOf, scopesOf, paidImage } from "./index";
 
 export interface GeminiImageDeps {
   fetch: SafeFetch;
@@ -12,7 +12,8 @@ export interface GeminiImageDeps {
   getKey: () => Promise<string>;
   /** The `gemini_image` registry price; null = unpriced, refused. */
   price: PriceRule | null;
-  budgetScopes: string[];
+  /** Absolute storage root; images are kept under generated-media/. */
+  root: string;
   /** Asset id to its file bytes (the caller reads the assets table). */
   readRef: (assetId: string) => Promise<Buffer>;
 }
@@ -40,6 +41,7 @@ export function createGeminiImage(deps: GeminiImageDeps): ImageProvider {
     quote,
     async generate(ctx, a) {
       const prompt = check(a);
+      const scopes = scopesOf(a.budgetScopes);
       const reserve = quote({ aspect: a.aspect, refs: a.refs?.length ?? 0, model: a.model });
       const refs: Array<{ type: "image"; mime_type: string; data: string }> = [];
       for (const id of a.refs ?? []) { // read and checked before anything is reserved
@@ -49,7 +51,7 @@ export function createGeminiImage(deps: GeminiImageDeps): ImageProvider {
         refs.push({ type: "image", mime_type: s.mime, data: bytes.toString("base64") });
       }
       const body = { model: a.model, input: [{ type: "text", text: prompt }, ...refs], response_format: { type: "image", aspect_ratio: a.aspect, image_size: "1K" } };
-      return paidImage(ctx, { who: "Gemini", getKey: deps.getKey, budgetScopes: [...deps.budgetScopes, ...(a.budgetScopes ?? [])] }, reserve, async (key, signal) => {
+      return paidImage(ctx, { who: "Gemini", root: deps.root, getKey: deps.getKey, budgetScopes: scopes }, reserve, async (key, signal) => {
         const res = await postJson("Gemini", deps.fetch, `${HOST}/v1beta/interactions`, { "x-goog-api-key": key }, body, signal);
         let json: { output_image?: { data?: unknown }; steps?: Array<{ content?: Array<{ type?: unknown; data?: unknown }> }> };
         try {

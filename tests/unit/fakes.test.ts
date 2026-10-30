@@ -65,17 +65,17 @@ const paidCtx = (signal: AbortSignal = new AbortController().signal): StageConte
 describe("fake image", () => {
   it("writes a PNG, reports price, maps known failure", async () => {
     const im = createFakeImage({ script: [ok(4000), knownFailure("blocked prompt")] });
-    const r = await im.generate(paidCtx(), { prompt: "a cat", aspect: "9:16", model: "fake" });
+    const r = await im.generate(paidCtx(), { prompt: "a cat", aspect: "9:16", model: "fake", budgetScopes: ["v"] });
     expect(r.provenance.priceMicroUsd).toBe(4000);
     expect(readFileSync(r.path).subarray(1, 4).toString()).toBe("PNG");
-    await expect(im.generate(paidCtx(), { prompt: "a cat", aspect: "1:1", model: "fake" })).rejects.toBeInstanceOf(KnownFailure);
+    await expect(im.generate(paidCtx(), { prompt: "a cat", aspect: "1:1", model: "fake", budgetScopes: ["v"] })).rejects.toBeInstanceOf(KnownFailure);
     expect(im.totalCalls()).toBe(2);
   });
   it("hangs honours the abort signal", async () => {
     const im = createFakeImage({ script: [hangs(60_000)] });
     const ctl = new AbortController();
     ctl.abort(new Error("gone"));
-    await expect(im.generate(paidCtx(ctl.signal), { prompt: "p", aspect: "1:1", model: "fake" })).rejects.toThrow("gone");
+    await expect(im.generate(paidCtx(ctl.signal), { prompt: "p", aspect: "1:1", model: "fake", budgetScopes: ["v"] })).rejects.toThrow("gone");
   });
 });
 

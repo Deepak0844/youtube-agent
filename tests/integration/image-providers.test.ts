@@ -33,6 +33,9 @@ let handler: Handler;
 let seen: Array<{ method: string; url: string; headers: IncomingMessage["headers"]; body: string }>;
 let db: TestDb;
 let dir: string;
+let root: string;
+const BUDGET = ["video:t"];
+const filesIn = (d: string): string[] => readdirSync(d, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => path.join(e.parentPath, e.name));
 let ctl: AbortController;
 let steps: number;
 let sleeps: number[];
@@ -53,6 +56,7 @@ const ctxFor = (stageRunId = uuidv7()): StageContext => ({
 
 beforeAll(async () => {
   dir = realpathSync(mkdtempSync(path.join(tmpdir(), "img-")));
+  root = realpathSync(mkdtempSync(path.join(tmpdir(), "img-root-")));
   db = await withTestDb();
   server = createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -65,6 +69,7 @@ beforeAll(async () => {
 afterAll(async () => {
   server.close();
   rmSync(dir, { recursive: true, force: true });
+  rmSync(root, { recursive: true, force: true });
   await db?.stop();
 });
 beforeEach(async () => {
@@ -73,7 +78,7 @@ beforeEach(async () => {
   steps = 0;
   sleeps = [];
   ctl = new AbortController();
-  for (const f of readdirSync(dir)) rmSync(path.join(dir, f), { recursive: true, force: true });
+  for (const d of [dir, root]) for (const f of readdirSync(d)) rmSync(path.join(d, f), { recursive: true, force: true });
   handler = (_r, _b, res) => json(res, 500, {});
 });
 afterEach(() => undefined);
@@ -81,12 +86,12 @@ afterEach(() => undefined);
 const geminiOk = (img: Buffer) => ({ steps: [{ type: "model_output", content: [{ type: "image", mime_type: "image/png", data: img.toString("base64") }] }] });
 const openaiOk = (img: Buffer) => ({ data: [{ b64_json: img.toString("base64") }] });
 
-const gemini = (price: typeof PRICE | null = PRICE) => createGeminiImage({ fetch: localFetch, getKey: async () => KEY, price, budgetScopes: [], readRef: async (id) => (id === "bad" ? HTML : PNG) });
-const openai = (price: typeof PRICE | null = PRICE) => createOpenAIImage({ fetch: localFetch, getKey: async () => KEY, price, budgetScopes: [] });
+const gemini = (price: typeof PRICE | null = PRICE) => createGeminiImage({ fetch: localFetch, getKey: async () => KEY, price, root, readRef: async (id) => (id === "bad" ? HTML : PNG) });
+const openai = (price: typeof PRICE | null = PRICE) => createOpenAIImage({ fetch: localFetch, getKey: async () => KEY, price, root });
 const fal = (price: typeof FAL_PRICE | null = FAL_PRICE, extra: { fetchCdn?: SafeFetch } = {}) =>
-  createFalImage({ fetch: localFetch, fetchCdn: extra.fetchCdn ?? localFetch, db: db.pool, getKey: async () => KEY, price, budgetScopes: [], sleep: async (ms) => { sleeps.push(ms); } });
+  createFalImage({ fetch: localFetch, fetchCdn: extra.fetchCdn ?? localFetch, db: db.pool, getKey: async () => KEY, price, root, sleep: async (ms) => { sleeps.push(ms); } });
 
-const args = { prompt: "a red fox", aspect: "9:16" as const, model: "" };
+const args = { prompt: "a red fox", aspect: "9:16" as const, model: "", budgetScopes: BUDGET };
 const MODEL = { gemini: "gemini-3.1-flash-lite-image", openai: "gpt-image-1-mini", fal: "fal-ai/flux/schnell" };
 const REQ_ID = "0a1b2c3d-1111-2222-3333-444455556666";
 
@@ -199,7 +204,7 @@ describe("gemini and openai bodies", () => {
       handler = (_r, _b, res) => json(res, 200, openaiOk(bad));
       const e = await openai().generate(ctxFor(), { ...args, model: MODEL.openai }).catch((x) => x);
       expect(classifyError(e)).toBe("unknown");
-      expect(readdirSync(dir)).toEqual([]);
+      expect(filesIn(root)).toEqual([]);
     }
   });
 });
@@ -216,7 +221,7 @@ describe("rules before reserve", () => {
       await expect(p.generate(ctxFor(), { ...args, model })).rejects.toBeInstanceOf(KnownFailure);
     }
     expect(seen).toHaveLength(0);
-    const wrongUnit = createOpenAIImage({ fetch: localFetch, getKey: async () => KEY, price: { unit: "per_second", microUsd: 5 } as never, budgetScopes: [] });
+    const wrongUnit = createOpenAIImage({ fetch: localFetch, getKey: async () => KEY, price: { unit: "per_second", microUsd: 5 } as never, root });
     expect(() => wrongUnit.quote({ aspect: "9:16", refs: 0, model: MODEL.openai })).toThrow(KnownFailure);
   });
   it("prompt is cleaned and bounded before anything is reserved", async () => {
@@ -242,6 +247,24 @@ describe("rules before reserve", () => {
     await expect(openai().generate(ctxFor(), { ...args, model: MODEL.openai, refs: ["a"] })).rejects.toBeInstanceOf(KnownFailure);
     expect(seen).toHaveLength(0);
   });
+  it("no budget scope means refused before any reserve or request", async () => {
+    const ctx = ctxFor();
+    let paid = 0;
+    (ctx as { paid: unknown }).paid = () => { paid++; };
+    for (const p of [gemini(), openai(), fal()]) {
+      const model = p.capability.id === "gemini_image" ? MODEL.gemini : p.capability.id === "openai_image" ? MODEL.openai : MODEL.fal;
+      await expect(p.generate(ctx, { ...args, model, budgetScopes: [] })).rejects.toBeInstanceOf(KnownFailure);
+    }
+    expect(paid).toBe(0);
+    expect(seen).toHaveLength(0);
+  });
+  it("the image lives under the storage root, not the attempt folder, and survives it", async () => {
+    handler = (_r, _b, res) => json(res, 200, openaiOk(PNG));
+    const art = await openai().generate(ctxFor(), { ...args, model: MODEL.openai });
+    expect(art.path.startsWith(path.join(root, "generated-media"))).toBe(true);
+    expect(readdirSync(dir)).toEqual([]);
+    expect(readFileSync(art.path).equals(PNG)).toBe(true);
+  });
   it("provider_without_ref_support_refused_for_locked_character", () => {
     const all = { gemini_image: gemini(), openai_image: openai(), fal_image: fal() };
     expect(pickImageProvider(all, "gemini_image", { locked: true }).capability.refImages).toBe(true);
@@ -252,9 +275,9 @@ describe("rules before reserve", () => {
   });
   it("an output over 25 MB or not png/jpeg/webp is refused and writes nothing", async () => {
     const big = Buffer.concat([PNG, Buffer.alloc(25 * 1024 * 1024)]);
-    await expect(saveImage(ctxFor(), big, { provider: "x", model: "m", prompt: "p", refs: [], priceMicroUsd: 1 })).rejects.toThrow();
-    await expect(saveImage(ctxFor(), Buffer.from("GIF89a....."), { provider: "x", model: "m", prompt: "p", refs: [], priceMicroUsd: 1 })).rejects.toThrow();
-    expect(readdirSync(dir)).toEqual([]);
+    await expect(saveImage(big, { root, provider: "x", model: "m", prompt: "p", refs: [], priceMicroUsd: 1 })).rejects.toThrow();
+    await expect(saveImage(Buffer.from("GIF89a....."), { root, provider: "x", model: "m", prompt: "p", refs: [], priceMicroUsd: 1 })).rejects.toThrow();
+    expect(filesIn(root)).toEqual([]);
   });
 });
 
@@ -333,7 +356,7 @@ describe("fal async flow", () => {
       const e = await gen().catch((x) => x);
       expect(e).toBeInstanceOf(Error);
       expect(e).not.toBeInstanceOf(KnownFailure);
-      expect(readdirSync(dir)).toEqual([]);
+      expect(filesIn(root)).toEqual([]);
       expect((await jobs())[0]!.state).not.toBe("done");
     }
   });
@@ -363,7 +386,7 @@ describe("fal async flow", () => {
     falServer({ result: (_r, _b, res) => json(res, 200, { images: [{ url: "https://v3.fal.media/files/a/out.png" }], has_nsfw_concepts: [true] }) });
     const e = await gen().catch((x) => x);
     expect(classifyError(e)).toBe("unknown");
-    expect(readdirSync(dir)).toEqual([]);
+    expect(filesIn(root)).toEqual([]);
   });
 
   it("a fal job that reports failure is unknown (it may have billed)", async () => {
@@ -374,7 +397,7 @@ describe("fal async flow", () => {
 
   it("cancel_stops_polling_and_leaves_intent_pending", async () => {
     falServer({ status: (_r, _b, res) => json(res, 200, { status: "IN_PROGRESS" }) });
-    const slow = createFalImage({ fetch: localFetch, fetchCdn: localFetch, db: db.pool, getKey: async () => KEY, price: FAL_PRICE, budgetScopes: [], sleep: async (_ms, signal) => { ctl.abort(new Error("cancelled")); if (signal?.aborted) throw signal.reason; } });
+    const slow = createFalImage({ fetch: localFetch, fetchCdn: localFetch, db: db.pool, getKey: async () => KEY, price: FAL_PRICE, root, sleep: async (_ms, signal) => { ctl.abort(new Error("cancelled")); if (signal?.aborted) throw signal.reason; } });
     await expect(gen(slow)).rejects.toThrow("cancelled");
     const polls = count(/status$/);
     expect(polls).toBe(1);
@@ -384,7 +407,8 @@ describe("fal async flow", () => {
   it("sidecar_has_no_key", async () => {
     falServer();
     const art = await gen();
-    for (const f of readdirSync(dir)) expect(readFileSync(path.join(dir, f)).toString("latin1")).not.toContain(KEY);
+    for (const f of filesIn(root)) expect(readFileSync(f).toString("latin1")).not.toContain(KEY);
+    expect(filesIn(root)).toHaveLength(2);
     expect(Object.keys(JSON.parse(readFileSync(art.path.replace(/\.png$/, ".json"), "utf8"))).sort()).toEqual(["model", "prompt", "refs", "seed"]);
     expect(JSON.stringify(art)).not.toContain(KEY);
   });

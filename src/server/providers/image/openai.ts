@@ -3,7 +3,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import type { Aspect, ImageProvider } from "../media";
 import type { SafeFetch } from "../voice/eleven-types";
 import { postJson, readCapped } from "../voice/elevenlabs";
-import { checkImage, refsOf, paidImage } from "./index";
+import { checkImage, refsOf, scopesOf, paidImage } from "./index";
 
 export interface OpenAIImageDeps {
   fetch: SafeFetch;
@@ -11,7 +11,8 @@ export interface OpenAIImageDeps {
   getKey: () => Promise<string>;
   /** The `openai_image` registry price; null = unpriced, refused. */
   price: PriceRule | null;
-  budgetScopes: string[];
+  /** Absolute storage root; images are kept under generated-media/. */
+  root: string;
 }
 
 const HOST = "https://api.openai.com";
@@ -37,8 +38,9 @@ export function createOpenAIImage(deps: OpenAIImageDeps): ImageProvider {
     quote,
     async generate(ctx, a) {
       const prompt = check(a);
+      const scopes = scopesOf(a.budgetScopes);
       const reserve = quote({ aspect: a.aspect, refs: a.refs?.length ?? 0, model: a.model });
-      return paidImage(ctx, { who: "OpenAI", getKey: deps.getKey, budgetScopes: [...deps.budgetScopes, ...(a.budgetScopes ?? [])] }, reserve, async (key, signal) => {
+      return paidImage(ctx, { who: "OpenAI", root: deps.root, getKey: deps.getKey, budgetScopes: scopes }, reserve, async (key, signal) => {
         // A moderation refusal is not documented as free, so it is treated as unknown (the reservation stays pending).
         const res = await postJson("OpenAI", deps.fetch, `${HOST}/v1/images/generations`, { authorization: `Bearer ${key}` }, { model: a.model, prompt, size: SIZE[a.aspect], n: 1, quality: QUALITY, output_format: "png" }, signal, (_s, t) => /moderation_blocked|safety/i.test(t));
         let b64: unknown;

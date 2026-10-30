@@ -49,7 +49,9 @@ export function generateAttempt(deps: StageDeps): AttemptHandler {
       const prompt = typeof beat?.id === "string" ? `scene ${beat.id}` : `scene ${index + 1}`;
       // The adapter reserves inside generate(), against the quote-cap scope passed here.
       const r = await deps.image.generate(ctx, { prompt, aspect: "9:16", model: deps.imageModel ?? DEFAULTS.imageModel, budgetScopes: scopes });
-      const made = { name: path.basename(r.path), b64: (r as { b64?: string }).b64 ?? (await readFile(r.path)).toString("base64") }; // fake only carries b64: a replay rebuilds the file from it
+      // Real adapters keep the image under the storage root (outlives the attempt); the fake carries b64 instead. A missing file is never re-bought: the plain error parks the stage.
+      const b64 = (r as { b64?: string }).b64 ?? (await readFile(r.path).then((b) => b.toString("base64"), () => { throw new Error("A paid image's file is missing. It was not requested again; this needs the owner's decision."); }));
+      const made = { name: path.basename(r.path), b64 };
       assertProviderName(made.name, "image");
       await writeFile(path.join(ctx.attemptDir, made.name), Buffer.from(made.b64, "base64")); // also rebuilds the file after a resume
       if (!files.includes(made.name)) files.push(made.name);
