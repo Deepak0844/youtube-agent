@@ -12,6 +12,7 @@ import type { VoiceProvider } from "@/server/providers/voice";
 import type { AlignArgs } from "@/server/render/whisper";
 import type { MixDeps } from "@/server/render/mix";
 import type { probeVideo } from "@/server/render/probe";
+import type { QaScanner } from "@/server/render/qa-scan";
 import type { LlmClient } from "@/server/llm/client";
 import { videoIdOf } from "./attempt";
 
@@ -41,6 +42,8 @@ export interface StageDeps {
   renderer: Renderer;
   /** Defaults to the real ffprobe-based probe. */
   probe?: typeof probeVideo;
+  /** Full ffmpeg QA scan (black/frozen frames, loudness, codecs, stills). Absent = dry run: only the basic probe runs. */
+  qaScan?: QaScanner;
   /** Name Build writes into the plan; Generate refuses a plan that names another provider. */
   imageProvider?: string;
   /** Image model id passed to the provider (default "fake"). */
