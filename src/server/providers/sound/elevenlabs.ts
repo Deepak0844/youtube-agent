@@ -37,9 +37,12 @@ export function createElevenLabsSound(deps: ElevenLabsSoundDeps): SoundProvider 
     if (!Number.isFinite(a.seconds) || a.seconds < lo || a.seconds > hi) throw new KnownFailure(`A ${kind === "sfx" ? "sound effect" : "music track"} must be ${lo} to ${hi} seconds long.`);
     return price;
   }
-  // DELIBERATE OVER-QUOTE: the pricing page says "billed per generation", so the real unit is unconfirmed. Until the owner-run
-  // smoke (Task 20: compare the ElevenLabs dashboard usage) confirms it, quote whole minutes (minimum one) at the per-second rate.
-  const quote = (kind: Kind, a: { prompt: string; seconds: number }) => priceQuote(check(kind, a), Math.ceil(a.seconds / 60) * 60);
+  // Sound effects: the API reference bills 20 credits per second when duration_seconds is set (100 per generation when it is not; we always set it)
+  // https://elevenlabs.io/docs/api-reference/sound-generation . ASSUMPTION: 1 credit = $0.0001, which is what the registry's $0.12/min (2000 micro-USD/s)
+  // implies (20 credits x 60 s = 1200 credits = $0.12). A live 2 s clip used 20 credits, half the documented 40, so this is a safe upper bound.
+  // The response carries no credit count, so the recorded spend is this documented per-second cost (never the old whole-minute figure).
+  // Music is still unconfirmed ("billed per generation"), so it keeps the whole-minute over-quote.
+  const quote = (kind: Kind, a: { prompt: string; seconds: number }) => priceQuote(check(kind, a), kind === "sfx" ? a.seconds : Math.ceil(a.seconds / 60) * 60);
 
   async function make(kind: Kind, ctx: StageContext, raw: { prompt: string; seconds: number }): Promise<MediaArtifact> {
     const a = { ...raw, prompt: cleanPrompt(raw.prompt) ?? "" }; // check() inside quote() has refused an unusable prompt
