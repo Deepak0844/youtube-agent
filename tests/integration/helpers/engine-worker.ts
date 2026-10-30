@@ -102,7 +102,12 @@ const fakeVoice = createFakeVoice({ beforeCall: (ctx) => onProviderCall(ctx.clai
 const deps = {
   ...base,
   voiceFor: async (a: { budgetScopes: string[] }) => ({ provider: fakeVoice.forScopes(a.budgetScopes), providerId: "fake", voice: "fake" }),
-  image: { ...base.image, generate: async (ctx: Parameters<typeof base.image.generate>[0], a: Parameters<typeof base.image.generate>[1]) => { await onProviderCall(ctx.claim.stageRunId, ctx.stage.name); return base.image.generate(ctx, a); } },
+  // The image adapter reserves inside generate() (ctx.paid), so the counting seam runs inside that paid call, after the reserve, like the voice seam.
+  image: {
+    ...base.image,
+    generate: (ctx: Parameters<typeof base.image.generate>[0], a: Parameters<typeof base.image.generate>[1]) =>
+      base.image.generate({ ...ctx, paid: (step, call) => ctx.paid(step, async (key, signal) => { await onProviderCall(ctx.claim.stageRunId, ctx.stage.name); return call(key, signal); }) }, a),
+  },
 };
 
 const worker = startWorker({
