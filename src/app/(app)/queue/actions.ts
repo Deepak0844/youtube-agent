@@ -8,6 +8,7 @@ import { dryRunAllowed } from "@/lib/dry-run";
 import { BAD_FORM, parseDecisionForm, parseGateForm, parseIdForm, parseStageForm } from "@/server/core/queue-input";
 import { getPool } from "@/server/db/pool";
 import { cancelVideoById, decideGate, decideParkedStage, resetBreakerFor, sendUploadAgain, startDryRun, type ActionResult } from "@/server/db/queue-actions";
+import { jobCheckers } from "./job-checkers";
 import { webStageQueue, webUploadQueue } from "@/server/queue/web-queues";
 
 // Every action: requireOwner() first (the session id comes from it and from nowhere else), then the Origin check, then
@@ -46,7 +47,7 @@ export async function resolveDecisionAction(_prev: QueueState, form: FormData): 
   if (origin) return bad(origin);
   const p = parseDecisionForm(form);
   if (!p.ok) return done(bad(p.message));
-  return done(await decideParkedStage(getPool(), queues(), { kind: "session", sessionId: owner.sessionId }, p.value));
+  return done(await decideParkedStage(getPool(), queues(), { kind: "session", sessionId: owner.sessionId }, p.value, jobCheckers()));
 }
 
 export async function resetBreakerAction(_prev: QueueState, form: FormData): Promise<QueueState> {

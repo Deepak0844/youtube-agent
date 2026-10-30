@@ -35,6 +35,8 @@ export interface StageDeps {
   /** Word times for audio whose provider gave none (whisper). Absent or failing = estimated times, never invented exact ones. */
   align?: (a: AlignArgs) => Promise<CaptionsBody>;
   image: ImageProvider;
+  /** The routed hosted image provider by registry id (production). Refuses before any money is reserved when it is off, unpriced or has no key. */
+  imageFor?: (providerId: string) => Promise<ImageProvider>;
   renderer: Renderer;
   /** Defaults to the real ffprobe-based probe. */
   probe?: typeof probeVideo;

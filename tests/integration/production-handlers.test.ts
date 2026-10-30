@@ -50,3 +50,11 @@ describe("production handlers", () => {
     }
   });
 });
+
+describe("production image wiring", () => {
+  it("imageFor refuses an unknown, off or unkeyed image provider before any money moves", async () => {
+    const imageFor = productionStageDeps(db.pool).imageFor!;
+    await expect(imageFor("elevenlabs")).rejects.toThrow(/not an image provider/);
+    await expect(imageFor("fal_image")).rejects.toThrow(/off or has no price/);
+  });
+});
