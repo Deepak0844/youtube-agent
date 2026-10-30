@@ -10,7 +10,7 @@ const RATE = 1000; // Hz: tiny on purpose, the fake only needs a valid, determin
 const WPS = 2.5;
 
 /** Silent mono 8-bit WAV, length from the word count. Byte-identical for the same input. */
-function silentWav(seconds: number): Buffer {
+export function silentWav(seconds: number): Buffer {
   const n = Math.max(1, Math.round(seconds * RATE));
   const h = Buffer.alloc(44);
   h.write("RIFF", 0);
