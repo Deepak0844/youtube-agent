@@ -1,11 +1,17 @@
 import React from "react";
 import { Composition } from "remotion";
 import { Browser, type BrowserProps } from "./Browser";
+import { AlgoCells, type AlgoCellsProps } from "./AlgoCells";
 import { ChatThread, type ChatThreadProps } from "./ChatThread";
 import { PauseCard, type PauseCardProps } from "./PauseCard";
 import { StockClip, type StockClipProps } from "./StockClip";
 import { DrawnObjects, type DrawnObjectsProps } from "./DrawnObjects";
 import { Network, type NetworkProps } from "./Network";
+import { MathSteps, type MathProps } from "./Math";
+import { Probability, type ProbabilityProps } from "./Probability";
+import { Chart, type ChartProps } from "./Chart";
+import { ChatThread, type ChatThreadProps } from "./ChatThread";
+import { Spreadsheet, type SpreadsheetProps } from "./Spreadsheet";
 import { Story, type StoryProps } from "./Story";
 import { Terminal, type TerminalProps } from "./Terminal";
 import { theme } from "./theme";
@@ -62,7 +68,34 @@ const net: NetworkProps = {
     { from: "dns", to: "root", packet: ".com?" },
     { from: "root", to: "tld" },
     { from: "tld", to: "web", packet: "IP" },
+}
+
+}
+
+}
+
+const math: MathProps = {
+  title: "Solve for x",
+  steps: [{ text: "2x + 3 = 11" }, { text: "2x = 8", highlight: "8" }, { text: "x = 4", highlight: "4" }],
+  framesPerStep: 30,
 };
+const prob: ProbabilityProps = {
+  experiment: "coin",
+  trials: 100,
+  outcomes: [{ label: "Heads", count: 54, p: 0.5 }, { label: "Tails", count: 46, p: 0.5 }],
+  growFrames: 90,
+};
+const sheet: SpreadsheetProps = {
+  rows: [["Item", "Qty", "Price"], ["Apple", "3", "1.20"], ["Pear", "5", "0.90"], ["Total", "8", "8.10"]],
+  formula: "=SUM(B2:B3)",
+  highlight: ["B2:B3", "C4"],
+  reveal: "row",
+  framesPerStep: 20,
+};
+const chartBase = { labels: ["Mon", "Tue", "Wed", "Thu"], title: "Views", drawFrames: 60 };
+const bar: ChartProps = { ...chartBase, chart: "bar", series: [{ name: "A", values: [3, 5, 8, 6] }, { name: "B", values: [2, 4, 3, 7] }] };
+const line: ChartProps = { ...chartBase, chart: "line", series: [{ name: "A", values: [3, 5, 8, 6] }, { name: "B", values: [2, 4, 3, 7] }] };
+const pie: ChartProps = { ...chartBase, chart: "pie", series: [{ values: [30, 20, 40, 10] }] };
 // A 1x1 transparent-safe data URI keeps the smoke render offline; real jobs pass a staged asset path.
 const story: StoryProps = {
   image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1080' height='1920'><rect width='100%25' height='100%25' fill='%231e3a5f'/><circle cx='540' cy='960' r='300' fill='%235eead4'/></svg>",
@@ -71,6 +104,16 @@ const story: StoryProps = {
 
 const pause: PauseCardProps = { question: "Which one is real?", options: ["Left", "Right", "Both"], answer: 1, revealAtFrame: 70 };
 const stock: StockClipProps = { src: story.image, media: "image", dim: 0.3, caption: "Stock footage example" };
+const algo: AlgoCellsProps = {
+  title: "bubble sort",
+  cells: ["5", "2", "9", "1", "7", "3"],
+  steps: [
+    { at: 300, type: "compare", i: 0, j: 1 },
+    { at: 1000, type: "swap", i: 0, j: 1 },
+    { at: 1600, type: "pointer", i: 3 },
+    { at: 2400, type: "mark_done", i: 2 },
+  ],
+};
 
 const common = { width: theme.width, height: theme.height, fps: theme.fps, durationInFrames: 120 };
 
@@ -81,6 +124,13 @@ export const kitCompositions = [
   { id: "kit-browser", component: Browser, defaultProps: browser },
   { id: "kit-drawn", component: DrawnObjects, defaultProps: drawn },
   { id: "kit-network", component: Network, defaultProps: net },
+  { id: "kit-math", component: MathSteps, defaultProps: math },
+  { id: "kit-prob", component: Probability, defaultProps: prob },
+  { id: "kit-sheet", component: Spreadsheet, defaultProps: sheet },
+  { id: "kit-chart-bar", component: Chart, defaultProps: bar },
+  { id: "kit-chart-line", component: Chart, defaultProps: line },
+  { id: "kit-chart-pie", component: Chart, defaultProps: pie },
+  { id: "kit-algo", component: AlgoCells, defaultProps: algo },
   { id: "kit-story", component: Story, defaultProps: story },
   { id: "kit-stock", component: StockClip, defaultProps: stock },
   { id: "kit-pause", component: PauseCard, defaultProps: pause },
