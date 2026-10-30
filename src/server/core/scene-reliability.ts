@@ -1,6 +1,7 @@
 import type { Message } from "@/server/core/agent-loop";
 import { BudgetRefusedError, KnownFailure } from "@/server/core/paid-call";
 import { describeSceneFormat, sceneJsonSchema, validateScenes } from "@/shared/scene";
+import type { kinds } from "@/shared/scene/kinds";
 
 // Scene-JSON reliability check (Phase 4): can a model fill the scene format from a beat sheet? Pure loop: the caller's `ask`
 // does the paid, reserved model call. A schema-invalid answer is retried (max 2) with the plain-text errors fed back; the same
@@ -8,10 +9,22 @@ import { describeSceneFormat, sceneJsonSchema, validateScenes } from "@/shared/s
 
 export const MAX_RETRIES = 2;
 export const GO_RATIO = 0.8;
+const ASSET_KINDS = new Set<string>(["story_kenburns", "stock_clip", "collage", "browser"]);
+
+/** Which sheets to run: `perKind` = first n of each kind (file order); else the first `runs` (default 10). */
+export function selectSheets(all: BeatSheet[], o: { runs?: number; perKind?: number }): BeatSheet[] {
+  if (o.perKind === undefined) return all.slice(0, o.runs ?? 10);
+  const seen = new Map<string, number>();
+  return all.filter((s) => {
+    const n = seen.get(s.kind) ?? 0;
+    seen.set(s.kind, n + 1);
+    return n < o.perKind!;
+  });
+}
 
 export interface BeatSheet {
   id: string;
-  kind: "terminal" | "chat_thread" | "story_kenburns";
+  kind: keyof typeof kinds;
   beats: { id: string; text: string }[];
 }
 export interface AskResult {
@@ -45,7 +58,7 @@ export function buildMessages(s: BeatSheet): Message[] {
     "Use one scene per beat, in order, starting at 0 ms. Reply with only the JSON, no commentary.",
   ].join("\n\n");
   const lines = s.beats.map((b) => `- ${b.id}: ${b.text}`).join("\n");
-  const hint = s.kind === "story_kenburns" ? "\nUse the image asset ids img_1, img_2, img_3." : "";
+  const hint = ASSET_KINDS.has(s.kind) ? "\nUse the image asset ids img_1, img_2, img_3." : "";
   return [
     { role: "system", content: system },
     { role: "user", content: `Preferred scene kind: ${s.kind}\nBeats:\n${lines}${hint}` },
@@ -110,6 +123,13 @@ export async function runSheets(sheets: BeatSheet[], ask: Ask, opts: { signal?: 
 export function summarize(results: SheetResult[], planned: number) {
   const firstTry = results.filter((r) => r.firstTry).length;
   const withinRetries = results.filter((r) => r.withinRetries).length;
+  const byKind: Record<string, { ran: number; firstTry: number; withinRetries: number }> = {};
+  for (const r of results) {
+    const k = (byKind[r.kind] ??= { ran: 0, firstTry: 0, withinRetries: 0 });
+    k.ran++;
+    if (r.firstTry) k.firstTry++;
+    if (r.withinRetries) k.withinRetries++;
+  }
   const counts = new Map<string, number>();
   for (const r of results) for (const e of r.errors) counts.set(e.replace(/\d+/g, "N"), (counts.get(e.replace(/\d+/g, "N")) ?? 0) + 1);
   const topErrors = [...counts].map(([message, count]) => ({ message, count })).sort((a, b) => b.count - a.count).slice(0, 5);
@@ -122,6 +142,7 @@ export function summarize(results: SheetResult[], planned: number) {
     withinRetries,
     costMicroUsd: results.reduce((s, r) => s + r.costMicroUsd, 0),
     verdict: notRun ? ("NOT RUN" as const) : planned > 0 && withinRetries >= Math.ceil(planned * GO_RATIO) ? ("GO" as const) : ("NO-GO" as const),
+    byKind,
     topErrors,
   };
 }

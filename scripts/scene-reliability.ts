@@ -1,6 +1,6 @@
 // Scene-JSON reliability eval (Phase 4). OWNER-RUN, spends real money on a hosted model.
 //
-//   npm run eval:scenes -- --model <model id> [--runs 10] [--max-usd 0.5] [--yes]
+//   npm run eval:scenes -- --model <model id> [--runs 10 | --per-kind 1] [--max-usd 0.5] [--yes]
 //
 // Without --yes it only prints the model, runs and cost ceiling, then exits (nothing is reserved or sent). With --yes it asks the
 // model for scene JSON for each fixed beat sheet (retry twice with the errors fed back), every call reserved first against a
@@ -22,11 +22,12 @@ async function main(): Promise<void> {
   const modelId = arg("model");
   if (!modelId) throw new EvalRefusal("Give the model to test: --model <model id> (see the Models page). Nothing was sent.");
   const runs = arg("runs") === undefined ? undefined : Number(arg("runs"));
+  const perKind = arg("per-kind") === undefined ? undefined : Number(arg("per-kind"));
   const maxUsd = arg("max-usd") === undefined ? undefined : Number(arg("max-usd"));
   const yes = process.argv.includes("--yes");
   const db = getPool();
   try {
-    const req = { modelId, ...(runs !== undefined ? { runs } : {}), ...(maxUsd !== undefined ? { maxUsd } : {}) };
+    const req = { modelId, ...(runs !== undefined ? { runs } : {}), ...(perKind !== undefined ? { perKind } : {}), ...(maxUsd !== undefined ? { maxUsd } : {}) };
     const plan = await planSceneEval(db, req);
     process.stdout.write(`Model: ${plan.model.label} (${plan.model.provider}/${plan.model.modelId})\nRuns: ${plan.sheets.length}\nCost ceiling: up to $${microToUsd(plan.ceilingMicroUsd)} (the run stops there)\n`);
     if (!yes) {
@@ -45,6 +46,8 @@ async function main(): Promise<void> {
       process.stdout.write(`${r.id} ${r.kind}: first-try ${r.firstTry ? "pass" : "fail"}, within retries ${r.withinRetries ? "pass" : "fail"}, ${r.attempts} call(s), ${r.inputTokens}+${r.outputTokens} tokens, $${microToUsd(r.costMicroUsd)}${r.errors.length ? `, errors: ${r.errors.slice(0, 2).join(" | ")}` : ""}\n`);
     }
     const s = out.summary;
+    const kindLines = Object.entries(s.byKind).map(([k, v]) => `  ${k}: ${v.ran} ran, first try ${v.firstTry}/${v.ran}, within retries ${v.withinRetries}/${v.ran}\n`).join("");
+    if (kindLines) process.stdout.write(`\nBy kind:\n${kindLines}`);
     const pct = (n: number) => (s.ran ? Math.round((n / s.ran) * 100) : 0);
     process.stdout.write(
       `\n${s.ran}/${s.planned} ran${out.stopped === "none" ? "" : ` (stopped early: ${out.stopped})`}. First try ${pct(s.firstTry)}%, within 2 retries ${pct(s.withinRetries)}%, cost $${microToUsd(s.costMicroUsd)}.\nVerdict: ${s.notRunReason !== undefined ? `NOT RUN (provider refused: ${s.notRunReason})` : s.verdict}\n` +
