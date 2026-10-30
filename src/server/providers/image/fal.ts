@@ -5,7 +5,7 @@ import { runAsyncMedia, stepOfKey } from "../async-media";
 import type { Aspect, ImageProvider } from "../media";
 import type { SafeFetch } from "../voice/eleven-types";
 import { postJson, readCapped } from "../voice/elevenlabs";
-import { checkImage, readKey, saveImage } from "./index";
+import { checkImage, refsOf, readKey, saveImage } from "./index";
 
 export interface FalImageDeps {
   /** Typed host queue.fal.run. */
@@ -47,7 +47,7 @@ export function createFalImage(deps: FalImageDeps): ImageProvider {
     return checkImage(capability, deps.price, { prompt: a.prompt ?? "x", aspect: a.aspect, refs: a.refs, seed: a.seed });
   };
   const quote: ImageProvider["quote"] = (a) => {
-    check({ ...a, refs: new Array(a.refs).fill("") });
+    check({ ...a, refs: refsOf(a.refs) });
     return priceQuote(deps.price as PriceRule, 1);
   };
 
@@ -75,7 +75,8 @@ export function createFalImage(deps: FalImageDeps): ImageProvider {
       const reserve = quote({ aspect: a.aspect, refs: 0, model: a.model });
       const app = APPS[a.model]!;
       const meta = { provider: "fal_image", model: a.model, prompt, refs: [] as string[], seed: a.seed, aspect: a.aspect };
-      return ctx.paid({ reserveMicroUsd: reserve, budgetScopes: deps.budgetScopes, kind: "paid" }, async (callKey, signal) => {
+      let flaky = 0; // status polls that failed in a row; not a money risk (the job id is stored), so a few are tolerated
+      return ctx.paid({ reserveMicroUsd: reserve, budgetScopes: [...deps.budgetScopes, ...(a.budgetScopes ?? [])], kind: "paid" }, async (callKey, signal) => {
         const auth = async () => ({ authorization: `Key ${await readKey(deps.getKey, "fal")}` });
         const result = await runAsyncMedia(ctx, { db: deps.db, provider: "fal_image", kind: "image", step: stepOfKey(callKey), quoteMicroUsd: reserve, signal, sleep: deps.sleep }, {
           async submit() {
@@ -86,11 +87,19 @@ export function createFalImage(deps: FalImageDeps): ImageProvider {
           },
           async poll(id) {
             const base = `${HOST}/${app}/requests/${id}`;
-            const st = JSON.parse((await get(deps.fetch, `${base}/status`, await auth(), signal)).toString("utf8")) as { status?: unknown; error?: unknown };
+            let st: { status?: unknown; error?: unknown };
+            try {
+              st = JSON.parse((await get(deps.fetch, `${base}/status`, await auth(), signal)).toString("utf8"));
+              flaky = 0;
+            } catch (err) {
+              if (signal.aborted || ++flaky > 3) throw err;
+              return null;
+            }
             if (st.error) throw new Error("fal reported the job failed; the outcome is unknown.");
             if (st.status === "IN_QUEUE" || st.status === "IN_PROGRESS") return null;
             if (st.status !== "COMPLETED") throw new Error("fal reported an unknown job state.");
-            const out = JSON.parse((await get(deps.fetch, base, await auth(), signal)).toString("utf8")) as { images?: Array<{ url?: unknown }> };
+            const out = JSON.parse((await get(deps.fetch, base, await auth(), signal)).toString("utf8")) as { images?: Array<{ url?: unknown }>; has_nsfw_concepts?: unknown[] };
+            if (out.has_nsfw_concepts?.some((x) => x === true)) throw new Error("fal's safety check replaced the image (still billed); the outcome needs the owner's decision.");
             return falCdnUrl(out.images?.[0]?.url);
           },
           download: (url) => get(deps.fetchCdn, falCdnUrl(url), {}, signal), // no key to the CDN

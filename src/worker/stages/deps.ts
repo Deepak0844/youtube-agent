@@ -40,6 +40,8 @@ export interface StageDeps {
   probe?: typeof probeVideo;
   /** Name Build writes into the plan; Generate refuses a plan that names another provider. */
   imageProvider?: string;
+  /** Image model id passed to the provider (default "fake"). */
+  imageModel?: string;
   /** Price Build quotes per image (default 4000 micro-USD = what the fake image provider charges). */
   imageQuoteMicroUsd?: number;
   /** How many beat images Build plans at most (default 3). */
@@ -48,7 +50,7 @@ export interface StageDeps {
   mix?: MixDeps;
 }
 
-export const DEFAULTS = { imageProvider: "fake-image", imageQuoteMicroUsd: 4000, maxImages: 3 } as const;
+export const DEFAULTS = { imageProvider: "fake-image", imageModel: "fake", imageQuoteMicroUsd: 4000, maxImages: 3 } as const;
 
 export const SIZE = { width: 1080, height: 1920 } as const;
 

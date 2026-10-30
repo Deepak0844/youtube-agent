@@ -59,6 +59,24 @@ function parseAlignment(v: unknown): Alignment {
   return a;
 }
 
+/** At most the first 2000 characters of an error body; never reads on. */
+async function readHead(res: Response): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return "";
+  const dec = new TextDecoder();
+  let out = "";
+  try {
+    while (out.length < 2000) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      out += dec.decode(value, { stream: true });
+    }
+  } catch { /* unreadable: treated as empty */ } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return out.slice(0, 2000);
+}
+
 export async function readCapped(res: Response, who = "ElevenLabs"): Promise<Buffer> {
   const declared = Number(res.headers.get("content-length"));
   if (declared > MAX_BODY) {
@@ -102,7 +120,7 @@ export async function postJson(
     throw new Error(`${who} request failed after it was sent.`); // fixed text: no cause, no URL, no key
   }
   if (res.ok) return res;
-  const text = billedRefusal && res.status >= 400 && res.status <= 499 ? await res.text().then((t) => t.slice(0, 2000), () => "") : (await res.body?.cancel().catch(() => undefined), "");
+  const text = billedRefusal && res.status >= 400 && res.status <= 499 ? await readHead(res) : (await res.body?.cancel().catch(() => undefined), "");
   if (res.status >= 400 && res.status <= 499 && res.status !== 408 && !billedRefusal?.(res.status, text)) throw new NotProcessedError(`${who} refused the request (${res.status}).`, { status: res.status });
   throw new Error(`${who} answered ${res.status}; the outcome is unknown.`);
 }

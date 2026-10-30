@@ -178,7 +178,7 @@ describe("gemini and openai bodies", () => {
     const body = JSON.parse(req.body);
     expect(body.model).toBe(MODEL.gemini);
     expect(body.input.some((p: { type: string }) => p.type === "image")).toBe(true);
-    expect(art.provenance).toMatchObject({ provider: "gemini_image", priceMicroUsd: 33_600, quoted: true });
+    expect(art.provenance).toMatchObject({ provider: "gemini_image", priceMicroUsd: 38_640, quoted: true });
     const sidecar = JSON.parse(readFileSync(art.path.replace(/\.png$/, ".json"), "utf8"));
     expect(sidecar).toEqual({ prompt: "a red fox", model: MODEL.gemini, refs: ["asset1"], seed: null });
   });
@@ -186,11 +186,13 @@ describe("gemini and openai bodies", () => {
     await expect(gemini().generate(ctxFor(), { ...args, model: MODEL.gemini, refs: ["bad"] })).rejects.toBeInstanceOf(KnownFailure);
     expect(seen).toHaveLength(0);
   });
-  it("openai: sends bearer key and a JSON prompt", async () => {
+  it("openai: sends bearer key, a JSON prompt, pinned quality and format; only one model is allowed", async () => {
     handler = (_r, _b, res) => json(res, 200, openaiOk(PNG));
     await openai().generate(ctxFor(), { ...args, model: MODEL.openai });
     expect(seen[0]!.headers.authorization).toBe(`Bearer ${KEY}`);
-    expect(JSON.parse(seen[0]!.body).prompt).toBe("a red fox");
+    expect(JSON.parse(seen[0]!.body)).toMatchObject({ prompt: "a red fox", quality: "low", output_format: "png", size: "1024x1536" });
+    await expect(openai().generate(ctxFor(), { ...args, model: "gpt-image-2" })).rejects.toBeInstanceOf(KnownFailure);
+    expect(seen).toHaveLength(1);
   });
   it("download_html_or_svg_refused (inline image)", async () => {
     for (const bad of [HTML, SVG]) {
@@ -204,7 +206,9 @@ describe("gemini and openai bodies", () => {
 
 describe("rules before reserve", () => {
   it("quote_uses_price_rule_or_refuses_unpriced", async () => {
-    expect(gemini().quote({ aspect: "9:16", refs: 0, model: MODEL.gemini })).toBe(33_600);
+    expect(gemini().quote({ aspect: "9:16", refs: 0, model: MODEL.gemini })).toBe(36_960); // 33,600 + 10% allowance
+    expect(gemini().quote({ aspect: "9:16", refs: 2, model: MODEL.gemini })).toBe(40_320); // + 5% per reference image
+    for (const refs of [-1, 1.5, Number.NaN, 1e9]) expect(() => gemini().quote({ aspect: "9:16", refs, model: MODEL.gemini })).toThrow(KnownFailure);
     expect(fal().quote({ aspect: "1:1", refs: 0, model: MODEL.fal })).toBe(3000);
     for (const p of [gemini(null), openai(null), fal(null)]) {
       const model = p.capability.id === "gemini_image" ? MODEL.gemini : p.capability.id === "openai_image" ? MODEL.openai : MODEL.fal;
@@ -335,13 +339,31 @@ describe("fal async flow", () => {
   });
 
   it("a download URL off the fal CDN list (or not https) is never fetched", async () => {
-    for (const url of ["https://evil.example/x.png", "http://v3.fal.media/x.png", "https://v3.fal.media.evil.example/x.png", "https://u:p@v3.fal.media/x.png"]) {
+    for (const url of ["https://evil.example/x.png", "http://v3.fal.media/x.png", "https://v3.fal.media.evil.example/x.png", "https://u:p@v3.fal.media/x.png", "https://evil-fal.media/x.png", "https://fal.media.evil.com/x.png"]) {
       await db.reset();
       seen = [];
       falServer({ result: (_r, _b, res) => json(res, 200, { images: [{ url }] }) });
       await expect(gen()).rejects.not.toBeInstanceOf(KnownFailure);
       expect(seen.some((s) => s.url.startsWith("/x.png"))).toBe(false);
     }
+  });
+
+  it("a few failed status polls are tolerated; a fourth in a row parks", async () => {
+    let n = 0;
+    falServer({ status: (_r, _b, res) => (++n <= 3 ? json(res, 503, {}) : json(res, 200, { status: "COMPLETED" })) });
+    expect(readFileSync((await gen()).path).equals(PNG)).toBe(true);
+    await db.reset();
+    n = -100;
+    falServer({ status: (_r, _b, res) => json(res, 503, {}) });
+    await expect(gen()).rejects.not.toBeInstanceOf(KnownFailure);
+    expect(count(/status$/)).toBeLessThanOrEqual(8);
+  });
+
+  it("an image fal replaced after its safety check is unknown (still billed), not saved", async () => {
+    falServer({ result: (_r, _b, res) => json(res, 200, { images: [{ url: "https://v3.fal.media/files/a/out.png" }], has_nsfw_concepts: [true] }) });
+    const e = await gen().catch((x) => x);
+    expect(classifyError(e)).toBe("unknown");
+    expect(readdirSync(dir)).toEqual([]);
   });
 
   it("a fal job that reports failure is unknown (it may have billed)", async () => {

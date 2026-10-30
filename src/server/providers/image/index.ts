@@ -30,6 +30,12 @@ export function checkImage(cap: ImageProvider["capability"], price: PriceRule | 
   return prompt;
 }
 
+/** A placeholder list of `n` references for quoting; a bad count is a refusal, not a RangeError. */
+export function refsOf(n: number): string[] {
+  if (!Number.isInteger(n) || n < 0 || n > 100) throw new KnownFailure("The reference image count is not valid.");
+  return new Array<string>(n).fill("");
+}
+
 /** The router: a locked-character flow needs a provider that takes reference images; no fallback to another provider. */
 export function pickImageProvider(providers: Record<string, ImageProvider>, id: string, flow: { locked: boolean }): ImageProvider {
   const p = Object.hasOwn(providers, id) ? providers[id] : undefined;

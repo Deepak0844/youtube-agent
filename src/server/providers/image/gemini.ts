@@ -4,7 +4,7 @@ import { sniff, SNIFF_HEAD_BYTES } from "@/server/core/sniff";
 import type { ImageProvider } from "../media";
 import type { SafeFetch } from "../voice/eleven-types";
 import { postJson, readCapped } from "../voice/elevenlabs";
-import { checkImage, paidImage } from "./index";
+import { checkImage, refsOf, paidImage } from "./index";
 
 export interface GeminiImageDeps {
   fetch: SafeFetch;
@@ -30,8 +30,10 @@ export function createGeminiImage(deps: GeminiImageDeps): ImageProvider {
     return checkImage(capability, deps.price, { prompt: a.prompt ?? "x", aspect: a.aspect, refs: a.refs, seed: a.seed });
   };
   const quote: ImageProvider["quote"] = (a) => {
-    check({ ...a, refs: new Array(a.refs).fill("") });
-    return priceQuote(deps.price as PriceRule, 1);
+    check({ ...a, refs: refsOf(a.refs) });
+    // DELIBERATE OVER-QUOTE: the per-image price covers the image output only. Input tokens (prompt, reference images) and any returned
+    // text are billed on top, at rates not read from the page, so quote +10% plus +5% per reference image. Task 20 smoke refines this.
+    return priceQuote(deps.price as PriceRule, 1.1 + 0.05 * a.refs);
   };
   return {
     capability,
@@ -47,7 +49,7 @@ export function createGeminiImage(deps: GeminiImageDeps): ImageProvider {
         refs.push({ type: "image", mime_type: s.mime, data: bytes.toString("base64") });
       }
       const body = { model: a.model, input: [{ type: "text", text: prompt }, ...refs], response_format: { type: "image", aspect_ratio: a.aspect, image_size: "1K" } };
-      return paidImage(ctx, { who: "Gemini", getKey: deps.getKey, budgetScopes: deps.budgetScopes }, reserve, async (key, signal) => {
+      return paidImage(ctx, { who: "Gemini", getKey: deps.getKey, budgetScopes: [...deps.budgetScopes, ...(a.budgetScopes ?? [])] }, reserve, async (key, signal) => {
         const res = await postJson("Gemini", deps.fetch, `${HOST}/v1beta/interactions`, { "x-goog-api-key": key }, body, signal);
         let json: { output_image?: { data?: unknown }; steps?: Array<{ content?: Array<{ type?: unknown; data?: unknown }> }> };
         try {

@@ -42,19 +42,14 @@ export function generateAttempt(deps: StageDeps): AttemptHandler {
     const beats = script.beats;
 
     const files: string[] = [];
-    for (const [index, item] of plan.items.entries()) {
+    for (const index of plan.items.keys()) {
       const still = await approvedCostPlan(deps.db, video.id);
       if (!still.ok || still.hash !== approved.hash) throw new KnownFailure("The cost plan changed while images were being made. Approve it again; nothing more was bought.");
       const beat = Array.isArray(beats) ? beats[index] : undefined;
       const prompt = typeof beat?.id === "string" ? `scene ${beat.id}` : `scene ${index + 1}`;
-      const made = await ctx.paid<{ name: string; b64: string }>(
-        { reserveMicroUsd: item.quoteMicroUsd, budgetScopes: scopes, kind: "paid" },
-        async () => {
-          const r = await deps.image.generate(ctx, { prompt, aspect: "9:16", model: wantProvider });
-          const name = path.basename(r.path);
-          return { result: { name, b64: (await readFile(r.path)).toString("base64") }, actualMicroUsd: r.provenance.priceMicroUsd };
-        },
-      );
+      // The adapter reserves inside generate(), against the quote-cap scope passed here.
+      const r = await deps.image.generate(ctx, { prompt, aspect: "9:16", model: deps.imageModel ?? DEFAULTS.imageModel, budgetScopes: scopes });
+      const made = { name: path.basename(r.path), b64: (r as { b64?: string }).b64 ?? (await readFile(r.path)).toString("base64") }; // fake only carries b64: a replay rebuilds the file from it
       assertProviderName(made.name, "image");
       await writeFile(path.join(ctx.attemptDir, made.name), Buffer.from(made.b64, "base64")); // also rebuilds the file after a resume
       if (!files.includes(made.name)) files.push(made.name);
