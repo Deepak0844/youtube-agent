@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { describeSceneFormat, sceneJsonSchema, validateScenes } from "@/shared/scene";
+import { kinds } from "@/shared/scene/kinds";
 
 const t = { id: "s1", beat: "b1", kind: "terminal", startMs: 0, durationMs: 3000, lines: [{ prompt: "~/app $", text: "npm test" }] };
 const c = { id: "s2", beat: "b2", kind: "chat_thread", startMs: 3000, durationMs: 4000, messages: [{ from: "user", text: "hi" }] };
@@ -17,7 +18,7 @@ describe("scene schema", () => {
     if (r.ok && r.doc.scenes[2]?.kind === "story_kenburns") expect(r.doc.scenes[2].captionZone).toBe("lower_safe");
   });
   it("rejects unknown kind in plain text", () => {
-    expect(errs(doc({ ...t, kind: "hologram" }))[0]).toBe("scene 1 > kind: must be one of browser, chat_thread, story_kenburns, terminal");
+    expect(errs(doc({ ...t, kind: "hologram" }))[0]).toBe(`scene 1 > kind: must be one of ${Object.keys(kinds).join(", ")}`);
   });
   it("rejects overlong copy with location", () => {
     expect(errs(doc({ ...c, messages: [{ from: "user", text: "x".repeat(91) }] }))).toEqual([

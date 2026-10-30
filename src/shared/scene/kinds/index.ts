@@ -5,12 +5,16 @@
 // 3. Add the Remotion component in remotion/kit/<Kind>.tsx and its entry in remotion/kit/registry.tsx.
 import * as browser from "./browser";
 import * as chat_thread from "./chat_thread";
+import * as pause_card from "./pause_card";
+import * as stock_clip from "./stock_clip";
 import * as story_kenburns from "./story_kenburns";
 import * as terminal from "./terminal";
 
 export const kinds = {
   browser,
   chat_thread,
+  pause_card,
+  stock_clip,
   story_kenburns,
   terminal,
 };
