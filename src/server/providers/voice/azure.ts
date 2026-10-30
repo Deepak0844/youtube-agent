@@ -13,7 +13,7 @@ import type { VoiceProvider } from "./index";
 // No byte limit is documented for the REST body (audio is cut at 10 minutes), so this is a sane cap of our own,
 // with the same 80% / 3 bytes-per-character rule as Google for the character cap.
 const MAX_BYTES = 9000;
-const REGION = /^[a-z0-9-]{3,30}$/;
+export const REGION = /^[a-z0-9-]{3,30}$/;
 
 // The REST endpoint sends no word boundaries; the caller aligns the audio (Task 09).
 const ssmlOf = (locale: string, voice: string, text: string) =>

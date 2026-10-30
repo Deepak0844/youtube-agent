@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { withTestDb, type TestDb } from "../support/db";
 import { getSetting, setSessionSettings } from "@/server/db/settings";
 import { listAudit } from "@/server/db/audit";
-import { loadLocalServices, loadSystemSettings, saveAssetSettings, saveLocalServices, saveSystemSettings } from "@/server/db/system-settings";
+import { loadLocalServices, loadSystemSettings, saveAssetSettings, saveLocalServices, saveSystemSettings, saveVoiceServer } from "@/server/db/system-settings";
 import { getSystemStatus } from "@/server/db/system-status";
 
 let db: TestDb;
@@ -34,7 +34,7 @@ async function failAuditFor(setting: string) {
 
 describe("local service list (app role)", () => {
   it("saves a valid list, normalised, and audits old and new", async () => {
-    const r = await saveLocalServices(db.pool, "localhost:11434\nLOCALHOST:11434\n127.0.0.1:1234", { ownPorts: OWN });
+    const r = await saveLocalServices(db.pool, "localhost:11434\nLOCALHOST:11434\n127.0.0.1:1234", { ownPorts: OWN, confirmed: true });
     expect(r).toEqual({ ok: true, changed: true });
     expect(await getSetting(db.pool, "network.local_services")).toEqual(["localhost:11434", "127.0.0.1:1234"]);
     expect(await loadLocalServices(db.pool, OWN)).toEqual(["localhost:11434", "127.0.0.1:1234"]);
@@ -43,16 +43,16 @@ describe("local service list (app role)", () => {
   });
 
   it("removal is audited too", async () => {
-    await saveLocalServices(db.pool, "localhost:11434\n127.0.0.1:1234", { ownPorts: OWN });
-    await saveLocalServices(db.pool, "localhost:11434", { ownPorts: OWN });
+    await saveLocalServices(db.pool, "localhost:11434\n127.0.0.1:1234", { ownPorts: OWN, confirmed: true });
+    await saveLocalServices(db.pool, "localhost:11434", { ownPorts: OWN, confirmed: true });
     const rows = await audit();
     expect(rows).toHaveLength(2);
     expect(rows[0]!.detail).toMatchObject({ from: ["localhost:11434", "127.0.0.1:1234"], to: ["localhost:11434"] });
   });
 
   it("an unchanged save writes nothing and audits nothing", async () => {
-    await saveLocalServices(db.pool, "localhost:11434", { ownPorts: OWN });
-    const r = await saveLocalServices(db.pool, "LOCALHOST:11434\n", { ownPorts: OWN });
+    await saveLocalServices(db.pool, "localhost:11434", { ownPorts: OWN, confirmed: true });
+    const r = await saveLocalServices(db.pool, "LOCALHOST:11434\n", { ownPorts: OWN, confirmed: true });
     expect(r).toEqual({ ok: true, changed: false });
     expect(await audit()).toHaveLength(1);
   });
@@ -60,8 +60,8 @@ describe("local service list (app role)", () => {
   it.each(["0.0.0.0:11434", "[::]:80", "127.0.0.1:5432", "localhost:6379", "169.254.169.254:80", "2130706433:80", "0x7f000001:80", "[::ffff:127.0.0.1]:80", "user@localhost:80", "*:80", "localhost.:80", "host.0x:80"])(
     "refuses %s and leaves the stored list and audit log untouched",
     async (bad) => {
-      await saveLocalServices(db.pool, "localhost:11434", { ownPorts: OWN });
-      const r = await saveLocalServices(db.pool, `localhost:1234\n${bad}`, { ownPorts: OWN });
+      await saveLocalServices(db.pool, "localhost:11434", { ownPorts: OWN, confirmed: true });
+      const r = await saveLocalServices(db.pool, `localhost:1234\n${bad}`, { ownPorts: OWN, confirmed: true });
       expect(r.ok).toBe(false);
       expect(await getSetting(db.pool, "network.local_services")).toEqual(["localhost:11434"]);
       expect(await audit()).toHaveLength(1);
@@ -70,7 +70,7 @@ describe("local service list (app role)", () => {
 
   it("the cap on entries is enforced", async () => {
     const many = Array.from({ length: 21 }, (_, i) => `localhost:${20000 + i}`).join("\n");
-    expect((await saveLocalServices(db.pool, many, { ownPorts: OWN })).ok).toBe(false);
+    expect((await saveLocalServices(db.pool, many, { ownPorts: OWN, confirmed: true })).ok).toBe(false);
   });
 
   it("loadLocalServices drops anything invalid that was written behind the form's back", async () => {
@@ -80,9 +80,9 @@ describe("local service list (app role)", () => {
   });
 
   it("S3: if the audit write fails, the list does not change and the caller gets a generic error", async () => {
-    await saveLocalServices(db.pool, "localhost:11434", { ownPorts: OWN });
+    await saveLocalServices(db.pool, "localhost:11434", { ownPorts: OWN, confirmed: true });
     await failAuditFor("network.local_services");
-    const r = await saveLocalServices(db.pool, "localhost:11434\n127.0.0.1:1234", { ownPorts: OWN });
+    const r = await saveLocalServices(db.pool, "localhost:11434\n127.0.0.1:1234", { ownPorts: OWN, confirmed: true });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).not.toMatch(/audit|boom|trigger/i);
     expect(await getSetting(db.pool, "network.local_services")).toEqual(["localhost:11434"]);
@@ -100,15 +100,15 @@ describe("local service list (app role)", () => {
 
   it("an own-service setting that cannot be read fails closed: nothing saved, list shows empty", async () => {
     const broken = { SEARXNG_URL: "not a url" };
-    expect((await saveLocalServices(db.pool, "localhost:11434", { env: broken })).ok).toBe(false);
+    expect((await saveLocalServices(db.pool, "localhost:11434", { env: broken, confirmed: true })).ok).toBe(false);
     expect(await getSetting(db.pool, "network.local_services")).toEqual([]);
-    await saveLocalServices(db.pool, "localhost:11434", { ownPorts: OWN });
+    await saveLocalServices(db.pool, "localhost:11434", { ownPorts: OWN, confirmed: true });
     expect(await loadLocalServices(db.pool, undefined, broken)).toEqual([]);
   });
 
   it("N1: an entry the audit redaction would blank is stored as a hash instead of [redacted]", async () => {
     const longHost = `${"a".repeat(40)}.lan:8000`;
-    await saveLocalServices(db.pool, `${longHost}\nlocalhost:11434`, { ownPorts: OWN });
+    await saveLocalServices(db.pool, `${longHost}\nlocalhost:11434`, { ownPorts: OWN, confirmed: true });
     const [row] = await audit();
     const to = (row!.detail as { to: string[] }).to;
     expect(JSON.stringify(row!.detail)).not.toContain("[redacted]");
@@ -253,5 +253,52 @@ describe("system status", () => {
     const s = await getSystemStatus(db.pool, { redisUrl: "redis://127.0.0.1:1" });
     expect(s.redis.ok).toBe(false);
     expect(JSON.stringify(s)).not.toContain("127.0.0.1:1");
+  });
+});
+
+describe("voice servers and the add-needs-confirmation rule", () => {
+  const OWNP = new Set([5432, 6379]);
+  it("saves a valid VoiceStudio address and audits old -> new", async () => {
+    expect(await saveVoiceServer(db.pool, "voicestudio_url", "http://127.0.0.1:3900")).toEqual({ ok: true, changed: true });
+    expect(await getSetting(db.pool, "voice.voicestudio_url")).toBe("http://127.0.0.1:3900");
+    const [row] = await audit();
+    expect(row!.detail).toMatchObject({ setting: "voice.voicestudio_url", from: "", to: "http://127.0.0.1:3900" });
+    expect((await db.pool.query("select updated_by from settings where key='voice.voicestudio_url'")).rows[0].updated_by).toBe("session");
+  });
+  it.each([
+    ["voicestudio_url", "http://192.168.1.5:3900"],
+    ["voicestudio_url", "http://u:p@127.0.0.1:3900"],
+    ["local_url", "file:///etc/passwd"],
+    ["azure_region", "West Europe"],
+    ["network.local_services", "localhost:11434"],
+    ["__proto__", "x"],
+  ])("refuses %s=%s and leaves the stored value alone", async (field, value) => {
+    await saveVoiceServer(db.pool, "local_url", "http://127.0.0.1:8880");
+    const before = await audit();
+    const r = await saveVoiceServer(db.pool, field, value);
+    expect(r.ok).toBe(false);
+    expect(await getSetting(db.pool, "voice.local_url")).toBe("http://127.0.0.1:8880");
+    expect(await getSetting(db.pool, "voice.voicestudio_url")).toBe("");
+    expect(await getSetting(db.pool, "voice.azure_region")).toBe("");
+    expect(await audit()).toHaveLength(before.length);
+  });
+  it("clearing is allowed", async () => {
+    await saveVoiceServer(db.pool, "azure_region", "westeurope");
+    expect(await saveVoiceServer(db.pool, "azure_region", "")).toEqual({ ok: true, changed: true });
+    expect(await getSetting(db.pool, "voice.azure_region")).toBe("");
+  });
+  it("adding a local service without confirmation saves nothing; removing needs none", async () => {
+    const r = await saveLocalServices(db.pool, "127.0.0.1:3900", { ownPorts: OWNP });
+    expect(r.ok).toBe(false);
+    expect(await getSetting(db.pool, "network.local_services")).toEqual([]);
+    expect((await saveLocalServices(db.pool, "127.0.0.1:3900", { ownPorts: OWNP, confirmed: true })).ok).toBe(true);
+    expect((await saveLocalServices(db.pool, "", { ownPorts: OWNP })).ok).toBe(true);
+    expect(await getSetting(db.pool, "network.local_services")).toEqual([]);
+  });
+  it("cloud metadata stays refused even when confirmed", async () => {
+    for (const e of ["169.254.169.254:80", "[fd00:ec2::254]:80", "169.254.1.1:80"]) {
+      expect((await saveLocalServices(db.pool, e, { ownPorts: OWNP, confirmed: true })).ok, e).toBe(false);
+    }
+    expect(await getSetting(db.pool, "network.local_services")).toEqual([]);
   });
 });

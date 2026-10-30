@@ -3,8 +3,11 @@ import type pg from "pg";
 import { z } from "zod";
 import { redactDetail } from "@/server/core/audit-events";
 import { ownServicePorts, parseLocalServicesInput, validateLocalService } from "@/server/core/local-services";
+import { secretName, type ProviderId } from "@/server/core/provider-keys";
 import { getSetting, setSessionSettings } from "@/server/db/settings";
 import { recordAudit } from "@/server/db/audit";
+import { hasSecret } from "@/server/db/vault";
+import { checkVoiceField, VOICE_FIELDS, isVoiceField } from "@/server/providers/voice/endpoints";
 
 // Writers behind /settings/system. Callers (server actions) have already done requireOwner(). There is no actor argument:
 // everything here is written through setSessionSettings, which can only write as a logged-in session (safety keys such as
@@ -115,7 +118,11 @@ export async function saveAssetSettings(db: pg.Pool, input: unknown): Promise<Sa
 type Env = Record<string, string | undefined>;
 
 /** Saves the allow-list from textarea text. All-or-nothing: one bad line saves nothing. */
-export async function saveLocalServices(db: pg.Pool, text: string, opts: { ownPorts?: ReadonlySet<number>; env?: Env } = {}): Promise<SaveResult> {
+export async function saveLocalServices(
+  db: pg.Pool,
+  text: string,
+  opts: { ownPorts?: ReadonlySet<number>; env?: Env; confirmed?: boolean } = {},
+): Promise<SaveResult> {
   let parsed;
   try {
     parsed = parseLocalServicesInput(text, opts.ownPorts ?? ownServicePorts(opts.env), opts.env);
@@ -123,12 +130,40 @@ export async function saveLocalServices(db: pg.Pool, text: string, opts: { ownPo
     return { ok: false, error: "Own-service settings on the server are unreadable, so nothing can be listed right now." };
   }
   if (!parsed.ok) return { ok: false, error: "Some lines were refused. Nothing was saved.", lines: parsed.errors };
+  // Widening the list widens what the app may call, so adding an entry needs the owner's explicit confirmation (removing does not).
+  const stored = await loadLocalServices(db, opts.ownPorts ?? ownServicePorts(opts.env), opts.env);
+  if (!opts.confirmed && parsed.entries.some((e) => !stored.includes(e))) {
+    return { ok: false, error: "Tick the box to confirm the app may call the new address. Nothing was saved." };
+  }
   try {
     const changed = await writeAudited(db, [{ key: "network.local_services", value: parsed.entries }]);
     return { ok: true, changed: changed.length > 0 };
   } catch {
     return { ok: false, error: GENERIC };
   }
+}
+
+/** Saves one voice server setting (address or region), checked with the voice stage's own rules. Empty clears it. */
+export async function saveVoiceServer(db: pg.Pool, field: unknown, raw: unknown): Promise<SaveResult> {
+  if (!isVoiceField(field) || typeof raw !== "string") return { ok: false, error: GENERIC };
+  const def = VOICE_FIELDS[field];
+  try {
+    const hasKey = def.slot ? await hasSecret(db, secretName(def.slot as ProviderId)) : false;
+    const c = checkVoiceField(field, raw, hasKey);
+    if (!c.ok) return { ok: false, error: c.error };
+    const changed = await writeAudited(db, [{ key: def.key, value: c.value }]);
+    return { ok: true, changed: changed.length > 0 };
+  } catch {
+    return { ok: false, error: GENERIC };
+  }
+}
+
+/** The three voice server values as stored (not secret). */
+export async function loadVoiceServers(db: pg.Pool): Promise<Record<keyof typeof VOICE_FIELDS, string>> {
+  const [voicestudio_url, local_url, azure_region] = await Promise.all(
+    (Object.values(VOICE_FIELDS)).map(async (d) => String(await getSetting(db, d.key))),
+  );
+  return { voicestudio_url: voicestudio_url!, local_url: local_url!, azure_region: azure_region! };
 }
 
 /** The stored list, minus anything that would not pass today's validation (a hand-edited row is never trusted). */
