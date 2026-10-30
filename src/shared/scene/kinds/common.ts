@@ -18,6 +18,10 @@ export const LIMITS = {
   pauseOption: 24,
   pauseMinOptions: 2,
   pauseMaxOptions: 4,
+  browserTitle: 40,
+  browserUrl: 60,
+  browserBlocks: 6,
+  browserText: 120,
 } as const;
 
 // Asset refs are opaque ids from the asset library, never URLs or paths.
