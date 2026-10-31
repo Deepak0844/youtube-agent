@@ -3,7 +3,9 @@ import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import type { AskScene } from "@/server/core/scene-build";
 import { failingScenes, repairSceneDoc, type SceneBody } from "@/server/core/scene-repair";
 import { validateAndCheck } from "@/shared/scene/rules";
+import { uuidv7 } from "@/server/core/ids";
 import { recordAudit } from "./audit";
+import { inTx, type EnqueueOnly } from "./pipeline";
 
 // Scenes after Build: free re-check, paid repair of only the failing scenes, undo. Every change is a NEW `scenes` content
 // version (never an edit), so history stays whole and a render built from older scenes becomes stale on its own (the render
@@ -116,4 +118,32 @@ export async function undoScenes(db: pg.Pool, videoId: string, sessionId?: strin
   if (version === null) return { ok: false, message: "The scenes changed while you were looking. Look again." };
   await recordAudit(db, "scenes.undone", { videoId, restored: p.version, version, sessionId });
   return { ok: true, version, restored: p.version };
+}
+
+export type RepairRequest = { ok: true; stageRunId: string } | { ok: false; message: string };
+
+/**
+ * Owner asked for a repair. Free to call: it only queues the `repair_scenes` stage (the worker pays, inside ctx.paid, against
+ * the video's budget scopes). Refused when the video is not live, scenes do not exist, or a repair is already queued/running.
+ */
+export async function requestSceneRepair(db: pg.Pool, queue: EnqueueOnly, videoId: string, sceneIds?: string[], sessionId?: string): Promise<RepairRequest> {
+  const out = await inTx(db, async (c): Promise<RepairRequest & { hash?: string }> => {
+    const v = await c.query<{ status: string }>("select status from videos where id = $1 for update", [videoId]);
+    if (!v.rows[0]) return { ok: false, message: "That video was not found." };
+    if (v.rows[0].status !== "active" && v.rows[0].status !== "waiting") return { ok: false, message: "This video is no longer in production." };
+    const sc = await c.query<{ sha256: string }>("select sha256 from video_content where video_id = $1 and kind = 'scenes' order by version desc limit 1", [videoId]);
+    if (!sc.rows[0]) return { ok: false, message: "There are no scenes to repair yet." };
+    const busy = await c.query("select 1 from stage_runs where video_id = $1 and name = 'repair_scenes' and status in ('queued', 'running', 'needs_decision')", [videoId]);
+    if (busy.rowCount) return { ok: false, message: "A repair is already queued or running for this video." };
+    const hash = sha256Hex(canonicalJson({ stage: "repair_scenes", scenes: sc.rows[0].sha256, sceneIds: sceneIds ?? null }));
+    const id = uuidv7();
+    const ins = await c.query("insert into stage_runs (id, video_id, name, status, input_hash, result) values ($1, $2, 'repair_scenes', 'queued', $3, $4) on conflict do nothing", [id, videoId, hash, JSON.stringify({ request: { sceneIds: sceneIds ?? null } })]);
+    if (!ins.rowCount) return { ok: false, message: "These scenes were already repaired. Re-check them first." };
+    return { ok: true, stageRunId: id, hash };
+  });
+  if (!out.ok) return out;
+  await recordAudit(db, "scenes.repair_requested", { videoId, stageRunId: out.stageRunId, sceneIds: sceneIds ?? null, sessionId });
+  // After the commit. If Redis is down the row stays queued and the reconciler enqueues it.
+  await queue.enqueue(out.stageRunId, 0, 0, out.hash!).catch(() => undefined);
+  return { ok: true, stageRunId: out.stageRunId };
 }

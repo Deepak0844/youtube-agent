@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { Button } from "@/ui/primitives/button";
-import { recheckScenesAction, undoScenesAction, type SceneActionState } from "../../queue/scenes-actions";
+import { recheckScenesAction, requestSceneRepairAction, undoScenesAction, type SceneActionState } from "../../queue/scenes-actions";
 import { rerunStageAction, type RerunState } from "./actions";
 
 /** "Run again" for one failed or cancelled step, with the time and cost stated before the click. */
@@ -25,11 +25,17 @@ export function RerunForm({ videoId, stage, label, estimate, costNote }: { video
 export function SceneButtons({ videoId }: { videoId: string }) {
   const [res, setRes] = useState<SceneActionState | null>(null);
   const [pending, start] = useTransition();
-  const go = (f: (id: string) => Promise<SceneActionState>) => start(async () => setRes(await f(videoId)));
+  const [failed, setFailed] = useState(false);
+  const go = (f: (id: string) => Promise<SceneActionState>) => start(async () => {
+    const r = await f(videoId);
+    if (f === recheckScenesAction) setFailed(!r.ok && (r.problems?.length ?? 0) > 0);
+    setRes(r);
+  });
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap gap-3">
         <Button type="button" variant="secondary" disabled={pending} onClick={() => go(recheckScenesAction)}>Re-check scenes (free)</Button>
+        {failed ? <Button type="button" variant="secondary" disabled={pending} onClick={() => go((id) => requestSceneRepairAction(id))}>Repair failing scenes</Button> : null}
         <Button type="button" variant="secondary" disabled={pending} onClick={() => go(undoScenesAction)}>Undo last scene change</Button>
       </div>
       {res ? (

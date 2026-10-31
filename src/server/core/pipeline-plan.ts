@@ -9,7 +9,8 @@ export type VideoFormat = "short" | "long";
 export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai";
 export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes";
 
-export const STAGE_NAMES = ["draft", "build", "generate", "tts", "render", "voice", "sfx", "qa"] as const;
+// `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
+export const STAGE_NAMES = ["draft", "build", "generate", "tts", "render", "voice", "sfx", "qa", "repair_scenes"] as const;
 export type StageName = (typeof STAGE_NAMES)[number];
 
 export interface PlanStep {
@@ -71,6 +72,7 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   voice: [],
   sfx: [],
   qa: [],
+  repair_scenes: ["scenes", "script"],
 };
 
 export function stageInputHash(stage: StageName, upstream: Record<string, string>, settingsSnapshot: Record<string, unknown>): string {

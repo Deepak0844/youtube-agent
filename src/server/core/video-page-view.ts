@@ -24,10 +24,10 @@ export function parseTab(raw: unknown): TabId {
 }
 
 export const STAGE_LABELS: Record<StageName, string> = {
-  draft: "Draft", build: "Build", generate: "Generate", tts: "Narration", render: "Render", voice: "Voice", sfx: "Sound", qa: "Check",
+  draft: "Draft", build: "Build", generate: "Generate", tts: "Narration", render: "Render", voice: "Voice", sfx: "Sound", qa: "Check", repair_scenes: "Scene repair",
 };
 const VERB: Record<StageName, string> = {
-  draft: "Drafting", build: "Building", generate: "Generating", tts: "Recording narration", render: "Rendering", voice: "Mixing voice", sfx: "Adding sound", qa: "Checking quality",
+  draft: "Drafting", build: "Building", generate: "Generating", tts: "Recording narration", render: "Rendering", voice: "Mixing voice", sfx: "Adding sound", qa: "Checking quality", repair_scenes: "Repairing scenes",
 };
 
 /** Samples needed before a time estimate is shown. */

@@ -38,6 +38,7 @@ import { promoteAttempt } from "@/server/storage/store";
 import { createStageDispatcher, dryRunHandlers } from "@/worker/handlers";
 import { finishAttempt, prepareAttempt, withAttempt, type AttemptHandler } from "@/worker/stages/attempt";
 import { buildAttempt } from "@/worker/stages/build";
+import { repairScenesAttempt } from "@/worker/stages/repair-scenes";
 import type { StageDeps } from "@/worker/stages/deps";
 import { dryRunDraftHandler } from "@/worker/stages/draft";
 import { generateAttempt } from "@/worker/stages/generate";
@@ -446,6 +447,38 @@ describe("paid generation is bounded by the approved quote", () => {
     expect(routed).toEqual(["build_scene_kit"]);
     expect(await intentCount()).toBe(0);
     expect(await contentCount(v.id, "scenes")).toBe(0);
+  });
+
+  describe("repair_scenes", () => {
+    const sc = (id: string, beat: string, startMs: number, text: string) => ({ id, kind: "terminal", beat, startMs, durationMs: 3000, lines: [{ text }] });
+    const badDoc = { version: 1, scenes: [sc("s1", "b1", 0, "ls"), sc("s2", "b2", 3000, "like and subscribe now")] };
+    const fix = JSON.stringify({ version: 1, scenes: [sc("x", "x", 0, "Two plus two")] });
+    const seedScenes = async (videoId: string) => {
+      await seedScript(videoId, 2);
+      await addContent(db.pool, videoId, "scenes", { body: badDoc, sha256: sha256Hex(canonicalJson(badDoc)) });
+    };
+
+    it("repairs only the failing scene into a new version and reports changed / untouched", async () => {
+      const v = await newVideo();
+      await seedScenes(v.id);
+      const out = await play(v.id, "repair_scenes", repairScenesAttempt(mkDeps({ makeLlm: sceneLlm([fix]) })));
+      expect(out.kind).toBe("committed");
+      expect(await contentCount(v.id, "scenes")).toBe(2);
+      const cur = (await latestContent(db.pool, v.id, "scenes"))!.body as { scenes: Array<{ id: string }> };
+      expect(cur.scenes[0]).toEqual(badDoc.scenes[0]);
+      expect((await stageResult(v.id, "repair_scenes")).result).toMatchObject({ changed: ["s2"], untouched: 1, version: 2 });
+    });
+
+    it("with no model routed fails in plain words with no spend and no new version", async () => {
+      const v = await newVideo();
+      await seedScenes(v.id);
+      const makeLlm = (scopes: string[]) => createLlmClient({ db: db.pool, catalog: { route: async () => undefined, localServices: async () => [] }, getKey: async () => null, buildModel: () => ({}) as LanguageModel, budgetScopes: () => scopes });
+      const out = await play(v.id, "repair_scenes", repairScenesAttempt(mkDeps({ makeLlm })));
+      expect(out.kind).toBe("known_failure");
+      expect((await stageResult(v.id, "repair_scenes")).result).toMatchObject({ error: expect.stringMatching(/No model is chosen/) });
+      expect(await intentCount()).toBe(0);
+      expect(await contentCount(v.id, "scenes")).toBe(1);
+    });
   });
 
   it("Build with a scene that stays invalid fails in plain words and saves no scenes and no plan", async () => {

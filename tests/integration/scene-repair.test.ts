@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { expectedInputHash, type PipelineView } from "@/server/core/pipeline-plan";
-import { currentScenes, recheckScenes, repairScenes, undoScenes } from "@/server/db/scene-repair";
+import { currentScenes, recheckScenes, repairScenes, requestSceneRepair, undoScenes } from "@/server/db/scene-repair";
 import { addContent, createVideoRow } from "@/server/db/videos";
 import { withTestDb, type TestDb } from "../support/db";
 
@@ -98,5 +98,49 @@ describe("undoScenes", () => {
     await undoScenes(db.pool, id);
     const row = (await db.pool.query("select sha256 from video_content where video_id=$1 and kind='scenes' order by version desc limit 1", [id])).rows[0];
     expect(expectedInputHash(view(row.sha256), "render", "prev")).not.toBe(before);
+  });
+});
+
+describe("requestSceneRepair", () => {
+  const mkQueue = () => {
+    const jobs: string[] = [];
+    return { jobs, enqueue: async (id: string) => void jobs.push(id) } as never as { jobs: string[]; enqueue: (id: string, a: number, b: number, h: string) => Promise<void> };
+  };
+  const runs = async (id: string) => (await db.pool.query("select status, result from stage_runs where video_id = $1 and name = 'repair_scenes'", [id])).rows;
+
+  it("queues exactly one repair_scenes run, remembers the scene ids, writes an audit row and spends nothing", async () => {
+    const id = await setup(badDoc);
+    const q = mkQueue();
+    const r = await requestSceneRepair(db.pool, q, id, ["s2"], "11111111-1111-4111-8111-111111111111");
+    expect(r.ok).toBe(true);
+    expect(q.jobs).toHaveLength(1);
+    const rows = await runs(id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "queued", result: { request: { sceneIds: ["s2"] } } });
+    expect((await db.pool.query("select 1 from audit_log where event = 'scenes.repair_requested'")).rowCount).toBe(1);
+    expect(await spend()).toBe(0);
+    expect(await versions(id)).toBe(1);
+  });
+  it("refuses a second request while one is queued", async () => {
+    const id = await setup(badDoc);
+    const q = mkQueue();
+    await requestSceneRepair(db.pool, q, id);
+    const r = await requestSceneRepair(db.pool, q, id);
+    expect(r).toMatchObject({ ok: false, message: expect.stringMatching(/already queued or running/) });
+    expect(await runs(id)).toHaveLength(1);
+    expect(q.jobs).toHaveLength(1);
+  });
+  it("refuses when there are no scenes", async () => {
+    const id = await setup();
+    const r = await requestSceneRepair(db.pool, mkQueue(), id);
+    expect(r).toMatchObject({ ok: false, message: expect.stringMatching(/no scenes/) });
+    expect(await runs(id)).toHaveLength(0);
+  });
+  it("refuses when the video is not live", async () => {
+    const id = await setup(badDoc);
+    await db.pool.query("update videos set status = 'cancelled' where id = $1", [id]);
+    const r = await requestSceneRepair(db.pool, mkQueue(), id);
+    expect(r).toMatchObject({ ok: false, message: expect.stringMatching(/no longer in production/) });
+    expect(await runs(id)).toHaveLength(0);
   });
 });
