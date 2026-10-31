@@ -133,7 +133,8 @@ function parseInput(raw: unknown, local: string[]): ModelInput & { endpointKind:
     }
     throw new CatalogError(i?.message ?? "Those model details are not valid.");
   }
-  const kind = deriveEndpointKind(r.data.baseUrl, local);
+  // Claude Code runs on this machine (ADR 0014); stored as local so the free-is-local check holds.
+  const kind = r.data.provider === "claude_code" ? "local" : deriveEndpointKind(r.data.baseUrl, local);
   if (kind === "invalid") throw new CatalogError("That base URL cannot be used as a model endpoint.");
   return { ...r.data, endpointKind: kind };
 }

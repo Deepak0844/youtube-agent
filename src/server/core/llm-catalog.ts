@@ -23,6 +23,8 @@ export const PROVIDERS = [
   { id: "ollama", label: "Ollama", needsBaseUrl: true },
   { id: "lmstudio", label: "LM Studio", needsBaseUrl: true },
   { id: "custom", label: "Custom OpenAI-compatible", needsBaseUrl: true },
+  // The owner's local Claude Code (`claude -p`, subscription login). Text stages only, no key, always free (ADR 0014).
+  { id: "claude_code", label: "Claude Code (this machine, subscription, $0)", needsBaseUrl: false },
 ] as const;
 export type ProviderId = (typeof PROVIDERS)[number]["id"];
 const PROVIDER_IDS = PROVIDERS.map((p) => p.id) as [ProviderId, ...ProviderId[]];
@@ -167,6 +169,12 @@ export function modelInputSchema(localServices: readonly string[]) {
       const bad = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
       const needsUrl = PROVIDERS.find((p) => p.id === m.provider)?.needsBaseUrl ?? false;
       if (needsUrl && m.baseUrl === null) bad("baseUrl", "This provider needs a base URL.");
+      if (m.provider === "claude_code") {
+        // Runs on this machine through the owner's subscription: no address, no prices, always free.
+        if (m.baseUrl !== null) bad("baseUrl", "Claude Code takes no base URL.");
+        if (m.prices !== null || !m.isFree) bad("isFree", "Claude Code is free here (subscription, $0): tick free and leave prices empty.");
+        return;
+      }
       const kind = deriveEndpointKind(m.baseUrl, localServices);
       if (kind === "invalid") return bad("baseUrl", "That base URL cannot be used as a model endpoint.");
       if (kind === "hosted" && m.baseUrl !== null && new URL(m.baseUrl).protocol !== "https:") bad("baseUrl", "Hosted endpoints must use https.");
@@ -195,9 +203,10 @@ export interface ModelRow {
 }
 
 /** The only bridge from a catalog row to the spend layer. No card means worstCaseMicroUsd throws UnpricedCallError. */
-export function priceCardFor(model: Pick<ModelRow, "baseUrl" | "prices" | "isFree">, localServices: readonly string[]): PriceCard | undefined {
+export function priceCardFor(model: Pick<ModelRow, "baseUrl" | "prices" | "isFree"> & { provider?: string }, localServices: readonly string[]): PriceCard | undefined {
   if (model.isFree) {
-    if (deriveEndpointKind(model.baseUrl, localServices) !== "local") return undefined; // address left the allow-list: unpriced again
+    const claudeCode = model.provider === "claude_code" && model.baseUrl === null; // subscription on this machine (ADR 0014)
+    if (!claudeCode && deriveEndpointKind(model.baseUrl, localServices) !== "local") return undefined; // address left the allow-list: unpriced again
     return {
       inputPerMTokMicro: 0,
       outputPerMTokMicro: 0,

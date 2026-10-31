@@ -3,6 +3,7 @@ import { VaultError, type Keyring } from "@/server/core/vault-crypto";
 import { secretName } from "@/server/core/provider-keys";
 import { localServices } from "@/server/db/llm-models";
 import { getSecret } from "@/server/db/vault";
+import { claudeCodeGate } from "@/server/db/claude-code";
 import { buildModel, type BuildOptions } from "./model-factory";
 import { keySlotFor } from "./provider-endpoints";
 import type { ProviderId } from "@/server/core/llm-catalog";
@@ -32,6 +33,6 @@ export async function defaultModelDeps(
         throw err; // wrong master key, unreadable entry: the factory turns this into a plain sentence and drops the cause
       }
     },
-    buildModel: (row, getKey) => buildModel(row, getKey, { localServices: local, ...extra }),
+    buildModel: (row, getKey) => buildModel(row, getKey, { localServices: local, claudeCode: { gate: claudeCodeGate(db) }, ...extra }),
   };
 }

@@ -92,6 +92,9 @@ export const SETTINGS = {
   "voice.azure_region": { schema: z.string().regex(/^([a-z0-9-]{3,30})?$/), default: "", safety: false, label: "Azure speech region" },
   "voice.local_url": { schema: z.string().max(300), default: "", safety: true, label: "Local voice server address" },
   "voice.voicestudio_url": { schema: z.string().max(300), default: "", safety: true, label: "VoiceStudio address" },
+  // Claude Code text provider (ADR 0014). Safety: turning it on starts a program on this machine; the cap bounds subscription use.
+  "claude_code.enabled": { schema: z.boolean(), default: false, safety: true, label: "Claude Code on this machine for text stages" },
+  "claude_code.daily_cap": { schema: posInt.max(10_000), default: 200, safety: true, label: "Claude Code calls per UTC day" },
   "display.currency": { schema: z.string().min(1), default: "USD", safety: false, label: "Display currency" },
 } satisfies Record<string, SettingDef>;
 

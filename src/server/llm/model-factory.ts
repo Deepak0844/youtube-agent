@@ -5,6 +5,7 @@ import { matchLocalService } from "@/server/core/local-services";
 import { safeFetch } from "@/server/providers/net/safe-fetch";
 import { PROVIDERS, deriveEndpointKind, type ModelRow, type ProviderId } from "@/server/core/llm-catalog";
 import { PROVIDER_ENDPOINTS, keySlotFor } from "@/server/llm/provider-endpoints";
+import { createClaudeCodeModel, type ClaudeCodeDeps } from "./claude-code";
 
 // Catalog row -> AI SDK language model. The key is never stored: it is fetched by `getKey` once per request, put on that one
 // request, and dropped. Nothing here logs or returns it, and error messages never contain it.
@@ -28,6 +29,8 @@ export interface BuildOptions {
   env?: Record<string, string | undefined>;
   /** Tests only: override the app's own-service ports (as deriveEndpointKind). */
   ownPorts?: ReadonlySet<number>;
+  /** The local Claude Code process (ADR 0014): its on/off switch and daily cap. Without it a claude_code row is refused. */
+  claudeCode?: ClaudeCodeDeps;
 }
 
 const MODEL_CALL_TIMEOUT_MS = 180_000;
@@ -38,6 +41,12 @@ export function buildModel(row: ModelRow, getKey: () => Promise<string | null>, 
   const known = BY_ID.get(row.provider);
   if (!known) throw new Error("Unknown provider.");
   const { id, label } = known;
+  if (id === "claude_code") {
+    // No address and no key: a local process with tools off (ADR 0014).
+    if (row.baseUrl !== null) throw new Error(`${label} takes no base URL.`);
+    if (!opts.claudeCode) throw new Error(`${label} is not set up on this server.`);
+    return createClaudeCodeModel(row.modelId, opts.claudeCode);
+  }
   const endpoint = PROVIDER_ENDPOINTS[id];
 
   let baseUrl: string;
