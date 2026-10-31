@@ -162,6 +162,7 @@ test("Phase 1 journey: from setup link to a fully configured, audited studio", a
     const services = page.getByLabel("Allowed local services, one per line");
     for (const text of ["", "localhost:11434"]) {
       await services.fill(text);
+      await page.getByLabel(/I understand the app will be allowed/).check();
       await Promise.all([
         page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/settings/system")),
         page.getByRole("button", { name: "Save list" }).click(),

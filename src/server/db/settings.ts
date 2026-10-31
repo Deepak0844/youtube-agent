@@ -54,6 +54,9 @@ async function getSettingForUpdate(client: pg.PoolClient, key: string): Promise<
 /** The only keys setSessionSettings may write: what /settings/system and /settings/assets save. Other safety keys (policies) need their own reviewed path. */
 export const SESSION_BATCH_KEYS: readonly string[] = [
   "network.local_services",
+  "voice.voicestudio_url",
+  "voice.local_url",
+  "voice.azure_region",
   "jobs.concurrent_renders",
   "jobs.concurrent_jobs",
   "storage.warn_gb",

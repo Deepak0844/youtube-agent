@@ -39,9 +39,10 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
 /** The only file(s) that may import the system-settings writers: the guarded server actions (requireOwner first). */
 export const SESSION_WRITER_IMPORT_ALLOW: ImportAllow = {
   "src/app/(app)/settings/system/actions.ts": ["saveLocalServices", "saveSystemSettings"],
+  "src/app/(app)/settings/providers/voice-actions.ts": ["saveVoiceServer"],
   "src/app/(app)/settings/assets/actions.ts": ["saveAssetSettings"],
 };
-export const SESSION_WRITERS = ["saveLocalServices", "saveSystemSettings", "saveAssetSettings"] as const;
+export const SESSION_WRITERS = ["saveLocalServices", "saveSystemSettings", "saveAssetSettings", "saveVoiceServer"] as const;
 const GUARDED: readonly string[] = ["setSetting", "setSessionSettings", ...SESSION_WRITERS];
 
 const SETTINGS_MODULE = "src/server/db/settings";

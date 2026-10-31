@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { getPool } from "@/server/db/pool";
-import { saveLocalServices, saveSystemSettings } from "@/server/db/system-settings";
+import { hostPortOf, isVoiceField } from "@/server/providers/voice/endpoints";
+import { loadLocalServices, loadVoiceServers, saveLocalServices, saveSystemSettings } from "@/server/db/system-settings";
 
 export interface FormState {
   ok?: boolean;
@@ -31,7 +32,26 @@ export async function saveLocalServicesAction(_prev: FormState, form: FormData):
   await requireOwner();
   const services = text(form.get("services"), 10_000);
   if (services === null) return { error: TOO_LONG };
-  const r = await saveLocalServices(getPool(), services);
+  const r = await saveLocalServices(getPool(), services, { confirmed: form.get("confirm") === "on" });
   if (r.ok) revalidatePath("/settings/system");
+  return r.ok ? { ok: true } : { error: r.error, lines: r.lines };
+}
+
+// One-click helper next to a voice address: adds that address's host:port (read from the SAVED setting, never from the
+// browser) to the list. Same rules, confirmation and audit as the editor above.
+export async function addVoiceServiceAction(_prev: FormState, form: FormData): Promise<FormState> {
+  await requireOwner();
+  const field = form.get("field");
+  if (!isVoiceField(field) || field === "azure_region") return { error: "Nothing was saved." };
+  const db = getPool();
+  const entry = hostPortOf((await loadVoiceServers(db))[field]);
+  if (!entry) return { error: "Save a valid address first." };
+  const current = await loadLocalServices(db);
+  if (current.includes(entry)) return { ok: true };
+  const r = await saveLocalServices(db, [...current, entry].join("\n"), { confirmed: form.get("confirm") === "on" });
+  if (r.ok) {
+    revalidatePath("/settings/system");
+    revalidatePath("/settings/providers");
+  }
   return r.ok ? { ok: true } : { error: r.error, lines: r.lines };
 }
