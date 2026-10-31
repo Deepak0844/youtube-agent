@@ -431,6 +431,23 @@ describe("paid generation is bounded by the approved quote", () => {
     expect(await liveGateHash(db.pool, v.id, "video")).not.toBeNull();
   });
 
+  it.each([
+    ["no model routed", undefined, /No model is chosen/],
+    ["a disabled model", { ...SCENE_ROW, enabled: false }, /disabled/],
+    ["an unpriced model", { ...SCENE_ROW, prices: null }, /no price/],
+  ])("Build with %s fails in plain words before any reservation, and asks the router once", async (_n, row, msg) => {
+    const v = await newVideo();
+    await seedScript(v.id, 1);
+    const routed: string[] = [];
+    const makeLlm = (scopes: string[]) => createLlmClient({ db: db.pool, catalog: { route: async (st) => (routed.push(st), row as ModelRow | undefined), localServices: async () => [] }, getKey: async () => null, buildModel: () => ({}) as LanguageModel, budgetScopes: () => scopes });
+    const out = await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(mkDeps({ paidImages: false, makeLlm }))));
+    expect(out.kind).toBe("known_failure");
+    expect((await stageResult(v.id, "build")).result).toMatchObject({ error: expect.stringMatching(msg) });
+    expect(routed).toEqual(["build_scene_kit"]);
+    expect(await intentCount()).toBe(0);
+    expect(await contentCount(v.id, "scenes")).toBe(0);
+  });
+
   it("Build with a scene that stays invalid fails in plain words and saves no scenes and no plan", async () => {
     const v = await newVideo();
     await seedScript(v.id, 1);
