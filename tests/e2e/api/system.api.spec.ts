@@ -61,10 +61,18 @@ test("anonymous page request is sent to login, with no system data in the body",
   expect(await res.text()).not.toMatch(/Local services|postgres|Key vault/);
 });
 
+test("adding an entry without the confirmation is refused and the list is unchanged", async ({ request }) => {
+  await seed("network.local_services", ["localhost:11434"]);
+  const token = await mintSession();
+  const res = await post(request, "saveLocalServicesAction", { services: "localhost:11434\n127.0.0.1:3900" }, { cookie: token, origin: ORIGIN });
+  expect(await succeeded(res)).toBe(false);
+  expect(await value("network.local_services")).toEqual(["localhost:11434"]);
+});
+
 test("positive control: with a session and the right Origin the real action changes the list", async ({ request }) => {
   await seed("network.local_services", ["localhost:11434"]);
   const token = await mintSession();
-  const res = await post(request, "saveLocalServicesAction", { services: "localhost:22434" }, { cookie: token, origin: ORIGIN });
+  const res = await post(request, "saveLocalServicesAction", { services: "localhost:22434", confirm: "on" }, { cookie: token, origin: ORIGIN });
   expect(await succeeded(res)).toBe(true);
   expect(await value("network.local_services")).toEqual(["localhost:22434"]);
 });
