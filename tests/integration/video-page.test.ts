@@ -26,8 +26,8 @@ let n = 0;
 const run = async (videoId: string, name: string, status: string, seconds = 10) => {
   const id = `0190f3a2-7c1e-7a55-9d3b-${(0x4000 + n++).toString(16).padStart(12, "0")}`;
   await db.pool.query(
-    "insert into stage_runs (id, video_id, name, status, input_hash, created_at, updated_at) values ($1,$2,$3,$4,'h', now() - ($5 * interval '1 second'), now())",
-    [id, videoId, name, status, seconds],
+    "insert into stage_runs (id, video_id, name, status, input_hash, created_at, updated_at) values ($1,$2,$3,$4,$6, now() - ($5 * interval '1 second'), now())",
+    [id, videoId, name, status, seconds, `h${n}`],
   );
   return id;
 };
