@@ -103,6 +103,11 @@ describe("nextActions", () => {
     expect(a).toMatchObject({ kind: "enqueue", stage: "build" });
     expect((a as { inputHash: string }).inputHash).not.toBe(v.runs.build?.inputHash);
   });
+  it("edited_scenes_make_render_stale", () => {
+    const { v } = walk(base());
+    const [a] = nextActions({ ...v, content: { ...v.content, scenes: "sc2" } });
+    expect(a).toMatchObject({ kind: "enqueue", stage: "render" });
+  });
   it("cannot_rerun_while_job_active", () => {
     for (const status of ["queued", "running", "needs_decision"] as RunStatus[]) {
       const { v } = walk(base());

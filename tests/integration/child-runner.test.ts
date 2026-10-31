@@ -6,7 +6,7 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { runChild, ChildError, type ChildSpec } from "@/server/render/child";
 import { argsHash, commandLabelOf, readProcInfo } from "@/server/render/proc-info";
-import { createChildRegistry, holdWorkerLock, sweepOrphans } from "@/server/db/child-processes";
+import { createChildRegistry, holdWorkerLock, isWorkerAlive, sweepOrphans } from "@/server/db/child-processes";
 import { uuidv7 } from "@/server/core/ids";
 import { withTestDb, type TestDb } from "../support/db";
 
@@ -291,6 +291,16 @@ describe("orphan sweep", () => {
     await insertRow(c.pid!, startedAtEpoch ?? info!.startedAtEpoch, label, argsOverride ?? info!.args, worker);
     return c.pid!;
   }
+
+  it("isWorkerAlive_is_true_while_the_worker_holds_its_lock_and_false_after", async () => {
+    const lock = await holdWorkerLock(db.pool, "live-check");
+    expect(await isWorkerAlive(db.pool, "live-check")).toBe(true);
+    expect(await isWorkerAlive(db.pool, "live-check")).toBe(true); // checking never takes the lock away
+    await lock.release();
+    expect(await isWorkerAlive(db.pool, "live-check")).toBe(false);
+    const again = await holdWorkerLock(db.pool, "live-check"); // the check left the lock free
+    await again.release();
+  });
 
   it("sweep_leaves_a_live_other_workers_rows_alone_and_kills_them_once_it_is_dead", async () => {
     const lock = await holdWorkerLock(db.pool, "live-other");

@@ -37,6 +37,7 @@ describe("engine numbers", () => {
         loopDiffMax: 14,
         durationToleranceS: 1.5,
       },
+      render: { timeoutS: 600, cpus: 4, memoryMb: 4096, pids: 512 },
     });
     expect(d("engine.retry_backoff_seconds")).toEqual([30, 120, 480]);
   });
@@ -44,6 +45,12 @@ describe("engine numbers", () => {
   it("an invalid stored value throws and is never replaced by the default", () => {
     expect(() => buildEngineConfig(new Map([["engine.retry_attempts", 0]]))).toThrow(/engine\.retry_attempts/);
     expect(() => buildEngineConfig(new Map([["engine.lease_s", "60"]]))).toThrow(/engine\.lease_s/);
+  });
+
+  it("render limits are bounded so a setting cannot remove the sandbox ceiling", () => {
+    expect(() => buildEngineConfig(new Map([["render.memory_mb", 1_000_000]]))).toThrow(/render\.memory_mb/);
+    expect(() => buildEngineConfig(new Map([["render.timeout_s", 0]]))).toThrow(/render\.timeout_s/);
+    expect(buildEngineConfig(new Map([["render.cpus", 2]])).render.cpus).toBe(2);
   });
 
   it("refuses numbers that contradict each other", () => {
