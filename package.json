@@ -10,6 +10,7 @@
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db-migrate.ts",
     "dry-run": "tsx --env-file-if-exists=.env.local scripts/dry-run.ts",
     "check:phase3": "tsx --env-file-if-exists=.env.local scripts/phase3-owner-check.ts",
+    "check:phase4": "tsx --env-file-if-exists=.env.local scripts/phase4-exit-check.ts",
     "smoke:providers": "tsx --env-file-if-exists=.env.local scripts/provider-smoke.ts",
     "eval:llm": "tsx --env-file-if-exists=.env.local scripts/llm-eval.ts",
     "eval:scenes": "tsx --env-file-if-exists=.env.local scripts/scene-reliability.ts",

@@ -28,6 +28,7 @@ After migrating the local database and configuring `.env.local`:
 | `npm run eval:llm -- --model <catalog-id> --mode agent --topics 10 --max-usd 2` | Print the hosted-model evaluation plan and cost ceiling without spending. Add `--yes` only after approving the capped real spend. |
 | `npm run smoke:providers -- --providers elevenlabs,pixabay --cap 0.50 --lang en,hi,ta` | Owner-run live check of the voice, sound and stock providers on a local database. Prints every quote and asks y/N; `--dry-plan` calls nothing, `--yes-spend` is needed without a terminal, hard cap 2 USD. Saves raw responses (keys stripped) under `.data/smoke/`. |
 | `npm run check:phase3` | Owner-run listening sheet: prints the produced audio files, captions with their flags and the mix to check by ear, from the local database and storage. No network, no paid call. |
+| `npm run check:phase4` | Owner-run Phase 4 exit helper: `-- --preflight` (default) readiness checklist, `-- --plan [--lang hi]` what a real run would do and cost, `-- --check <videoId>` read-only report on a finished run. Local checks only, no spend, starts no video. |
 
 ### Portrait kit (needs `npm run image:render` once, Docker/OrbStack running)
 
