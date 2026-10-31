@@ -1,19 +1,20 @@
 import { expect, test, type Page } from "@playwright/test";
-import { installFakeClock } from "../fixtures/fake-clock";
 import { OWNER_PASSWORD, OWNER_USERNAME } from "../fixtures/owner";
 
 // Runs with the seeded owner's storageState (playwright.config.mts), i.e. reuse of a real session.
 const phone = (page: Page) => (page.viewportSize()?.width ?? 1440) < 768;
 
-test("home shows each panel with an honest empty state and the quick links", async ({ page }) => {
-  await installFakeClock(page, "2026-01-01T09:00:00Z");
+test("home loads every panel (none failed, none stuck loading) and shows the quick links", async ({ page }) => {
+  // The e2e database is shared with other specs that create videos, so this checks each panel's state, not that it is empty.
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Home" })).toBeVisible();
   await expect(page.getByText("In production", { exact: true })).toBeVisible();
-  await expect(page.getByText("Nothing is waiting at a gate.")).toBeVisible();
-  await expect(page.getByText("Nothing needs attention.")).toBeVisible();
-  await expect(page.getByText("Nothing is running right now.")).toBeVisible();
-  await expect(page.getByText("Nothing is lined up.")).toBeVisible();
+  for (const id of ["kpis", "queue", "attention", "active", "next", "recent"]) {
+    const panel = page.getByTestId(`panel-${id}`);
+    await expect(panel).toBeVisible();
+    await expect(panel.locator(".animate-pulse")).toHaveCount(0);
+    await expect(panel).not.toContainText("Could not load");
+  }
   await expect(page.getByRole("link", { name: "New short" })).toHaveAttribute("href", /\/videos\/new/);
   await expect(page.getByRole("link", { name: "Library" }).first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

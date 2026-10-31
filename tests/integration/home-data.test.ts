@@ -123,7 +123,7 @@ describe("home data", () => {
     expect(k.publishedThisMonth).toBe(1);
     expect(k.today.capMicroUsd).toBe(15_000_000);
     expect(k.month.capMicroUsd).toBe(100_000_000);
-    await q("update budgets set cap_micro_usd = null where scope = 'day'");
+    await q("insert into budgets (scope, cap_micro_usd) values ('day', null) on conflict (scope) do update set cap_micro_usd = null");
     expect((await loadKpis(db.pool)).today.capMicroUsd).toBeNull();
   });
 });
