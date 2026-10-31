@@ -1,4 +1,5 @@
 import { STAGES, checkModelUsable, eligibleForStage, type ModelRow } from "@/server/core/llm-catalog";
+import { SETTINGS } from "@/server/core/settings-registry";
 
 // The "AI source for text stages" switch on Settings > Models (ADR 0014, step 2). Pure: no IO.
 // ON points every stage Claude Code can do at the Claude Code catalog model and remembers the routes it replaced.
@@ -24,6 +25,13 @@ export type SwitchPlan =
   | { ok: true; routes: Record<string, string | null>; previous: Remembered | null; notes: string[] }
   | { ok: false; reason: string };
 
+/** The stored `ai.previous_routes`, checked with its registry schema. Anything that is not a valid set (a tampered or
+ * hand-edited value) means "no previous routes", i.e. the switch is off: the page and the writer use this same reading. */
+export function readRemembered(raw: unknown): Remembered | null {
+  const r = SETTINGS["ai.previous_routes"].schema.safeParse(raw);
+  return r.success ? r.data : null;
+}
+
 const label = (stage: string) => STAGES.find((s) => s.id === stage)?.label ?? stage;
 
 export function planAiSource(input: SwitchInput): SwitchPlan {
@@ -33,9 +41,8 @@ export function planAiSource(input: SwitchInput): SwitchPlan {
 
   if (input.on) {
     if (input.previous !== null) return { ok: false, reason: "Claude Code is already the AI source for text stages." };
-    const row = input.claudeCodeId === undefined ? undefined : byId.get(input.claudeCodeId);
-    // Judged as the adapter runs it (tools off), whatever an older catalog row claims.
-    const cc = row && { ...row, capabilities: { ...row.capabilities, toolUse: false, vision: false, nativeWebSearch: false } };
+    // eligibleForStage judges a claude_code row as tool-free, whatever the row claims.
+    const cc = input.claudeCodeId === undefined ? undefined : byId.get(input.claudeCodeId);
     if (!cc || cc.provider !== "claude_code") return { ok: false, reason: "There is no Claude Code model in the catalog." };
     if (!checkModelUsable(cc, input.local).ok) return { ok: false, reason: "The Claude Code model in the catalog is disabled. Enable it first." };
     const previous: Remembered = {};
@@ -54,7 +61,7 @@ export function planAiSource(input: SwitchInput): SwitchPlan {
 
   if (input.previous === null) return { ok: false, reason: "Claude Code is not the AI source right now." };
   for (const [stage, was] of Object.entries(input.previous)) {
-    if (!(stage in routes)) continue; // a stage that no longer exists
+    if (!Object.hasOwn(routes, stage)) continue; // a stage that no longer exists (or a name like "constructor")
     const now = routes[stage] ? byId.get(routes[stage]!) : undefined;
     if (now && now.provider !== "claude_code") {
       notes.push(`${label(stage)} keeps the model you chose after switching.`);
@@ -75,6 +82,14 @@ export function planAiSource(input: SwitchInput): SwitchPlan {
       routes[stage] = was;
     }
   }
+  // Claude Code is switched off with the switch, so no stage may be left on it (also one routed there by hand before ON).
+  for (const s of STAGES) {
+    const id = routes[s.id];
+    if (id && byId.get(id)?.provider === "claude_code") {
+      routes[s.id] = null;
+      notes.push(`${s.label} was on Claude Code, which is now off, so it is unset. Choose a model below.`);
+    }
+  }
   return { ok: true, routes, previous: null, notes };
 }
 
@@ -89,7 +104,7 @@ export function parseAiSourceForm(form: FormData): { ok: true; on: boolean } | {
 
 /** What Claude Code can do here (tools off): the page lists which stages stay on their API model and why. */
 export function claudeCodeStageFit(): { label: string; ok: boolean; why: string }[] {
-  const cc = { capabilities: { structuredOutput: true, toolUse: false, vision: false, nativeWebSearch: false, contextWindow: 200000 }, endpointKind: "local" as const };
+  const cc = { provider: "claude_code", capabilities: { structuredOutput: true, toolUse: false, vision: false, nativeWebSearch: false, contextWindow: 200000 }, endpointKind: "local" as const };
   return STAGES.map((s) => {
     const fit = eligibleForStage(s.id, cc);
     return { label: s.label, ok: fit.ok, why: fit.ok ? fit.warnings.join(" ") : `needs ${fit.missing.join(", ")}` };

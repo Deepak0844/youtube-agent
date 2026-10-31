@@ -11,7 +11,8 @@ import {
 } from "@/server/db/claude-code";
 import { copyDefault, createModel, deleteModel, listModels, listRoutes, setRoute } from "@/server/db/llm-models";
 import { getSetting, setSetting } from "@/server/db/settings";
-import type { SpawnClaude } from "@/server/llm/claude-code";
+import { createAiSdkStep } from "@/server/llm/ai-sdk-step";
+import { createClaudeCodeModel, type SpawnClaude } from "@/server/llm/claude-code";
 import { withTestDb, type TestDb } from "../support/db";
 
 // The AI source switch, the Claude Code status row, Test connection and the day-counter trigger (ADR 0014, step 2).
@@ -103,6 +104,47 @@ describe("AI source switch", () => {
   });
 });
 
+describe("AI source switch, review fixes", () => {
+  const ccRow = { provider: "claude_code", modelId: "default", label: "CC", baseUrl: null, prices: null, isFree: true, capabilities: { ...caps, toolUse: false, vision: false, nativeWebSearch: false }, enabled: true };
+
+  it("two switches at the same time: one wins, the other is refused, one Claude Code model", async () => {
+    const r = await Promise.allSettled([setAiSource(db.pool, true, session), setAiSource(db.pool, true, session)]);
+    expect(r.filter((x) => x.status === "fulfilled")).toHaveLength(1);
+    expect((r.find((x) => x.status === "rejected") as PromiseRejectedResult).reason.message).toMatch(/same time|already/);
+    expect((await listModels(db.pool)).filter((m) => m.provider === "claude_code")).toHaveLength(1);
+  });
+
+  it("a refused first ON creates no Claude Code model", async () => {
+    await setSetting(db.pool, "ai.previous_routes", { outline: null }, session); // the switch already reads as on
+    await expect(setAiSource(db.pool, true, session)).rejects.toThrow(/already/);
+    expect(await listModels(db.pool)).toEqual([]);
+  });
+
+  it("OFF unsets a stage routed to Claude Code by hand before ON, and says so", async () => {
+    const cc = await createModel(db.pool, ccRow, session);
+    await setRoute(db.pool, "outline", cc.id, session);
+    await setAiSource(db.pool, true, session);
+    const notes = await setAiSource(db.pool, false, session);
+    expect(await listRoutes(db.pool)).toEqual({});
+    expect(notes.join("\n")).toMatch(/Outline was on Claude Code, which is now off/);
+  });
+
+  it("a hostile stored remembered set reads as 'switch off' in the status box and the writer", async () => {
+    await db.ownerPool.query(`insert into settings (key, value, updated_by) values ('ai.previous_routes', '"junk"', 'system')`);
+    expect((await getClaudeCodeStatus(db.pool)).switchOn).toBe(false);
+    await expect(setAiSource(db.pool, false, session)).rejects.toThrow(/not the AI source/);
+    await setAiSource(db.pool, true, session);
+    expect(await claudeCodeEnabled(db.pool)).toBe(true);
+  });
+
+  it("a claude_code row that claims tool use still cannot be routed to a tool stage", async () => {
+    const cc = await createModel(db.pool, ccRow, session);
+    await db.ownerPool.query(`update llm_models set capabilities = capabilities || '{"toolUse":true,"vision":true,"nativeWebSearch":true}' where id = $1`, [cc.id]);
+    for (const stage of ["build_tsx", "qa_vision", "research"]) await expect(setRoute(db.pool, stage, cc.id, session)).rejects.toThrow(/lacks/);
+    await setRoute(db.pool, "outline", cc.id, session);
+  });
+});
+
 describe("Claude Code status and Test connection", () => {
   it("the status box reads the switch, cap, today's count and the last stored outcome without starting anything", async () => {
     expect(await getClaudeCodeStatus(db.pool)).toEqual({ enabled: false, switchOn: false, cap: 200, usedToday: 0, last: null });
@@ -139,6 +181,37 @@ describe("Claude Code status and Test connection", () => {
     expect((await getClaudeCodeStatus(db.pool)).last?.result).toBe("not_logged_in");
     const audit = await db.pool.query("select detail from audit_log where event = 'claude_code.tested'");
     expect(audit.rows[0].detail).toEqual({ result: "not_logged_in" });
+  });
+});
+
+describe("Test connection and the one-at-a-time queue", () => {
+  it("two Tests at once start the program once", async () => {
+    await setSetting(db.pool, "claude_code.enabled", true, session);
+    const f = fakeSpawn(OK);
+    const r = await Promise.allSettled([testClaudeCodeConnection(db.pool, { kind: "session" }, { spawn: f.spawn }), testClaudeCodeConnection(db.pool, { kind: "session" }, { spawn: f.spawn })]);
+    expect(f.count()).toBe(1);
+    expect(r.filter((x) => x.status === "fulfilled" && x.value.ok)).toHaveLength(1);
+  });
+
+  it("a Test while a call in this process holds the queue is refused at once, without waiting or starting", async () => {
+    await setSetting(db.pool, "claude_code.enabled", true, session);
+    let release!: () => void;
+    const held: SpawnClaude = () => {
+      const c = Object.assign(new EventEmitter(), { pid: 1, stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
+      release = () => { c.stdout.end(OK); c.stderr.end(); setImmediate(() => c.emit("close", 0, null)); };
+      return c;
+    };
+    const gate = { enabled: async () => true, takeSlot: async () => true };
+    const stage = createAiSdkStep(createClaudeCodeModel("default", { gate, spawn: held }), [], 100)([{ role: "user", content: "hi" }], "k", new AbortController().signal);
+    await new Promise((r) => setTimeout(r, 30));
+    const f = fakeSpawn(OK);
+    const t0 = Date.now();
+    const r = await testClaudeCodeConnection(db.pool, { kind: "session" }, { spawn: f.spawn });
+    expect(r).toEqual({ ok: false, message: expect.stringMatching(/busy/) });
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(f.count()).toBe(0);
+    release();
+    await stage;
   });
 });
 

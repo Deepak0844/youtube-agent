@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planAiSource, type SwitchInput } from "@/server/core/ai-source";
+import { planAiSource, readRemembered, type SwitchInput } from "@/server/core/ai-source";
 import type { ModelRow } from "@/server/core/llm-catalog";
 
 const all = { structuredOutput: true, toolUse: true, vision: true, nativeWebSearch: true, contextWindow: 200000 };
@@ -61,5 +61,32 @@ describe("AI source switch (pure)", () => {
     expect(planAiSource({ ...base, on: false }).ok).toBe(false);
     const off = planAiSource({ ...base, on: false, routes: {}, previous: { nope: api.id } });
     expect(off.ok && Object.values(off.routes).every((v) => v === null)).toBe(true);
+  });
+
+  it("OFF unsets every stage still on Claude Code, including one routed there by hand before ON, and says so", () => {
+    const routes = { outline: cc.id, titles: cc.id, draft: cc.id };
+    const previous = { outline: cc.id, draft: api.id }; // outline was on Claude Code by hand; titles was never remembered
+    const off = planAiSource({ ...base, on: false, routes, previous });
+    if (!off.ok) throw new Error(off.reason);
+    expect(off.routes).toMatchObject({ outline: null, titles: null, draft: api.id });
+    const text = off.notes.join("\n");
+    expect(text).toMatch(/Outline was on Claude Code, which is now off, so it is unset/);
+    expect(text).toMatch(/Titles and insights was on Claude Code/);
+  });
+
+  it("OFF ignores prototype-looking stage names in a hostile remembered set", () => {
+    const hostile = JSON.parse(`{"constructor":"${api.id}","__proto__":"${api.id}","outline":null}`) as Record<string, string | null>;
+    const off = planAiSource({ ...base, on: false, routes: { outline: cc.id }, previous: hostile });
+    if (!off.ok) throw new Error(off.reason);
+    expect(Object.keys(off.routes).sort()).toEqual(["build_scene_kit", "build_tsx", "comment_replies", "draft", "outline", "qa_vision", "research", "titles"]);
+    expect(off.routes.outline).toBeNull();
+  });
+});
+
+describe("readRemembered", () => {
+  it("anything that is not a valid remembered set means 'no previous routes'", () => {
+    for (const v of [null, undefined, 5, "x", [], [api.id], { outline: "not-a-uuid" }, { "Bad Key": null }]) expect(readRemembered(v), JSON.stringify(v)).toBeNull();
+    expect(readRemembered({})).toEqual({});
+    expect(readRemembered({ outline: api.id, titles: null })).toEqual({ outline: api.id, titles: null });
   });
 });

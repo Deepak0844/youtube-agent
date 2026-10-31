@@ -298,10 +298,12 @@ const FLAG_LABEL: Record<CapabilityFlag, string> = {
 export type Eligibility = { ok: true; warnings: string[] } | { ok: false; missing: string[] };
 
 /** Capability check for one stage. The UI offers only `ok` models; there is no automatic fallback. */
-export function eligibleForStage(stageId: string, model: Pick<ModelRow, "capabilities" | "endpointKind">): Eligibility {
+export function eligibleForStage(stageId: string, model: Pick<ModelRow, "capabilities" | "endpointKind"> & { provider?: string }): Eligibility {
   const stage = STAGES.find((s) => s.id === stageId);
   if (!stage) return { ok: false, missing: ["unknown stage"] };
-  const c = model.capabilities;
+  // Claude Code runs with tools off (ADR 0014): judged tool-free whatever its row claims, so every caller (route writes,
+  // the picker, the client, the AI source switch) refuses tool, image and web-search stages for it.
+  const c = model.provider === "claude_code" ? { ...model.capabilities, toolUse: false, vision: false, nativeWebSearch: false } : model.capabilities;
   const missing = stage.requires.filter((f) => !c[f]).map((f) => FLAG_LABEL[f]);
   if (stage.requiresAny.length > 0 && !stage.requiresAny.some((f) => c[f])) missing.push(stage.requiresAny.map((f) => FLAG_LABEL[f]).join(" or "));
   if (missing.length > 0) return { ok: false, missing };

@@ -11,6 +11,10 @@ insert into model_catalog_defaults (id, provider, model_id, label, base_url, is_
    'Free: your Claude subscription through the claude program on this Mac. Log in with claude.ai, not a Console API key (a key would bill the API while the books say $0). Text stages only, tools off.')
 on conflict (id) do nothing;
 
+-- Claude Code runs with tools off: a row saved in step 1 may not claim tool use, image input or web search.
+update llm_models set capabilities = capabilities || '{"toolUse":false,"vision":false,"nativeWebSearch":false}'
+ where provider = 'claude_code';
+
 -- The day counter only ever goes up: the app role cannot lower today's count or move a row to another day to dodge the cap.
 create function claude_code_daily_calls_no_decrease() returns trigger
 language plpgsql set search_path = pg_catalog, public as $$

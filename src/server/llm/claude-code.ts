@@ -53,6 +53,8 @@ export interface ClaudeCodeDeps {
   timeoutMs?: number;
   killGraceMs?: number;
   maxStdoutBytes?: number;
+  /** Refuse at once instead of waiting when this process's queue is busy (the Test connection button). */
+  noWait?: boolean;
 }
 
 const ENV_ALLOW = ["PATH", "HOME", "LANG", "TERM"] as const;
@@ -72,7 +74,9 @@ const own = <E extends Error>(e: E): E => (OWN.add(e), e);
 export const isClaudeCodeError = (e: unknown): e is Error => typeof e === "object" && e !== null && OWN.has(e);
 const refuse = (msg: string) => own(new KnownFailure(msg));
 
-const queue = createSemaphore(1); // one Claude Code process at a time, process-wide
+// One Claude Code process at a time PER NODE PROCESS. The web server (Test connection) and the worker (stages) are separate
+// processes with separate queues, so a Test can run beside a stage; the daily cap is shared (database).
+const queue = createSemaphore(1);
 
 export const minimalEnv = (src: Record<string, string | undefined>): Record<string, string> =>
   Object.fromEntries(ENV_ALLOW.flatMap((k) => (typeof src[k] === "string" ? [[k, src[k]]] : [])));
@@ -174,6 +178,7 @@ const LIMIT = /^(?:Claude AI usage limit reached|You(?:'|\u2019)ve (?:hit|reache
 const LOGIN = /^(?:Invalid API key|Not logged in|Please run \/login|OAuth token (?:has expired|has been revoked)|API Error: 401\b)/i;
 
 const CANCELLED = "The stage was cancelled, so Claude Code was stopped.";
+export const BUSY = "Claude Code is busy with another call right now. Nothing was started. Try again in a minute.";
 
 interface Interpreted { text: string; input: number | undefined; output: number | undefined; auth: string | undefined }
 function interpret(r: Ran): Interpreted {
@@ -226,6 +231,8 @@ export function createClaudeCodeModel(modelId: string, deps: ClaudeCodeDeps): La
       const input = promptText(options.prompt as Prompt);
       if (!(await deps.gate.enabled())) throw refuse("Claude Code is switched off. Turn it on in Settings > Models.");
       const signal = options.abortSignal;
+      // Checked and taken in the same tick (no await between), so two callers cannot both pass.
+      if (deps.noWait && queue.busy()) throw refuse(BUSY);
       const r = await queue.run(async () => {
         if (signal?.aborted) throw refuse(CANCELLED); // cancelled while queued: no cap slot used
         if (!(await deps.gate.takeSlot())) throw refuse("daily Claude Code cap reached. It resets at midnight UTC.");

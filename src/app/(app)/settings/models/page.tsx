@@ -162,6 +162,11 @@ function ClaudeCodeSection({ cc }: { cc: ClaudeCodeStatus }) {
               </div>
             ))}
           </dl>
+          {cc.last?.auth && cc.last.auth !== "none" ? (
+            <p className="text-small text-negative">
+              The program reported an API key login ({cc.last.auth}). Calls may be billed to the Anthropic API while the books here say $0. Log out of claude and log in with your claude.ai subscription.
+            </p>
+          ) : null}
           <p className="text-small text-warning">Log in to claude with your claude.ai subscription, not a Console API key: a key would bill the API while the books here say $0.</p>
           <TestClaudeCodeButton disabled={!cc.enabled} />
         </div>

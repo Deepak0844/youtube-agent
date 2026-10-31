@@ -225,6 +225,11 @@ describe("stage routing and capabilities", () => {
     expect(eligibleForStage("research", m({ toolUse: false, nativeWebSearch: false })).ok).toBe(false);
     expect(eligibleForStage("research", m({ toolUse: false, nativeWebSearch: true })).ok).toBe(true);
   });
+  it("a claude_code row counts as tool-free whatever it claims (tools are off in the adapter)", () => {
+    const cc = { ...m({ toolUse: true, vision: true, nativeWebSearch: true }), provider: "claude_code" };
+    for (const id of ["build_tsx", "qa_vision", "research"]) expect(eligibleForStage(id, cc).ok, id).toBe(false);
+    for (const id of ["outline", "draft", "build_scene_kit", "titles", "comment_replies"]) expect(eligibleForStage(id, cc).ok, id).toBe(true);
+  });
   it("unknown stage is refused", () => expect(eligibleForStage("nope", m({})).ok).toBe(false));
   it("a route target must be enabled and priced (or free local)", () => {
     expect(checkModelUsable(m({}), []).ok).toBe(true);

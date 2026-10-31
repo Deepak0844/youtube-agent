@@ -368,6 +368,22 @@ describe("claude code adapter, review follow-ups", () => {
     ]);
   });
 
+  it("noWait refuses at once when another call holds the queue (no waiting, no slot, no start)", async () => {
+    const pending: FakeChild[] = [];
+    let took = 0;
+    const h = harness(({ child }) => void pending.push(child), { gate: { enabled: async () => true, takeSlot: async () => (took++, true) } });
+    const first = run(h);
+    await new Promise((r) => setTimeout(r, 20));
+    const quick = createAiSdkStep(createClaudeCodeModel("default", { ...h.deps, noWait: true }), [], 100);
+    const e = await caught(quick(MSGS, "k2", new AbortController().signal));
+    expect(e).toBeInstanceOf(KnownFailure);
+    expect(e.message).toMatch(/busy/);
+    expect(took).toBe(1);
+    expect(h.runs).toHaveLength(1);
+    pending[0]!.finish(OK);
+    await first;
+  });
+
   it("a failing recorder never changes the call's result", async () => {
     const h = harness(undefined, { gate: { enabled: async () => true, takeSlot: async () => true, record: async () => { throw new Error("db down"); } } });
     expect((await run(h)).text).toBe('{"title":"hi"}');
