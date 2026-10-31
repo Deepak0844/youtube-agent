@@ -145,6 +145,7 @@ describe("worker runtime", () => {
         loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
         checkVault: async () => "missing_key", connectQueue: async () => { throw new Error("offline"); },
         markStalled, prune, reconcile, advanceAll,
+        sweepLostAttempts: async () => 0, // default hook does real readdir I/O the fake clock cannot wait for; a slow one made single-flight skip ticks
       },
     });
     await worker.ready; expect(markStalled).toHaveBeenCalledTimes(1); expect(prune).toHaveBeenCalledTimes(1);
