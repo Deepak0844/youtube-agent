@@ -7,7 +7,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { STAGE_NAMES, stagePlan, type StageName } from "@/server/core/pipeline-plan";
 import { createSemaphore } from "@/server/core/semaphore";
 import type { StageHandler } from "@/server/core/stage-handler";
-import { AssetRefused, registerAsset } from "@/server/db/assets";
+import { AssetRefused, getAsset, registerAsset } from "@/server/db/assets";
 import { recordAudit } from "@/server/db/audit";
 import { assetForJob, claimIngestJob, expireReceiving, loadLimits, MAX_INGEST_TRIES, markDone, markRejected, requeueJob, runningIngestIds } from "@/server/db/ingest-jobs";
 import { loadKeyring } from "@/server/db/master-key";
@@ -17,6 +17,8 @@ import { createWebTools } from "@/server/llm/web-tools";
 import { createImageFor } from "@/server/providers/image/wire";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
+import { createContainerRenderer } from "@/server/providers/renderer/remotion-container";
+import { probeVideo } from "@/server/render/probe";
 import { createFakeVoice } from "@/server/providers/voice/fake";
 import { runChild, type ChildRegistry } from "@/server/render/child";
 import { scanVideo } from "@/server/render/qa-scan";
@@ -89,14 +91,22 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
     qaScan: scanVideo,
     mix: { runChild: run, audioRoot: path.join(root, "audio") },
-    // build/generate/render are not wired in production yet (Phase 4); these stages never call them, and if one ever did it refuses.
+    // build/generate are not wired in production yet; those stages never call image, and if one ever did it refuses.
     imageFor: createImageFor(pool, () => loadKeyring(), root),
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
-    renderer: { render: notWired },
+    // Render runs in the locked-down render container (remotion-container.ts). The kit is read from the repo the worker runs in.
+    renderer: createContainerRenderer({
+      root, kitDir: path.resolve(process.cwd(), "remotion", "kit"), runChild: run,
+      assetFile: async (id) => { const a = await getAsset(pool, id); return a && !a.deletedAt && a.kind === "image" ? a.storageRef : null; },
+      probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
+    }),
   };
 }
 
-/** The handlers the real worker runs: draft, tts, voice (mux) and sfx (mixer). build/generate/render/qa stay absent (refused as "missing stage handler"). */
+/**
+ * The handlers the real worker runs: draft, tts, render (container), voice (mux), sfx (mixer) and qa. build and generate stay
+ * absent (refused as "missing stage handler"): Build always plans paid images, and Generate (paid) is gated until Phase 8.
+ */
 export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRegistry } = {}): StageHandlers {
   const draft: StageHandler = async (ctx) => {
     const searxUrl = process.env.SEARXNG_URL;
@@ -113,8 +123,10 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
   return {
     draft: refuseDryRunVideos(pool, draft),
     tts: refuseDryRunVideos(pool, withAttempt(fin, ttsAttempt(deps))),
+    render: refuseDryRunVideos(pool, withAttempt(fin, renderAttempt(deps))),
     voice: refuseDryRunVideos(pool, withAttempt(fin, voiceAttempt(deps))),
     sfx: refuseDryRunVideos(pool, sfxHandler(fin, deps)),
+    qa: refuseDryRunVideos(pool, withAttempt(fin, qaAttempt(deps))),
   };
 }
 

@@ -53,7 +53,7 @@ export async function prepareAttempt(ctx: StageContext, root: string): Promise<s
   return dir;
 }
 
-async function openRegular(file: string) {
+export async function openRegular(file: string) {
   const fh = await open(file, fsc.O_RDONLY | fsc.O_NOFOLLOW);
   try {
     if (!(await fh.stat()).isFile()) throw new KnownFailure("expected a regular file");

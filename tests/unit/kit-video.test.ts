@@ -26,3 +26,12 @@ describe("buildVideoProps", () => {
     expect(!bad.ok && bad.errors[0]).toContain("word 1");
   });
 });
+
+describe("buildVideoProps for the render stage", () => {
+  it("passes the staged asset map and reads stored caption words (source: estimated)", async () => {
+    const { buildVideoProps: shared } = await import("@/shared/scene/video-props");
+    const r = shared(scenes, { fps: 30, assets: { img1: "assets/img1.png" }, captionsText: JSON.stringify([{ word: "hi", startS: 0, endS: 0.4, source: "estimated", flags: [] }]) });
+    expect(r.ok && r.props.assets).toEqual({ img1: "assets/img1.png" });
+    expect(r.ok && r.props.captions).toEqual([{ word: "hi", startS: 0, endS: 0.4, estimated: true }]);
+  });
+});

@@ -22,9 +22,14 @@ const registry = () => {
 };
 
 describe("production handlers", () => {
-  it("wires tts, voice and sfx only; build/generate/render/qa stay missing", () => {
+  it("wires tts, render, voice, sfx and qa; build and generate stay missing", () => {
     const h = productionHandlers(db.pool);
-    expect(Object.keys(h).sort()).toEqual(["draft", "sfx", "tts", "voice"]);
+    expect(Object.keys(h).sort()).toEqual(["draft", "qa", "render", "sfx", "tts", "voice"]);
+  });
+
+  it("the production renderer is the container renderer and refuses a call without validated scenes", async () => {
+    const ctx = { claim: { stageRunId: "r" }, attemptDir: "/nonexistent" } as never;
+    await expect(productionStageDeps(db.pool).renderer.render(ctx, { sceneFile: "x", outFile: "render.mp4", size: { width: 1080, height: 1920 } })).rejects.toThrow(/checked scenes/);
   });
 
   it("a dry-run video is refused by the production tts handler", async () => {

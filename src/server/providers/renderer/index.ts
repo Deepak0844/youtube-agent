@@ -1,6 +1,21 @@
 import type { StageContext } from "@/server/core/stage-handler";
+import type { SceneDoc } from "@/shared/scene";
 
-// Turns a scene file into an mp4 inside ctx.attemptDir. outFile is a plain file name, never a path.
+export interface RenderArgs {
+  /** The promoted scene file. The fake renderer only checks the call; the container renderer renders `doc`. */
+  sceneFile: string;
+  /** The validated scene document (scenes.json). Required by the container renderer. */
+  doc?: SceneDoc;
+  /** The promoted narration audio. */
+  audioFile?: string;
+  /** Stored caption words ({word, startS, endS, ...}) from the `captions` content. */
+  captions?: unknown[];
+  /** A plain file name, never a path. */
+  outFile: string;
+  size: { width: number; height: number };
+}
+
+// Turns a scene document into an mp4 inside ctx.attemptDir.
 export interface Renderer {
-  render(ctx: StageContext, a: { sceneFile: string; outFile: string; size: { width: number; height: number } }): Promise<{ outPath: string }>;
+  render(ctx: StageContext, a: RenderArgs): Promise<{ outPath: string }>;
 }
