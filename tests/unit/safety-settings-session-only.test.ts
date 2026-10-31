@@ -93,7 +93,7 @@ describe("no code path in src writes a safety setting as anything but a session"
     expect(SETTINGS_IMPORT_ALLOW).toEqual({
       "src/server/db/engine-config.ts": ["getStoredSettings"],
       "src/server/db/llm-models.ts": ["getSetting", "Actor"],
-      "src/server/db/claude-code.ts": ["getSetting"],
+      "src/server/db/claude-code.ts": ["getSetting", "setSessionSettings", "Actor"],
       "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],
       "src/server/db/asset-settings.ts": ["getSetting"],
       "src/server/db/pipeline.ts": ["getSetting"],

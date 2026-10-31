@@ -2,14 +2,20 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { buildCostPlan, costPlanBody, type CostItem } from "@/server/core/cost-plan";
 import { KnownFailure } from "@/server/core/paid-call";
-import { buildSceneDoc } from "@/server/core/scene-build";
+import { buildSceneDoc, type AskScene } from "@/server/core/scene-build";
 import type { Message } from "@/server/core/agent-loop";
+import type { LlmClient, LlmStageContext } from "@/server/llm/client";
 import type { AttemptHandler, OutContent } from "./attempt";
 import { approvedScript } from "@/server/db/stage-content";
 import { DEFAULTS, loadVideo, plainScope, scopeHeadroom, videoMoneyScopes, type StageDeps } from "./deps";
 
 const SCENE_MAX_OUTPUT_TOKENS = 1500;
 const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`;
+
+/** One reserved, paid model call per answer. A budget refusal or unclear outcome goes up as is: the runner parks the stage for the owner (needs_decision). Never retried here. Repair uses the same path. */
+export function sceneAsk(llm: LlmClient, ctx: LlmStageContext): AskScene {
+  return async (messages: Message[]) => (await llm.agent(ctx, { stage: "build_scene_kit", tools: [], messages, maxSteps: 1, maxOutputTokens: SCENE_MAX_OUTPUT_TOKENS })).text;
+}
 
 /**
  * Build: reads the script and beats, plans what Generate will buy, and writes the cost plan the owner approves. Nothing is
@@ -49,10 +55,7 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
       // Scenes: one reserved model call per attempt, per beat. A budget refusal or a bad scene fails the stage with no scenes file.
       const llm = deps.makeLlm(await videoMoneyScopes(deps.db, video));
       const beats = script.beats.map((b, i) => ({ id: beatIds[i]!, text: typeof (b as { text?: unknown })?.text === "string" ? (b as { text: string }).text : "" }));
-      const ask = async (messages: Message[]) => {
-        // A budget refusal or unclear outcome goes up as is: the runner parks the stage for the owner (needs_decision). Never retried here.
-        return (await llm.agent(ctx, { stage: "build_scene_kit", tools: [], messages, maxSteps: 1, maxOutputTokens: SCENE_MAX_OUTPUT_TOKENS })).text;
-      };
+      const ask = sceneAsk(llm, ctx);
       const doc = await buildSceneDoc(beats, ask, { assets: (await deps.sceneAssets?.(video.id)) ?? [] });
       await writeFile(path.join(ctx.attemptDir, "scenes.json"), JSON.stringify(doc));
       files.push("scenes.json");

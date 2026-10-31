@@ -75,6 +75,26 @@ describe("worker runtime", () => {
     expect(log).toHaveBeenLastCalledWith("worker stopped");
   });
 
+  it("boot_sweeps_leftover_render_containers_after_the_orphan_sweep_and_lock", async () => {
+    vi.useFakeTimers();
+    const order: string[] = [];
+    const log = vi.fn();
+    const worker = startWorker({
+      pool: { end: vi.fn().mockResolvedValue(undefined) } as unknown as WorkerOptions["pool"], redisUrl: "redis://127.0.0.1:1", log,
+      hooks: {
+        sweepOrphans: async () => (order.push("orphans"), 0), holdWorkerLock: async () => (order.push("lock"), { release: async () => {} }), createChildRegistry: () => ({}) as never,
+        sweepRenderContainers: async () => (order.push("containers"), 2),
+        connectQueue: vi.fn().mockRejectedValue(new Error("offline")),
+        loadSettings: async () => ({ config: (await import("@/server/core/engine-config")).buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
+        checkVault: async () => "missing_key",
+      }, retryMs: 100,
+    });
+    await worker.ready;
+    expect(order).toEqual(["orphans", "lock", "containers"]);
+    expect(log).toHaveBeenCalledWith("removed 2 leftover render container(s)");
+    await worker.stop();
+  });
+
   it("shutdown_aborts_and_bounds_drain_before_closing_resources", async () => {
     vi.useFakeTimers();
     const pause = vi.fn().mockResolvedValue(undefined);

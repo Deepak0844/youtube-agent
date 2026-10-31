@@ -106,6 +106,19 @@ async function targetFor(r: Row): Promise<Target | "stale" | "unknown"> {
   return { row: r, group: info.pgid === r.pid };
 }
 
+/** True while some live worker holds this id's advisory lock (holdWorkerLock). The check takes the lock and gives it straight back. */
+export async function isWorkerAlive(db: pg.Pool, workerId: string): Promise<boolean> {
+  const client = await db.connect();
+  try {
+    const got = await client.query<{ ok: boolean }>(`select pg_try_advisory_lock(${LOCK_SQL}) as ok`, [workerId]);
+    if (!got.rows[0]?.ok) return true;
+    await client.query(`select pg_advisory_unlock(${LOCK_SQL})`, [workerId]);
+    return false;
+  } finally {
+    client.release();
+  }
+}
+
 /**
  * Worker boot: kills children left behind by DEAD workers. Rows are grouped by worker id, and a worker is acted on only when
  * its advisory lock (holdWorkerLock) can be taken here, i.e. nobody is alive under that id; a live worker's rows are never

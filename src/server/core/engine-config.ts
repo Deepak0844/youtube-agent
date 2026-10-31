@@ -19,9 +19,10 @@ export interface EngineConfig {
   breaker: { threshold: number; cooldownS: number; stages: readonly string[] };
   uploadsConcurrent: number;
   qa: { short: QaTrack; long: QaTrack; meanDbMin: number; peakDbMax: number; loopDiffMax: number; durationToleranceS: number };
+  render: { timeoutS: number; cpus: number; memoryMb: number; pids: number };
 }
 
-export const ENGINE_KEYS = (Object.keys(SETTINGS) as SettingKey[]).filter((k) => /^(engine|breaker|qa)\./.test(k) || k === "uploads.concurrent");
+export const ENGINE_KEYS = (Object.keys(SETTINGS) as SettingKey[]).filter((k) => /^(engine|breaker|qa|render)\./.test(k) || k === "uploads.concurrent");
 
 /**
  * Builds the config from stored values. A key with no stored value uses its default; a stored value that is invalid
@@ -56,6 +57,7 @@ export function buildEngineConfig(stored: ReadonlyMap<string, unknown>): EngineC
       loopDiffMax: get("qa.loop_diff_max"),
       durationToleranceS: get("qa.duration_tolerance_s"),
     },
+    render: { timeoutS: get("render.timeout_s"), cpus: get("render.cpus"), memoryMb: get("render.memory_mb"), pids: get("render.pids") },
   };
   // Same cross-checks as the old config.py validate().
   if (c.leaseS <= c.heartbeatS * 2) throw new Error("engine.lease_s must be more than twice engine.heartbeat_s");

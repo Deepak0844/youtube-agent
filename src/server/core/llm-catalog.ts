@@ -173,6 +173,8 @@ export function modelInputSchema(localServices: readonly string[]) {
         // Runs on this machine through the owner's subscription: no address, no prices, always free.
         if (m.baseUrl !== null) bad("baseUrl", "Claude Code takes no base URL.");
         if (m.prices !== null || !m.isFree) bad("isFree", "Claude Code is free here (subscription, $0): tick free and leave prices empty.");
+        // Tools are off in the adapter, so it may not claim them: tool stages (agent Draft, TSX, research, vision QA) never route to it.
+        if (m.capabilities.toolUse || m.capabilities.vision || m.capabilities.nativeWebSearch) bad("capabilities", "Claude Code runs with tools off here: untick tool use, image input and web search.");
         return;
       }
       const kind = deriveEndpointKind(m.baseUrl, localServices);
@@ -267,7 +269,8 @@ export const STAGES: readonly StageDef[] = [
     requiresAny: [],
     prefers: [{ flag: "toolUse", warning: "No tool use: Draft runs in search-then-write mode, where the app does the searching." }],
   },
-  { id: "build_scene_kit", label: "Build, scene kit", hint: "Fills scene JSON. Built for cheap and local models.", requires: ["structuredOutput", "toolUse"], requiresAny: [], prefers: [] },
+  // Sends no tools (tools: []), so a text-only model (local, Claude Code) can fill scene JSON.
+  { id: "build_scene_kit", label: "Build, scene kit", hint: "Fills scene JSON. Built for cheap and local models.", requires: ["structuredOutput"], requiresAny: [], prefers: [] },
   {
     id: "build_tsx",
     label: "Build, Remotion TSX",
@@ -295,10 +298,12 @@ const FLAG_LABEL: Record<CapabilityFlag, string> = {
 export type Eligibility = { ok: true; warnings: string[] } | { ok: false; missing: string[] };
 
 /** Capability check for one stage. The UI offers only `ok` models; there is no automatic fallback. */
-export function eligibleForStage(stageId: string, model: Pick<ModelRow, "capabilities" | "endpointKind">): Eligibility {
+export function eligibleForStage(stageId: string, model: Pick<ModelRow, "capabilities" | "endpointKind"> & { provider?: string }): Eligibility {
   const stage = STAGES.find((s) => s.id === stageId);
   if (!stage) return { ok: false, missing: ["unknown stage"] };
-  const c = model.capabilities;
+  // Claude Code runs with tools off (ADR 0014): judged tool-free whatever its row claims, so every caller (route writes,
+  // the picker, the client, the AI source switch) refuses tool, image and web-search stages for it.
+  const c = model.provider === "claude_code" ? { ...model.capabilities, toolUse: false, vision: false, nativeWebSearch: false } : model.capabilities;
   const missing = stage.requires.filter((f) => !c[f]).map((f) => FLAG_LABEL[f]);
   if (stage.requiresAny.length > 0 && !stage.requiresAny.some((f) => c[f])) missing.push(stage.requiresAny.map((f) => FLAG_LABEL[f]).join(" or "));
   if (missing.length > 0) return { ok: false, missing };

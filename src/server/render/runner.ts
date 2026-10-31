@@ -67,7 +67,8 @@ function assertMountable(p: string, what: string): void {
   if (path.normalize(p) !== p || p === "/") throw new Error(`${what} must be normalised and not the root`);
 }
 
-async function assertRealDir(p: string, what: string): Promise<void> {
+/** A mount source must exist, be a directory and be its own realpath (no symlink on the way). docker -v must never create it. */
+export async function assertRealDir(p: string, what: string): Promise<void> {
   let real: string;
   try {
     real = await fs.realpath(p);
@@ -85,6 +86,34 @@ function assertTmpfs(t: string): void {
     throw new Error(`invalid tmpfs path: ${JSON.stringify(t)}`);
   }
   if (RESERVED_TMPFS.some((r) => t === r || t.startsWith(r + "/"))) throw new Error(`reserved tmpfs path: ${t}`);
+}
+
+export const RENDER_USER = "10001:10001"; // the image's `render` user (infra/Dockerfile.render)
+
+/**
+ * The sandbox flags every render container gets (ADR 0003), shared by this runner and the render stage's container
+ * renderer. Limits only ever go down: never above the request, never above what the daemon has (10% memory margin).
+ */
+export function lockFlags(limits: { cpus: number; memoryMb: number; pids: number }, host: HostLimits): string[] {
+  for (const v of [limits.cpus, limits.memoryMb, limits.pids]) {
+    if (!Number.isFinite(v) || v <= 0) throw new Error("invalid limits");
+  }
+  const cpus = Math.min(limits.cpus, host.cpus);
+  const memoryMb = Math.ceil(Math.min(limits.memoryMb, Math.floor(host.memoryMb * 0.9)));
+  return [
+    "--pull=never",
+    "--network", "none",
+    "--read-only",
+    "--tmpfs", "/tmp:rw,nosuid,nodev,noexec,size=1g,mode=1777",
+    "--shm-size=256m",
+    "--user", RENDER_USER,
+    "--cap-drop", "ALL",
+    "--security-opt", "no-new-privileges",
+    "--pids-limit", String(Math.ceil(limits.pids)),
+    "--memory", `${memoryMb}m`,
+    "--memory-swap", `${memoryMb}m`,
+    "--cpus", String(cpus),
+  ];
 }
 
 export async function buildDockerArgs(spec: RenderJobSpec, host?: HostLimits): Promise<string[]> {
@@ -108,10 +137,7 @@ export async function buildDockerArgs(spec: RenderJobSpec, host?: HostLimits): P
   for (const v of [limits.cpus, limits.memoryMb, limits.pids]) {
     if (!Number.isFinite(v) || v <= 0) throw new Error("invalid limits");
   }
-  // Only ever lowers a limit: never above the request, never above what the daemon has (10% memory margin).
   const available = host ?? (await daemonLimits());
-  const cpus = Math.min(limits.cpus, available.cpus);
-  const memoryMb = Math.min(limits.memoryMb, Math.floor(available.memoryMb * 0.9));
   if (!Array.isArray(spec.command) || spec.command.length === 0 || spec.command.some((c) => typeof c !== "string")) {
     throw new Error("command must be a non-empty string array");
   }
@@ -128,18 +154,8 @@ export async function buildDockerArgs(spec: RenderJobSpec, host?: HostLimits): P
     "run",
     "-d",
     "--rm=false",
-    "--network", "none",
-    "--read-only",
-    "--tmpfs", "/tmp:rw,size=1g,mode=1777",
-    "--shm-size=256m",
+    ...lockFlags(limits, available),
     ...extraTmpfs.flatMap((t) => ["--tmpfs", `${t}:rw,size=64m`]),
-    "--user", "10001:10001",
-    "--cap-drop", "ALL",
-    "--security-opt", "no-new-privileges",
-    "--pids-limit", String(Math.ceil(limits.pids)),
-    "--memory", `${Math.ceil(memoryMb)}m`,
-    "--memory-swap", `${Math.ceil(memoryMb)}m`,
-    "--cpus", String(cpus),
     "--log-driver", "local",
     "--log-opt", "max-size=10m",
     "--log-opt", "max-file=2",
