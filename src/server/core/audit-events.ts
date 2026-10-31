@@ -32,6 +32,7 @@ export const AUDIT_EVENTS = {
   // Phase 2 queue page (detail: ids and session id only)
   "video.cancelled": "The owner cancelled a video",
   "upload.requeued": "An approved upload was sent to the uploader again",
+  "video.created": "The owner started a new video",
   "dryrun.started": "A development dry run was started",
   // Phase 2 notifications (detail: event, channel, error class only)
   "notify.delivery_failed": "A notification channel failed to deliver",

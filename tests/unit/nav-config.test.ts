@@ -33,8 +33,7 @@ describe("nav config", () => {
   it("hidden flags are absent from the rendered nav", () => {
     const shown = visibleNav().flatMap((g) => g.items);
     expect(shown.every((i) => isEnabled(i.flag))).toBe(true);
-    expect(shown.map((i) => i.href)).not.toContain("/videos");
-    expect(shown.map((i) => i.label)).toEqual(["Home", "Queue", "Assets", "Models", "Providers", "Keys", "Google app", "Budgets", "Assets", "Audit", "System"]);
+    expect(shown.map((i) => i.label)).toEqual(["Home", "Queue", "Library", "New", "Assets", "Models", "Providers", "Keys", "Google app", "Budgets", "Assets", "Audit", "System"]);
   });
   it("every enabled href resolves to an existing page file", () => {
     for (const i of NAV_ITEMS.filter((i) => isEnabled(i.flag) && !PAGE_ARRIVES_ON_ANOTHER_BRANCH.includes(i.href))) {
@@ -56,5 +55,11 @@ describe("nav config", () => {
     expect(isActive("/settings/keys", "/settings/keys")).toBe(true);
     expect(isActive("/settings/keys", "/settings/keys/new")).toBe(true);
     expect(isActive("/settings/keys", "/settings/keysx")).toBe(false);
+  });
+  it("Library is active on a video page but not on New, which has its own item", () => {
+    expect(isActive("/videos", "/videos")).toBe(true);
+    expect(isActive("/videos", "/videos/abc")).toBe(true);
+    expect(isActive("/videos", "/videos/new")).toBe(false);
+    expect(isActive("/videos/new", "/videos/new")).toBe(true);
   });
 });
