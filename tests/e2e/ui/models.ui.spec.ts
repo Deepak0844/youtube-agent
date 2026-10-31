@@ -67,3 +67,31 @@ test("touch targets on phone are at least 44 px", async ({ page }) => {
   for (const b of await page.getByRole("button", { name: "Use" }).all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   for (const s of await page.getByRole("combobox").all()) expect((await s.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 });
+
+// Switching only moves routes and settings: nothing is started (Test connection is not pressed here, and it never runs in CI).
+test("AI source switch needs the tick, says which stages stay on their API model, and switches back", async ({ page }) => {
+  test.skip(phone(page), "desktop is enough for the flow");
+  await page.goto("/settings/models");
+  await page.waitForLoadState("networkidle");
+  const box = page.getByRole("region", { name: "AI source" });
+  await expect(box.getByText("Not reported by the program")).toBeVisible();
+  await expect(box.getByText("$0.00")).toBeVisible();
+  await expect(box.getByText("Build, Remotion TSX stays on its API model")).toBeVisible();
+
+  await box.getByRole("radio", { name: "Claude Code (this machine)" }).check();
+  await box.getByRole("button", { name: "Switch" }).click();
+  await expect(box.getByRole("status").first()).toContainText("Tick the box");
+
+  await box.getByRole("radio", { name: "Claude Code (this machine)" }).check();
+  await box.getByLabel("I understand this starts a program (claude) on this Mac").check();
+  await box.getByRole("button", { name: "Switch" }).click();
+  await expect(box.getByRole("status").first()).toHaveText("Switched.");
+  await expect(box.getByText("Enabled", { exact: true })).toBeVisible();
+  const outline = page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: "Outline", exact: true }) });
+  await expect(outline.locator("option:checked")).toContainText("Claude Code (this machine)");
+
+  await box.getByRole("radio", { name: "API keys" }).check();
+  await box.getByRole("button", { name: "Switch" }).click();
+  await expect(box.getByRole("status").first()).toHaveText("Switched.");
+  await expect(box.getByText("Disabled", { exact: true })).toBeVisible();
+});

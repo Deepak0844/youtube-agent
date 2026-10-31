@@ -319,6 +319,61 @@ describe("claude code adapter", () => {
   });
 });
 
+describe("claude code adapter, review follow-ups", () => {
+  it("matches the CLI's real usage-limit wording (session, weekly, 5-hour, curly apostrophe)", async () => {
+    for (const said of ["You've hit your session limit · resets 3pm", "You\u2019ve reached your 5-hour limit", "You've hit your weekly Opus limit · resets Mon"]) {
+      const e = await caught(run(harness(({ child }) => child.finish(JSON.stringify({ type: "result", subtype: "success", is_error: true, result: said }), 1))));
+      expect(classifyError(e), said).toBe("transient");
+    }
+    const stray = await caught(run(harness(({ child }) => child.finish(JSON.stringify({ type: "result", subtype: "error_during_execution", is_error: true, result: "I think you've hit your limit" }), 1))));
+    expect(classifyError(stray)).toBe("unknown");
+  });
+
+  it("a cancel that lands between taking the cap slot and starting is refused without starting", async () => {
+    const ac = new AbortController();
+    const h = harness(undefined, { gate: { enabled: async () => true, takeSlot: async () => (ac.abort(), true) } });
+    const e = await caught(h.step(MSGS, "k", ac.signal));
+    expect(e).toBeInstanceOf(KnownFailure);
+    expect(e.message).toMatch(/cancelled/);
+    expect(h.runs).toHaveLength(0);
+  });
+
+  it("a late 'close' after the give-up timer is ignored", async () => {
+    const kids: FakeChild[] = [];
+    let n = 0;
+    const h = harness(({ child }) => (kids.push(child), n++ === 0 ? undefined : child.finish(OK)), { timeoutMs: 20, killGraceMs: 10, killGroup: () => {} });
+    const e = await caught(run(h));
+    expect(classifyError(e)).toBe("unknown");
+    kids[0]!.emit("close", 0, null); // the stuck process finally exits: nothing changes, nothing throws
+    await new Promise((r) => setImmediate(r));
+    expect((await run(h)).text).toBe('{"title":"hi"}');
+  });
+
+  it("records the outcome class of each finished call for the status box (never the text)", async () => {
+    const seen: unknown[] = [];
+    const rec = (over: Behaviour) => harness(over, { gate: { enabled: async () => true, takeSlot: async () => true, record: async (o) => void seen.push(o) } });
+    await run(rec(({ child }) => child.finish(JSON.stringify({ ...JSON.parse(OK), apiKeySource: "none" }))));
+    await caught(run(rec(({ child }) => child.finish("", 1, "Invalid API key · Please run /login\n"))));
+    await caught(run(rec(({ child }) => child.finish("", 1, "You've hit your session limit\n"))));
+    await caught(run(rec(({ child }) => setImmediate(() => child.emit("error", Object.assign(new Error("x"), { code: "ENOENT" }))))));
+    await caught(run(rec(({ child }) => child.finish("garbled"))));
+    await run(rec(({ child }) => child.finish(JSON.stringify({ ...JSON.parse(OK), apiKeySource: "sk-ant-not-a-source-name!" }))));
+    expect(seen).toEqual([
+      { result: "ready", auth: "none" },
+      { result: "not_logged_in" },
+      { result: "limit_reached" },
+      { result: "not_found" },
+      { result: "failed" },
+      { result: "ready" },
+    ]);
+  });
+
+  it("a failing recorder never changes the call's result", async () => {
+    const h = harness(undefined, { gate: { enabled: async () => true, takeSlot: async () => true, record: async () => { throw new Error("db down"); } } });
+    expect((await run(h)).text).toBe('{"title":"hi"}');
+  });
+});
+
 describe("claude code in the catalog", () => {
   const row: ModelRow = {
     id: "00000000-0000-4000-8000-000000000009",
@@ -341,5 +396,11 @@ describe("claude code in the catalog", () => {
     expect(modelInputSchema([]).safeParse(base).success).toBe(true);
     expect(modelInputSchema([]).safeParse({ ...base, isFree: false }).success).toBe(false);
     expect(modelInputSchema([]).safeParse({ ...base, baseUrl: "https://example.com" }).success).toBe(false);
+  });
+  it("cannot claim tool use, image input or web search (tools are off), so tool stages never route to it", () => {
+    const base = { provider: "claude_code", modelId: "default", label: "Claude Code", baseUrl: null, prices: null, isFree: true, capabilities: row.capabilities, enabled: true };
+    for (const flag of ["toolUse", "vision", "nativeWebSearch"]) {
+      expect(modelInputSchema([]).safeParse({ ...base, capabilities: { ...row.capabilities, [flag]: true } }).success, flag).toBe(false);
+    }
   });
 });

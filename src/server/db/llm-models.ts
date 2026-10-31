@@ -237,7 +237,8 @@ export async function copyDefault(db: pg.Pool, defaultId: string, opts: { actor:
     enabled: false,
   };
   // A free suggestion only stays free where the address is local on this installation; otherwise it is copied unpriced.
-  if (copy.isFree && deriveEndpointKind(copy.baseUrl, local) !== "local") copy.isFree = false;
+  // Claude Code has no address: it runs on this machine and is free by definition (ADR 0014).
+  if (copy.isFree && copy.provider !== "claude_code" && deriveEndpointKind(copy.baseUrl, local) !== "local") copy.isFree = false;
   return createModel(db, copy, opts);
 }
 

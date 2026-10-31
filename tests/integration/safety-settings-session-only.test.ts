@@ -27,6 +27,7 @@ const ALTERNATE: Record<string, unknown> = {
   "voice.voicestudio_url": "http://127.0.0.1:8881",
   "claude_code.enabled": true,
   "claude_code.daily_cap": 5,
+  "ai.previous_routes": { outline: null },
   "assets.max_image_bytes": 1_000_000,
   "assets.max_audio_bytes": 1_000_000,
   "assets.max_pixels": 1_000_000,

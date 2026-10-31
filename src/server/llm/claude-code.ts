@@ -36,7 +36,12 @@ export interface ClaudeCodeGate {
   enabled(): Promise<boolean>;
   /** Atomically counts one call against today's cap; false when the cap is reached. */
   takeSlot(): Promise<boolean>;
+  /** Stores the outcome class of a finished call for the status box. Best effort: a failure here never changes the call. */
+  record?(o: ClaudeCodeOutcome): Promise<void>;
 }
+/** What the status box shows. `auth` only when the CLI's JSON names it (a short word); never guessed. */
+export type ClaudeCodeResult = "ready" | "not_found" | "not_logged_in" | "limit_reached" | "failed";
+export interface ClaudeCodeOutcome { result: ClaudeCodeResult; auth?: string }
 export interface ClaudeCodeDeps {
   gate: ClaudeCodeGate;
   /** Tests pass a fake; the default is node's spawn (no shell). */
@@ -165,16 +170,17 @@ async function runOnce(deps: ClaudeCodeDeps, args: string[], input: string, sign
 }
 
 // Anchored to the CLI's own error sentences (the start of its `result` field, or of stderr): a stray "429" in text is not a refusal.
-const LIMIT = /^(?:Claude AI usage limit reached|You(?:'|\u2019)ve (?:hit|reached) your (?:usage )?limit|API Error: 429\b|API Error: Rate limit)/i;
+const LIMIT = /^(?:Claude AI usage limit reached|You(?:'|\u2019)ve (?:hit|reached) your [\w\s-]*limit|API Error: 429\b|API Error: Rate limit)/i;
 const LOGIN = /^(?:Invalid API key|Not logged in|Please run \/login|OAuth token (?:has expired|has been revoked)|API Error: 401\b)/i;
 
 const CANCELLED = "The stage was cancelled, so Claude Code was stopped.";
 
-function interpret(r: Ran): { text: string; input: number | undefined; output: number | undefined } {
+interface Interpreted { text: string; input: number | undefined; output: number | undefined; auth: string | undefined }
+function interpret(r: Ran): Interpreted {
   if (r.failed === "aborted") throw refuse(CANCELLED); // $0 and cancelled on purpose: not an unknown outcome
   if (r.failed === "missing") throw refuse("Claude Code is not installed or not on PATH");
   if (r.failed) throw own(new Error(r.failed === "timeout" ? `Claude Code took too long and was stopped. ${MAYBE}` : UNKNOWN));
-  let j: { is_error?: unknown; subtype?: unknown; result?: unknown; usage?: Record<string, unknown> } | undefined;
+  let j: { is_error?: unknown; subtype?: unknown; result?: unknown; usage?: Record<string, unknown>; apiKeySource?: unknown } | undefined;
   try {
     const v: unknown = JSON.parse(r.stdout);
     if (typeof v === "object" && v !== null) j = v as typeof j;
@@ -191,7 +197,21 @@ function interpret(r: Ran): { text: string; input: number | undefined; output: n
   const n = (k: string) => (typeof j!.usage?.[k] === "number" && Number.isFinite(j!.usage[k]) ? (j!.usage[k] as number) : undefined);
   // Fail closed like the step layer: no input/output count -> undefined -> "provider returned no token usage" (unknown).
   const input = n("input_tokens");
-  return { text: j.result, input: input === undefined ? undefined : input + (n("cache_creation_input_tokens") ?? 0) + (n("cache_read_input_tokens") ?? 0), output: n("output_tokens") };
+  const auth = typeof j.apiKeySource === "string" && /^[a-z_]{1,24}$/i.test(j.apiKeySource) ? j.apiKeySource : undefined;
+  return { auth, text: j.result, input: input === undefined ? undefined : input + (n("cache_creation_input_tokens") ?? 0) + (n("cache_read_input_tokens") ?? 0), output: n("output_tokens") };
+}
+
+function outcomeOf(r: Ran, e: unknown): ClaudeCodeResult {
+  if (r.failed === "missing") return "not_found";
+  const status = e instanceof NotProcessedError ? e.status : undefined;
+  return status === 429 ? "limit_reached" : status === 401 ? "not_logged_in" : "failed";
+}
+async function note(deps: ClaudeCodeDeps, o: ClaudeCodeOutcome): Promise<void> {
+  try {
+    await deps.gate.record?.(o);
+  } catch {
+    // the status box is best effort; the call's own result stands
+  }
 }
 
 export function createClaudeCodeModel(modelId: string, deps: ClaudeCodeDeps): LanguageModel {
@@ -212,7 +232,15 @@ export function createClaudeCodeModel(modelId: string, deps: ClaudeCodeDeps): La
         if (signal?.aborted) throw refuse(CANCELLED);
         return runOnce(deps, claudeArgs(modelId), input, signal);
       });
-      const { text, input: inTok, output: outTok } = interpret(r);
+      let got: Interpreted;
+      try {
+        got = interpret(r);
+      } catch (e) {
+        if (r.failed !== "aborted") await note(deps, { result: outcomeOf(r, e) });
+        throw e;
+      }
+      await note(deps, { result: "ready", ...(got.auth && { auth: got.auth }) });
+      const { text, input: inTok, output: outTok } = got;
       return {
         content: [{ type: "text", text }],
         finishReason: { unified: "stop", raw: undefined },
