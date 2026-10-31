@@ -23,6 +23,7 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
   "src/server/db/engine-config.ts": ["getStoredSettings"],
   // Reads network.local_services with getSetting to derive a model endpoint kind and uses the Actor type; never writes.
   "src/server/db/llm-models.ts": ["getSetting", "Actor"],
+  "src/server/db/claude-code.ts": ["getSetting"],
   "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],
   // Reads the asset day counts and limits with getSetting; its writer goes through system-settings (writeAudited).
   "src/server/db/asset-settings.ts": ["getSetting"],

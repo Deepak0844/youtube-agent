@@ -1,6 +1,7 @@
 import { APICallError } from "ai";
 import { NotProcessedError } from "@/server/core/error-class";
 import { BlockedAddressError } from "@/server/providers/net/safe-fetch";
+import { isClaudeCodeError } from "./claude-code";
 
 // The only way a model-call failure leaves the LLM layer. An SDK error carries the request URL, request body, response
 // headers and the provider's response body (several providers echo part of the API key in a 401 body). None of that may
@@ -46,6 +47,7 @@ export function toSafeModelError(err: unknown): Error {
     const links = chain(err);
 
     for (const e of links) {
+      if (isClaudeCodeError(e)) return e; // the Claude Code adapter's own fixed sentences, already classified (ADR 0014)
       if (e instanceof Error && e.constructor === Error && OWN_KEY_MESSAGE.test(e.message)) return new NotProcessedError(e.message);
       if (e instanceof BlockedAddressError) return new NotProcessedError("The model address is not allowed by the network guard.");
     }

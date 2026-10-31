@@ -54,7 +54,8 @@ describe("model factory", () => {
     await run(buildModel(row({ provider: "anthropic" }), keyFn().getKey, { localServices: [], fetch: a.fetch }));
     expect(a.seen[0]!.url).toBe("https://api.anthropic.com/v1/messages");
     expect(a.seen[0]!.headers.get("x-api-key")).toBe(KEY);
-    for (const p of PROVIDERS.filter((x) => x.id !== "anthropic" && !x.needsBaseUrl)) {
+    // claude_code is the local CLI, not an HTTP provider (tests/unit/claude-code.test.ts covers it).
+    for (const p of PROVIDERS.filter((x) => x.id !== "anthropic" && x.id !== "claude_code" && !x.needsBaseUrl)) {
       const o = recorder(body);
       await run(buildModel(row({ provider: p.id }), keyFn().getKey, { localServices: [], fetch: o.fetch }));
       expect(o.seen[0]!.url, p.id).toBe(`${PROVIDER_ENDPOINTS[p.id].baseUrl}/chat/completions`);

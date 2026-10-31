@@ -42,7 +42,8 @@ const ask = [{ role: "user" as const, content: "go" }];
 
 describe("model factory contract, one fixture per provider", () => {
   it("there is exactly one fixture per catalog provider", () => {
-    expect(fixtures.map((f) => f.provider).sort()).toEqual(PROVIDERS.map((p) => p.id).sort());
+    // claude_code is not an HTTP provider (it runs the local CLI), so it has no wire fixture; tests/unit/claude-code*.test.ts cover it.
+    expect(fixtures.map((f) => f.provider).sort()).toEqual(PROVIDERS.map((p) => p.id).filter((id) => id !== "claude_code").sort());
   });
   describe.each(fixtures.map((f) => [f.provider, f] as const))("%s", (_name, fx) => {
     it("plain completion parses into text and token usage", async () => {
