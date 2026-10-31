@@ -87,6 +87,21 @@ describe("buildSceneDoc", () => {
     expect(h.ledger.providerCalls).toBe(3);
   });
 
+  it("CTA wording on screen is a rule problem: fed back and fixed on retry", async () => {
+    const cta = { ...term, lines: [{ text: "like and subscribe" }] };
+    const h = harness([pick(), ans(doc(cta)), ans(doc(term))]);
+    const d = await buildSceneDoc([beats[0]!], h.ask);
+    expect(d.scenes).toHaveLength(1);
+    expect(h.prompts[2]).toContain("banned phrase");
+  });
+
+  it("the same rule error twice stops the retries", async () => {
+    const cta = { ...term, lines: [{ text: "subscribe" }] };
+    const h = harness([pick(), ans(doc(cta)), ans(doc(cta))]);
+    await expect(buildSceneDoc([beats[0]!], h.ask)).rejects.toThrow(/beat 'b1'.*banned phrase/);
+    expect(h.ledger.providerCalls).toBe(3);
+  });
+
   it("the same error twice stops the retries and fails with beat id and errors", async () => {
     const h = harness([pick(), ans("nope")]);
     const e = await buildSceneDoc(beats, h.ask).catch((x: unknown) => x);

@@ -1,8 +1,12 @@
 import { KnownFailure } from "@/server/core/paid-call";
 import { evaluateQa } from "@/server/core/qa";
+import { qaFindings, FINDING_DEFAULTS, type Finding } from "@/server/core/qa-findings";
 import { probeVideo, ProbeError } from "@/server/render/probe";
+import { STILLS } from "@/server/render/qa-scan";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import { promotedPath, type AttemptHandler } from "./attempt";
-import { loadVideo, type StageDeps } from "./deps";
+import { contentBody, loadVideo, type StageDeps } from "./deps";
 
 /**
  * QA: measures final.mp4 (Task 19 probe), judges it with the QA rules, and on a pass records it as the `video` content
@@ -14,22 +18,32 @@ export function qaAttempt(deps: StageDeps): AttemptHandler {
   return async (ctx) => {
     const video = await loadVideo(deps.db, ctx);
     const file = await promotedPath(deps.root, video.id, "final.mp4");
-    let probed;
-    try {
-      probed = await (deps.probe ?? probeVideo)(file, ctx.signal, { storageRoot: deps.root, attemptDir: ctx.attemptDir });
-    } catch (e) {
-      if (e instanceof ProbeError) throw new KnownFailure(e.message);
-      throw e;
-    }
+    const run = async <T,>(f: () => Promise<T>): Promise<T> => {
+      try { return await f(); } catch (e) { if (e instanceof ProbeError) throw new KnownFailure(e.message); throw e; }
+    };
+    const probed = await run(() => (deps.probe ?? probeVideo)(file, ctx.signal, { storageRoot: deps.root, attemptDir: ctx.attemptDir }));
     const verdict = evaluateQa(probed, ctx.config.qa, { expectAudio: true, format: video.format });
-    if (!verdict.pass) {
-      const why = verdict.checks.filter((c) => !c.ok && c.level === "fail").map((c) => c.detail).join("; ");
-      throw new KnownFailure(`qa_failed: ${why}`);
+
+    // Findings: the basic rules first (they own size/duration/audio ids), then the ffmpeg scan when wired. Block = qa_failed.
+    const findings: Finding[] = verdict.checks.filter((c) => !c.ok).map((c) => ({ id: c.id, severity: c.level === "fail" ? "block" : "warn", text: c.detail }));
+    const files: string[] = ["review-first.png", "review-last.png"];
+    if (deps.qaScan) {
+      const narration = await contentBody<{ file: string }>(deps.db, video.id, "narration").catch(() => null);
+      const narrationFile = narration ? await promotedPath(deps.root, video.id, narration.file).catch(() => undefined) : undefined;
+      const scan = await run(() => deps.qaScan!(file, ctx.signal, { storageRoot: deps.root, attemptDir: ctx.attemptDir, narrationFile }));
+      const known = new Set(findings.map((f) => f.id));
+      findings.push(...qaFindings(scan, { ...FINDING_DEFAULTS, stillMaxS: 2, width: ctx.config.qa[video.format].width, height: ctx.config.qa[video.format].height }).filter((f) => f.id !== "all_clear" && !known.has(f.id)));
+      files.push(...STILLS);
     }
+    if (findings.length === 0) findings.push({ id: "all_clear", severity: "info", text: "All automatic checks passed." });
+    const blocks = findings.filter((f) => f.severity === "block");
+    if (blocks.length > 0) throw new KnownFailure(`qa_failed: ${blocks.map((f) => f.text).join("; ")}`);
+    await writeFile(path.join(ctx.attemptDir, "qa.json"), JSON.stringify({ findings }, null, 2));
+    files.push("qa.json");
     return {
-      files: ["review-first.png", "review-last.png"],
+      files,
       content: [{ kind: "video", file: "final.mp4" }],
-      result: { checks: verdict.checks.map((c) => ({ id: c.id, ok: c.ok, level: c.level })), warnings: verdict.checks.filter((c) => !c.ok).map((c) => c.detail) },
+      result: { checks: verdict.checks.map((c) => ({ id: c.id, ok: c.ok, level: c.level })), warnings: findings.filter((f) => f.severity === "warn").map((f) => f.text), findings },
     };
   };
 }

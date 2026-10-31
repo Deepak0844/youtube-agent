@@ -2,7 +2,7 @@
 // no third-party art. The old kit used the cburnett set (GPL/BSD/GFDL tri-licence), which is not CC0/MIT/CC-BY, so it was NOT copied.
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
-import { FILES, spritesAt, squareRC, type BoardMap, type Move, type Piece } from "./chessLogic";
+import { FILES, spritesAt, squareCenter, squareRC, type BoardMap, type Move, type Piece } from "./chessLogic";
 import { theme } from "./theme";
 
 export type ChessProps = {
@@ -67,10 +67,10 @@ const GLYPH: Record<string, React.ReactNode> = {
 
 export const PieceGlyph: React.FC<{ piece: Piece; size: number }> = ({ piece, size }) => {
   const white = piece[0] === "w";
-  const fill = white ? theme.palette.pieceLight : theme.palette.pieceDark;
-  const stroke = white ? theme.palette.pieceDark : theme.palette.pieceLight;
+  const fill = white ? theme.art.pieceLight : theme.art.pieceDark;
+  const stroke = white ? theme.art.pieceDark : theme.art.pieceLight;
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" fill={fill} stroke={stroke} strokeWidth={3.5} strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 100 100" fill={fill} stroke={stroke} strokeWidth={4.5} strokeLinejoin="round">
       {GLYPH[piece[1]!]}
     </svg>
   );
@@ -81,10 +81,7 @@ export const Chess: React.FC<ChessProps> = ({ board, moves, highlights, arrows, 
   const size = theme.width - 2 * theme.safe.side;
   const s = size / 8;
   const top = theme.safe.top + 120;
-  const center = (sq: string) => {
-    const { col, row } = squareRC(sq, flip);
-    return { x: col * s + s / 2, y: row * s + s / 2 };
-  };
+  const center = (sq: string) => squareCenter(sq, s, flip);
   const appear = Math.min(1, frame / 10);
   return (
     <AbsoluteFill style={{ background: theme.palette.bg, fontFamily: theme.fonts.mono }}>
@@ -94,8 +91,8 @@ export const Chess: React.FC<ChessProps> = ({ board, moves, highlights, arrows, 
           const row = Math.floor(i / 8);
           const rank = flip ? row + 1 : 8 - row;
           const file = FILES[flip ? 7 - col : col];
-          const bg = (col + row) % 2 ? theme.palette.boardDark : theme.palette.boardLight;
-          const label = (col + row) % 2 ? theme.palette.boardLight : theme.palette.boardDark;
+          const bg = (col + row) % 2 ? theme.art.boardDark : theme.art.boardLight;
+          const label = (col + row) % 2 ? theme.art.boardLight : theme.art.boardDark;
           return (
             <div key={i} style={{ position: "absolute", left: col * s, top: row * s, width: s, height: s, background: bg, fontSize: 20, fontWeight: 700, color: label }}>
               {col === 0 && <span style={{ position: "absolute", left: 6, top: 4 }}>{rank}</span>}
@@ -108,7 +105,7 @@ export const Chess: React.FC<ChessProps> = ({ board, moves, highlights, arrows, 
           return (
             <div
               key={sq}
-              style={{ position: "absolute", left: col * s + 4, top: row * s + 4, width: s - 8, height: s - 8, borderRadius: 10, border: `6px solid ${theme.palette.accent}`, background: `${theme.palette.accent}44`, opacity: appear }}
+              style={{ position: "absolute", boxSizing: "border-box", left: col * s + 4, top: row * s + 4, width: s - 8, height: s - 8, borderRadius: 10, border: `6px solid ${theme.palette.accent}`, background: `${theme.palette.accent}44`, opacity: appear }}
             />
           );
         })}

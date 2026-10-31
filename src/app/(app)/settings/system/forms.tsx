@@ -101,6 +101,10 @@ export function LocalServicesForm({ entries, max }: { entries: string[]; max: nu
           Exact host and port, for example localhost:11434 or 192.168.1.20:1234. No wildcards or ranges, at most {max}.
         </p>
       </div>
+      <label className="flex min-h-11 items-center gap-3 text-body">
+        <input type="checkbox" name="confirm" className="size-5 accent-[var(--text)]" />
+        I understand the app will be allowed to call any address I add. (Needed only when adding.)
+      </label>
       <div className="flex flex-wrap items-center gap-4">
         <Button type="submit" disabled={pending}>Save list</Button>
         <Result state={state} />

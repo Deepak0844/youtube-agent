@@ -11,16 +11,32 @@ export type BrandTheme = {
     chart: readonly string[];
   };
   /** Flat drawn-object colours (outline, metals, glass, status lights, board and pieces). */
-  art: Record<"ink" | "steel" | "steelLight" | "glass" | "liquid" | "paper" | "cloud" | "ok" | "warn" | "blue" | "boardLight" | "boardDark" | "pieceLight" | "pieceDark", string>;
+  art: Record<
+    "ink" | "steel" | "steelLight" | "glass" | "liquid" | "paper" | "cloud" | "ok" | "warn" | "blue" | "boardLight" | "boardDark" | "pieceLight" | "pieceDark",
+    string
+  >;
   fonts: { ui: string; mono: string };
   /** Named cubic-bezier curves (x1, y1, x2, y2). Feed to Easing.bezier(...curve). */
   easings: Record<"easeOut" | "easeIn" | "easeInOut", Bezier>;
   radii: { card: number; window: number; bubble: number; pill: number };
   /** Keep text inside these margins (px) so platform UI never covers it. */
   safe: { top: number; bottom: number; side: number };
-  type: { caption: number; body: number; code: number; title: number };
+  /** `min`/`big`/`hero`: floor, large text-heavy pieces (terminal, chat, cells), and question headings. */
+  type: {
+    caption: number;
+    body: number;
+    code: number;
+    title: number;
+    min: number;
+    big: number;
+    hero: number;
+  };
   /** On-screen copy rules, checked by checkCopy(). */
-  copy: { maxCharsPerLine: number; maxLines: number; bannedPhrases: readonly string[] };
+  copy: {
+    maxCharsPerLine: number;
+    maxLines: number;
+    bannedPhrases: readonly string[];
+  };
 };
 
 export const defaultTheme: BrandTheme = {
@@ -65,7 +81,15 @@ export const defaultTheme: BrandTheme = {
   },
   radii: { card: 16, window: 10, bubble: 36, pill: 999 },
   safe: { top: 220, bottom: 380, side: 72 },
-  type: { caption: 54, body: 46, code: 44, title: 72 },
+  type: {
+    caption: 54,
+    body: 46,
+    code: 44,
+    title: 72,
+    min: 28,
+    big: 56,
+    hero: 76,
+  },
   copy: {
     maxCharsPerLine: 28,
     maxLines: 3,
@@ -74,7 +98,9 @@ export const defaultTheme: BrandTheme = {
   },
 };
 
-type DeepPartial<T> = { [K in keyof T]?: T[K] extends readonly unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };
+type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends readonly unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K];
+};
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -104,7 +130,16 @@ function validate(t: BrandTheme): BrandTheme {
     if (c.length !== 4 || c.some((n) => !Number.isFinite(n))) bad(`easings.${k} needs 4 numbers`);
     if (c[0] < 0 || c[0] > 1 || c[2] < 0 || c[2] > 1) bad(`easings.${k} x values must be 0..1`);
   }
-  const positive = { width: t.width, height: t.height, fps: t.fps, ...t.radii, ...t.type, ...t.safe, c: t.copy.maxCharsPerLine, l: t.copy.maxLines };
+  const positive = {
+    width: t.width,
+    height: t.height,
+    fps: t.fps,
+    ...t.radii,
+    ...t.type,
+    ...t.safe,
+    c: t.copy.maxCharsPerLine,
+    l: t.copy.maxLines,
+  };
   for (const [k, v] of Object.entries(positive)) if (!Number.isFinite(v) || v < 0) bad(`${k} must be a non-negative number`);
   if (t.safe.top + t.safe.bottom >= t.height || t.safe.side * 2 >= t.width) bad("safe areas leave no room");
   return t;

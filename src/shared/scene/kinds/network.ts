@@ -31,4 +31,4 @@ export const schema = z
     });
   });
 
-export const describe = `kind "network": nodes[] (2-${LIMITS.networkNodes}), each {id (a-z0-9_-, max 16), type (${NODE_KINDS.join("|")}), label (max ${LIMITS.nodeLabel} chars)}; links[] (1-${LIMITS.networkLinks}), each {from, to (node ids), packet (optional label, max ${LIMITS.packetLabel} chars; sends an animated packet)}. Nodes are laid out top to bottom.`;
+export const describe = `kind "network": nodes[] (2-${LIMITS.networkNodes}), each {id (a-z0-9_-, max 16), type (${NODE_KINDS.join("|")}), label (max ${LIMITS.nodeLabel} chars)}; links[] (1-${LIMITS.networkLinks}), each {from, to (node ids), packet (optional label, packet label max ${LIMITS.packetLabel} chars; sends an animated packet)}. Nodes are laid out top to bottom.`;

@@ -2,7 +2,7 @@
 import { theme } from "./theme";
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
-const SLOT_X = { left: 300, center: 540, right: 780 } as const;
+const SLOT_X = { left: 270, center: 540, right: 810 } as const;
 
 /** Row centres for n objects stacked inside the safe area, plus the row height. */
 export function objectRows(n: number, slot: keyof typeof SLOT_X): { x: number; ys: number[]; rowH: number } {
@@ -35,7 +35,7 @@ export function emphasisStyle(kind: "none" | "pulse" | "wiggle", frame: number, 
 export function networkLayout(n: number): { x: number; y: number }[] {
   const top = theme.safe.top + 100;
   const span = theme.height - theme.safe.bottom - 100 - top;
-  return Array.from({ length: n }, (_, i) => ({ x: i % 2 ? 740 : 340, y: n === 1 ? top : top + (span * i) / (n - 1) }));
+  return Array.from({ length: n }, (_, i) => ({ x: i % 2 ? 800 : 280, y: n === 1 ? top : top + (span * i) / (n - 1) }));
 }
 
 /** Packet position along link `i` of `count` over `total` frames: 0..1 while active, otherwise -1 (hidden). */

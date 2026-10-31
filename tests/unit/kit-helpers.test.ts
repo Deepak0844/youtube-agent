@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kenBurns, typedChars, visibleCount } from "../../remotion/kit/helpers";
+import { kenBurns, placeLabels, typedChars, visibleCount } from "../../remotion/kit/helpers";
 
 describe("kit helpers", () => {
   it("visibleCount reveals one item per interval and clamps", () => {
@@ -20,5 +20,26 @@ describe("kit helpers", () => {
     const end = kenBurns(99, 100, k);
     expect(end.scale).toBeCloseTo(1.2);
     expect(end.x).toBeCloseTo(0.1);
+  });
+});
+
+describe("placeLabels", () => {
+  it("keeps labels apart, off the route and inside the box", () => {
+    const pts: [number, number][] = [[300, 200], [380, 205], [800, 210]];
+    const widths = [160, 120, 130];
+    const box = { w: 936, h: 960 };
+    const slots = placeLabels(pts, widths, box);
+    const rects = slots.map((s, i) => {
+      const x = pts[i]![0] + s.x;
+      const l = s.anchor === "start" ? x : s.anchor === "end" ? x - widths[i]! : x - widths[i]! / 2;
+      return { l, r: l + widths[i]!, t: pts[i]![1] + s.y - 40, b: pts[i]![1] + s.y + 4 };
+    });
+    for (const r of rects) expect(r.l >= 0 && r.r <= box.w && r.t >= 0).toBe(true);
+    for (let i = 0; i < rects.length; i++)
+      for (let j = i + 1; j < rects.length; j++) {
+        const a = rects[i]!, b = rects[j]!;
+        expect(a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b).toBe(false);
+      }
+    expect(slots[0]!.anchor).not.toBe("start"); // the right-hand slot is on the route
   });
 });

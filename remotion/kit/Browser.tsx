@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, Img, interpolate, useCurrentFrame } from "remotion";
-import { visibleCount } from "./helpers";
+import { fitFont, safeSize } from "./layout";
 import { theme } from "./theme";
 
 export type BrowserProps = {
@@ -21,7 +21,23 @@ export const Browser: React.FC<BrowserProps> = ({
   framesPerBlock,
 }) => {
   const frame = useCurrentFrame();
-  const n = visibleCount(frame, framesPerBlock, blocks.length);
+  // Room for the page content: card height minus the address bar, minus content padding.
+  const safe = safeSize(theme);
+  const avail = safe.h - 190 - 2 * 36;
+  const images = blocks.filter((b) => b.type === "image").length;
+  const imgH = Math.min(420, Math.floor((avail * 0.5) / Math.max(1, images)));
+  const size = fitFont(
+    blocks.flatMap((b) => (b.type === "image" ? [] : [b.text])),
+    {
+      width: safe.w - 72,
+      height: avail - images * (imgH + 28),
+      min: theme.type.min,
+      max: theme.type.big,
+      charW: 0.55,
+      lineH: 1.45,
+      perItem: 28,
+    },
+  );
   return (
     <AbsoluteFill
       style={{
@@ -29,11 +45,11 @@ export const Browser: React.FC<BrowserProps> = ({
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.ui,
         color: theme.palette.text,
+        justifyContent: "center",
       }}
     >
       <div
         style={{
-          flex: 1,
           display: "flex",
           flexDirection: "column",
           borderRadius: 32,
@@ -73,8 +89,17 @@ export const Browser: React.FC<BrowserProps> = ({
             {url}
           </div>
         </div>
-        <div style={{ flex: 1, padding: 36, overflow: "hidden" }}>
-          {blocks.slice(0, n).map((b, i) => {
+        <div
+          style={{
+            flex: 1,
+            padding: 36,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+          }}
+        >
+          {blocks.map((b, i) => {
             const opacity = interpolate(
               frame - i * framesPerBlock,
               [0, 10],
@@ -88,7 +113,7 @@ export const Browser: React.FC<BrowserProps> = ({
                   src={b.src}
                   style={{
                     width: "100%",
-                    height: 420,
+                    height: imgH,
                     objectFit: "cover",
                     borderRadius: 20,
                     marginBottom: 28,
@@ -102,7 +127,8 @@ export const Browser: React.FC<BrowserProps> = ({
                 style={{
                   marginBottom: 28,
                   opacity,
-                  fontSize: b.type === "heading" ? 56 : 40,
+                  fontSize:
+                    b.type === "heading" ? Math.round(size * 1.2) : size,
                   fontWeight: b.type === "heading" ? 700 : 400,
                   color:
                     b.type === "heading"

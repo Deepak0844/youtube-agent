@@ -6,7 +6,7 @@ import type { ProbeResult } from "../core/qa";
 // SECURITY CONTROL: the only place QA touches video files. Binaries run with an args array (no shell), a
 // scrubbed environment (no secrets), a hard timeout, an output cap, and only on files under the storage root.
 // Task 09's shared runChild does not exist yet; this uses the same rules and can move onto it later.
-const TIMEOUT_MS = 30_000;
+export const TIMEOUT_MS = 30_000;
 const OUT_CAP = 8 * 1024 * 1024;
 const SAFE_ENV_KEYS = ["PATH", "LANG", "LC_ALL"] as const;
 
@@ -21,20 +21,20 @@ export interface ProbeOptions {
   ffmpegBin?: string;
 }
 
-function cleanEnv(src: NodeJS.ProcessEnv): Record<string, string> {
+export function cleanEnv(src: NodeJS.ProcessEnv): Record<string, string> {
   const out: Record<string, string> = {};
   for (const k of SAFE_ENV_KEYS) { const v = src[k]; if (v !== undefined) out[k] = v; }
   return out;
 }
 
-interface ExecOpts {
+export interface ExecOpts {
   env: Record<string, string>;
   timeoutMs: number;
   signal: AbortSignal;
   withStderr?: boolean;
 }
 
-function exec(bin: string, args: string[], o: ExecOpts): Promise<Buffer> {
+export function exec(bin: string, args: string[], o: ExecOpts): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     execFile(
       bin,

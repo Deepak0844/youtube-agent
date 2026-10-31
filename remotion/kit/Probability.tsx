@@ -11,7 +11,12 @@ export type ProbabilityProps = {
   growFrames: number;
 };
 
-const NAMES = { coin: "Coin flips", dice: "Dice rolls", cards: "Card draws", urn: "Urn draws" } as const;
+const NAMES = {
+  coin: "Coin flips",
+  dice: "Dice rolls",
+  cards: "Card draws",
+  urn: "Urn draws",
+} as const;
 
 export const Probability: React.FC<ProbabilityProps> = ({ experiment, title, trials, outcomes, growFrames }) => {
   const frame = useCurrentFrame();
@@ -27,21 +32,58 @@ export const Probability: React.FC<ProbabilityProps> = ({ experiment, title, tri
         justifyContent: "center",
       }}
     >
-      <div style={{ fontSize: 44, color: theme.palette.muted }}>{title ?? NAMES[experiment]}</div>
-      <div style={{ fontSize: 40, color: theme.palette.muted, marginBottom: 40 }}>
+      <div style={{ fontSize: theme.type.body, color: theme.palette.muted }}>{title ?? NAMES[experiment]}</div>
+      <div
+        style={{
+          fontSize: theme.type.code,
+          color: theme.palette.muted,
+          marginBottom: 40,
+        }}
+      >
         {done} of {trials}
       </div>
       {outcomes.map((o, i) => (
         <div key={i} style={{ marginBottom: 32 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 44, marginBottom: 10 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              fontSize: theme.type.big - 4,
+              marginBottom: 10,
+            }}
+          >
             <span>{o.label}</span>
             <span style={{ fontFamily: theme.fonts.mono }}>
               {shown[i]}
-              {o.p !== undefined && <span style={{ color: theme.palette.muted }}> ({Math.round(o.p * 100)}% expected)</span>}
+              {o.p !== undefined && (
+                <span
+                  style={{
+                    color: theme.palette.muted,
+                    fontSize: theme.type.code - 4,
+                  }}
+                >
+                  {" "}
+                  ({Math.round(o.p * 100)}% expected)
+                </span>
+              )}
             </span>
           </div>
-          <div style={{ height: 36, borderRadius: 18, background: theme.palette.surface, overflow: "hidden" }}>
-            <div style={{ width: `${(shown[i] / trials) * 100}%`, height: "100%", background: theme.palette.accent }} />
+          <div
+            style={{
+              height: 48,
+              borderRadius: 24,
+              background: theme.palette.surface,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${(shown[i] / trials) * 100}%`,
+                height: "100%",
+                background: theme.palette.accent,
+              }}
+            />
           </div>
         </div>
       ))}

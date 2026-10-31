@@ -12,6 +12,7 @@ const services = (page: Page) => page.getByLabel("Allowed local services, one pe
 
 async function saveServices(page: Page, text: string) {
   await services(page).fill(text);
+  await page.getByLabel(/I understand the app will be allowed/).check(); // adding needs the confirmation tick
   // wait for the action's POST so an earlier "Saved." message cannot be mistaken for this save
   await Promise.all([
     page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/settings/system")),

@@ -19,6 +19,7 @@ import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
 import { createFakeVoice } from "@/server/providers/voice/fake";
 import { runChild, type ChildRegistry } from "@/server/render/child";
+import { scanVideo } from "@/server/render/qa-scan";
 import { ingestAudio, ingestImage, type IngestDeps } from "@/server/render/ingest";
 import { storageRoot } from "@/server/storage/paths";
 import { createVoiceFor, whisperAligner } from "./stages/voice-for";
@@ -86,6 +87,7 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
   const run = (spec: Parameters<typeof runChild>[0]) => runChild(spec, { registry: env.childRegistry });
   return {
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
+    qaScan: scanVideo,
     mix: { runChild: run, audioRoot: path.join(root, "audio") },
     // build/generate/render are not wired in production yet (Phase 4); these stages never call them, and if one ever did it refuses.
     imageFor: createImageFor(pool, () => loadKeyring(), root),

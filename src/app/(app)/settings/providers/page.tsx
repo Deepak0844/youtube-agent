@@ -2,10 +2,14 @@ import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { SCOPE_LABELS, canRoute, priceLabel } from "@/server/core/media-catalog";
 import { listProviders, listRoutes } from "@/server/db/media-registry";
+import { classifyAddress } from "@/server/core/net-policy";
+import { loadLocalServices, loadVoiceServers } from "@/server/db/system-settings";
+import { hostPortOf } from "@/server/providers/voice/endpoints";
 import { getPool } from "@/server/db/pool";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/ui/primitives/table";
 import { ProviderList, type ProviderView } from "./provider-table";
 import { RouteForm } from "./route-form";
+import { VoiceServers, type VoiceServerView } from "./voice-servers";
 
 // Media providers (voice, music, sound effects, images, stock) and which one each kind of video uses.
 // requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
@@ -29,7 +33,22 @@ const COMMERCIAL = { yes: "Commercial use allowed.", no: "Commercial use not all
 async function Owned() {
   await requireOwner();
   const db = getPool();
-  const [providers, routes] = await Promise.all([listProviders(db), listRoutes(db)]);
+  const [providers, routes, voice, services] = await Promise.all([listProviders(db), listRoutes(db), loadVoiceServers(db), loadLocalServices(db)]);
+  // A local or private address only works when its host:port is on the list; a public host needs no entry.
+  const missing = (value: string): string | null => {
+    const hp = hostPortOf(value);
+    if (!hp || services.includes(hp)) return null;
+    const host = hp.slice(0, hp.lastIndexOf(":")).replace(/^\[|\]$/g, "");
+    return host === "localhost" || ["private", "loopback", "cgnat", "docker"].includes(classifyAddress(host)) ? hp : null;
+  };
+  const voiceItems: VoiceServerView[] = [
+    { field: "voicestudio_url", label: "VoiceStudio address", placeholder: "http://127.0.0.1:3900", value: voice.voicestudio_url, missing: missing(voice.voicestudio_url),
+      help: "Same computer: use http://127.0.0.1:PORT, no key needed. Another computer needs https and a key. Leave empty to turn it off." },
+    { field: "local_url", label: "Local OpenAI-compatible voice address", placeholder: "http://127.0.0.1:8880", value: voice.local_url, missing: missing(voice.local_url),
+      help: "A voice server on this computer that speaks the OpenAI voice format. Same rules: this computer needs no key, another one needs https and a key." },
+    { field: "azure_region", label: "Azure region", placeholder: "westeurope", value: voice.azure_region, missing: null,
+      help: "The Azure Speech region your key belongs to, for example westeurope or eastus. Letters, digits and hyphens only." },
+  ];
   const label = new Map(providers.map((p) => [p.id, p.label]));
   const free = (p: { price: unknown }) => priceLabel(p.price) === "free";
 
@@ -42,6 +61,15 @@ async function Owned() {
           whose price is not set cannot be chosen below. Prices are for a typical short and are estimates. Every change is written to the audit log.
         </p>
       </header>
+
+      <section aria-labelledby="voice-servers-h" className="flex flex-col gap-gap rounded-card bg-surface p-pad">
+        <h2 id="voice-servers-h" className="text-title font-semibold">Voice servers</h2>
+        <p className="max-w-[60ch] text-body text-muted">
+          Where the voice providers below are reached. A server on this computer must also be listed under System &gt; Local services,
+          which you can do from here. Changes are written to the audit log.
+        </p>
+        <VoiceServers items={voiceItems} />
+      </section>
 
       {KINDS.map(([kind, title]) => (
         <section key={kind} aria-labelledby={`k-${kind}`} className="flex flex-col gap-gap">

@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { inRegion, REGIONS, kitProject, visibleCount, type Region } from "./helpers";
+import { inRegion, REGIONS, kitProject, placeLabels, visibleCount, type Region } from "./helpers";
 import { theme } from "./theme";
 import { WORLD_RINGS } from "./world";
 
@@ -38,6 +38,7 @@ export const MapPiece: React.FC<MapProps> = ({ title, region, markers, route, fr
   const shown = markers.filter((m) => inRegion(region, m.lon, m.lat));
   const n = visibleCount(frame, framesPerMarker, shown.length);
   const pts = shown.map((m) => kitProject(region, m.lon, m.lat, W, H));
+  const slots = placeLabels(pts, shown.map((m) => m.label.length * 21), { w: W, h: H });
   const routeD = pts.slice(0, n).map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("");
   return (
     <AbsoluteFill style={{ background: theme.palette.bg, fontFamily: theme.fonts.ui, color: theme.palette.text }}>
@@ -57,11 +58,11 @@ export const MapPiece: React.FC<MapProps> = ({ title, region, markers, route, fr
         {pts.slice(0, n).map((p, i) => {
           const s = interpolate(frame - i * framesPerMarker, [0, 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
           const label = shown[i].label;
-          const left = p[0] > W * 0.7;
+          const sl = slots[i]!;
           return (
             <g key={i} transform={`translate(${p[0]} ${p[1]}) scale(${s})`}>
               <circle r={14} fill={theme.palette.accent} stroke={theme.palette.bg} strokeWidth={4} />
-              <text x={left ? -24 : 24} y={10} textAnchor={left ? "end" : "start"} fontSize={36} fontWeight={600} fill={theme.palette.text} stroke={theme.palette.bg} strokeWidth={6} paintOrder="stroke">
+              <text x={sl.x} y={sl.y} textAnchor={sl.anchor} fontSize={36} fontWeight={600} fill={theme.palette.text} stroke={theme.palette.bg} strokeWidth={10} strokeLinejoin="round" paintOrder="stroke">
                 {label}
               </text>
             </g>
