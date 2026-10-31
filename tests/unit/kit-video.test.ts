@@ -35,3 +35,14 @@ describe("buildVideoProps for the render stage", () => {
     expect(r.ok && r.props.captions).toEqual([{ word: "hi", startS: 0, endS: 0.4, estimated: true }]);
   });
 });
+
+describe("caption limits", () => {
+  it("refuses too many words or a too-long word in plain words", async () => {
+    const { buildVideoProps: shared } = await import("@/shared/scene/video-props");
+    const many = Array.from({ length: 10_001 }, (_, i) => ({ word: "a", startS: i, endS: i }));
+    const r1 = shared(scenes, { fps: 30, captionsText: JSON.stringify(many) });
+    expect(!r1.ok && r1.errors[0]).toMatch(/at most 10000 words/);
+    const r2 = shared(scenes, { fps: 30, captionsText: JSON.stringify([{ word: "x".repeat(101), startS: 0, endS: 1 }]) });
+    expect(!r2.ok && r2.errors[0]).toMatch(/word 1 is longer than 100/);
+  });
+});

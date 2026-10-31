@@ -5,6 +5,9 @@ import type { SceneDoc } from "./schema";
 
 export type VideoProps = { doc: SceneDoc; fps: number; audioSrc?: string; captions?: CaptionWord[]; assets?: Record<string, string> };
 
+const MAX_CAPTION_WORDS = 10_000; // a 15-minute long video is about 2-3k words
+const MAX_WORD_CHARS = 100;
+
 function parseCaptions(text: string): { ok: true; words: CaptionWord[] } | { ok: false; error: string } {
   let j: unknown;
   try {
@@ -13,8 +16,10 @@ function parseCaptions(text: string): { ok: true; words: CaptionWord[] } | { ok:
     return { ok: false, error: `captions: not valid JSON: ${(e as Error).message}` };
   }
   if (!Array.isArray(j)) return { ok: false, error: "captions: must be a list of {word, startS, endS}" };
+  if (j.length > MAX_CAPTION_WORDS) return { ok: false, error: `captions: at most ${MAX_CAPTION_WORDS} words, got ${j.length}` };
   const words: CaptionWord[] = [];
   for (const [i, w] of j.entries()) {
+    if (typeof w?.word === "string" && w.word.length > MAX_WORD_CHARS) return { ok: false, error: `captions: word ${i + 1} is longer than ${MAX_WORD_CHARS} characters` };
     const ok = w && typeof w.word === "string" && w.word.trim() && Number.isFinite(w.startS) && Number.isFinite(w.endS) && w.startS >= 0 && w.endS >= w.startS;
     if (!ok) return { ok: false, error: `captions: word ${i + 1} needs word, startS and endS (seconds, end not before start)` };
     const estimated = w.estimated === true || w.source === "estimated" || w.flags?.includes?.("estimated") === true;

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { readAssetRef } from "@/server/providers/image/wire";
@@ -7,7 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DRY_RUN_NOTES } from "@/lib/dry-run";
 import type { ChildRegistry } from "@/server/render/child";
 import { createVideoRow } from "@/server/db/videos";
-import { productionHandlers, productionStageDeps } from "@/worker/handlers";
+import { productionHandlers, productionStageDeps, renderKitDir } from "@/worker/handlers";
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;
@@ -25,6 +25,16 @@ describe("production handlers", () => {
   it("wires tts, render, voice, sfx and qa; build and generate stay missing", () => {
     const h = productionHandlers(db.pool);
     expect(Object.keys(h).sort()).toEqual(["draft", "qa", "render", "sfx", "tts", "voice"]);
+  });
+
+  it("the kit folder comes from the code's own location, symlinks resolved; a symlinked kit is passed unresolved (and refused)", () => {
+    expect(renderKitDir()).toBe(realpathSync(path.resolve("remotion/kit")));
+    const tmp = realpathSync(mkdtempSync(path.join(tmpdir(), "kit-")));
+    mkdirSync(path.join(tmp, "remotion"));
+    symlinkSync(path.resolve("remotion/kit"), path.join(tmp, "remotion", "kit"));
+    mkdirSync(path.join(tmp, "src", "worker"), { recursive: true });
+    expect(renderKitDir(path.join(tmp, "src", "worker"))).toBe(path.join(tmp, "remotion", "kit"));
+    rmSync(tmp, { recursive: true, force: true });
   });
 
   it("the production renderer is the container renderer and refuses a call without validated scenes", async () => {

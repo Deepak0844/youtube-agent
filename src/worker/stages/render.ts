@@ -1,11 +1,35 @@
-import { lstat, readFile } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { KnownFailure } from "@/server/core/paid-call";
 import { validateScenes, type SceneDoc } from "@/shared/scene";
-import { promotedPath, type AttemptHandler } from "./attempt";
+import { openRegular, promotedPath, type AttemptHandler } from "./attempt";
 import { contentBody, loadVideo, SIZE, type StageDeps } from "./deps";
 
 const isFile = async (f: string) => (await lstat(f).catch(() => null))?.isFile() === true;
+const MAX_SCENES_BYTES = 1024 * 1024;
+
+/** Reads and validates scenes.json: a plain file (no symlink, no FIFO), at most 1 MB, valid scene JSON. */
+export async function readScenesFile(file: string): Promise<SceneDoc> {
+  let text: string;
+  const fh = await openRegular(file).catch(() => {
+    throw new KnownFailure("scenes.json is missing or not a plain file. Run the build step again.");
+  });
+  try {
+    if ((await fh.stat()).size > MAX_SCENES_BYTES) throw new KnownFailure("scenes.json is too big (over 1 MB). Run the build step again.");
+    text = await fh.readFile("utf8");
+  } finally {
+    await fh.close();
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new KnownFailure("scenes.json is not valid JSON. Run the build step again.");
+  }
+  const v = validateScenes(json);
+  if (!v.ok) throw new KnownFailure(`scenes_invalid: ${v.errors.slice(0, 3).join("; ")}. Run the build step again.`.slice(0, 600));
+  return v.doc;
+}
 
 /**
  * Render: the renderer turns the scenes into render.mp4. It reads only promoted files and writes only into its attempt
@@ -27,15 +51,7 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
     let sceneFile = scenesFile;
     let doc: SceneDoc | undefined;
     if (await isFile(scenesFile)) {
-      let json: unknown;
-      try {
-        json = JSON.parse(await readFile(scenesFile, "utf8"));
-      } catch {
-        throw new KnownFailure("scenes.json is not valid JSON. Run the build step again.");
-      }
-      const v = validateScenes(json);
-      if (!v.ok) throw new KnownFailure(`scenes_invalid: ${v.errors.slice(0, 3).join("; ")}. Run the build step again.`.slice(0, 600));
-      doc = v.doc;
+      doc = await readScenesFile(scenesFile);
     } else {
       sceneFile = await promotedPath(deps.root, video.id, "scene.json"); // fake/dry-run only, see above
       if (!(await isFile(sceneFile))) throw new KnownFailure("The file scenes.json from an earlier stage is missing. Run that stage again.");
@@ -45,6 +61,6 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
       sceneFile, doc, audioFile, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: SIZE,
     });
     if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
-    return { files: ["render.mp4"], result: { rendered: "render.mp4", scenes: doc ? doc.scenes.length : null } };
+    return { files: ["render.mp4"], result: { rendered: "render.mp4", scenes: doc ? doc.scenes.length : null, image: r.image ?? null } };
   };
 }

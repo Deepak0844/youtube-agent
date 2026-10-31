@@ -64,6 +64,8 @@ export interface WorkerHooks {
   sweepOrphans(pool: pg.Pool, workerId: string): Promise<number>;
   holdWorkerLock(pool: pg.Pool, workerId: string): Promise<WorkerLock>;
   createChildRegistry(pool: pg.Pool, workerId: string): ChildRegistry;
+  /** After the lock: removes render containers a dead worker left (the real worker passes the docker sweep). Best effort. */
+  sweepRenderContainers(): Promise<number>;
 }
 export interface WorkerOptions {
   pool?: pg.Pool;
@@ -119,6 +121,7 @@ const defaults: WorkerHooks = {
   emitEvent, createEventBus,
   beforeStart: async () => {},
   sweepOrphans, holdWorkerLock, createChildRegistry,
+  sweepRenderContainers: async () => 0,
 };
 
 // Stage outcomes the owner must hear about. A redelivered job reuses (stage id, fence), so it notifies once.
@@ -200,6 +203,8 @@ export function startRuntime(opts: WorkerOptions = {}) {
     if (swept > 0) log(`swept ${swept} orphaned child process(es)`);
     workerLock = await hooks.holdWorkerLock(db, workerId);
     if (stopping) return;
+    const gone = await hooks.sweepRenderContainers().catch(() => 0);
+    if (gone > 0) log(`removed ${gone} leftover render container(s)`);
     const childRegistry = hooks.createChildRegistry(db, workerId);
     const handlers = typeof opts.handlers === "function" ? opts.handlers({ childRegistry }) : (opts.handlers ?? {});
     const hasHandlers = Object.keys(handlers).length > 0;

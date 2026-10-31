@@ -1,40 +1,49 @@
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { redactLine } from "@/server/core/log-redact";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
 import { assetRefs } from "@/server/core/scene-build";
 import type { ProbeResult } from "@/server/core/qa";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
-import { daemonLimits, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
+import { assertRealDir, daemonLimits, JOB_LABEL, lockFlags, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
 import { safeJoin } from "@/server/storage/paths";
 import { buildVideoProps } from "@/shared/scene/video-props";
 import { openRegular } from "@/worker/stages/attempt";
 import type { Renderer } from "./index";
 
-// SECURITY CONTROL: the production renderer. The scene document is model-written, so the render runs in the pinned render
-// image under ADR 0003's locks: no network, read-only root, every capability dropped, no-new-privileges, uid 10001,
-// pids/memory/cpu limits (settings, clamped to the daemon), a hard wall-clock limit, and no environment at all (the docker
-// CLI itself gets only PATH through runChild). It sees exactly three mounts:
+// SECURITY CONTROL: the production renderer. The scene document is model-written, so the render runs in the render image
+// under ADR 0003's locks (lockFlags in runner.ts, shared with the Phase 0 runner): no network, read-only root, noexec /tmp,
+// every capability dropped, no-new-privileges, uid 10001, pids/memory/cpu limits (settings, clamped to the daemon), a hard
+// wall-clock limit, no environment at all (the docker CLI itself gets only PATH through runChild), and the image by its
+// sha256 id when the worker could resolve it. It sees exactly three mounts, each an existing symlink-free directory:
 //   /in  (ro)  a fresh staging folder: props.json, the narration copy, and copies of ONLY the asset files the doc names;
 //   /out (rw)  a fresh empty folder inside this attempt folder;
 //   /opt/render/kit (ro)  the scene kit code.
-// The storage root, the repo and the docker socket are never mounted. The container has a unique name and is force-removed
-// whatever happens (done, failed, timed out, cancelled). The output is read back without following symlinks and probed.
+// The storage root, the repo and the docker socket are never mounted. The container has a unique name and label and is
+// force-removed whatever happens, by name and again by label (now and ~1 s later, for a create that raced the first
+// remove); the worker also sweeps leftovers at boot. The output is read back without following symlinks or blocking on a
+// FIFO, size-capped, and probed. The wall-clock limit is what bounds how much the container can write to /out.
+// Cleanup: /out is 0777 with no sticky bit, so the worker can delete the files uid 10001 writes there. A subdirectory the
+// container made inside /out could not be emptied by the worker on Linux; it stays in the attempt folder for the sweep.
 
 const ASSET_EXT = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 const AUDIO_EXT = new Set([".wav", ".mp3", ".flac", ".m4a", ".aac"]);
 const ASSET_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/; // same rule as the scene schema
+const CONTAINER_ID = /^[0-9a-f]{12,64}$/;
 const MOUNT_SAFE = /^[^:,\0\r\n]+$/;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
+const MAX_VIDEO_BYTES = 2 * 1024 ** 3;
 const FPS = 30; // keep equal to remotion/kit/theme.ts
-const RENDER_USER = "10001:10001"; // the image's `render` user (infra/Dockerfile.render)
+const NAME_PREFIX = "ytstudio-render-";
 
 export interface ContainerRendererDeps {
   /** Storage root: asset files are copied from here (never mounted). */
   root: string;
-  /** Absolute path of remotion/kit, mounted read-only. */
+  /** Absolute, symlink-free path of remotion/kit, mounted read-only. */
   kitDir: string;
   /** storageRef (relative to root) of an asset's main file, or null when there is no such asset. */
   assetFile(id: string): Promise<string | null>;
@@ -42,7 +51,11 @@ export interface ContainerRendererDeps {
   runChild(spec: ChildSpec): Promise<ChildResult>;
   probe(file: string, signal: AbortSignal): Promise<ProbeResult>;
   hostLimits?: () => Promise<HostLimits>;
-  image?: string;
+  /** The image to run: its sha256 id when resolved at boot (pinned), else the tag. Default: the tag, unpinned. */
+  image?: () => Promise<{ ref: string; pinned: boolean }>;
+  /** Test hooks. */
+  sweepDelayMs?: number;
+  maxVideoBytes?: number;
 }
 
 /** "PROGRESS <0-100>" from render-entry.mjs, else null. */
@@ -52,13 +65,52 @@ export function parseProgress(line: string): number | null {
   return n >= 0 && n <= 100 ? n : null;
 }
 
+const run = promisify(execFile);
+const dockerEnv = () => ({ PATH: process.env.PATH ?? "/usr/bin:/bin" }) as unknown as NodeJS.ProcessEnv; // PATH only: no DOCKER_HOST/CONFIG, no secrets
+
+/** Image id of the render image (`docker image inspect`), resolved once at worker boot. Falls back to the tag. Never throws. */
+export async function resolveRenderImage(image = RENDER_IMAGE): Promise<{ ref: string; pinned: boolean }> {
+  try {
+    const { stdout } = await run("docker", ["image", "inspect", "-f", "{{.Id}}", image], { env: dockerEnv(), timeout: 15_000 });
+    const id = stdout.trim();
+    if (/^sha256:[0-9a-f]{64}$/.test(id)) return { ref: id, pinned: true };
+  } catch {
+    /* fall through */
+  }
+  return { ref: image, pinned: false };
+}
+
+/** Boot: removes render containers a dead worker left behind (labelled and named by this renderer). Best effort, never throws. */
+export async function sweepRenderContainers(
+  exec: (args: string[]) => Promise<string> = async (args) => (await run("docker", args, { env: dockerEnv(), timeout: 30_000 })).stdout,
+): Promise<number> {
+  try {
+    const out = await exec(["ps", "-aq", "--filter", `label=${JOB_LABEL}`, "--filter", `name=${NAME_PREFIX}`]);
+    const ids = out.split("\n").map((s) => s.trim()).filter((s) => CONTAINER_ID.test(s));
+    if (ids.length > 0) await exec(["rm", "-f", ...ids]);
+    return ids.length;
+  } catch {
+    return 0;
+  }
+}
+
 function mountable(p: string): string {
   if (!path.isAbsolute(p) || path.normalize(p) !== p || !MOUNT_SAFE.test(p)) throw new KnownFailure("A render folder has a path that cannot be mounted safely.");
   return p;
 }
 
-/** Copies a regular file (no symlink followed) to dest, readable by the container user. */
-async function copyRegular(src: string, dest: string): Promise<void> {
+async function realDir(p: string, what: string): Promise<void> {
+  try {
+    await assertRealDir(p, what);
+  } catch (e) {
+    throw new KnownFailure(`The render ${what} folder is missing or not a plain folder (${(e as Error).message}).`);
+  }
+}
+
+/** Copies a regular file (no symlink followed, no FIFO opened blocking, at most maxBytes) to dest, readable by the container user. */
+async function copyRegular(src: string, dest: string, maxBytes = MAX_VIDEO_BYTES): Promise<void> {
+  const st = await lstat(src).catch(() => null);
+  if (!st?.isFile()) throw new KnownFailure(`The file ${path.basename(src)} is missing or not a plain file.`);
   let fh;
   try {
     fh = await openRegular(src);
@@ -66,6 +118,7 @@ async function copyRegular(src: string, dest: string): Promise<void> {
     throw new KnownFailure(`The file ${path.basename(src)} is missing or not a plain file.`);
   }
   try {
+    if ((await fh.stat()).size > maxBytes) throw new KnownFailure(`The file ${path.basename(src)} is too big.`);
     await writeFile(dest, fh.createReadStream({ autoClose: false }), { mode: 0o644, flag: "wx" });
   } finally {
     await fh.close();
@@ -80,7 +133,8 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
       const inDir = mountable(path.join(ctx.attemptDir, "render-in"));
       const outDir = mountable(path.join(ctx.attemptDir, "render-out"));
       const kitDir = mountable(deps.kitDir);
-      const name = `ytstudio-render-${ctx.claim.stageRunId.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 64)}-${randomBytes(4).toString("hex")}`;
+      await realDir(kitDir, "kit");
+      const name = `${NAME_PREFIX}${ctx.claim.stageRunId.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 36)}-${randomBytes(4).toString("hex")}`;
       const cleanup = () => Promise.all([rm(inDir, { recursive: true, force: true }), rm(outDir, { recursive: true, force: true })]).catch(() => undefined);
       await cleanup();
       try {
@@ -117,34 +171,37 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         const props = buildVideoProps(JSON.stringify(a.doc), { fps: FPS, audioSrc, assets, captionsText: a.captions ? JSON.stringify(a.captions) : undefined });
         if (!props.ok) throw new KnownFailure(`The scenes or captions are not valid: ${props.errors.slice(0, 3).join("; ")}`.slice(0, 600));
         await writeFile(path.join(inDir, "props.json"), JSON.stringify(props.props), { mode: 0o644, flag: "wx" });
+        await realDir(inDir, "input");
+        await realDir(outDir, "output");
 
         const lim = ctx.config.render;
         const host = await (deps.hostLimits ?? daemonLimits)();
-        const cpus = Math.min(lim.cpus, host.cpus);
-        const memoryMb = Math.min(lim.memoryMb, Math.floor(host.memoryMb * 0.9));
+        const image = deps.image ? await deps.image() : { ref: RENDER_IMAGE, pinned: false };
+        if (!image.pinned) ctx.log(`render: image not pinned (could not resolve its id); running the tag ${image.ref}`);
         const args = [
-          "run", "--rm", "--name", name, "--pull=never",
-          "--network", "none",
-          "--read-only",
-          "--tmpfs", "/tmp:rw,size=1g,mode=1777", // HOME/TMPDIR, the webpack bundle, Chrome's profile
-          "--shm-size=256m",
-          "--user", RENDER_USER,
-          "--cap-drop", "ALL",
-          "--security-opt", "no-new-privileges",
-          "--pids-limit", String(lim.pids),
-          "--memory", `${memoryMb}m`,
-          "--memory-swap", `${memoryMb}m`,
-          "--cpus", String(cpus),
+          "run", "--rm", "--name", name,
+          ...lockFlags(lim, host),
           "--log-driver", "none",
-          "--label", `ytstudio.job=${name}`,
+          "--label", `${JOB_LABEL}=${name}`,
           "-v", `${inDir}:/in:ro`,
           "-v", `${outDir}:/out:rw`,
           "-v", `${kitDir}:/opt/render/kit:ro`,
           "-w", "/tmp",
           "--entrypoint", "node",
-          deps.image ?? RENDER_IMAGE,
+          image.ref,
           "/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4",
         ];
+
+        const docker = (dargs: string[], onLine?: (l: string) => void) =>
+          deps.runChild({
+            command: "docker", args: dargs, cwd: ctx.attemptDir, envAllow: ["PATH"], timeoutMs: 30_000, maxOutputBytes: 64 * 1024,
+            signal: new AbortController().signal, stageRunId: ctx.claim.stageRunId, onLine,
+          }).catch(() => undefined);
+        const sweepByLabel = async () => {
+          const ids: string[] = [];
+          await docker(["ps", "-aq", "--filter", `label=${JOB_LABEL}=${name}`], (l) => { if (CONTAINER_ID.test(l.trim())) ids.push(l.trim()); });
+          if (ids.length > 0) await docker(["rm", "-f", ...ids]);
+        };
 
         const tail: string[] = [];
         let r: ChildResult;
@@ -163,11 +220,11 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
             },
           });
         } finally {
-          // Killing the docker CLI does not stop the container: always remove it by name, with its own signal.
-          await deps.runChild({
-            command: "docker", args: ["rm", "-f", name], cwd: ctx.attemptDir, envAllow: ["PATH"], timeoutMs: 30_000, maxOutputBytes: 64 * 1024,
-            signal: new AbortController().signal, stageRunId: ctx.claim.stageRunId,
-          }).catch(() => undefined);
+          // Killing the docker CLI does not stop the container: remove it by name, then by label now and once more shortly
+          // after (the daemon may still create it after the CLI died). Each call has its own signal, never the stage's.
+          await docker(["rm", "-f", name]);
+          await sweepByLabel();
+          setTimeout(() => void sweepByLabel(), deps.sweepDelayMs ?? 1000).unref();
         }
         if (r.aborted) throw ctx.signal.reason ?? new Error("render aborted");
         if (r.timedOut) throw new KnownFailure(`The render took longer than its ${Math.ceil(lim.timeoutS / 60)} min limit and was stopped.`);
@@ -176,8 +233,8 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
 
         const outPath = path.join(ctx.attemptDir, a.outFile);
         await rm(outPath, { force: true });
-        await copyRegular(path.join(outDir, "out.mp4"), outPath).catch(() => {
-          throw new KnownFailure("The render finished but made no video file.");
+        await copyRegular(path.join(outDir, "out.mp4"), outPath, deps.maxVideoBytes ?? MAX_VIDEO_BYTES).catch((e: unknown) => {
+          throw new KnownFailure(e instanceof Error && /too big/.test(e.message) ? "The rendered video is too big." : "The render finished but made no video file.");
         });
         let p: ProbeResult;
         try {
@@ -188,7 +245,9 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         if (p.width !== a.size.width || p.height !== a.size.height) throw new KnownFailure(`The render is ${p.width}x${p.height}, expected ${a.size.width}x${a.size.height}.`);
         if (!(p.durationS > 0)) throw new KnownFailure("The rendered video is empty.");
         if (audioSrc && !p.hasAudio) throw new KnownFailure("The rendered video has no sound although narration was given.");
-        return { outPath };
+        const docS = Math.max(...a.doc.scenes.map((s) => s.startMs + s.durationMs)) / 1000;
+        if (Math.abs(p.durationS - docS) > 1) ctx.log(`render: warning: the video is ${p.durationS.toFixed(1)} s but the scenes add up to ${docS.toFixed(1)} s`);
+        return { outPath, image: image.ref };
       } finally {
         await cleanup();
       }

@@ -4,6 +4,7 @@ import { approvalReaders } from "@/server/db/approval-readers";
 import { dryRunRefusal } from "./stages/guard";
 import type { ChildRegistry } from "@/server/render/child";
 import { defaultDryRunDeps, dryRunHandlers, productionHandlers, type StageHandlers } from "./handlers";
+import { sweepRenderContainers } from "@/server/providers/renderer/remotion-container";
 import { startRuntime, type WorkerOptions } from "./runtime";
 
 // Retain startWorker(log) for existing callers, alongside the runtime options interface.
@@ -33,7 +34,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         log("ENGINE_DRY_RUN=1: stages run on fake providers");
         handlers = dryRunHandlers(defaultDryRunDeps(pool));
       }
-      const worker = startWorker({ log, pool, handlers, readers: approvalReaders, ingest: true });
+      // The real worker (not the dry run) also removes render containers a dead worker left behind, once it holds the lock.
+      const hooks = process.env.ENGINE_DRY_RUN === "1" ? {} : { sweepRenderContainers: () => sweepRenderContainers() };
+      const worker = startWorker({ log, pool, handlers, readers: approvalReaders, ingest: true, hooks });
       let exiting = false;
       const shutdown = () => {
         if (exiting) return;

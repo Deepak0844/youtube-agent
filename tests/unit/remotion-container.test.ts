@@ -1,4 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -6,7 +7,7 @@ import { buildEngineConfig } from "@/server/core/engine-config";
 import { KnownFailure } from "@/server/core/paid-call";
 import { StageAbort, type StageContext } from "@/server/core/stage-handler";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
-import { createContainerRenderer, parseProgress, type ContainerRendererDeps } from "@/server/providers/renderer/remotion-container";
+import { createContainerRenderer, parseProgress, sweepRenderContainers, type ContainerRendererDeps } from "@/server/providers/renderer/remotion-container";
 
 const GOOD = path.resolve("tests/fixtures/video/good.mp4");
 const SIZE = { width: 1080, height: 1920 };
@@ -50,8 +51,14 @@ function deps(behave?: (spec: ChildSpec, outDir: string) => Promise<ChildResult>
     hostLimits: async () => ({ cpus: 2, memoryMb: 3000 }),
     assetFile: async (id) => (id === "img1" ? "assets/j1/main.png" : null),
     probe: async () => ({ width: 1080, height: 1920, durationS: 2, hasAudio: true, meanDb: -20, peakDb: -1, loopDiff: 1 }),
+    image: async () => ({ ref: IMAGE_ID, pinned: true }),
+    sweepDelayMs: 1,
     runChild: async (spec) => {
       calls.push(spec);
+      if (spec.args[0] === "ps") {
+        spec.onLine?.("abcdef123456");
+        spec.onLine?.("not-an-id; rm -rf /");
+      }
       if (spec.args[0] !== "run") return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
       const outDir = mountOf(spec.args, "/out")!.split(":")[0]!;
       if (behave) return behave(spec, outDir);
@@ -64,7 +71,9 @@ function deps(behave?: (spec: ChildSpec, outDir: string) => Promise<ChildResult>
 }
 
 const args = (d = doc([terminal, story("img1")])) => ({ sceneFile: "unused", doc: d, audioFile: path.join(root, "videos", "v1", "narration.wav"), captions: [{ word: "hi", startS: 0, endS: 0.5, source: "recognised", flags: [] }], outFile: "render.mp4", size: SIZE });
+const IMAGE_ID = "sha256:" + "a".repeat(64);
 const run = () => calls.find((c) => c.args[0] === "run")!;
+const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const removed = () => calls.filter((c) => c.args[0] === "rm").map((c) => c.args);
 
 describe("container renderer", () => {
@@ -78,22 +87,22 @@ describe("container renderer", () => {
     const a = s.args;
     const name = a[a.indexOf("--name") + 1]!;
     expect(name).toMatch(/^ytstudio-render-run-1-[0-9a-f]{8}$/);
-    for (const flag of ["--rm", "--read-only", "--pull=never"]) expect(a).toContain(flag);
-    const pair = (k: string) => a[a.indexOf(k) + 1];
-    expect(pair("--network")).toBe("none");
-    expect(pair("--cap-drop")).toBe("ALL");
-    expect(pair("--security-opt")).toBe("no-new-privileges");
-    expect(pair("--user")).toBe("10001:10001");
-    expect(pair("--pids-limit")).toBe("512");
-    expect(pair("--cpus")).toBe("2"); // clamped to the daemon
-    expect(pair("--memory")).toBe("2700m"); // 90% of the daemon's 3000
-    expect(pair("--memory-swap")).toBe("2700m");
-    const mounts = a.filter((_, i) => a[i - 1] === "-v");
-    expect(mounts).toEqual([`${attemptDir}/render-in:/in:ro`, `${attemptDir}/render-out:/out:rw`, `${path.resolve("remotion/kit")}:/opt/render/kit:ro`]);
-    for (const bad of ["-e", "--env", "--env-file", "--privileged", "--cap-add", "--mount", "--volumes-from", "-p", "--network=host"]) expect(a).not.toContain(bad);
-    expect(a.slice(-4)).toEqual(["ytstudio-render:dev", "/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4"]);
-    expect(removed()).toEqual([["rm", "-f", name]]);
+    expect(a).toEqual([
+      "run", "--rm", "--name", name,
+      "--pull=never", "--network", "none", "--read-only", "--tmpfs", "/tmp:rw,nosuid,nodev,noexec,size=1g,mode=1777", "--shm-size=256m",
+      "--user", "10001:10001", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+      "--pids-limit", "512", "--memory", "2700m", "--memory-swap", "2700m", "--cpus", "2", // clamped to the daemon (2 CPUs, 90% of 3000 MB)
+      "--log-driver", "none", "--label", `ytstudio.job=${name}`,
+      "-v", `${attemptDir}/render-in:/in:ro`, "-v", `${attemptDir}/render-out:/out:rw`, "-v", `${path.resolve("remotion/kit")}:/opt/render/kit:ro`,
+      "-w", "/tmp", "--entrypoint", "node", IMAGE_ID, "/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4",
+    ]);
+    expect(r.image).toBe(IMAGE_ID);
+    expect(removed().slice(0, 2)).toEqual([["rm", "-f", name], ["rm", "-f", "abcdef123456"]]);
+    await tick();
+    // the delayed second sweep by label (a container the daemon created after the first rm)
+    expect(calls.filter((c) => c.args[0] === "ps").map((c) => c.args)).toEqual([0, 1].map(() => ["ps", "-aq", "--filter", `label=ytstudio.job=${name}`]));
     // second render gets a different container name
+    await tick();
     await createContainerRenderer(deps()).render(ctx(), args());
     const names = calls.filter((c) => c.args[0] === "run").map((c) => c.args[c.args.indexOf("--name") + 1]);
     expect(new Set(names).size).toBe(2);
@@ -126,7 +135,7 @@ describe("container renderer", () => {
     const p = createContainerRenderer(deps(() => ({ code: null, signal: "SIGKILL", truncated: false, timedOut: true, aborted: false }))).render(ctx(), args());
     await expect(p).rejects.toThrow(KnownFailure);
     await expect(p).rejects.toThrow(/10 min limit/);
-    expect(removed()).toHaveLength(1);
+    expect(removed().filter((x) => x[2]!.startsWith("ytstudio-render-"))).toHaveLength(1);
   });
 
   it("abort: rejects with the stage's reason and the container is force-removed", async () => {
@@ -135,7 +144,7 @@ describe("container renderer", () => {
       return { code: null, signal: "SIGTERM", truncated: false, timedOut: false, aborted: true };
     })).render(ctx(), args());
     await expect(p).rejects.toBeInstanceOf(StageAbort);
-    expect(removed()).toHaveLength(1);
+    expect(removed().filter((x) => x[2]!.startsWith("ytstudio-render-"))).toHaveLength(1);
     // the rm call has its own signal, never the aborted stage signal
     expect(calls.find((c) => c.args[0] === "rm")!.signal.aborted).toBe(false);
   });
@@ -150,7 +159,7 @@ describe("container renderer", () => {
     const msg = await p.catch((e: Error) => e.message);
     expect(msg).toContain("boom");
     expect(msg).not.toContain(secret);
-    expect(removed()).toHaveLength(1);
+    expect(removed().filter((x) => x[2]!.startsWith("ytstudio-render-"))).toHaveLength(1);
     await expect(createContainerRenderer(deps(() => ({ code: null, signal: "SIGTERM", truncated: true, timedOut: false, aborted: false }))).render(ctx(), args())).rejects.toThrow(/too much output/);
   });
 
@@ -182,5 +191,48 @@ describe("container renderer", () => {
     await expect(createContainerRenderer(deps()).render(ctx(), { ...args(), doc: undefined })).rejects.toThrow(KnownFailure);
     await expect(createContainerRenderer(deps()).render(ctx(), { ...args(), outFile: "../x.mp4" })).rejects.toThrow();
     expect(calls).toHaveLength(0);
+  });
+
+  it("docker run throwing still removes the container by name and label", async () => {
+    const p = createContainerRenderer(deps(() => { throw new Error("spawn failed"); })).render(ctx(), args());
+    await expect(p).rejects.toThrow(/spawn failed/);
+    expect(removed()[0]![0]).toBe("rm");
+    expect(calls.some((c) => c.args[0] === "ps")).toBe(true);
+  });
+
+  it("an unpinned image falls back to the tag with a log line", async () => {
+    const r = await createContainerRenderer(deps(undefined, { image: async () => ({ ref: "ytstudio-render:dev", pinned: false }) })).render(ctx(), args());
+    expect(run().args).toContain("ytstudio-render:dev");
+    expect(r.image).toBe("ytstudio-render:dev");
+    expect(logs.some((l) => /not pinned/.test(l))).toBe(true);
+  });
+
+  it("a FIFO or an oversized out.mp4 fails fast without hanging", async () => {
+    const ok = { code: 0, signal: null, truncated: false, timedOut: false, aborted: false } as const;
+    await expect(createContainerRenderer(deps((_, out) => (execFileSync("mkfifo", [path.join(out, "out.mp4")]), ok))).render(ctx(), args())).rejects.toThrow(/no video/);
+    await expect(createContainerRenderer(deps(undefined, { maxVideoBytes: 10 })).render(ctx(), args())).rejects.toThrow(/too big/);
+  }, 5000);
+
+  it("a missing or symlinked kit folder is refused before docker runs", async () => {
+    const link = path.join(root, "kitlink");
+    symlinkSync(path.resolve("remotion/kit"), link);
+    await expect(createContainerRenderer(deps(undefined, { kitDir: link })).render(ctx(), args())).rejects.toThrow(KnownFailure);
+    await expect(createContainerRenderer(deps(undefined, { kitDir: path.join(root, "nope") })).render(ctx(), args())).rejects.toThrow(KnownFailure);
+    expect(calls.filter((c) => c.args[0] === "run")).toHaveLength(0);
+  });
+
+  it("a render far from the scene length is logged as a warning, not a failure", async () => {
+    await createContainerRenderer(deps(undefined, { probe: async () => ({ width: 1080, height: 1920, durationS: 9, hasAudio: true, meanDb: null, peakDb: null, loopDiff: null }) })).render(ctx(), args());
+    expect(logs.some((l) => /9\.0 s.*2\.0 s/.test(l))).toBe(true);
+  });
+});
+
+describe("boot sweep of render containers", () => {
+  it("removes leftover render containers by label and name, never throws", async () => {
+    const seen: string[][] = [];
+    const exec = async (a: string[]) => (seen.push(a), a[0] === "ps" ? "abcdef123456\nbad id\n0123456789ab\n" : "");
+    expect(await sweepRenderContainers(exec)).toBe(2);
+    expect(seen).toEqual([["ps", "-aq", "--filter", "label=ytstudio.job", "--filter", "name=ytstudio-render-"], ["rm", "-f", "abcdef123456", "0123456789ab"]]);
+    expect(await sweepRenderContainers(async () => { throw new Error("no docker"); })).toBe(0);
   });
 });

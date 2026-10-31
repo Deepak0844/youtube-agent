@@ -1,3 +1,4 @@
+import { lstatSync, realpathSync } from "node:fs";
 import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type pg from "pg";
@@ -17,7 +18,7 @@ import { createWebTools } from "@/server/llm/web-tools";
 import { createImageFor } from "@/server/providers/image/wire";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
-import { createContainerRenderer } from "@/server/providers/renderer/remotion-container";
+import { createContainerRenderer, resolveRenderImage } from "@/server/providers/renderer/remotion-container";
 import { probeVideo } from "@/server/render/probe";
 import { createFakeVoice } from "@/server/providers/voice/fake";
 import { runChild, type ChildRegistry } from "@/server/render/child";
@@ -79,6 +80,15 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
   };
 }
 
+/**
+ * remotion/kit next to this module (never the working directory). Symlinks on the way are resolved, but a kit folder that
+ * is itself a symlink or is missing is passed as is, and the renderer refuses it (no docker -v ever creates a folder).
+ */
+export function renderKitDir(here: string = import.meta.dirname): string {
+  const kit = path.resolve(here, "..", "..", "remotion", "kit");
+  return lstatSync(kit, { throwIfNoEntry: false })?.isDirectory() ? realpathSync(kit) : kit;
+}
+
 const notWired = (): never => { throw new KnownFailure("This step is not wired in production yet."); };
 
 /**
@@ -87,6 +97,7 @@ const notWired = (): never => { throw new KnownFailure("This step is not wired i
  */
 export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildRegistry } = {}, root: string = storageRoot()): StageDeps {
   const run = (spec: Parameters<typeof runChild>[0]) => runChild(spec, { registry: env.childRegistry });
+  const image = resolveRenderImage(); // once, at worker boot: renders run the image by its sha256 id (tag fallback is logged)
   return {
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
     qaScan: scanVideo,
@@ -96,7 +107,7 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
     // Render runs in the locked-down render container (remotion-container.ts). The kit is read from the repo the worker runs in.
     renderer: createContainerRenderer({
-      root, kitDir: path.resolve(process.cwd(), "remotion", "kit"), runChild: run,
+      root, kitDir: renderKitDir(), runChild: run, image: () => image,
       assetFile: async (id) => { const a = await getAsset(pool, id); return a && !a.deletedAt && a.kind === "image" ? a.storageRef : null; },
       probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
     }),

@@ -17,5 +17,6 @@ export interface RenderArgs {
 
 // Turns a scene document into an mp4 inside ctx.attemptDir.
 export interface Renderer {
-  render(ctx: StageContext, a: RenderArgs): Promise<{ outPath: string }>;
+  /** `image`: what ran (the render image id when pinned). */
+  render(ctx: StageContext, a: RenderArgs): Promise<{ outPath: string; image?: string }>;
 }

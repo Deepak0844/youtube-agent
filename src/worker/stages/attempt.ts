@@ -53,8 +53,9 @@ export async function prepareAttempt(ctx: StageContext, root: string): Promise<s
   return dir;
 }
 
+/** Opens a regular file for reading: no symlink followed, and O_NONBLOCK so a planted FIFO cannot hang the open. */
 export async function openRegular(file: string) {
-  const fh = await open(file, fsc.O_RDONLY | fsc.O_NOFOLLOW);
+  const fh = await open(file, fsc.O_RDONLY | fsc.O_NOFOLLOW | fsc.O_NONBLOCK);
   try {
     if (!(await fh.stat()).isFile()) throw new KnownFailure("expected a regular file");
     return fh;
