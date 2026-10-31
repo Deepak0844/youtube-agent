@@ -49,6 +49,10 @@ export const AUDIT_EVENTS = {
   "asset.deleted": "Assets were moved to the trash",
   "asset.restored": "An asset was restored from the trash",
   "asset.tagged": "Tags were added to assets",
+  // Phase 4 scenes (detail: video id, scene ids, versions, session id; never scene text)
+  "scenes.rechecked": "The saved scenes were re-checked against the house rules (free)",
+  "scenes.repaired": "Failing scenes were repaired into a new version",
+  "scenes.undone": "The previous scenes version was made current again",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",
