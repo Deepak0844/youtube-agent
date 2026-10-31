@@ -5,14 +5,18 @@ import { OWNER_PASSWORD, OWNER_USERNAME } from "../fixtures/owner";
 // Runs with the seeded owner's storageState (playwright.config.mts), i.e. reuse of a real session.
 const phone = (page: Page) => (page.viewportSize()?.width ?? 1440) < 768;
 
-test("home shows honest zeros and the studio's question", async ({ page }) => {
+test("home shows each panel with an honest empty state and the quick links", async ({ page }) => {
   await installFakeClock(page, "2026-01-01T09:00:00Z");
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Home" })).toBeVisible();
-  await expect(page.getByTestId("waiting-count")).toHaveText("0");
-  await expect(page.getByText("Waiting on you")).toBeVisible();
-  await expect(page.getByText("Nothing is waiting for your decision.")).toBeVisible();
-  await expect(page.getByText("No uploads yet.")).toBeVisible();
+  await expect(page.getByText("In production", { exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing is waiting at a gate.")).toBeVisible();
+  await expect(page.getByText("Nothing needs attention.")).toBeVisible();
+  await expect(page.getByText("Nothing is running right now.")).toBeVisible();
+  await expect(page.getByText("Nothing is lined up.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "New short" })).toHaveAttribute("href", /\/videos\/new/);
+  await expect(page.getByRole("link", { name: "Library" }).first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 test("top bar carries real spend from budgets, review count and a disabled search", async ({ page }) => {
