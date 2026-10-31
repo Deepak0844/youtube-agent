@@ -185,7 +185,7 @@ export function createLlmClient(deps: LlmClientDeps): LlmClient {
     },
 
     async agent(ctx, a) {
-      const { model, price } = await resolve(a.stage, true);
+      const { model, price } = await resolve(a.stage, a.tools.length > 0); // a tool-free run (scene build) needs no tool use
       const decls: ToolDecl[] = a.tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
       return runAgent({
         paid: ctx.paid,

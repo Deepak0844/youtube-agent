@@ -1,6 +1,8 @@
 // Tiny async semaphore (pure). Used to cap concurrent scrypt work (each hash needs ~128 MiB).
 export interface Semaphore {
   run<T>(fn: () => Promise<T>): Promise<T>;
+  /** Every slot is taken (a run() now would wait). */
+  busy(): boolean;
 }
 
 export function createSemaphore(max: number): Semaphore {
@@ -13,6 +15,7 @@ export function createSemaphore(max: number): Semaphore {
     else active--;
   };
   return {
+    busy: () => active >= max,
     async run<T>(fn: () => Promise<T>): Promise<T> {
       if (active < max) active++;
       else await new Promise<void>((r) => waiting.push(r));

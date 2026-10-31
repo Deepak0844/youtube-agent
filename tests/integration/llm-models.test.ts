@@ -166,7 +166,7 @@ describe("routes", () => {
     await createModel(db.pool, { ...paid, modelId: "draft", enabled: false, prices: null }, session);
     const local = await createModel(db.pool, freeLocal, session);
     const offered = modelsForStage("build_scene_kit", await listModels(db.pool), []).map((x) => x.model.id);
-    expect(offered).toEqual([a.id]); // local one has no tool use, others fail structured output or are unusable
+    expect(offered.sort()).toEqual([a.id, local.id].sort()); // scene build sends no tools; the others fail structured output or are unusable
     expect(modelsForStage("draft", await listModels(db.pool), []).map((x) => x.model.id).sort()).toEqual([a.id, local.id].sort());
   });
 
@@ -176,7 +176,7 @@ describe("routes", () => {
     await refused(deleteModel(db.pool, m.id, session));
     await refused(updateModel(db.pool, m.id, { ...paid, enabled: false }, session));
     await refused(updateModel(db.pool, m.id, { ...paid, prices: null, enabled: false }, session));
-    await refused(updateModel(db.pool, m.id, { ...paid, capabilities: { ...caps, toolUse: false } }, session));
+    await refused(updateModel(db.pool, m.id, { ...paid, capabilities: { ...caps, structuredOutput: false } }, session));
     // Raw SQL cannot delete it either (foreign key).
     await expect(db.pool.query("delete from llm_models where id = $1", [m.id])).rejects.toMatchObject({ code: "23503" });
     expect((await listModels(db.pool)).length).toBe(1);

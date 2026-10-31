@@ -95,6 +95,14 @@ export const SETTINGS = {
   // Claude Code text provider (ADR 0014). Safety: turning it on starts a program on this machine; the cap bounds subscription use.
   "claude_code.enabled": { schema: z.boolean(), default: false, safety: true, label: "Claude Code on this machine for text stages" },
   "claude_code.daily_cap": { schema: posInt.max(10_000), default: 200, safety: true, label: "Claude Code calls per UTC day" },
+  // The routes the "AI source" switch replaced (stage -> model id, or null for none); null = the switch is off. Safety:
+  // turning the switch off writes these back as routes.
+  "ai.previous_routes": {
+    schema: z.record(z.string().regex(/^[a-z_]{1,40}$/), z.string().uuid().nullable()).nullable(),
+    default: null,
+    safety: true,
+    label: "Routes to restore when Claude Code is switched off",
+  },
   "display.currency": { schema: z.string().min(1), default: "USD", safety: false, label: "Display currency" },
 } satisfies Record<string, SettingDef>;
 
