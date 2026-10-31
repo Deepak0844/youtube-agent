@@ -71,5 +71,7 @@ export function bottomBarItems(): { main: NavItem[]; more: NavItem[] } {
 /** Home matches only "/"; every other item matches its own path and anything beneath it. */
 export function isActive(href: string, pathname: string): boolean {
   if (href === "/") return pathname === "/";
+  // A longer item that also matches wins: /videos/new lights New, not Library.
+  if (NAV_ITEMS.some((i) => i.href.length > href.length && i.href.startsWith(href + "/") && (pathname === i.href || pathname.startsWith(i.href + "/")))) return false;
   return pathname === href || pathname.startsWith(href + "/");
 }
