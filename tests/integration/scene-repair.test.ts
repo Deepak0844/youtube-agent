@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { expectedInputHash, type PipelineView } from "@/server/core/pipeline-plan";
+import type { EnqueueOnly } from "@/server/db/pipeline";
 import { currentScenes, recheckScenes, repairScenes, requestSceneRepair, undoScenes } from "@/server/db/scene-repair";
 import { addContent, createVideoRow } from "@/server/db/videos";
 import { withTestDb, type TestDb } from "../support/db";
@@ -104,7 +105,8 @@ describe("undoScenes", () => {
 describe("requestSceneRepair", () => {
   const mkQueue = () => {
     const jobs: string[] = [];
-    return { jobs, enqueue: async (id: string) => void jobs.push(id) } as never as { jobs: string[]; enqueue: (id: string, a: number, b: number, h: string) => Promise<void> };
+    const enqueue = (async (id: string) => void jobs.push(id)) as unknown as EnqueueOnly["enqueue"];
+    return { jobs, enqueue };
   };
   const runs = async (id: string) => (await db.pool.query("select status, result from stage_runs where video_id = $1 and name = 'repair_scenes'", [id])).rows;
 
