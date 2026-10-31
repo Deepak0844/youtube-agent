@@ -153,11 +153,11 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
   };
 }
 
-export async function loadQueue(db: pg.Pool, checkable: ReadonlySet<string> = new Set()): Promise<QueueData> {
+export async function loadQueue(db: pg.Pool, checkable: ReadonlySet<string> = new Set(), only?: { videoId: string }): Promise<QueueData> {
   const sign = await mediaSigner(db);
   const vids = await db.query<{ id: string; topic: string; language: string; channel_id: string | null; updated_at: Date }>(
-    "select id, topic, language, channel_id, updated_at from videos where status in ('waiting','active') and format = 'short' order by updated_at, id limit $1",
-    [MAX_ITEMS * 2],
+    "select id, topic, language, channel_id, updated_at from videos where status in ('waiting','active') and format = 'short' and ($2::uuid is null or id = $2) order by updated_at, id limit $1",
+    [MAX_ITEMS * 2, only?.videoId ?? null],
   );
   const parked = await db.query<{ id: string; video_id: string }>("select id, video_id from stage_runs where status = 'needs_decision' order by created_at, id limit $1", [MAX_ITEMS]);
   const parkedByVideo = new Map(parked.rows.map((p) => [p.video_id, p.id]));
