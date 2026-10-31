@@ -39,6 +39,8 @@ const MAX_OUTPUT_BYTES = 1024 * 1024;
 const MAX_VIDEO_BYTES = 2 * 1024 ** 3;
 const FPS = 30; // keep equal to remotion/kit/theme.ts
 const NAME_PREFIX = "ytstudio-render-";
+const WORKER_LABEL = "ytstudio.worker";
+const WORKER_ID = /^[A-Za-z0-9_.-]{1,64}$/;
 
 export interface ContainerRendererDeps {
   /** Storage root: asset files are copied from here (never mounted). */
@@ -53,6 +55,8 @@ export interface ContainerRendererDeps {
   hostLimits?: () => Promise<HostLimits>;
   /** The image to run: its sha256 id when resolved at boot (pinned), else the tag. Default: the tag, unpinned. */
   image?: () => Promise<{ ref: string; pinned: boolean }>;
+  /** This worker's id, put on every container as ytstudio.worker so the boot sweep spares a live worker's renders. */
+  workerId?: string;
   /** Test hooks. */
   sweepDelayMs?: number;
   maxVideoBytes?: number;
@@ -80,15 +84,30 @@ export async function resolveRenderImage(image = RENDER_IMAGE): Promise<{ ref: s
   return { ref: image, pinned: false };
 }
 
-/** Boot: removes render containers a dead worker left behind (labelled and named by this renderer). Best effort, never throws. */
-export async function sweepRenderContainers(
-  exec: (args: string[]) => Promise<string> = async (args) => (await run("docker", args, { env: dockerEnv(), timeout: 30_000 })).stdout,
-): Promise<number> {
+/**
+ * Boot: removes render containers whose worker is dead (its Postgres advisory lock is free, see child-processes.ts). A live
+ * worker's containers (a sibling on the same daemon) are never touched; a liveness check that fails counts as alive.
+ * Best effort, never throws.
+ */
+export async function sweepRenderContainers(deps: {
+  isAlive(workerId: string): Promise<boolean>;
+  exec?: (args: string[]) => Promise<string>;
+}): Promise<number> {
+  const exec = deps.exec ?? (async (args: string[]) => (await run("docker", args, { env: dockerEnv(), timeout: 30_000 })).stdout);
   try {
-    const out = await exec(["ps", "-aq", "--filter", `label=${JOB_LABEL}`, "--filter", `name=${NAME_PREFIX}`]);
-    const ids = out.split("\n").map((s) => s.trim()).filter((s) => CONTAINER_ID.test(s));
-    if (ids.length > 0) await exec(["rm", "-f", ...ids]);
-    return ids.length;
+    const out = await exec(["ps", "-a", "--filter", `label=${JOB_LABEL}`, "--filter", `label=${WORKER_LABEL}`, "--filter", `name=${NAME_PREFIX}`, "--format", `{{.ID}} {{.Label "${WORKER_LABEL}"}}`]);
+    const byWorker = new Map<string, string[]>();
+    for (const line of out.split("\n")) {
+      const [id, worker] = line.trim().split(" ");
+      if (!id || !CONTAINER_ID.test(id) || !worker || !WORKER_ID.test(worker)) continue;
+      byWorker.set(worker, [...(byWorker.get(worker) ?? []), id]);
+    }
+    const dead: string[] = [];
+    for (const [worker, ids] of byWorker) {
+      if (!(await deps.isAlive(worker).catch(() => true))) dead.push(...ids);
+    }
+    if (dead.length > 0) await exec(["rm", "-f", ...dead]);
+    return dead.length;
   } catch {
     return 0;
   }
@@ -107,8 +126,11 @@ async function realDir(p: string, what: string): Promise<void> {
   }
 }
 
-/** Copies a regular file (no symlink followed, no FIFO opened blocking, at most maxBytes) to dest, readable by the container user. */
-async function copyRegular(src: string, dest: string, maxBytes = MAX_VIDEO_BYTES): Promise<void> {
+/**
+ * Copies a regular file (no symlink followed, no FIFO opened blocking) to dest, readable by the container user. Reads at most
+ * maxBytes + 1 bytes, so a file still growing cannot push the copy past the cap; a bigger file is refused and the partial copy removed.
+ */
+export async function copyRegular(src: string, dest: string, maxBytes = MAX_VIDEO_BYTES): Promise<void> {
   const st = await lstat(src).catch(() => null);
   if (!st?.isFile()) throw new KnownFailure(`The file ${path.basename(src)} is missing or not a plain file.`);
   let fh;
@@ -117,9 +139,21 @@ async function copyRegular(src: string, dest: string, maxBytes = MAX_VIDEO_BYTES
   } catch {
     throw new KnownFailure(`The file ${path.basename(src)} is missing or not a plain file.`);
   }
+  let n = 0;
+  const tooBig = () => new KnownFailure(`The file ${path.basename(src)} is bigger than ${maxBytes} bytes.`);
   try {
-    if ((await fh.stat()).size > maxBytes) throw new KnownFailure(`The file ${path.basename(src)} is too big.`);
-    await writeFile(dest, fh.createReadStream({ autoClose: false }), { mode: 0o644, flag: "wx" });
+    if ((await fh.stat()).size > maxBytes) throw tooBig();
+    const stream = fh.createReadStream({ autoClose: false, end: maxBytes }); // end is inclusive: at most maxBytes + 1 bytes
+    await writeFile(dest, (async function* () {
+      for await (const chunk of stream) {
+        n += (chunk as Buffer).length;
+        if (n > maxBytes) throw tooBig();
+        yield chunk as Buffer;
+      }
+    })(), { mode: 0o644, flag: "wx" });
+  } catch (e) {
+    if (n > 0) await rm(dest, { force: true });
+    throw e;
   } finally {
     await fh.close();
   }
@@ -183,6 +217,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
           ...lockFlags(lim, host),
           "--log-driver", "none",
           "--label", `${JOB_LABEL}=${name}`,
+          "--label", `${WORKER_LABEL}=${deps.workerId && WORKER_ID.test(deps.workerId) ? deps.workerId : "unknown"}`,
           "-v", `${inDir}:/in:ro`,
           "-v", `${outDir}:/out:rw`,
           "-v", `${kitDir}:/opt/render/kit:ro`,
@@ -234,7 +269,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         const outPath = path.join(ctx.attemptDir, a.outFile);
         await rm(outPath, { force: true });
         await copyRegular(path.join(outDir, "out.mp4"), outPath, deps.maxVideoBytes ?? MAX_VIDEO_BYTES).catch((e: unknown) => {
-          throw new KnownFailure(e instanceof Error && /too big/.test(e.message) ? "The rendered video is too big." : "The render finished but made no video file.");
+          throw new KnownFailure(e instanceof Error && /bigger than/.test(e.message) ? "The rendered video is too big." : "The render finished but made no video file.");
         });
         let p: ProbeResult;
         try {

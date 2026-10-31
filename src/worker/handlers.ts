@@ -18,7 +18,9 @@ import { createWebTools } from "@/server/llm/web-tools";
 import { createImageFor } from "@/server/providers/image/wire";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
-import { createContainerRenderer, resolveRenderImage } from "@/server/providers/renderer/remotion-container";
+import { createContainerRenderer, resolveRenderImage, sweepRenderContainers } from "@/server/providers/renderer/remotion-container";
+import { isWorkerAlive } from "@/server/db/child-processes";
+import type { WorkerHooks } from "./runtime";
 import { probeVideo } from "@/server/render/probe";
 import { createFakeVoice } from "@/server/providers/voice/fake";
 import { runChild, type ChildRegistry } from "@/server/render/child";
@@ -89,13 +91,22 @@ export function renderKitDir(here: string = import.meta.dirname): string {
   return lstatSync(kit, { throwIfNoEntry: false })?.isDirectory() ? realpathSync(kit) : kit;
 }
 
+/**
+ * Worker hooks for the real worker: after taking its lock it removes render containers whose worker is dead (a live
+ * sibling's renders are kept). The dry run gets none, so it never touches Docker containers.
+ */
+export function workerHooksFor(pool: pg.Pool, env: Record<string, string | undefined>): Partial<WorkerHooks> {
+  if (env.ENGINE_DRY_RUN === "1") return {};
+  return { sweepRenderContainers: () => sweepRenderContainers({ isAlive: (id) => isWorkerAlive(pool, id) }) };
+}
+
 const notWired = (): never => { throw new KnownFailure("This step is not wired in production yet."); };
 
 /**
  * Real deps for the voice, mux and sound stages. Every ffmpeg/ffprobe/whisper child goes through the worker's registry
  * (which already carries the worker id), so a crash leaves them in child_processes for the orphan sweep.
  */
-export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildRegistry } = {}, root: string = storageRoot()): StageDeps {
+export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildRegistry; workerId?: string } = {}, root: string = storageRoot()): StageDeps {
   const run = (spec: Parameters<typeof runChild>[0]) => runChild(spec, { registry: env.childRegistry });
   const image = resolveRenderImage(); // once, at worker boot: renders run the image by its sha256 id (tag fallback is logged)
   return {
@@ -107,7 +118,7 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
     // Render runs in the locked-down render container (remotion-container.ts). The kit is read from the repo the worker runs in.
     renderer: createContainerRenderer({
-      root, kitDir: renderKitDir(), runChild: run, image: () => image,
+      root, kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId,
       assetFile: async (id) => { const a = await getAsset(pool, id); return a && !a.deletedAt && a.kind === "image" ? a.storageRef : null; },
       probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
     }),
@@ -118,7 +129,7 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
  * The handlers the real worker runs: draft, tts, render (container), voice (mux), sfx (mixer) and qa. build and generate stay
  * absent (refused as "missing stage handler"): Build always plans paid images, and Generate (paid) is gated until Phase 8.
  */
-export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRegistry } = {}): StageHandlers {
+export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRegistry; workerId?: string } = {}): StageHandlers {
   const draft: StageHandler = async (ctx) => {
     const searxUrl = process.env.SEARXNG_URL;
     if (!searxUrl) throw new KnownFailure("Web search is not set up (SEARXNG_URL), so a draft cannot be written.");

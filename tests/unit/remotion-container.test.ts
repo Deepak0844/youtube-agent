@@ -7,7 +7,7 @@ import { buildEngineConfig } from "@/server/core/engine-config";
 import { KnownFailure } from "@/server/core/paid-call";
 import { StageAbort, type StageContext } from "@/server/core/stage-handler";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
-import { createContainerRenderer, parseProgress, sweepRenderContainers, type ContainerRendererDeps } from "@/server/providers/renderer/remotion-container";
+import { copyRegular, createContainerRenderer, parseProgress, sweepRenderContainers, type ContainerRendererDeps } from "@/server/providers/renderer/remotion-container";
 
 const GOOD = path.resolve("tests/fixtures/video/good.mp4");
 const SIZE = { width: 1080, height: 1920 };
@@ -52,6 +52,7 @@ function deps(behave?: (spec: ChildSpec, outDir: string) => Promise<ChildResult>
     assetFile: async (id) => (id === "img1" ? "assets/j1/main.png" : null),
     probe: async () => ({ width: 1080, height: 1920, durationS: 2, hasAudio: true, meanDb: -20, peakDb: -1, loopDiff: 1 }),
     image: async () => ({ ref: IMAGE_ID, pinned: true }),
+    workerId: "w-1",
     sweepDelayMs: 1,
     runChild: async (spec) => {
       calls.push(spec);
@@ -92,7 +93,7 @@ describe("container renderer", () => {
       "--pull=never", "--network", "none", "--read-only", "--tmpfs", "/tmp:rw,nosuid,nodev,noexec,size=1g,mode=1777", "--shm-size=256m",
       "--user", "10001:10001", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
       "--pids-limit", "512", "--memory", "2700m", "--memory-swap", "2700m", "--cpus", "2", // clamped to the daemon (2 CPUs, 90% of 3000 MB)
-      "--log-driver", "none", "--label", `ytstudio.job=${name}`,
+      "--log-driver", "none", "--label", `ytstudio.job=${name}`, "--label", "ytstudio.worker=w-1",
       "-v", `${attemptDir}/render-in:/in:ro`, "-v", `${attemptDir}/render-out:/out:rw`, "-v", `${path.resolve("remotion/kit")}:/opt/render/kit:ro`,
       "-w", "/tmp", "--entrypoint", "node", IMAGE_ID, "/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4",
     ]);
@@ -228,11 +229,33 @@ describe("container renderer", () => {
 });
 
 describe("boot sweep of render containers", () => {
-  it("removes leftover render containers by label and name, never throws", async () => {
+  it("removes only containers of dead workers; a live sibling's render is left alone; never throws", async () => {
     const seen: string[][] = [];
-    const exec = async (a: string[]) => (seen.push(a), a[0] === "ps" ? "abcdef123456\nbad id\n0123456789ab\n" : "");
-    expect(await sweepRenderContainers(exec)).toBe(2);
-    expect(seen).toEqual([["ps", "-aq", "--filter", "label=ytstudio.job", "--filter", "name=ytstudio-render-"], ["rm", "-f", "abcdef123456", "0123456789ab"]]);
-    expect(await sweepRenderContainers(async () => { throw new Error("no docker"); })).toBe(0);
+    const exec = async (a: string[]) => (seen.push(a), a[0] === "ps" ? "abcdef123456 dead-1\nbad id\n0123456789ab live-1\nfedcba654321 dead-1\n111111111111 \n" : "");
+    const asked: string[] = [];
+    const isAlive = async (id: string) => (asked.push(id), id === "live-1");
+    expect(await sweepRenderContainers({ exec, isAlive })).toBe(2);
+    expect(seen).toEqual([
+      ["ps", "-a", "--filter", "label=ytstudio.job", "--filter", "label=ytstudio.worker", "--filter", "name=ytstudio-render-", "--format", '{{.ID}} {{.Label "ytstudio.worker"}}'],
+      ["rm", "-f", "abcdef123456", "fedcba654321"],
+    ]);
+    expect(asked.sort()).toEqual(["dead-1", "live-1"]);
+    // a liveness check that fails counts as alive: nothing is removed
+    seen.length = 0;
+    expect(await sweepRenderContainers({ exec, isAlive: async () => { throw new Error("db down"); } })).toBe(0);
+    expect(seen.filter((x) => x[0] === "rm")).toHaveLength(0);
+    expect(await sweepRenderContainers({ exec: async () => { throw new Error("no docker"); }, isAlive })).toBe(0);
+  });
+});
+
+describe("copyRegular", () => {
+  it("reads at most the cap: a bigger file is refused and no partial copy is left", async () => {
+    const src = path.join(root, "big.bin");
+    writeFileSync(src, Buffer.alloc(100));
+    const dest = path.join(root, "copy.bin");
+    await expect(copyRegular(src, dest, 10)).rejects.toThrow(/bigger than 10 bytes/);
+    expect(existsSync(dest)).toBe(false);
+    await copyRegular(src, path.join(root, "ok.bin"), 100);
+    expect(readFileSync(path.join(root, "ok.bin")).length).toBe(100);
   });
 });
