@@ -78,6 +78,9 @@ export function claudeArgs(modelId: string): string[] {
     "--tools", "",
     "--disallowedTools", BUILTIN_TOOLS.join(","),
     "--permission-mode", "dontAsk",
+    // Only project and local settings, and the cwd is an empty temp dir, so none load: the owner's user settings
+    // (apiKeyHelper, env.ANTHROPIC_API_KEY, CLAUDE_CODE_USE_BEDROCK...) cannot switch billing away from the subscription login.
+    "--setting-sources", "project,local",
     "--strict-mcp-config", "--safe-mode", "--disable-slash-commands", "--no-session-persistence",
     "--system-prompt", SYSTEM_PROMPT,
   ];
@@ -120,6 +123,7 @@ async function runOnce(deps: ClaudeCodeDeps, args: string[], input: string, sign
         if (done) return;
         done = true;
         timers.forEach(clearTimeout);
+        for (const st of [child.stdin, child.stdout, child.stderr]) st.destroy(); // a grandchild may still hold the pipes
         signal?.removeEventListener("abort", onAbort);
         resolve({ code, stdout: out.toString("utf8"), stderr: err, ...(failed && { failed }) });
       };
@@ -128,7 +132,12 @@ async function runOnce(deps: ClaudeCodeDeps, args: string[], input: string, sign
         failed = why;
         if (child.pid === undefined) return finish(null);
         killGroup(child.pid, "SIGTERM");
-        timers.push(setTimeout(() => killGroup(child.pid!, "SIGKILL"), deps.killGraceMs ?? 5000));
+        const grace = deps.killGraceMs ?? 5000;
+        timers.push(setTimeout(() => {
+          killGroup(child.pid!, "SIGKILL");
+          // No 'close' after SIGKILL (a failed kill, a grandchild holding the pipes): give up so the queue moves on.
+          timers.push(setTimeout(() => finish(null), grace));
+        }, grace));
       };
       const onAbort = () => stop("aborted");
       signal?.addEventListener("abort", onAbort, { once: true });
@@ -155,10 +164,14 @@ async function runOnce(deps: ClaudeCodeDeps, args: string[], input: string, sign
   }
 }
 
-const LIMIT = /usage limit|rate limit|too many requests|\b429\b/i;
-const LOGIN = /not logged in|\/login|invalid api key|authentication|\b401\b/i;
+// Anchored to the CLI's own error sentences (the start of its `result` field, or of stderr): a stray "429" in text is not a refusal.
+const LIMIT = /^(?:Claude AI usage limit reached|You(?:'|\u2019)ve (?:hit|reached) your (?:usage )?limit|API Error: 429\b|API Error: Rate limit)/i;
+const LOGIN = /^(?:Invalid API key|Not logged in|Please run \/login|OAuth token (?:has expired|has been revoked)|API Error: 401\b)/i;
 
-function interpret(r: Ran): { text: string; input: number; output: number } {
+const CANCELLED = "The stage was cancelled, so Claude Code was stopped.";
+
+function interpret(r: Ran): { text: string; input: number | undefined; output: number | undefined } {
+  if (r.failed === "aborted") throw refuse(CANCELLED); // $0 and cancelled on purpose: not an unknown outcome
   if (r.failed === "missing") throw refuse("Claude Code is not installed or not on PATH");
   if (r.failed) throw own(new Error(r.failed === "timeout" ? `Claude Code took too long and was stopped. ${MAYBE}` : UNKNOWN));
   let j: { is_error?: unknown; subtype?: unknown; result?: unknown; usage?: Record<string, unknown> } | undefined;
@@ -168,15 +181,17 @@ function interpret(r: Ran): { text: string; input: number; output: number } {
   } catch {
     // fall through
   }
-  const said = typeof j?.result === "string" ? j.result : r.stderr;
+  const said = (typeof j?.result === "string" ? j.result : r.stderr).trimStart();
   if (!j || j.is_error === true || j.subtype !== "success" || r.code !== 0) {
     if (LIMIT.test(said)) throw own(new NotProcessedError("Claude Code says the subscription usage limit or rate limit is reached. Try again later.", { status: 429 }));
     if (LOGIN.test(said)) throw own(new NotProcessedError("Claude Code is not logged in on this machine. Run `claude` once and log in.", { status: 401 }));
     throw own(new Error(UNKNOWN));
   }
   if (typeof j.result !== "string") throw own(new Error(UNKNOWN));
-  const n = (k: string) => (typeof j!.usage?.[k] === "number" && Number.isFinite(j!.usage[k]) ? (j!.usage[k] as number) : 0);
-  return { text: j.result, input: n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens"), output: n("output_tokens") };
+  const n = (k: string) => (typeof j!.usage?.[k] === "number" && Number.isFinite(j!.usage[k]) ? (j!.usage[k] as number) : undefined);
+  // Fail closed like the step layer: no input/output count -> undefined -> "provider returned no token usage" (unknown).
+  const input = n("input_tokens");
+  return { text: j.result, input: input === undefined ? undefined : input + (n("cache_creation_input_tokens") ?? 0) + (n("cache_read_input_tokens") ?? 0), output: n("output_tokens") };
 }
 
 export function createClaudeCodeModel(modelId: string, deps: ClaudeCodeDeps): LanguageModel {
@@ -190,9 +205,12 @@ export function createClaudeCodeModel(modelId: string, deps: ClaudeCodeDeps): La
       if ((options.tools?.length ?? 0) > 0) throw refuse("Claude Code runs with tools off here, so it cannot run tool steps.");
       const input = promptText(options.prompt as Prompt);
       if (!(await deps.gate.enabled())) throw refuse("Claude Code is switched off. Turn it on in Settings > Models.");
+      const signal = options.abortSignal;
       const r = await queue.run(async () => {
+        if (signal?.aborted) throw refuse(CANCELLED); // cancelled while queued: no cap slot used
         if (!(await deps.gate.takeSlot())) throw refuse("daily Claude Code cap reached. It resets at midnight UTC.");
-        return runOnce(deps, claudeArgs(modelId), input, options.abortSignal);
+        if (signal?.aborted) throw refuse(CANCELLED);
+        return runOnce(deps, claudeArgs(modelId), input, signal);
       });
       const { text, input: inTok, output: outTok } = interpret(r);
       return {

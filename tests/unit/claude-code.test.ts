@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { existsSync, readdirSync } from "node:fs";
 import { PassThrough } from "node:stream";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Message } from "@/server/core/agent-loop";
 import { NotProcessedError, classifyError } from "@/server/core/error-class";
 import { KnownFailure, runPaidCall, type PaidCallPorts } from "@/server/core/paid-call";
@@ -96,6 +96,8 @@ describe("claude code adapter", () => {
     const a = r!.args;
     expect(a.slice(0, 3)).toEqual(["-p", "--output-format", "json"]);
     expect(a[a.indexOf("--tools") + 1]).toBe("");
+    expect(a.indexOf("--tools")).toBeGreaterThan(-1);
+    expect(a[a.indexOf("--setting-sources") + 1]).toBe("project,local"); // user settings (apiKeyHelper, env) are not loaded
     for (const t of ["Bash", "Edit", "Write", "Read", "WebFetch", "WebSearch"]) expect(a[a.indexOf("--disallowedTools") + 1]!.split(",")).toContain(t);
     expect(a[a.indexOf("--permission-mode") + 1]).toBe("dontAsk");
     for (const f of ["--strict-mcp-config", "--safe-mode", "--disable-slash-commands", "--no-session-persistence"]) expect(a).toContain(f);
@@ -103,7 +105,7 @@ describe("claude code adapter", () => {
     expect(a.join(" ")).not.toContain("Make a title");
     expect(r!.stdin).toContain("Make a title about --dangerously-skip-permissions");
     expect(r!.stdin).toContain("Reply with JSON.");
-    expect(Object.keys(r!.opts.env).sort()).toEqual(["HOME", "LANG", "PATH", "TERM"]);
+    expect(r!.opts.env).toEqual({ PATH: "/usr/bin", HOME: "/Users/o", LANG: "en_US.UTF-8", TERM: "xterm" });
     expect(r!.cwdWasEmpty).toBe(true);
     expect(existsSync(r!.opts.cwd)).toBe(false); // deleted afterwards
   });
@@ -230,6 +232,90 @@ describe("claude code adapter", () => {
     await runPaidCall(ports, ctx, call);
     expect(h.runs).toHaveLength(1);
     expect(h.slots()).toBe(1);
+  });
+
+  it("a child that never closes is given up after SIGKILL and the queue moves on", async () => {
+    let n = 0;
+    const h = harness(({ child }) => (n++ === 0 ? undefined : child.finish(OK)), { timeoutMs: 20, killGraceMs: 20, killGroup: () => {} });
+    const first = caught(run(h));
+    const second = run(h);
+    const e = await first;
+    expect(classifyError(e)).toBe("unknown");
+    expect((await second).text).toBe('{"title":"hi"}');
+    expect(existsSync(h.runs[0]!.opts.cwd)).toBe(false);
+  });
+
+  it("the default killGroup signals the whole group with process.kill(-pid)", async () => {
+    const spy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    try {
+      const h = harness(() => {}, { timeoutMs: 20, killGraceMs: 10, killGroup: undefined });
+      await caught(run(h));
+      expect(spy.mock.calls).toEqual([[-4242, "SIGTERM"], [-4242, "SIGKILL"]]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("removes the temp dir after a missing binary too", async () => {
+    const h = harness(({ child }) => setImmediate(() => child.emit("error", Object.assign(new Error("x"), { code: "ENOENT" }))));
+    await caught(run(h));
+    expect(existsSync(h.runs[0]!.opts.cwd)).toBe(false);
+  });
+
+  it("many small stdout chunks still hit the cap", async () => {
+    const h = harness(({ child }) => { for (let i = 0; i < 300; i++) child.stdout.write("xxxx"); }, { maxStdoutBytes: 1000 });
+    const e = await caught(run(h));
+    expect(h.kills[0]).toEqual([4242, "SIGTERM"]);
+    expect(classifyError(e)).toBe("unknown");
+  });
+
+  it("detects the usage limit and login phrases from stderr when stdout is not JSON", async () => {
+    const lim = await caught(run(harness(({ child }) => child.finish("", 1, "Claude AI usage limit reached|1761955200\n"))));
+    expect(classifyError(lim)).toBe("transient");
+    const login = await caught(run(harness(({ child }) => child.finish("", 1, "Invalid API key · Please run /login\n"))));
+    expect(classifyError(login)).toBe("permanent");
+  });
+
+  it("does not treat a stray 429, 401 or 'authentication' in an answer as a clear rejection", async () => {
+    for (const said of ["The answer mentions error 429 somewhere", "Talk about authentication and 401 codes"]) {
+      const e = await caught(run(harness(({ child }) => child.finish(JSON.stringify({ type: "result", subtype: "error_during_execution", is_error: true, result: said }), 1))));
+      expect(classifyError(e), said).toBe("unknown");
+    }
+  });
+
+  it("missing token usage fails closed (unknown), never silently 0", async () => {
+    const e = await caught(run(harness(({ child }) => child.finish(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "ok" })))));
+    expect(classifyError(e)).toBe("unknown");
+  });
+
+  it("a stage cancelled while queued is refused before a cap slot is used", async () => {
+    const pending: FakeChild[] = [];
+    let took = 0;
+    const h = harness(({ child }) => void pending.push(child), { gate: { enabled: async () => true, takeSlot: async () => (took++, true) } });
+    const a = run(h);
+    const ac = new AbortController();
+    const b = caught(h.step(MSGS, "k2", ac.signal));
+    await new Promise((r) => setTimeout(r, 20));
+    ac.abort();
+    pending[0]!.finish(OK);
+    await a;
+    const e = await b;
+    expect(e).toBeInstanceOf(KnownFailure);
+    expect(e.message).toMatch(/cancelled/);
+    expect(took).toBe(1);
+    expect(h.runs).toHaveLength(1);
+  });
+
+  it("a stage cancelled mid-run kills the group and is a known failure, not unknown", async () => {
+    const h = harness(() => {});
+    const ac = new AbortController();
+    const p = caught(h.step(MSGS, "k", ac.signal));
+    await new Promise((r) => setTimeout(r, 20));
+    ac.abort();
+    const e = await p;
+    expect(h.kills[0]).toEqual([4242, "SIGTERM"]);
+    expect(e).toBeInstanceOf(KnownFailure);
+    expect(e.message).toMatch(/cancelled/);
   });
 });
 

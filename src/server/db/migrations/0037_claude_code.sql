@@ -9,3 +9,5 @@ create table if not exists claude_code_daily_calls (
   day date primary key,
   calls integer not null check (calls >= 0)
 );
+-- The app only counts up (insert ... on conflict do update). It may never delete or truncate the day's count to dodge the cap.
+revoke delete, truncate on claude_code_daily_calls from ytstudio_app;
