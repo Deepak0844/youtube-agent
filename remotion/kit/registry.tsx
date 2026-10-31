@@ -279,10 +279,13 @@ export const KitScene: React.FC<KitSceneProps> = ({ scene, resolveAsset = placeh
   }
 };
 
-export type KitVideoProps = { doc: SceneDoc; resolveAsset?: ResolveAsset; audioSrc?: string; captions?: CaptionWord[]; fps?: number };
+// `assets` (JSON-safe, from the render job): asset id -> file path in the public dir. Ids not in it get the placeholder.
+export type KitVideoProps = { doc: SceneDoc; resolveAsset?: ResolveAsset; assets?: Record<string, string>; audioSrc?: string; captions?: CaptionWord[]; fps?: number };
+
+const fromStaged = (assets: Record<string, string>): ResolveAsset => (id) => (Object.hasOwn(assets, id) ? staticFile(assets[id]!) : placeholder(id));
 
 // Whole video: scenes on a timeline, optional narration, optional karaoke captions on top.
-export const KitVideo: React.FC<KitVideoProps> = ({ doc, resolveAsset = placeholder, audioSrc, captions, fps = theme.fps }) => (
+export const KitVideo: React.FC<KitVideoProps> = ({ doc, assets, resolveAsset = assets ? fromStaged(assets) : placeholder, audioSrc, captions, fps = theme.fps }) => (
   <AbsoluteFill style={{ background: theme.palette.bg }}>
     {doc.scenes.map((scene) => {
       const r = sceneRange(scene, fps);

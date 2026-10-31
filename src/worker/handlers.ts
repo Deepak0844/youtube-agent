@@ -1,3 +1,4 @@
+import { lstatSync, realpathSync } from "node:fs";
 import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type pg from "pg";
@@ -7,7 +8,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { STAGE_NAMES, stagePlan, type StageName } from "@/server/core/pipeline-plan";
 import { createSemaphore } from "@/server/core/semaphore";
 import type { StageHandler } from "@/server/core/stage-handler";
-import { AssetRefused, registerAsset } from "@/server/db/assets";
+import { AssetRefused, getAsset, registerAsset } from "@/server/db/assets";
 import { recordAudit } from "@/server/db/audit";
 import { assetForJob, claimIngestJob, expireReceiving, loadLimits, MAX_INGEST_TRIES, markDone, markRejected, requeueJob, runningIngestIds } from "@/server/db/ingest-jobs";
 import { loadKeyring } from "@/server/db/master-key";
@@ -17,6 +18,10 @@ import { createWebTools } from "@/server/llm/web-tools";
 import { createImageFor } from "@/server/providers/image/wire";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
+import { createContainerRenderer, resolveRenderImage, sweepRenderContainers } from "@/server/providers/renderer/remotion-container";
+import { isWorkerAlive } from "@/server/db/child-processes";
+import type { WorkerHooks } from "./runtime";
+import { probeVideo } from "@/server/render/probe";
 import { createFakeVoice } from "@/server/providers/voice/fake";
 import { runChild, type ChildRegistry } from "@/server/render/child";
 import { scanVideo } from "@/server/render/qa-scan";
@@ -77,27 +82,54 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
   };
 }
 
+/**
+ * remotion/kit next to this module (never the working directory). Symlinks on the way are resolved, but a kit folder that
+ * is itself a symlink or is missing is passed as is, and the renderer refuses it (no docker -v ever creates a folder).
+ */
+export function renderKitDir(here: string = import.meta.dirname): string {
+  const kit = path.resolve(here, "..", "..", "remotion", "kit");
+  return lstatSync(kit, { throwIfNoEntry: false })?.isDirectory() ? realpathSync(kit) : kit;
+}
+
+/**
+ * Worker hooks for the real worker: after taking its lock it removes render containers whose worker is dead (a live
+ * sibling's renders are kept). The dry run gets none, so it never touches Docker containers.
+ */
+export function workerHooksFor(pool: pg.Pool, env: Record<string, string | undefined>): Partial<WorkerHooks> {
+  if (env.ENGINE_DRY_RUN === "1") return {};
+  return { sweepRenderContainers: () => sweepRenderContainers({ isAlive: (id) => isWorkerAlive(pool, id) }) };
+}
+
 const notWired = (): never => { throw new KnownFailure("This step is not wired in production yet."); };
 
 /**
  * Real deps for the voice, mux and sound stages. Every ffmpeg/ffprobe/whisper child goes through the worker's registry
  * (which already carries the worker id), so a crash leaves them in child_processes for the orphan sweep.
  */
-export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildRegistry } = {}, root: string = storageRoot()): StageDeps {
+export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildRegistry; workerId?: string } = {}, root: string = storageRoot()): StageDeps {
   const run = (spec: Parameters<typeof runChild>[0]) => runChild(spec, { registry: env.childRegistry });
+  const image = resolveRenderImage(); // once, at worker boot: renders run the image by its sha256 id (tag fallback is logged)
   return {
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
     qaScan: scanVideo,
     mix: { runChild: run, audioRoot: path.join(root, "audio") },
-    // build/generate/render are not wired in production yet (Phase 4); these stages never call them, and if one ever did it refuses.
+    // build/generate are not wired in production yet; those stages never call image, and if one ever did it refuses.
     imageFor: createImageFor(pool, () => loadKeyring(), root),
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
-    renderer: { render: notWired },
+    // Render runs in the locked-down render container (remotion-container.ts). The kit is read from the repo the worker runs in.
+    renderer: createContainerRenderer({
+      root, kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId,
+      assetFile: async (id) => { const a = await getAsset(pool, id); return a && !a.deletedAt && a.kind === "image" ? a.storageRef : null; },
+      probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
+    }),
   };
 }
 
-/** The handlers the real worker runs: draft, tts, voice (mux) and sfx (mixer). build/generate/render/qa stay absent (refused as "missing stage handler"). */
-export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRegistry } = {}): StageHandlers {
+/**
+ * The handlers the real worker runs: draft, tts, render (container), voice (mux), sfx (mixer) and qa. build and generate stay
+ * absent (refused as "missing stage handler"): Build always plans paid images, and Generate (paid) is gated until Phase 8.
+ */
+export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRegistry; workerId?: string } = {}): StageHandlers {
   const draft: StageHandler = async (ctx) => {
     const searxUrl = process.env.SEARXNG_URL;
     if (!searxUrl) throw new KnownFailure("Web search is not set up (SEARXNG_URL), so a draft cannot be written.");
@@ -113,8 +145,10 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
   return {
     draft: refuseDryRunVideos(pool, draft),
     tts: refuseDryRunVideos(pool, withAttempt(fin, ttsAttempt(deps))),
+    render: refuseDryRunVideos(pool, withAttempt(fin, renderAttempt(deps))),
     voice: refuseDryRunVideos(pool, withAttempt(fin, voiceAttempt(deps))),
     sfx: refuseDryRunVideos(pool, sfxHandler(fin, deps)),
+    qa: refuseDryRunVideos(pool, withAttempt(fin, qaAttempt(deps))),
   };
 }
 

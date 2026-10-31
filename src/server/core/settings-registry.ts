@@ -80,6 +80,11 @@ export const SETTINGS = {
   "qa.long_height": { schema: posInt, default: 1080, safety: true, label: "QA long height" },
   "qa.long_min_s": { schema: posNum, default: 180, safety: true, label: "QA long min seconds" },
   "qa.long_max_s": { schema: posNum, default: 900, safety: true, label: "QA long max seconds" },
+  // Render sandbox limits (ADR 0003). Safety: raising them loosens the container. Upper bounds keep a ceiling.
+  "render.timeout_s": { schema: posInt.max(3600), default: 600, safety: true, label: "Render time limit, seconds" },
+  "render.cpus": { schema: posInt.max(32), default: 4, safety: true, label: "Render CPUs" },
+  "render.memory_mb": { schema: posInt.min(1024).max(16384), default: 4096, safety: true, label: "Render memory (MB)" },
+  "render.pids": { schema: posInt.min(64).max(2048), default: 512, safety: true, label: "Render process limit" },
   "notify.master": { schema: z.boolean(), default: true, safety: false, label: "Notifications on (master switch)" },
   "notify.quiet_hours": { schema: quietHours, default: { enabled: false, start: "22:00", end: "07:00", tz: "Asia/Kolkata" }, safety: false, label: "Quiet hours" },
   "notify.events": { schema: notifyEvents, default: DEFAULT_EVENT_SWITCHES as Record<string, unknown>, safety: false, label: "Notification switches per event and channel" },
@@ -90,6 +95,14 @@ export const SETTINGS = {
   // Claude Code text provider (ADR 0014). Safety: turning it on starts a program on this machine; the cap bounds subscription use.
   "claude_code.enabled": { schema: z.boolean(), default: false, safety: true, label: "Claude Code on this machine for text stages" },
   "claude_code.daily_cap": { schema: posInt.max(10_000), default: 200, safety: true, label: "Claude Code calls per UTC day" },
+  // The routes the "AI source" switch replaced (stage -> model id, or null for none); null = the switch is off. Safety:
+  // turning the switch off writes these back as routes.
+  "ai.previous_routes": {
+    schema: z.record(z.string().regex(/^[a-z_]{1,40}$/), z.string().uuid().nullable()).nullable(),
+    default: null,
+    safety: true,
+    label: "Routes to restore when Claude Code is switched off",
+  },
   "display.currency": { schema: z.string().min(1), default: "USD", safety: false, label: "Display currency" },
 } satisfies Record<string, SettingDef>;
 

@@ -27,6 +27,7 @@ const ALTERNATE: Record<string, unknown> = {
   "voice.voicestudio_url": "http://127.0.0.1:8881",
   "claude_code.enabled": true,
   "claude_code.daily_cap": 5,
+  "ai.previous_routes": { outline: null },
   "assets.max_image_bytes": 1_000_000,
   "assets.max_audio_bytes": 1_000_000,
   "assets.max_pixels": 1_000_000,
@@ -60,6 +61,10 @@ const ALTERNATE: Record<string, unknown> = {
   "qa.long_height": 720,
   "qa.long_min_s": 60,
   "qa.long_max_s": 1200,
+  "render.timeout_s": 900,
+  "render.cpus": 2,
+  "render.memory_mb": 2048,
+  "render.pids": 256,
 };
 
 describe("safety settings are session-only (database)", () => {

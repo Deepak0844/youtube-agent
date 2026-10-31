@@ -194,7 +194,8 @@ export function RouteForm({
   return (
     <form action={action} className="flex flex-col gap-2 sm:flex-row sm:items-center">
       <input type="hidden" name="stage" value={stage} />
-      <select name="modelId" defaultValue={current} aria-label={`Model for ${stage}`} className={cn(selectClass, "sm:max-w-80")}>
+      {/* keyed by the route: a route changed elsewhere (the AI source switch) remounts the select with the new value */}
+      <select key={current} name="modelId" defaultValue={current} aria-label={`Model for ${stage}`} className={cn(selectClass, "sm:max-w-80")}>
         <option value="">Not set</option>
         {options.map((o) => (
           <option key={o.id} value={o.id}>

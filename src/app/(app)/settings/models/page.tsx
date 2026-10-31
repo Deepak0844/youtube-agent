@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import {
   PROVIDERS,
@@ -9,6 +9,8 @@ import {
   microToUsd,
   type ModelRow,
 } from "@/server/core/llm-catalog";
+import { claudeCodeStageFit } from "@/server/core/ai-source";
+import { getClaudeCodeStatus, type ClaudeCodeStatus } from "@/server/db/claude-code";
 import { getPool } from "@/server/db/pool";
 import { listDefaults, listModels, listRoutes, localServices, modelsForStage, type CatalogDefault } from "@/server/db/llm-models";
 import { Pill } from "@/ui/primitives/pill";
@@ -18,6 +20,7 @@ import { LastTestLine } from "./last-test";
 import { getEvalBadges } from "@/server/db/llm-eval";
 import type { Badge } from "@/server/core/eval-rules";
 import { EvalBadge } from "./eval-badge";
+import { AiSourceForm, TestClaudeCodeButton } from "./ai-source";
 import { EMPTY_MODEL, IdButton, ModelForm, RouteForm, TestModelButton, type ModelFormValues } from "./model-form";
 
 // The model catalog is the owner's: ids and prices are data. Page and actions are session-only (requireOwner first).
@@ -34,8 +37,8 @@ export default function ModelsPage() {
 async function Owned() {
   await requireOwner();
   const db = getPool();
-  const [models, routes, defaults, local, tests, badges] = await Promise.all([listModels(db), listRoutes(db), listDefaults(db), localServices(db), getLastTests(db), getEvalBadges(db)]);
-  return <Models models={models} routes={routes} defaults={defaults} local={local} tests={tests} badges={badges} />;
+  const [models, routes, defaults, local, tests, badges, cc] = await Promise.all([listModels(db), listRoutes(db), listDefaults(db), localServices(db), getLastTests(db), getEvalBadges(db), getClaudeCodeStatus(db)]);
+  return <Models models={models} routes={routes} defaults={defaults} local={local} tests={tests} badges={badges} cc={cc} />;
 }
 
 const usd = (micro: number) => `$${microToUsd(micro)}`;
@@ -96,7 +99,83 @@ function Money({ m, local }: { m: ModelRow; local: string[] }) {
   );
 }
 
-function Models({ models, routes, defaults, local, tests, badges }: { models: ModelRow[]; routes: Record<string, string>; defaults: CatalogDefault[]; local: string[]; tests: Map<string, LastTest>; badges: Map<string, Badge> }) {
+const LAST: Record<NonNullable<ClaudeCodeStatus["last"]>["result"], { text: string; ok: boolean }> = {
+  ready: { text: "Ready", ok: true },
+  not_found: { text: "Not found (not installed or not on PATH)", ok: false },
+  not_logged_in: { text: "Not logged in", ok: false },
+  limit_reached: { text: "Subscription limit reached", ok: false },
+  failed: { text: "Did not finish cleanly", ok: false },
+};
+const WHEN = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
+
+/** The switch and the Claude Code status box. Everything here is read from the database: nothing is started on page load. */
+function ClaudeCodeSection({ cc }: { cc: ClaudeCodeStatus }) {
+  const fit = claudeCodeStageFit();
+  const stays = fit.filter((f) => !f.ok);
+  const notes = fit.filter((f) => f.ok && f.why);
+  const rows: [string, ReactNode][] = [
+    ["Claude Code", <Pill key="e" tone={cc.enabled ? "positive" : "neutral"}>{cc.enabled ? "Enabled" : "Disabled"}</Pill>],
+    [
+      "Last call",
+      cc.last ? (
+        <span key="l" className={LAST[cc.last.result].ok ? "text-positive" : "text-negative"}>
+          {LAST[cc.last.result].text}
+          <span className="text-faint"> · {WHEN.format(cc.last.at)} UTC</span>
+        </span>
+      ) : (
+        <span key="l" className="text-faint">No call yet</span>
+      ),
+    ],
+    ["Login the program reported", cc.last?.auth ?? <span key="a" className="text-faint">Not reported by the program</span>],
+    ["Used today", <span key="u" className="font-mono tabular-nums">{cc.usedToday} of {cc.cap} calls (resets at midnight UTC)</span>],
+    ["Cost recorded", <span key="c" className="font-mono tabular-nums">$0.00</span>],
+    ["Tools", "Off (text only)"],
+  ];
+  return (
+    <section aria-labelledby="source-h" className="flex flex-col gap-gap">
+      <h2 id="source-h" className="text-title font-semibold">AI source</h2>
+      <div className="flex flex-col gap-6 rounded-card bg-surface p-pad lg:grid lg:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-3">
+          <AiSourceForm on={cc.switchOn} />
+          <div className="text-small text-muted">
+            <p>Claude Code takes over the text stages it can do. You can still change any single stage below.</p>
+            {stays.length > 0 ? (
+              <ul className="mt-1 list-disc pl-5">
+                {stays.map((s) => (
+                  <li key={s.label}>{s.label} stays on its API model: it {s.why}, and Claude Code runs with tools off here.</li>
+                ))}
+                {notes.map((s) => (
+                  <li key={s.label}>{s.label}: {s.why}</li>
+                ))}
+              </ul>
+            ) : null}
+            <p className="mt-1">If Claude Code is unavailable, those stages stop and wait for you. They never fall back to a paid API.</p>
+          </div>
+        </div>
+        <div className="flex min-w-0 flex-col gap-3">
+          <h3 className="text-section font-semibold">Claude Code status</h3>
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-body">
+            {rows.map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="text-muted">{k}</dt>
+                <dd className="min-w-0 [overflow-wrap:anywhere]">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          {cc.last?.auth && cc.last.auth !== "none" ? (
+            <p className="text-small text-negative">
+              The program reported an API key login ({cc.last.auth}). Calls may be billed to the Anthropic API while the books here say $0. Log out of claude and log in with your claude.ai subscription.
+            </p>
+          ) : null}
+          <p className="text-small text-warning">Log in to claude with your claude.ai subscription, not a Console API key: a key would bill the API while the books here say $0.</p>
+          <TestClaudeCodeButton disabled={!cc.enabled} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Models({ models, routes, defaults, local, tests, badges, cc }: { models: ModelRow[]; routes: Record<string, string>; defaults: CatalogDefault[]; local: string[]; tests: Map<string, LastTest>; badges: Map<string, Badge>; cc: ClaudeCodeStatus }) {
   const providers = PROVIDERS.map((p) => ({ id: p.id, label: p.label }));
   const byId = new Map(models.map((m) => [m.id, m]));
   return (
@@ -107,6 +186,8 @@ function Models({ models, routes, defaults, local, tests, badges }: { models: Mo
           Your catalog and the model each stage uses. A stage runs on exactly one model; if it fails you see the error and choose again.
         </p>
       </header>
+
+      <ClaudeCodeSection cc={cc} />
 
       <section aria-labelledby="routes-h" className="flex flex-col gap-gap">
         <h2 id="routes-h" className="text-title font-semibold">Stage routing</h2>

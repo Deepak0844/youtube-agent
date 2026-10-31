@@ -307,6 +307,12 @@ describe("LlmClient.agent", () => {
     expect(l.reserves).toEqual([]);
   });
 
+  it("a_tool_free_agent_call_needs_no_tool_use_so_scene_build_runs_on_a_text_only_model", async () => {
+    const s = setup({ models: [mk({ capabilities: { ...caps, toolUse: false } })], routes: { build_scene_kit: mk().id }, script: [answer("scene")] });
+    const out = await s.client.agent(ctxOn(newLedger()), { stage: "build_scene_kit", tools: [], messages: msgs, maxSteps: 1, maxOutputTokens: 200 });
+    expect(out.text).toBe("scene");
+  });
+
   it("agent_steps_go_through_the_stage_paid_function_and_share_its_step_numbers", async () => {
     const s = setup({ script: [answer(good, 50, 5), { text: "", toolCalls: [{ id: "c1", name: "echo", args: {} }], usage: { inputTokens: 40, outputTokens: 4 } }, answer("done", 60, 6)] });
     const l = newLedger();

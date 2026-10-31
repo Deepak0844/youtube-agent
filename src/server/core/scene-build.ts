@@ -52,7 +52,7 @@ function checkPick(text: string, kinds: readonly string[]): { ok: true; value: s
   return { ok: false, errors: [raw === undefined ? "The answer was not valid JSON." : `kind must be one of ${kinds.join(", ")}`] };
 }
 
-function parseJson(text: string): unknown {
+export function parseJson(text: string): unknown {
   const t = text.trim();
   const body = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(t)?.[1] ?? t;
   try {
@@ -62,7 +62,8 @@ function parseJson(text: string): unknown {
   }
 }
 
-function assetRefs(v: unknown, out: string[] = []): string[] {
+/** Every asset id a scene (or a whole doc) points at: values of "asset" and "image" keys. */
+export function assetRefs(v: unknown, out: string[] = []): string[] {
   if (Array.isArray(v)) v.forEach((x) => assetRefs(x, out));
   else if (v && typeof v === "object") {
     for (const [k, x] of Object.entries(v)) {
@@ -90,7 +91,7 @@ function check(text: string, kind: string, assets: readonly string[]): { ok: tru
 }
 
 /** Asks, checks, retries with the errors fed back (max 2); the same errors twice in a row stop. Returns the value or the last errors. */
-async function withRetries<T>(ask: AskScene, messages: Message[], check: (text: string) => { ok: true; value: T } | { ok: false; errors: string[] }): Promise<{ value: T } | { errors: string[] }> {
+export async function withRetries<T>(ask: AskScene, messages: Message[], check: (text: string) => { ok: true; value: T } | { ok: false; errors: string[] }): Promise<{ value: T } | { errors: string[] }> {
   let prev = "";
   for (let a = 0; ; a++) {
     const text = await ask(messages);

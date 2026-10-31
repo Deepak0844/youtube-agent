@@ -157,18 +157,29 @@ function translate(err: unknown): never {
 export async function createModel(db: pg.Pool, raw: unknown, opts: { actor: Actor }): Promise<ModelRow> {
   assertSession(opts.actor);
   const local = await localServices(db);
+  return tx(db, (c) => createModelIn(c, raw, local, opts));
+}
+
+/** createModel inside the caller's transaction (same checks and audit row). `id` lets the caller plan with the row first. */
+export async function createModelIn(c: pg.PoolClient, raw: unknown, local: string[], opts: { actor: Actor; id?: string }): Promise<ModelRow> {
+  assertSession(opts.actor);
+  if (opts.id !== undefined) assertId(opts.id);
   const m = parseInput(raw, local);
-  return tx(db, async (c) => {
-    const { rows } = await c
-      .query<DbModel>(
-        `insert into llm_models (provider, model_id, label, base_url, prices, is_free, capabilities, endpoint_kind, enabled)
-         values ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8, $9) returning ${COLS}`,
-        [m.provider, m.modelId, m.label, m.baseUrl, m.prices ? JSON.stringify(m.prices) : null, m.isFree, JSON.stringify(m.capabilities), m.endpointKind, m.enabled],
-      )
-      .catch(translate);
-    await recordAudit(c, "model.added", { id: rows[0]!.id, ...auditDetail(m) });
-    return toRow(rows[0]!);
-  });
+  const { rows } = await c
+    .query<DbModel>(
+      `insert into llm_models (id, provider, model_id, label, base_url, prices, is_free, capabilities, endpoint_kind, enabled)
+       values (coalesce($10::uuid, gen_random_uuid()), $1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8, $9) returning ${COLS}`,
+      [m.provider, m.modelId, m.label, m.baseUrl, m.prices ? JSON.stringify(m.prices) : null, m.isFree, JSON.stringify(m.capabilities), m.endpointKind, m.enabled, opts.id ?? null],
+    )
+    .catch(translate);
+  await recordAudit(c, "model.added", { id: rows[0]!.id, ...auditDetail(m) });
+  return toRow(rows[0]!);
+}
+
+/** The given catalog rows, locked FOR SHARE until the caller's transaction ends (a concurrent edit or delete waits). */
+export async function lockModels(c: pg.PoolClient, ids: string[]): Promise<ModelRow[]> {
+  const { rows } = await c.query<DbModel>(`select ${COLS} from llm_models where id = any($1::uuid[]) for share`, [ids]);
+  return rows.map(toRow);
 }
 
 /** Routes pointing at the model must stay valid after the edit (enabled, priced, capable for their stage). */
@@ -237,7 +248,8 @@ export async function copyDefault(db: pg.Pool, defaultId: string, opts: { actor:
     enabled: false,
   };
   // A free suggestion only stays free where the address is local on this installation; otherwise it is copied unpriced.
-  if (copy.isFree && deriveEndpointKind(copy.baseUrl, local) !== "local") copy.isFree = false;
+  // Claude Code has no address: it runs on this machine and is free by definition (ADR 0014).
+  if (copy.isFree && copy.provider !== "claude_code" && deriveEndpointKind(copy.baseUrl, local) !== "local") copy.isFree = false;
   return createModel(db, copy, opts);
 }
 

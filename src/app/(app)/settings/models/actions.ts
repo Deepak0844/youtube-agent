@@ -2,7 +2,10 @@
 
 import { refresh } from "next/cache";
 import { z } from "zod";
+import { assertActionOrigin } from "@/lib/auth/action-origin";
 import { requireOwner } from "@/lib/auth/require-owner";
+import { parseAiSourceForm } from "@/server/core/ai-source";
+import { setAiSource, testClaudeCodeConnection } from "@/server/db/claude-code";
 import { InputTooLongError, boundedText, usdToMicro } from "@/server/core/llm-catalog";
 import { CatalogError, copyDefault, createModel, deleteModel, setRoute, updateModel } from "@/server/db/llm-models";
 import { getPool } from "@/server/db/pool";
@@ -19,6 +22,8 @@ export interface FormState {
   error?: string;
   /** A short result line to show (the Test button); fixed sentences only. */
   note?: string;
+  /** Plain lines from the AI source switch (which stages stay on their API model, and why). */
+  notes?: string[];
   /** What the owner typed, handed back on error so React's form reset does not wipe it. Nothing secret lives on this page. */
   fields?: Record<string, string>;
 }
@@ -138,5 +143,37 @@ export async function testModelAction(_prev: FormState, form: FormData): Promise
     return r.ok ? { ok: true, note: r.message } : { ok: false, error: r.message };
   } catch (err) {
     return fail(err, form);
+  }
+}
+
+// The AI source switch. Turning it on lets text stages start the claude program on this Mac, so: session first, a strict
+// Origin check (a missing Origin is refused too), the exact confirmation tick, then one transaction in setAiSource.
+export async function setAiSourceAction(_prev: FormState, form: FormData): Promise<FormState> {
+  await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { error: origin };
+  const p = parseAiSourceForm(form);
+  if (!p.ok) return { error: p.message };
+  try {
+    const notes = await setAiSource(getPool(), p.on, { actor: "session" });
+    refresh();
+    return { ok: true, notes };
+  } catch (err) {
+    return fail(err, new FormData());
+  }
+}
+
+// Test connection: one tiny call through the same adapter (counts toward the daily cap, 10 s server-side cooldown).
+// Only a fixed sentence per outcome class comes back; never what the program printed.
+export async function testClaudeCodeAction(): Promise<FormState> {
+  await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { error: origin };
+  try {
+    const r = await testClaudeCodeConnection(getPool(), { kind: "session" });
+    refresh();
+    return r.ok ? { ok: true, note: r.message } : { ok: false, error: r.message };
+  } catch (err) {
+    return fail(err, new FormData());
   }
 }
