@@ -417,6 +417,20 @@ describe("paid generation is bounded by the approved quote", () => {
     expect(await contentCount(v.id, "cost_plan")).toBe(1);
   });
 
+  it("with no paid images (production default) Build plans none and the video goes draft -> build -> tts -> render -> voice -> sfx -> qa to the video gate, with no Generate and no cost gate", async () => {
+    const v = await newVideo();
+    const handlers = dryRunHandlers(mkDeps({ paidImages: false }));
+    const dispatcher = createStageDispatcher(handlers, 2);
+    for (const s of ["draft", "build", "tts", "render", "voice", "sfx", "qa"] as StageName[]) {
+      const o = await play(v.id, s, dispatcher);
+      expect(o.kind, s).toBe("committed");
+      if (s === "draft") await approveScript(v.id);
+    }
+    expect((await latestContent(db.pool, v.id, "cost_plan"))?.body).toMatchObject({ items: [], totalMicroUsd: 0 });
+    expect((await db.pool.query("select 1 from stage_runs where video_id = $1 and name = 'generate'", [v.id])).rowCount).toBe(0);
+    expect(await liveGateHash(db.pool, v.id, "video")).not.toBeNull();
+  });
+
   it("Build with a scene that stays invalid fails in plain words and saves no scenes and no plan", async () => {
     const v = await newVideo();
     await seedScript(v.id, 1);

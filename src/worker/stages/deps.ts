@@ -50,6 +50,8 @@ export interface StageDeps {
   imageModel?: string;
   /** Price Build quotes per image (default 4000 micro-USD = what the fake image provider charges). */
   imageQuoteMicroUsd?: number;
+  /** Build only: false = plan no paid images at all (empty cost plan, no image price needed). Default true. Production sets false until Phase 8. */
+  paidImages?: boolean;
   /** How many beat images Build plans at most (default 3). */
   maxImages?: number;
   /** Build only: the model client for scene JSON, given the budget scopes its calls reserve against. Absent = no scenes are made (old stub only). */

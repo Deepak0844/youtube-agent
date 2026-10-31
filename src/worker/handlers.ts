@@ -113,7 +113,8 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
     qaScan: scanVideo,
     mix: { runChild: run, audioRoot: path.join(root, "audio") },
-    // build/generate are not wired in production yet; those stages never call image, and if one ever did it refuses.
+    // Build plans no paid images (empty cost plan); generate is not wired. Nothing calls image, and if it did it refuses.
+    paidImages: false,
     imageFor: createImageFor(pool, () => loadKeyring(), root),
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
     // Render runs in the locked-down render container (remotion-container.ts). The kit is read from the repo the worker runs in.
@@ -126,8 +127,8 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
 }
 
 /**
- * The handlers the real worker runs: draft, tts, render (container), voice (mux), sfx (mixer) and qa. build and generate stay
- * absent (refused as "missing stage handler"): Build always plans paid images, and Generate (paid) is gated until Phase 8.
+ * The handlers the real worker runs: draft, build (no paid images), tts, render (container), voice (mux), sfx (mixer) and qa.
+ * generate stays absent (refused as "missing stage handler"): paid image generation is gated until Phase 8.
  */
 export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRegistry; workerId?: string } = {}): StageHandlers {
   const draft: StageHandler = async (ctx) => {
@@ -142,8 +143,14 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
   };
   const deps = productionStageDeps(pool, env);
   const fin = { db: deps.db, root: deps.root };
+  // Same model wiring as Draft, routed to 'build_scene_kit'. No route / unpriced model = a plain refusal before anything is reserved; no other model is tried.
+  const build: StageHandler = async (ctx) => {
+    const models = await defaultModelDeps(pool, () => loadKeyring());
+    return withAttempt(fin, buildAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
+  };
   return {
     draft: refuseDryRunVideos(pool, draft),
+    build: refuseDryRunVideos(pool, build),
     tts: refuseDryRunVideos(pool, withAttempt(fin, ttsAttempt(deps))),
     render: refuseDryRunVideos(pool, withAttempt(fin, renderAttempt(deps))),
     voice: refuseDryRunVideos(pool, withAttempt(fin, voiceAttempt(deps))),

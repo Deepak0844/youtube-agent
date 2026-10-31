@@ -29,7 +29,7 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
     if (!script.ok) throw new KnownFailure(script.reason);
     const beatIds = script.beats.map((b, i) => (typeof b?.id === "string" && b.id !== "" ? b.id : `beat-${i + 1}`));
 
-    const count = Math.max(1, Math.min(beatIds.length, deps.maxImages ?? DEFAULTS.maxImages));
+    const count = deps.paidImages === false ? 0 : Math.max(1, Math.min(beatIds.length, deps.maxImages ?? DEFAULTS.maxImages));
     const items: CostItem[] = Array.from({ length: count }, () => ({
       kind: "image",
       provider: deps.imageProvider ?? DEFAULTS.imageProvider,

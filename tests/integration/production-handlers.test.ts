@@ -22,9 +22,9 @@ const registry = () => {
 };
 
 describe("production handlers", () => {
-  it("wires tts, render, voice, sfx and qa; build and generate stay missing", () => {
+  it("wires draft, build, tts, render, voice, sfx and qa; generate stays missing", () => {
     const h = productionHandlers(db.pool);
-    expect(Object.keys(h).sort()).toEqual(["draft", "qa", "render", "sfx", "tts", "voice"]);
+    expect(Object.keys(h).sort()).toEqual(["build", "draft", "qa", "render", "sfx", "tts", "voice"]);
   });
 
   it("the kit folder comes from the code's own location, symlinks resolved; a symlinked kit is passed unresolved (and refused)", () => {
