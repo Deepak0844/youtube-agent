@@ -24,7 +24,7 @@ const queue = { enqueue: async (id: string, fence: number, seq: number) => (queu
 const mk = (topic = "t") => createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic });
 let n = 0;
 const run = async (videoId: string, name: string, status: string, seconds = 10) => {
-  const id = `0190f3a2-7c1e-7a55-9d3b-2f6c8a1b${(4000 + n++).toString(16)}`;
+  const id = `0190f3a2-7c1e-7a55-9d3b-${(0x4000 + n++).toString(16).padStart(12, "0")}`;
   await db.pool.query(
     "insert into stage_runs (id, video_id, name, status, input_hash, created_at, updated_at) values ($1,$2,$3,$4,'h', now() - ($5 * interval '1 second'), now())",
     [id, videoId, name, status, seconds],

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { z } from "zod";
-import { notFound } from "next/navigation";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { describeDetail } from "@/server/core/audit-view";
 import { microToUsd } from "@/server/core/llm-catalog";
@@ -41,11 +40,11 @@ const asObj = (v: unknown): Record<string, unknown> => (typeof v === "object" &&
 async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]">["params"]; searchParams: PageProps<"/videos/[id]">["searchParams"] }) {
   await requireOwner();
   const id = z.uuid().safeParse((await params).id);
-  if (!id.success) notFound();
+  if (!id.success) return <Missing />;
   const tab = parseTab((await searchParams).tab);
   const db = getPool();
   const p = await loadVideoPage(db, id.data);
-  if (!p) notFound();
+  if (!p) return <Missing />;
   const live = p.head.status === "active" || p.head.status === "waiting";
   // The gate or parked-decision card is the /queue card for this one video: same buttons, same checks.
   const q = live && (p.openGate || p.stages.some((s) => s.state === "needs_you")) ? await loadQueue(db, new Set(Object.keys(jobCheckers())), { videoId: id.data }) : null;
@@ -88,6 +87,17 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
       <section aria-label={TABS.find((t) => t.id === tab)!.label} data-testid="tab-panel" data-tab={tab} className="flex min-w-0 flex-col gap-4">
         <Panel tab={tab} p={p} />
       </section>
+    </div>
+  );
+}
+
+// A bad or unknown id still renders a page with its own heading (not a bare 404).
+function Missing() {
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <h1 className="m-0 text-page-title font-semibold tracking-tight">Video not found</h1>
+      <p className="m-0 text-body text-muted">There is no video with this address.</p>
+      <Link href="/videos" className="text-small text-muted underline">Library</Link>
     </div>
   );
 }
