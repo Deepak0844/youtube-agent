@@ -33,6 +33,7 @@ export const AUDIT_EVENTS = {
   // Parked stage, "check the job" (detail: stage run id, video id, provider, provider job id, outcome, session id; never a key or a file path)
   "stage.job_checked": "The owner asked a provider about a parked paid job",
   // Phase 2 queue page (detail: ids and session id only)
+  "stage.rerun_requested": "The owner asked to run a failed step again (detail: video id, stage, session id)",
   "video.cancelled": "The owner cancelled a video",
   "upload.requeued": "An approved upload was sent to the uploader again",
   "video.created": "The owner started a new video",
