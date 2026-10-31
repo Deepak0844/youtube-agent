@@ -60,6 +60,10 @@ const ALTERNATE: Record<string, unknown> = {
   "qa.long_height": 720,
   "qa.long_min_s": 60,
   "qa.long_max_s": 1200,
+  "render.timeout_s": 900,
+  "render.cpus": 2,
+  "render.memory_mb": 2048,
+  "render.pids": 256,
 };
 
 describe("safety settings are session-only (database)", () => {

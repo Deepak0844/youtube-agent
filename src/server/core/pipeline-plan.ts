@@ -61,7 +61,7 @@ export function postStageGates(plan: readonly PlanStep[], flags: PlanFlags): Gat
 }
 
 /** Content a stage reads, beyond the previous stage's hash. A new version of any of these makes the stage stale. */
-// Render still reads beats + narration + scene.json; `scenes` is listed so a repaired or undone scene document makes a finished render stale.
+// Render reads beats, narration and the scenes (scenes.json from Build): a new scenes version makes Render stale.
 export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKindName[]>> = {
   draft: [],
   build: ["script"],

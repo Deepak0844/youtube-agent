@@ -1,24 +1,66 @@
 import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { KnownFailure } from "@/server/core/paid-call";
-import { promotedPath, type AttemptHandler } from "./attempt";
+import { validateScenes, type SceneDoc } from "@/shared/scene";
+import { openRegular, promotedPath, type AttemptHandler } from "./attempt";
 import { contentBody, loadVideo, SIZE, type StageDeps } from "./deps";
 
+const isFile = async (f: string) => (await lstat(f).catch(() => null))?.isFile() === true;
+const MAX_SCENES_BYTES = 1024 * 1024;
+
+/** Reads and validates scenes.json: a plain file (no symlink, no FIFO), at most 1 MB, valid scene JSON. */
+export async function readScenesFile(file: string): Promise<SceneDoc> {
+  let text: string;
+  const fh = await openRegular(file).catch(() => {
+    throw new KnownFailure("scenes.json is missing or not a plain file. Run the build step again.");
+  });
+  try {
+    if ((await fh.stat()).size > MAX_SCENES_BYTES) throw new KnownFailure("scenes.json is too big (over 1 MB). Run the build step again.");
+    text = await fh.readFile("utf8");
+  } finally {
+    await fh.close();
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new KnownFailure("scenes.json is not valid JSON. Run the build step again.");
+  }
+  const v = validateScenes(json);
+  if (!v.ok) throw new KnownFailure(`scenes_invalid: ${v.errors.slice(0, 3).join("; ")}. Run the build step again.`.slice(0, 600));
+  return v.doc;
+}
+
 /**
- * Render: the renderer turns the scene file into render.mp4. It reads only promoted files and writes only into its attempt
+ * Render: the renderer turns the scenes into render.mp4. It reads only promoted files and writes only into its attempt
  * folder. A slot in the render semaphore is taken by the dispatcher (handlers.ts), not here.
+ *
+ * The scenes come from Build's scenes.json and are validated again here, before any render time is spent. When there is no
+ * scenes.json (Build ran without a scene model: the dry run and its tests) the old stub scene.json is passed with no `doc`;
+ * only the fake renderer accepts that, the container renderer refuses a call without a validated doc.
  */
 export function renderAttempt(deps: StageDeps): AttemptHandler {
   return async (ctx) => {
     const video = await loadVideo(deps.db, ctx);
     const narration = await contentBody<{ file?: unknown }>(deps.db, video.id, "narration");
     if (typeof narration.file !== "string") throw new KnownFailure("The narration record has no audio file. Run the voice step again.");
-    for (const name of ["scene.json", narration.file]) {
-      const st = await lstat(await promotedPath(deps.root, video.id, name)).catch(() => null);
-      if (!st?.isFile()) throw new KnownFailure(`The file ${name} from an earlier stage is missing. Run that stage again.`);
+    const audioFile = await promotedPath(deps.root, video.id, narration.file);
+    if (!(await isFile(audioFile))) throw new KnownFailure(`The file ${narration.file} from an earlier stage is missing. Run that stage again.`);
+
+    const scenesFile = await promotedPath(deps.root, video.id, "scenes.json");
+    let sceneFile = scenesFile;
+    let doc: SceneDoc | undefined;
+    if (await isFile(scenesFile)) {
+      doc = await readScenesFile(scenesFile);
+    } else {
+      sceneFile = await promotedPath(deps.root, video.id, "scene.json"); // fake/dry-run only, see above
+      if (!(await isFile(sceneFile))) throw new KnownFailure("The file scenes.json from an earlier stage is missing. Run that stage again.");
     }
-    const r = await deps.renderer.render(ctx, { sceneFile: await promotedPath(deps.root, video.id, "scene.json"), outFile: "render.mp4", size: SIZE });
+    const captions = await contentBody<{ words?: unknown }>(deps.db, video.id, "captions").catch(() => null);
+    const r = await deps.renderer.render(ctx, {
+      sceneFile, doc, audioFile, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: SIZE,
+    });
     if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
-    return { files: ["render.mp4"], result: { rendered: "render.mp4" } };
+    return { files: ["render.mp4"], result: { rendered: "render.mp4", scenes: doc ? doc.scenes.length : null, image: r.image ?? null } };
   };
 }

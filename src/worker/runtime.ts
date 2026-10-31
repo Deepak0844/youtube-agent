@@ -64,12 +64,14 @@ export interface WorkerHooks {
   sweepOrphans(pool: pg.Pool, workerId: string): Promise<number>;
   holdWorkerLock(pool: pg.Pool, workerId: string): Promise<WorkerLock>;
   createChildRegistry(pool: pg.Pool, workerId: string): ChildRegistry;
+  /** After the lock: removes render containers a dead worker left (the real worker passes the docker sweep). Best effort. */
+  sweepRenderContainers(pool: pg.Pool): Promise<number>;
 }
 export interface WorkerOptions {
   pool?: pg.Pool;
   redisUrl?: string;
   /** Handlers, or a factory that receives the registry render children must be registered with (so a crash leaves them sweepable). */
-  handlers?: StageHandlers | ((env: { childRegistry: ChildRegistry }) => StageHandlers);
+  handlers?: StageHandlers | ((env: { childRegistry: ChildRegistry; workerId: string }) => StageHandlers);
   /** Starts the `uploads` consumer. There is no default: with no uploader (real YouTube is Phase 5) approved uploads just wait. */
   uploader?: Uploader;
   /** Starts the `ingest` consumer (checks files uploaded through /api/uploads). Off by default, like the uploader. */
@@ -119,6 +121,7 @@ const defaults: WorkerHooks = {
   emitEvent, createEventBus,
   beforeStart: async () => {},
   sweepOrphans, holdWorkerLock, createChildRegistry,
+  sweepRenderContainers: async () => 0,
 };
 
 // Stage outcomes the owner must hear about. A redelivered job reuses (stage id, fence), so it notifies once.
@@ -200,8 +203,10 @@ export function startRuntime(opts: WorkerOptions = {}) {
     if (swept > 0) log(`swept ${swept} orphaned child process(es)`);
     workerLock = await hooks.holdWorkerLock(db, workerId);
     if (stopping) return;
+    const gone = await hooks.sweepRenderContainers(db).catch(() => 0);
+    if (gone > 0) log(`removed ${gone} leftover render container(s)`);
     const childRegistry = hooks.createChildRegistry(db, workerId);
-    const handlers = typeof opts.handlers === "function" ? opts.handlers({ childRegistry }) : (opts.handlers ?? {});
+    const handlers = typeof opts.handlers === "function" ? opts.handlers({ childRegistry, workerId }) : (opts.handlers ?? {});
     const hasHandlers = Object.keys(handlers).length > 0;
     if (!hasHandlers) log("no stage handlers registered; stages stay queued and are not consumed or advanced");
     const dispatch = createStageDispatcher(handlers, settings.concurrentRenders);

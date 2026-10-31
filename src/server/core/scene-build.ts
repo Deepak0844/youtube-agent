@@ -62,6 +62,7 @@ export function parseJson(text: string): unknown {
   }
 }
 
+/** Every asset id a scene (or a whole doc) points at: values of "asset" and "image" keys. */
 export function assetRefs(v: unknown, out: string[] = []): string[] {
   if (Array.isArray(v)) v.forEach((x) => assetRefs(x, out));
   else if (v && typeof v === "object") {
