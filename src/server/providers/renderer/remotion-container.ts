@@ -246,7 +246,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
             timeoutMs: lim.timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES, signal: ctx.signal, stageRunId: ctx.claim.stageRunId,
             onLine: (line) => {
               const p = parseProgress(line);
-              if (p !== null) return ctx.log(`render: ${p}%`);
+              if (p !== null) { ctx.progress?.(p); return ctx.log(`render: ${p}%`); }
               const clean = redactLine(line).slice(0, 300);
               if (!clean.trim()) return;
               ctx.log(`render: ${clean}`);

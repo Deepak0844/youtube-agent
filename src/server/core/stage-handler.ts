@@ -44,9 +44,25 @@ export interface StageContext {
   config: EngineConfig;
   signal: AbortSignal;
   attemptDir: string; // set by Task 10; "" until then
+  progress?(percent: number): void; // live 0-100 on the video page; throttled, best effort; absent in fakes
   log(line: string): void; // redacted, compacted, capped; a no-op when the worker gives no log sink
   nextStep(): number;
   paid<T>(step: PaidStep, call: (key: string, signal: AbortSignal) => Promise<PaidCallOutput<T>>): Promise<T>;
+}
+
+// Throttle for progress writes: at most one per minMs, and only when the whole percent changed. Pure (clock injected).
+export function makeProgressThrottle(write: (percent: number) => void, now: () => number = Date.now, minMs = 2000): (percent: number) => void {
+  let lastPct = -1;
+  let lastAt = -Infinity;
+  return (percent) => {
+    if (!Number.isFinite(percent)) return;
+    const pct = Math.min(100, Math.max(0, Math.trunc(percent)));
+    const t = now();
+    if (pct === lastPct || t - lastAt < minMs) return;
+    lastPct = pct;
+    lastAt = t;
+    write(pct);
+  };
 }
 
 export type StageHandler = (ctx: StageContext) => Promise<unknown>;
@@ -65,6 +81,7 @@ export function createStageContext(args: {
   paid: PaidCallPorts;
   beforeCall?: () => Promise<void>;
   log?: (line: string) => void;
+  writeProgress?: (percent: number) => Promise<void>;
 }): ContextInternals {
   const { stage, claim, config, signal } = args;
   let step = 0;
@@ -76,6 +93,9 @@ export function createStageContext(args: {
     config,
     signal,
     attemptDir: "",
+    progress: makeProgressThrottle((pct) => {
+      try { void args.writeProgress?.(pct).catch(() => {}); } catch { /* best effort */ }
+    }),
     log: (line) => { try { args.log?.(line); } catch { /* a log must never fail the stage */ } },
     nextStep: () => step++,
     async paid<T>(s: PaidStep, call: (key: string, signal: AbortSignal) => Promise<PaidCallOutput<T>>): Promise<T> {

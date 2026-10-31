@@ -87,6 +87,7 @@ export interface StageRunnerPorts {
   // Both fenced on claim (fence + owner + running); false = the stage has moved on.
   markNeedsDecision(claim: StageClaim, reason: string): Promise<boolean>;
   fail(claim: StageClaim, reason: string, errorClass?: ErrorClass): Promise<boolean>;
+  progress?(claim: StageClaim, percent: number): Promise<void>; // best effort, fenced; absent = progress is a no-op
   cancel?(claim: StageClaim): Promise<"cancelled" | "needs_decision" | "rejected">;
   timeOut?(claim: StageClaim, reason: "stage_timeout" | "provider_timeout"): Promise<"failed" | "needs_decision" | "rejected">;
 }
@@ -205,7 +206,7 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
         let log: StageLogHandle | undefined;
         try { log = deps.openLog?.(stage, claim); } catch { log = undefined; }
         try {
-          const internals = createStageContext({ stage, claim, config: handlerConfig!, signal: ctl.signal, paid, beforeCall, log: log && ((line) => log!.write(line)) });
+          const internals = createStageContext({ stage, claim, config: handlerConfig!, signal: ctl.signal, paid, beforeCall, log: log && ((line) => log!.write(line)), writeProgress: ports.progress && ((pct) => ports.progress!(claim, pct)) });
           const result = await deps.handler(internals.ctx);
           providerTimedOut = internals.providerTimedOut();
           return result;
