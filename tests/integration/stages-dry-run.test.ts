@@ -417,6 +417,37 @@ describe("paid generation is bounded by the approved quote", () => {
     expect(await contentCount(v.id, "cost_plan")).toBe(1);
   });
 
+  it("with no paid images (production default) Build plans none and the video goes draft -> build -> tts -> render -> voice -> sfx -> qa to the video gate, with no Generate and no cost gate", async () => {
+    const v = await newVideo();
+    const handlers = dryRunHandlers(mkDeps({ paidImages: false }));
+    const dispatcher = createStageDispatcher(handlers, 2);
+    for (const s of ["draft", "build", "tts", "render", "voice", "sfx", "qa"] as StageName[]) {
+      const o = await play(v.id, s, dispatcher);
+      expect(o.kind, s).toBe("committed");
+      if (s === "draft") await approveScript(v.id);
+    }
+    expect((await latestContent(db.pool, v.id, "cost_plan"))?.body).toMatchObject({ items: [], totalMicroUsd: 0 });
+    expect((await db.pool.query("select 1 from stage_runs where video_id = $1 and name = 'generate'", [v.id])).rowCount).toBe(0);
+    expect(await liveGateHash(db.pool, v.id, "video")).not.toBeNull();
+  });
+
+  it.each([
+    ["no model routed", undefined, /No model is chosen/],
+    ["a disabled model", { ...SCENE_ROW, enabled: false }, /disabled/],
+    ["an unpriced model", { ...SCENE_ROW, prices: null }, /no price/],
+  ])("Build with %s fails in plain words before any reservation, and asks the router once", async (_n, row, msg) => {
+    const v = await newVideo();
+    await seedScript(v.id, 1);
+    const routed: string[] = [];
+    const makeLlm = (scopes: string[]) => createLlmClient({ db: db.pool, catalog: { route: async (st) => (routed.push(st), row as ModelRow | undefined), localServices: async () => [] }, getKey: async () => null, buildModel: () => ({}) as LanguageModel, budgetScopes: () => scopes });
+    const out = await play(v.id, "build", withAttempt({ db: db.pool, root }, buildAttempt(mkDeps({ paidImages: false, makeLlm }))));
+    expect(out.kind).toBe("known_failure");
+    expect((await stageResult(v.id, "build")).result).toMatchObject({ error: expect.stringMatching(msg) });
+    expect(routed).toEqual(["build_scene_kit"]);
+    expect(await intentCount()).toBe(0);
+    expect(await contentCount(v.id, "scenes")).toBe(0);
+  });
+
   it("Build with a scene that stays invalid fails in plain words and saves no scenes and no plan", async () => {
     const v = await newVideo();
     await seedScript(v.id, 1);

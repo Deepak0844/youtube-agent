@@ -9,6 +9,12 @@ const items = [
 ];
 
 describe("cost plan", () => {
+  it("an empty plan (no paid images) is valid, costs nothing and reads back", () => {
+    const plan = buildCostPlan([], "scene_kit");
+    expect(plan).toEqual({ items: [], path: "scene_kit", totalMicroUsd: 0 });
+    expect(parseCostPlan(costPlanBody(plan))).toMatchObject({ ok: true, quoteMicroUsd: 0 });
+  });
+
   it("cost_plan_totals_and_quote_math_are_integer_micro_usd", () => {
     const plan = buildCostPlan(items, "scene_kit");
     expect(plan.totalMicroUsd).toBe(8501);
