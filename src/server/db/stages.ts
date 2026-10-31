@@ -175,6 +175,16 @@ export async function commitStage(db: Db, claim: Claim, result: unknown): Promis
   return res.rowCount === 1;
 }
 
+// Live render percent for the video page. Same fence as commitStage; the commit overwrites it with the real result.
+export async function writeProgress(db: Db, claim: Claim, percent: number): Promise<void> {
+  await db.query(
+    `update stage_runs
+        set result = jsonb_build_object('percent', $4::int)
+      where id = $1 and status = 'running' and fence = $2 and lease_owner = $3`,
+    [claim.stageRunId, claim.fence, claim.workerId, Math.trunc(percent)],
+  );
+}
+
 // errorClass "transient" is stored in the result: it is the evidence scheduleRetry (db/retry.ts) needs that the provider
 // refused the request before doing any work. Every other class leaves the result exactly as before.
 export async function failStage(db: Db, claim: Claim, reason: string, errorClass?: string): Promise<boolean> {

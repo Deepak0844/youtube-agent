@@ -73,6 +73,51 @@ describe("stage handler on Postgres", () => {
     expect(await provider.dbCalls(callKey(id, 0, 0))).toBe(1);
   });
 
+  it("progress_is_written_to_the_running_row_and_replaced_at_commit", async () => {
+    const id = await newStage();
+    const seen: unknown[] = [];
+    const o = await runStage(
+      db.pool,
+      deps(async (ctx) => {
+        ctx.progress?.(42);
+        await waitFor(async () => ((await getStage(db.pool, id))?.result as { percent?: number } | null)?.percent === 42, "percent 42 on the running row");
+        seen.push((await getStage(db.pool, id))?.status);
+        return { done: true };
+      }),
+      job(id),
+    );
+    expect(o.kind).toBe("committed");
+    expect(seen).toEqual(["running"]);
+    expect((await getStage(db.pool, id))?.result).toEqual({ done: true });
+  });
+
+  it("a_failing_progress_write_does_not_fail_the_stage", async () => {
+    const id = await newStage();
+    const failing = new Proxy(db.pool, {
+      get(target, prop) {
+        if (prop === "query") {
+          return (sql: unknown, ...rest: unknown[]) =>
+            typeof sql === "string" && sql.includes("'percent'")
+              ? Promise.reject(new Error("progress write down"))
+              : (target.query as (...a: unknown[]) => unknown)(sql, ...rest);
+        }
+        const v = Reflect.get(target, prop, target);
+        return typeof v === "function" ? v.bind(target) : v;
+      },
+    });
+    const o = await runStage(
+      failing,
+      deps(async (ctx) => {
+        ctx.progress?.(10);
+        await new Promise((r) => setTimeout(r, 50));
+        return { ok: 1 };
+      }),
+      job(id),
+    );
+    expect(o.kind).toBe("committed");
+    expect((await getStage(db.pool, id))?.result).toEqual({ ok: 1 });
+  });
+
   it("cancel_requested_aborts_the_signal_and_ends_cancelled_when_no_intent_is_open", async () => {
     const id = await newStage();
     let sawAbort = false;

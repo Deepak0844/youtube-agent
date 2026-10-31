@@ -1,7 +1,7 @@
 import type { PaidCallPorts } from "@/server/core/paid-call";
 import { runStageWith, type StageJob, type StageOutcome, type StageRunnerDeps } from "@/server/core/stage-runner";
 import { createPgPaidCallPorts, type Warn } from "./paid-call-adapter";
-import { cancelStage, claimStage, commitStage, failStage, getStage, heartbeat, markStageNeedsDecision, timeoutStage, type Claim, type Db } from "./stages";
+import { cancelStage, claimStage, commitStage, failStage, getStage, heartbeat, markStageNeedsDecision, timeoutStage, writeProgress, type Claim, type Db } from "./stages";
 
 // Postgres wiring for the worker body. Every port is its own statement/transaction (never settle+commit together).
 // opts.paid: test seam to wrap the pg paid-call ports (e.g. simulate a failing reservation release).
@@ -25,6 +25,7 @@ export function runStage(
       commit: (claim, result) => commitStage(db, claim as Claim, result),
       markNeedsDecision: (claim, reason) => markStageNeedsDecision(db, claim as Claim, reason),
       fail: (claim, reason, errorClass) => failStage(db, claim as Claim, reason, errorClass),
+      progress: (claim, percent) => writeProgress(db, claim as Claim, percent),
       cancel: (claim) => cancelStage(db, claim as Claim),
       timeOut: (claim, reason) => timeoutStage(db, claim as Claim, reason),
     },
