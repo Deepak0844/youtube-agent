@@ -1,4 +1,5 @@
 import type { AgentTool } from "@/server/core/agent-loop";
+import { searxSearch, type SearxResult } from "@/server/llm/searxng-client";
 import { safeFetch } from "@/server/providers/net/safe-fetch";
 
 // Read-only web tools for the Draft agent (Doc 8 §2). Output is untrusted data: it is returned as plain text with
@@ -7,10 +8,11 @@ import { safeFetch } from "@/server/providers/net/safe-fetch";
 
 const MAX_TEXT = 8_000;
 
-export function createWebTools(opts: { searxUrl: string; fetchImpl?: typeof safeFetch }) {
+export function createWebTools(opts: { searxUrl: string; fetchImpl?: typeof safeFetch; searchImpl?: (query: string) => Promise<SearxResult[]> }) {
   const seen = new Set<string>();
   const fetcher = opts.fetchImpl ?? safeFetch;
   const searx = new URL(opts.searxUrl);
+  const search = opts.searchImpl ?? ((q: string) => searxSearch(opts.searxUrl, q));
   const own = [{ host: searx.hostname, port: Number(searx.port || (searx.protocol === "https:" ? 443 : 80)) }];
 
   const tools: AgentTool[] = [
@@ -19,15 +21,9 @@ export function createWebTools(opts: { searxUrl: string; fetchImpl?: typeof safe
       async run(args) {
         const q = (args as { query?: unknown } | null)?.query;
         if (typeof q !== "string" || q.trim() === "" || q.length > 300) throw new Error("query must be a short string");
-        const u = new URL("/search", searx);
-        u.searchParams.set("q", q);
-        u.searchParams.set("format", "json");
-        const res = await fetcher(u.toString(), undefined, { mode: "typed", ownServices: own, localServices: [] });
-        if (!res.ok) throw new Error(`search failed: ${res.status}`);
-        const data = (await res.json()) as { results?: Array<{ title?: string; url?: string; content?: string }> };
-        const rows = (data.results ?? []).filter((r) => typeof r.url === "string").slice(0, 8);
-        for (const r of rows) seen.add(r.url as string);
-        return rows.map((r, i) => `${i + 1}. ${r.title ?? ""}\n${r.url}\n${r.content ?? ""}`).join("\n\n") || "no results";
+        const rows = (await search(q)).slice(0, 8);
+        for (const r of rows) seen.add(r.url);
+        return rows.map((r, i) => `${i + 1}. ${r.title}\n${r.url}\n${r.content}`).join("\n\n") || "no results";
       },
     },
     {
@@ -35,7 +31,7 @@ export function createWebTools(opts: { searxUrl: string; fetchImpl?: typeof safe
       async run(args) {
         const url = (args as { url?: unknown } | null)?.url;
         if (typeof url !== "string" || !seen.has(url)) throw new Error("fetchPage only accepts a URL returned by webSearch");
-        const res = await fetcher(url, undefined, { mode: "indirect", timeoutMs: 15_000 });
+        const res = await fetcher(url, undefined, { mode: "indirect", ownServices: own, timeoutMs: 15_000 });
         if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
         const html = (await res.text()).slice(0, 400_000);
         const text = html

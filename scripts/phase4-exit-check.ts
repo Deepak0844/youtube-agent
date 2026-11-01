@@ -19,6 +19,7 @@ import { getSetting } from "@/server/db/settings";
 import { loadVideoPage } from "@/server/db/video-page";
 import { latestContent } from "@/server/db/videos";
 import { hasSecret } from "@/server/db/vault";
+import { searxSearch } from "@/server/llm/searxng-client";
 import { safeFetch } from "@/server/providers/net/safe-fetch";
 import { assertVoiceStudioUrl } from "@/server/providers/voice/voicestudio";
 import { storageRoot, videoPath } from "@/server/storage/paths";
@@ -76,7 +77,7 @@ async function preflight(): Promise<number> {
     const dayCap = cap("day");
     const searx = process.env.SEARXNG_URL ?? null;
     let searxOk: boolean | null = null;
-    if (searx) searxOk = await get(() => safeFetch(searx, { method: "GET" }, { mode: "typed", localServices: list, timeoutMs: 3000 }));
+    if (searx) searxOk = await searxSearch(searx, "test", { timeoutMs: 5000 }).then(() => true, () => false);
     const voiceRoute = await resolveRoute(db, "voice", { format: "short", videoKind: "scene_kit" }).catch(() => null);
     facts = {
       voiceUrl, voiceListed: listed, voiceReachable: reachable, models: (await modelFacts(db)).facts, voiceRoute,
