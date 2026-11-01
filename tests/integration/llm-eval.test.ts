@@ -4,7 +4,18 @@ import type { Message, ModelStep, StepResult } from "@/server/core/agent-loop";
 import { wordRange } from "@/server/core/lang";
 import { createModel, listRoutes, setRoute } from "@/server/db/llm-models";
 import { applyDraftMode, EvalRefusal, fixedTopics, getEvalBadges, openEvalStage, planEval, runEval, type EvalDeps, type EvalRequest } from "@/server/db/llm-eval";
-import { createWebTools } from "@/server/llm/web-tools";
+import { createWebTools as createRealWebTools } from "@/server/llm/web-tools";
+
+// webSearch now uses the dedicated SearXNG client; these tests keep faking the search through their fetch stub.
+const createWebTools = (o: Parameters<typeof createRealWebTools>[0]) =>
+  createRealWebTools({
+    ...o,
+    searchImpl: async (q) => {
+      const res = await (o.fetchImpl as unknown as (u: string) => Promise<Response>)(`http://127.0.0.1:8888/search?q=${encodeURIComponent(q)}&format=json`);
+      const data = (await res.json()) as { results?: Array<{ title?: string; url?: string; content?: string }> };
+      return (data.results ?? []).filter((r) => typeof r.url === "string").map((r) => ({ title: r.title ?? "", url: r.url as string, content: r.content ?? "" }));
+    },
+  });
 import { reconcile } from "@/server/db/reconciler";
 import { withTestDb, type TestDb } from "../support/db";
 
