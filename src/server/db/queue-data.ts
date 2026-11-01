@@ -10,7 +10,7 @@ import { approvalReaders } from "@/server/db/approval-readers";
 import { getCachedMediaKey, getOrCreateMediaKey } from "@/server/db/media-key";
 import { readNextAction } from "@/server/db/pipeline";
 import { latestContent } from "@/server/db/videos";
-import { signMediaUrl } from "@/server/storage/sign";
+import { signMediaUrl, stableExpiry } from "@/server/storage/sign";
 
 // Everything /queue shows, read in one place. Read only: nothing here writes (a signed media key is created on first use,
 // exactly as the media route's other callers do). The page renders what these return and posts the hash and versions back.
@@ -76,7 +76,7 @@ const MAX_ITEMS = 50;
 const asObj = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
-export async function mediaSigner(db: pg.Pool): Promise<((rel: string | null | undefined) => string | null) | null> {
+export async function mediaSigner(db: pg.Pool, stable = false): Promise<((rel: string | null | undefined) => string | null) | null> {
   let key: Buffer | null = null;
   try {
     key = (await getCachedMediaKey(db)) ?? (await getOrCreateMediaKey(db));
@@ -84,7 +84,9 @@ export async function mediaSigner(db: pg.Pool): Promise<((rel: string | null | u
     key = null; // vault locked: the page still works, without a player
   }
   if (!key) return null;
-  const exp = Math.floor(Date.now() / 1000) + 3600;
+  const now = Math.floor(Date.now() / 1000);
+  // stable: same URL for the same file within an hour (30-90 min validity), so a re-rendered page does not restart a playing video.
+  const exp = stable ? stableExpiry(now, 3600, 1800) : now + 3600;
   return (rel) => {
     if (!rel) return null;
     try {

@@ -89,3 +89,11 @@ export function resignIfNear(url: string, nowSec: number, thresholdSec: number, 
   if (r.exp - nowSec > thresholdSec) return url;
   return signMediaUrl(rel, nowSec + lifetimeSec, key);
 }
+
+/**
+ * An expiry that is identical for every call inside one `windowSec` window, so the same file signs to the same URL and a
+ * playing <video> is not reloaded by a page refresh. Always at least `minTtlSec` away, at most `windowSec + minTtlSec`.
+ */
+export function stableExpiry(nowSec: number, windowSec: number, minTtlSec: number): number {
+  return Math.ceil((nowSec + minTtlSec) / windowSec) * windowSec;
+}

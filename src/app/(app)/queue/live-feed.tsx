@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { refreshUnlessPlaying } from "./media-gate";
 
 // The live feed for /queue: a server-sent-events connection to /api/events that re-renders the server page (router.refresh,
 // no reload) when something the page shows may have changed. It closes when the tab is hidden, reopens from the last event
@@ -22,9 +23,14 @@ export function LiveFeed() {
     let es: EventSource | null = null;
     let debounce: ReturnType<typeof setTimeout> | undefined;
     let fallback: ReturnType<typeof setInterval> | undefined;
+    // A refresh re-renders the page; skip it (re-check in 2 s) while a video/audio is playing so playback is not restarted.
+    const safeRefresh = () => refreshUnlessPlaying(document, () => router.refresh(), (ms) => {
+      clearTimeout(debounce);
+      debounce = setTimeout(safeRefresh, ms);
+    });
     const refresh = () => {
       clearTimeout(debounce);
-      debounce = setTimeout(() => router.refresh(), DEBOUNCE_MS);
+      debounce = setTimeout(safeRefresh, DEBOUNCE_MS);
     };
     const open = () => {
       if (es) return;
@@ -38,7 +44,9 @@ export function LiveFeed() {
           refresh();
         });
       }
-      fallback = setInterval(() => router.refresh(), FALLBACK_MS);
+      fallback = setInterval(() => {
+        if (!document.hidden) safeRefresh();
+      }, FALLBACK_MS);
     };
     const close = () => {
       es?.close();
