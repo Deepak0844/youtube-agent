@@ -76,7 +76,14 @@ async function preflight(): Promise<number> {
     const dayCap = cap("day");
     const searx = process.env.SEARXNG_URL ?? null;
     let searxOk: boolean | null = null;
-    if (searx) searxOk = await get(() => safeFetch(searx, { method: "GET" }, { mode: "typed", localServices: list, timeoutMs: 3000 }));
+    // SearXNG is one of the app's OWN services (its port can never be on the local-services list): reach it the way Draft does (web-tools.ts).
+    if (searx) {
+      searxOk = await get(() => {
+        const u = new URL(searx);
+        const own = [{ host: u.hostname, port: Number(u.port || (u.protocol === "https:" ? 443 : 80)) }];
+        return safeFetch(searx, { method: "GET" }, { mode: "typed", ownServices: own, localServices: [], timeoutMs: 3000 });
+      });
+    }
     const voiceRoute = await resolveRoute(db, "voice", { format: "short", videoKind: "scene_kit" }).catch(() => null);
     facts = {
       voiceUrl, voiceListed: listed, voiceReachable: reachable, models: (await modelFacts(db)).facts, voiceRoute,
