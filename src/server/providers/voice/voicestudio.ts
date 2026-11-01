@@ -7,7 +7,7 @@ import { estimateTimings, mapToScript, type Recognised } from "@/server/core/ali
 import { LANGS } from "@/server/core/lang";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
-import { callServer, MAX_AUDIO_BYTES, postJson, readJson, saveCapped } from "./local-http";
+import { callServer, MAX_AUDIO_BYTES, postJson, readJson, requireScopes, saveCapped } from "./local-http";
 import { joinWav, parseWav, wavSeconds } from "./wav";
 import type { TimingsKind, VoiceProvider, WordTiming } from "./index";
 
@@ -68,6 +68,7 @@ export interface VoiceStudioCfg {
   localServices: readonly string[];
   getKey?: () => Promise<string | null>;
   voice: string;
+  budgetScopes: string[];
   /** Speech model id. VoiceStudio wants an OpenAI TTS id (tts-1, tts-1-hd, gpt-4o-mini-tts); "default" is refused (400). */
   speechModel?: string;
   language?: string;
@@ -89,6 +90,7 @@ function recognisedWords(json: unknown): Recognised[] {
 /** VoiceStudio over its OpenAI-style API: chunked speech, then word times from the same server mapped onto the script. Free. */
 export function createVoiceStudioVoice(cfg: VoiceStudioCfg): VoiceProvider {
   const base = cfg.baseUrl.replace(/\/+$/, "");
+  const budgetScopes = requireScopes(cfg.budgetScopes, "VoiceStudio");
   return {
     capability: { id: "voicestudio", wordTimings: "aligned", local: true, languages: [...LANGS], maxChars: CHUNK_CHARS, formats: ["wav"] },
     quote: () => 0,
@@ -99,7 +101,7 @@ export function createVoiceStudioVoice(cfg: VoiceStudioCfg): VoiceProvider {
       const audioPath = `${stem}.wav`;
       const partPaths = chunks.map((_c, i) => `${stem}-${i}.part`);
       try {
-        const timings = await ctx.paid({ reserveMicroUsd: 0, budgetScopes: [], kind: "paid" }, async (_key, signal) => {
+        const timings = await ctx.paid({ reserveMicroUsd: 0, budgetScopes, kind: "paid" }, async (_key, signal) => {
           const parts = [];
           const words: WordTiming[] = [];
           let kind: TimingsKind = "aligned";

@@ -4,7 +4,7 @@ import { NotProcessedError } from "@/server/core/error-class";
 import { LANGS } from "@/server/core/lang";
 import type { StageContext } from "@/server/core/stage-handler";
 import { renderBodyTemplate } from "@/server/core/voice-template";
-import { callServer, postJson, readJson, saveCapped, type Access } from "./local-http";
+import { callServer, postJson, readJson, requireScopes, saveCapped, type Access } from "./local-http";
 import type { TimingsKind, VoiceProvider } from "./index";
 
 export interface CustomHttpCfg extends Access {
@@ -13,6 +13,7 @@ export interface CustomHttpCfg extends Access {
   responseKind: "audio" | "json_url";
   urlJsonPath?: string; // like data.files[0].href; default "url"
   listVoicesUrl?: string;
+  budgetScopes: string[];
   wordTimings: Extract<TimingsKind, "aligned" | "estimated">;
 }
 
@@ -28,13 +29,14 @@ function pick(json: unknown, jsonPath: string): unknown {
 /** Any server: owner-written JSON body template, optional key header. Free. Times come from the voice stage (align or estimate). */
 export function createCustomHttpVoice(cfg: CustomHttpCfg): VoiceProvider & { listVoices?: () => Promise<string[]> } {
   const listUrl = cfg.listVoicesUrl;
+  const budgetScopes = requireScopes(cfg.budgetScopes, "The custom voice");
   return {
     capability: { id: "custom-http", wordTimings: cfg.wordTimings, local: true, languages: [...LANGS], maxChars: 4096, formats: ["wav"] },
     quote: () => 0,
     async synthesise(ctx: StageContext, a) {
       const body = renderBodyTemplate(cfg.bodyTemplate, { text: a.text, voice: a.voice, lang: a.lang }); // throws before any request
       const audioPath = path.join(ctx.attemptDir, `voice-${createHash("sha256").update(`${a.lang}\0${a.voice}\0${a.text}`).digest("hex").slice(0, 12)}.wav`);
-      await ctx.paid({ reserveMicroUsd: 0, budgetScopes: [], kind: "paid" }, async (_key, signal) => {
+      await ctx.paid({ reserveMicroUsd: 0, budgetScopes, kind: "paid" }, async (_key, signal) => {
         const res = await postJson(cfg.url, body, cfg, signal);
         if (cfg.responseKind === "audio") await saveCapped(res, audioPath);
         else {

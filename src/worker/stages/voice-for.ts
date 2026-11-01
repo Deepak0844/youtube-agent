@@ -85,8 +85,8 @@ export function createVoiceFor(db: pg.Pool, loader: () => Keyring, fetchFn: type
         const localServices = await loadLocalServices(db);
         const optKey = async () => (keySaved ? getKey() : null);
         const provider = isLocal
-          ? createOpenAiCompatibleVoice({ baseUrl, localServices, model: route.model ?? "default", voice: route.voice, getKey: optKey, wordTimings: "estimated" })
-          : createVoiceStudioVoice({ baseUrl, localServices, voice: route.voice, getKey: optKey });
+          ? createOpenAiCompatibleVoice({ baseUrl, localServices, model: route.model ?? "default", voice: route.voice, getKey: optKey, budgetScopes, wordTimings: "estimated" })
+          : createVoiceStudioVoice({ baseUrl, localServices, voice: route.voice, getKey: optKey, budgetScopes });
         return { provider, providerId: route.provider, voice: route.voice, ...(route.model && { model: route.model }) };
       }
       default:
