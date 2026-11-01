@@ -58,6 +58,7 @@ export const AUDIT_EVENTS = {
   "scenes.rechecked": "The saved scenes were re-checked against the house rules (free)",
   "scenes.repaired": "Failing scenes were repaired into a new version",
   "scenes.undone": "The previous scenes version was made current again",
+  "scenes.repair_requested": "A repair of the failing scenes was requested",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",

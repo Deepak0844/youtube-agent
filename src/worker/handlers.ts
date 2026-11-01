@@ -30,6 +30,7 @@ import { storageRoot } from "@/server/storage/paths";
 import { createVoiceFor, whisperAligner } from "./stages/voice-for";
 import { withAttempt } from "./stages/attempt";
 import { buildAttempt } from "./stages/build";
+import { repairScenesAttempt } from "./stages/repair-scenes";
 import type { StageDeps } from "./stages/deps";
 import { dryRunDraftHandler } from "./stages/draft";
 import { generateAttempt } from "./stages/generate";
@@ -79,6 +80,7 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     voice: withAttempt(fin, voiceAttempt(deps)),
     sfx: sfxHandler(fin, deps),
     qa: withAttempt(fin, qaAttempt(deps)),
+    repair_scenes: repairScenesAttempt(deps),
   };
 }
 
@@ -148,8 +150,14 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     const models = await defaultModelDeps(pool, () => loadKeyring());
     return withAttempt(fin, buildAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
   };
+  // On demand only (never in the route): same model wiring and budget scopes as Build; saves its own scenes version.
+  const repair: StageHandler = async (ctx) => {
+    const models = await defaultModelDeps(pool, () => loadKeyring());
+    return repairScenesAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) })(ctx);
+  };
   return {
     draft: refuseDryRunVideos(pool, draft),
+    repair_scenes: refuseDryRunVideos(pool, repair),
     build: refuseDryRunVideos(pool, build),
     tts: refuseDryRunVideos(pool, withAttempt(fin, ttsAttempt(deps))),
     render: refuseDryRunVideos(pool, withAttempt(fin, renderAttempt(deps))),
