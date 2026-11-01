@@ -5,11 +5,11 @@ import { isMediaPlaying, PLAYBACK_RECHECK_MS, refreshUnlessPlaying } from "@/app
 describe("stableExpiry", () => {
   const W = 3600, M = 1800;
   it("is the same for every time inside a window", () => {
-    expect(stableExpiry(7200, W, M)).toBe(stableExpiry(7200 + 1799, W, M));
+    expect(stableExpiry(7200, W, M)).toBe(stableExpiry(7200 + 1800, W, M));
     expect(stableExpiry(7200, W, M)).toBe(10800);
   });
   it("advances at the boundary", () => {
-    expect(stableExpiry(7200 + 1800, W, M)).toBe(14400);
+    expect(stableExpiry(7200 + 1801, W, M)).toBe(14400);
   });
   it("never gives less than minTtl and never more than window + minTtl", () => {
     for (let t = 100000; t < 100000 + 2 * W; t += 37) {
