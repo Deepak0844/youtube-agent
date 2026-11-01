@@ -10,7 +10,7 @@ import { approvalReaders } from "@/server/db/approval-readers";
 import { getCachedMediaKey, getOrCreateMediaKey } from "@/server/db/media-key";
 import { readNextAction } from "@/server/db/pipeline";
 import { latestContent } from "@/server/db/videos";
-import { signMediaUrl } from "@/server/storage/sign";
+import { signMediaUrl, stableExpiry } from "@/server/storage/sign";
 
 // Everything /queue shows, read in one place. Read only: nothing here writes (a signed media key is created on first use,
 // exactly as the media route's other callers do). The page renders what these return and posts the hash and versions back.
@@ -84,7 +84,9 @@ export async function mediaSigner(db: pg.Pool): Promise<((rel: string | null | u
     key = null; // vault locked: the page still works, without a player
   }
   if (!key) return null;
-  const exp = Math.floor(Date.now() / 1000) + 3600;
+  const now = Math.floor(Date.now() / 1000);
+  // Same URL for the same file within an hour (valid 60-120 min, never shorter than before), so a re-rendered page does not restart a playing video.
+  const exp = stableExpiry(now, 3600, 3600);
   return (rel) => {
     if (!rel) return null;
     try {
