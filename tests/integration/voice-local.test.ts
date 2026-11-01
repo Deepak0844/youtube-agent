@@ -18,6 +18,7 @@ let server: Server;
 let base: string;
 let dir: string;
 const logs: string[] = [];
+const SC = ["video:v1"];
 const KEY = "sk-test-SECRET-key-12345";
 
 function wav(seconds: number, rate = 1000): Buffer {
@@ -67,7 +68,7 @@ describe("openai-compatible", () => {
   it("posts to /v1/audio/speech, saves wav, key only as Authorization Bearer and never logged", async () => {
     await cleanDir();
     handler = (_q, res) => ok(res, wav(0.5));
-    const v = createOpenAiCompatibleVoice({ baseUrl: base, localServices: listed(), model: "m", voice: "alloy", getKey: async () => KEY, wordTimings: "aligned" });
+    const v = createOpenAiCompatibleVoice({ budgetScopes: SC, baseUrl: base, localServices: listed(), model: "m", voice: "alloy", getKey: async () => KEY, wordTimings: "aligned" });
     const r = await v.synthesise(ctx(), { text: "Hello there", lang: "en", voice: "alloy" });
     expect(seen).toHaveLength(1);
     expect(seen[0]!.url).toBe("/v1/audio/speech");
@@ -80,26 +81,26 @@ describe("openai-compatible", () => {
   });
   it("a failing call never puts the key in the error", async () => {
     handler = (_q, res) => { res.writeHead(401); res.end(`bad key ${KEY}`); };
-    const v = createOpenAiCompatibleVoice({ baseUrl: base, localServices: listed(), model: "m", voice: "a", getKey: async () => KEY, wordTimings: "aligned" });
+    const v = createOpenAiCompatibleVoice({ budgetScopes: SC, baseUrl: base, localServices: listed(), model: "m", voice: "a", getKey: async () => KEY, wordTimings: "aligned" });
     const e = await v.synthesise(ctx(), { text: "x", lang: "en", voice: "a" }).catch((x: Error) => x);
     expect(e).toBeInstanceOf(NotProcessedError);
     expect(String((e as Error).message)).not.toContain(KEY);
   });
   it("refuses a local address that is not on the allow-list", async () => {
-    const v = createOpenAiCompatibleVoice({ baseUrl: base, localServices: [], model: "m", voice: "a", wordTimings: "aligned" });
+    const v = createOpenAiCompatibleVoice({ budgetScopes: SC, baseUrl: base, localServices: [], model: "m", voice: "a", wordTimings: "aligned" });
     await expect(v.synthesise(ctx(), { text: "x", lang: "en", voice: "a" })).rejects.toBeInstanceOf(NotProcessedError);
   });
   it("redirect_to_lan_or_169.254_refused", async () => {
     for (const to of ["http://169.254.169.254/latest", `${base}/other`, "http://192.168.1.1/x"]) {
       seen.length = 0;
       handler = (q, res) => { if (q.url === "/other") ok(res, wav(0.1)); else { res.writeHead(302, { location: to }); res.end(); } };
-      const v = createOpenAiCompatibleVoice({ baseUrl: base, localServices: listed(), model: "m", voice: "a", getKey: async () => KEY, wordTimings: "aligned" });
+      const v = createOpenAiCompatibleVoice({ budgetScopes: SC, baseUrl: base, localServices: listed(), model: "m", voice: "a", getKey: async () => KEY, wordTimings: "aligned" });
       await expect(v.synthesise(ctx(), { text: "x", lang: "en", voice: "a" })).rejects.toBeInstanceOf(NotProcessedError);
       expect(seen.map((s) => s.url)).toEqual(["/v1/audio/speech"]);
     }
   });
   it("quote_is_zero_and_price_recorded_as_free", async () => {
-    const v = createOpenAiCompatibleVoice({ baseUrl: base, localServices: listed(), model: "m", voice: "a", wordTimings: "estimated" });
+    const v = createOpenAiCompatibleVoice({ budgetScopes: SC, baseUrl: base, localServices: listed(), model: "m", voice: "a", wordTimings: "estimated" });
     expect(v.quote({ text: "x".repeat(5000), lang: "en", voice: "a" })).toBe(0);
     expect(v.capability).toMatchObject({ local: true, wordTimings: "estimated" });
   });
@@ -122,7 +123,7 @@ describe("voicestudio", () => {
     expect(() => assertVoiceStudioUrl("ftp://127.0.0.1", true)).toThrow();
   });
   it("refuses a non-loopback url without a key before any request", async () => {
-    const v = createVoiceStudioVoice({ baseUrl: "http://192.168.1.5:3900", localServices: ["192.168.1.5:3900"], voice: "v" });
+    const v = createVoiceStudioVoice({ budgetScopes: SC, baseUrl: "http://192.168.1.5:3900", localServices: ["192.168.1.5:3900"], voice: "v" });
     seen.length = 0;
     await expect(v.synthesise(ctx(), { text: "x", lang: "en", voice: "v" })).rejects.toThrow(/key/i);
     expect(seen).toHaveLength(0);
@@ -141,7 +142,7 @@ describe("voicestudio", () => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ text: "x", words: chunkWords }));
     };
-    const v = createVoiceStudioVoice({ baseUrl: base, localServices: listed(), voice: "v", speed: 1.1, seed: 42, getKey: async () => KEY });
+    const v = createVoiceStudioVoice({ budgetScopes: SC, baseUrl: base, localServices: listed(), voice: "v", speed: 1.1, seed: 42, getKey: async () => KEY });
     const r = await v.synthesise(ctx(), { text, lang: "en", voice: "v" });
     const speech = seen.filter((s) => s.url === "/v1/audio/speech").map((s) => JSON.parse(s.body) as Record<string, unknown>);
     expect(speech.length).toBeGreaterThanOrEqual(2);
@@ -171,13 +172,13 @@ describe("voicestudio word matching", () => {
       if (q.url === "/v1/audio/speech") return ok(res, wav(2));
       res.writeHead(200); res.end(JSON.stringify({ words: [{ word: "The", start: 0, end: 0.3 }] }));
     };
-    const v = createVoiceStudioVoice({ baseUrl: base, localServices: listed(), voice: "v" });
+    const v = createVoiceStudioVoice({ budgetScopes: SC, baseUrl: base, localServices: listed(), voice: "v" });
     const r = await v.synthesise(ctx(), { text: "The quick brown fox jumps over the lazy dog.", lang: "en", voice: "v" });
     expect(r.timingsKind).toBe("estimated");
     expect(r.wordTimings!.some((w) => w.flags?.includes("interpolated"))).toBe(true);
   });
   it("userinfo in the url is refused without echoing it", async () => {
-    const v = createVoiceStudioVoice({ baseUrl: `http://u:SECRETPW@127.0.0.1:${new URL(base).port}`, localServices: listed(), voice: "v" });
+    const v = createVoiceStudioVoice({ budgetScopes: SC, baseUrl: `http://u:SECRETPW@127.0.0.1:${new URL(base).port}`, localServices: listed(), voice: "v" });
     const e = await v.synthesise(ctx(), { text: "x", lang: "en", voice: "v" }).catch((x: Error) => x);
     expect(e).toBeInstanceOf(Error);
     expect((e as Error).message).not.toContain("SECRETPW");
@@ -185,7 +186,7 @@ describe("voicestudio word matching", () => {
 });
 
 describe("custom http", () => {
-  const base0 = { localServices: [] as string[], bodyTemplate: '{"input":"{text}","voice":"{voice}","lang":"{lang}"}', wordTimings: "estimated" as const };
+  const base0 = { budgetScopes: SC, localServices: [] as string[], bodyTemplate: '{"input":"{text}","voice":"{voice}","lang":"{lang}"}', wordTimings: "estimated" as const };
   it("sends the key in the configured header and the filled body as one JSON string", async () => {
     await cleanDir();
     handler = (_q, res) => ok(res, wav(0.2));

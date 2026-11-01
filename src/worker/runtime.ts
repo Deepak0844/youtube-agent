@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { safeReason } from "@/server/core/paid-call";
+import { redactLine } from "@/server/core/log-redact";
 import type pg from "pg";
 import { Redis } from "ioredis";
 import { stagePlan } from "@/server/core/pipeline-plan";
@@ -333,6 +335,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
             if (stopping) return;
             // The whole job (run, commit/settle, notice) is tracked, so a clean stop waits for it before the pool closes.
             const whole = (async () => {
+              // An unrecognised error leaves the row running until the lease expires; say why, redacted, then rethrow as before.
               const outcome = await hooks.runStage(db, {
                 workerId, ttlMs: settings.config.leaseS * 1000, config: settings.config,
                 concurrencyLimit: settings.concurrentJobs,
@@ -346,7 +349,10 @@ export function startRuntime(opts: WorkerOptions = {}) {
                   );
                 },
                 provider: { call: async () => { throw new Error("runtime requires a stage handler"); } },
-              }, job);
+              }, job).catch((err: unknown) => {
+                try { log(`stage ${job.stageRunId} crashed: ${err instanceof Error ? err.name : "Error"}: ${redactLine(safeReason(err))}`); } catch { /* logging must never change the outcome */ }
+                throw err;
+              });
               // Breaker event and (for a clear provider rejection only) the retry row. Best-effort: if this fails the
               // sweep schedules the retry later, and a missed breaker event only delays the pause by one failure.
               let retryScheduled = false;

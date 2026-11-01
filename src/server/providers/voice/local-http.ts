@@ -1,4 +1,5 @@
 import { open, rm } from "node:fs/promises";
+import { KnownFailure } from "@/server/core/paid-call";
 import { NotProcessedError } from "@/server/core/error-class";
 import { BlockedAddressError, BlockedRedirectError, safeFetch } from "../net/safe-fetch";
 
@@ -6,6 +7,12 @@ import { BlockedAddressError, BlockedRedirectError, safeFetch } from "../net/saf
 // address must be on the owner's local-service list), no redirects at all, the key only in one request header and never in
 // a URL, error or log line, and every body read has a size cap. Errors: a refusal seen before the server did any work is a
 // NotProcessedError (KnownFailure); anything that fails after the request went out is rethrown as is (outcome unknown, parks).
+
+/** Free adapters still go through the ledger (reserve 0) against the video's real scopes; none is a code bug, said plainly. */
+export function requireScopes(scopes: readonly string[] | undefined, who: string): string[] {
+  if (!scopes || scopes.length === 0) throw new KnownFailure(`${who} needs the video's budget scopes (internal wiring error).`);
+  return [...scopes];
+}
 
 export const MAX_AUDIO_BYTES = 50 * 1024 * 1024;
 const MAX_JSON_BYTES = 5 * 1024 * 1024;

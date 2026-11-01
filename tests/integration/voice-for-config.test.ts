@@ -11,7 +11,7 @@ beforeAll(async () => { db = await withTestDb(); });
 afterAll(async () => { await db?.stop(); });
 beforeEach(() => db.reset());
 
-const args = { lang: "en", format: "short", kind: "scene_kit", budgetScopes: [] as string[] } as const;
+const args = { lang: "en", format: "short", kind: "scene_kit", budgetScopes: ["video:v1"] as string[] } as const;
 async function route(provider: string, price: string) {
   await db.ownerPool.query("insert into media_providers (id, kind, label, enabled, price) values ($1, 'voice', $1, true, $2::jsonb) on conflict (id) do update set enabled = true, price = $2::jsonb", [provider, price]);
   await db.ownerPool.query("insert into media_routes (kind, scope, provider, voice) values ('voice', 'default', $1, 'v1') on conflict (kind, scope) do update set provider = $1, voice = 'v1'", [provider]);

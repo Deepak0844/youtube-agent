@@ -153,6 +153,29 @@ describe("worker runtime", () => {
     expect(done).toBe(true);
   });
 
+  it("a_stage_that_crashes_with_an_unknown_error_logs_a_redacted_reason_and_still_rethrows", async () => {
+    let processor!: (job: StageJob, id: string) => Promise<void>;
+    const queue = { startWorker: (h: typeof processor) => { processor = h; return { pause: async () => {}, close: async () => {} }; }, close: async () => {} } as unknown as StageQueue;
+    const log = vi.fn();
+    const worker = startWorker({
+      pool: { end: vi.fn().mockResolvedValue(undefined) } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log, handlers: { render: async () => ({}) },
+      hooks: {
+        sweepOrphans: async () => 0, holdWorkerLock: async () => ({ release: async () => {} }), createChildRegistry: () => ({}) as never,
+        connectQueue: async () => queue,
+        loadSettings: async () => ({ config: buildEngineConfig(new Map()), concurrentJobs: 2, concurrentRenders: 1 }),
+        checkVault: async () => "ok", reconcile: async () => {}, advanceAll: async () => {}, markStalled: async () => {},
+        runStage: async () => { throw new RangeError("budgetScopes must be non-empty; key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123"); },
+      },
+    });
+    await worker.ready;
+    await expect(processor({ stageRunId: "stage-9", inputHash: "h" }, "j")).rejects.toThrow(RangeError);
+    const line = log.mock.calls.map((c) => String(c[0])).find((l) => l.includes("crashed"));
+    expect(line).toContain("stage-9");
+    expect(line).toContain("RangeError: budgetScopes must be non-empty");
+    expect(line).not.toContain("abcdefghijklmnop");
+    await worker.stop();
+  });
+
   it("database_maintenance_runs_immediately_and_each_tick_while_redis_is_down", async () => {
     vi.useFakeTimers();
     const markStalled = vi.fn().mockResolvedValue([]); const prune = vi.fn().mockResolvedValue(undefined);
