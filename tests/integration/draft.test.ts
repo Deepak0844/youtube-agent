@@ -17,7 +17,18 @@ import { LeaseLostError } from "@/server/core/paid-call";
 import { claimStage, insertQueuedStage, type Claim } from "@/server/db/stages";
 import { createVideoRow, latestContent } from "@/server/db/videos";
 import { createLlmClient, pgCatalog } from "@/server/llm/client";
-import { createWebTools } from "@/server/llm/web-tools";
+import { createWebTools as createRealWebTools } from "@/server/llm/web-tools";
+
+// webSearch now uses the dedicated SearXNG client; these tests keep faking the search through their fetch stub.
+const createWebTools = (o: Parameters<typeof createRealWebTools>[0]) =>
+  createRealWebTools({
+    ...o,
+    searchImpl: async (q) => {
+      const res = await (o.fetchImpl as unknown as (u: string) => Promise<Response>)(`http://127.0.0.1:8888/search?q=${encodeURIComponent(q)}&format=json`);
+      const data = (await res.json()) as { results?: Array<{ title?: string; url?: string; content?: string }> };
+      return (data.results ?? []).filter((r) => typeof r.url === "string").map((r) => ({ title: r.title ?? "", url: r.url as string, content: r.content ?? "" }));
+    },
+  });
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;
