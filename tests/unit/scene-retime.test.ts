@@ -67,11 +67,11 @@ describe("retimeScenes", () => {
     const r = retimeScenes(mkDoc([pause, algo, piano]), { words: words(12), beats: beats([2, 4, 6]), narrationDurationS: 6 });
     if (!r.ok) throw new Error(r.errors.join());
     const [p, a, pi] = r.doc.scenes as unknown as Array<{ durationMs: number; revealAtMs: number; steps: Array<{ at: number }>; events: Array<{ atMs: number }> }>;
-    expect(p.durationMs).toBe(1200);
-    expect(p.revealAtMs).toBe(600);
-    expect(a.durationMs).toBe(1800);
-    expect(a.steps.map((s) => s.at)).toEqual([450, 1350]);
-    expect(pi.events.map((e) => e.atMs)).toEqual([0, 1700]);
+    expect(p!.durationMs).toBe(1200);
+    expect(p!.revealAtMs).toBe(600);
+    expect(a!.durationMs).toBe(1800);
+    expect(a!.steps.map((s) => s.at)).toEqual([450, 1350]);
+    expect(pi!.events.map((e) => e.atMs)).toEqual([0, 1700]);
   });
   it("does not mutate the input", () => {
     const d = three();
