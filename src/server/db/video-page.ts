@@ -80,7 +80,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   if (!v) return null;
   const head: VideoHead = { id: v.id, topic: v.topic, language: v.language, kind: v.kind, format: v.format, status: v.status, createdAt: (v.created_at as Date).toISOString() };
   const live = head.status === "active" || head.status === "waiting";
-  const sign = await mediaSigner(db, true);
+  const sign = await mediaSigner(db);
 
   const runsR = await db.query<{ id: string; name: string; status: RunStatus; retry_of: string | null; created_at: Date; updated_at: Date; result: unknown }>(
     "select id, name, status, retry_of, created_at, updated_at, result from stage_runs where video_id = $1 order by created_at, id",

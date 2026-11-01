@@ -76,7 +76,7 @@ const MAX_ITEMS = 50;
 const asObj = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
-export async function mediaSigner(db: pg.Pool, stable = false): Promise<((rel: string | null | undefined) => string | null) | null> {
+export async function mediaSigner(db: pg.Pool): Promise<((rel: string | null | undefined) => string | null) | null> {
   let key: Buffer | null = null;
   try {
     key = (await getCachedMediaKey(db)) ?? (await getOrCreateMediaKey(db));
@@ -85,8 +85,8 @@ export async function mediaSigner(db: pg.Pool, stable = false): Promise<((rel: s
   }
   if (!key) return null;
   const now = Math.floor(Date.now() / 1000);
-  // stable: same URL for the same file within an hour (30-90 min validity), so a re-rendered page does not restart a playing video.
-  const exp = stable ? stableExpiry(now, 3600, 1800) : now + 3600;
+  // Same URL for the same file within an hour (valid 60-120 min, never shorter than before), so a re-rendered page does not restart a playing video.
+  const exp = stableExpiry(now, 3600, 3600);
   return (rel) => {
     if (!rel) return null;
     try {
