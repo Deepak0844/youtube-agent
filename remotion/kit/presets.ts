@@ -4,7 +4,7 @@ import { defaultTheme } from "./theme";
 import type { Look } from "./look";
 import { TRANSITION_FRAMES, type CaptionWord } from "./timeline";
 
-export const STYLE_IDS = ["clean_pro", "neon_flat", "blueprint_whiteboard"] as const;
+export const STYLE_IDS = ["clean_pro", "neon_flat", "blueprint_whiteboard", "documentary_montage"] as const;
 export type StyleId = (typeof STYLE_IDS)[number];
 export const CAPTION_STYLE_IDS = ["punchy_captions"] as const;
 export type CaptionStyleId = (typeof CAPTION_STYLE_IDS)[number];
@@ -33,6 +33,10 @@ export type StylePreset = {
   motion: { kind: "smooth" | "spring"; stiffness: number; damping: number; transitionFrames: number; rise: number };
   pacing: { minHoldFrames: number; maxHoldFrames: number; cutRhythm: "even" | "uneven" };
   captions: CaptionStyle;
+  /** Picture scenes only: slow push-in (share of the frame, over the scene) and a dark vignette strength. Absent = untouched. */
+  grade?: { pushIn: number; vignette: number };
+  /** Pictures stage asks for a video clip on every beat (the clip cap still applies) and may keep this many clips. */
+  clips?: { wantAll: boolean; max: number };
   preferKinds: readonly string[];
   avoidKinds: readonly string[];
   antiPatterns: readonly string[];
@@ -71,6 +75,22 @@ export const PRESETS: Record<StyleId, StylePreset> = {
     preferKinds: ["chart", "network", "algo_cells", "terminal", "orbit"],
     avoidKinds: [],
     antiPatterns: ["long text slides with no motion", "calm fades; things should pop in", "more than three bright colours on one screen"],
+  },
+  documentary_montage: {
+    id: "documentary_montage",
+    label: "Documentary montage",
+    mood: "Dark, cinematic, quiet. Slow push-ins on real footage, few title cards.",
+    look: { name: "documentary", from: "#0a0a0d", to: "#1b1612", accent: "#e8c07a", accent2: "#d6d3d1" },
+    palette: { bg: "#0a0a0d", surface: "#1b1612", text: "#f5f5f4", muted: "#a8a29e", accent: "#e8c07a", chart: ["#e8c07a", "#f5f5f4", "#a8a29e", "#d6a05c", "#78716c", "#fde7b0"] },
+    fonts: { heading: defaultTheme.fonts.ui, body: defaultTheme.fonts.ui, headingWeight: 600 },
+    motion: { kind: "smooth", stiffness: 0, damping: 0, transitionFrames: 12, rise: 8 },
+    pacing: { minHoldFrames: 36, maxHoldFrames: 120, cutRhythm: "uneven" },
+    captions: PILL,
+    grade: { pushIn: 0.05, vignette: 0.45 },
+    clips: { wantAll: true, max: 6 },
+    preferKinds: ["stock_clip", "story_kenburns"],
+    avoidKinds: [],
+    antiPatterns: ["more than 25% of scenes as text cards (pause_card, hook titles)", "holding one clip longer than 4 seconds or cutting faster than 1.2 seconds; serious beats hold longer, light beats shorter", "bright colours or busy graphics over footage"],
   },
   // Light paper would need every kit piece to take dark ink, so this is the dark blueprint paper (#0C2340): white ink, one accent.
   blueprint_whiteboard: {

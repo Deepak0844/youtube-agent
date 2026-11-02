@@ -25,6 +25,16 @@ describe("preset shape", () => {
     expect(p.motion.transitionFrames).toBeGreaterThan(0);
     expect(p.label && p.mood).toBeTruthy();
   });
+  it("documentary montage: slow push-in of 4-6%, clip-first, clips 1.2-4 s, text-light prompt", () => {
+    const p = PRESETS.documentary_montage;
+    expect(p.grade?.pushIn).toBeGreaterThanOrEqual(0.04);
+    expect(p.grade?.pushIn).toBeLessThanOrEqual(0.06);
+    expect(p.clips).toEqual({ wantAll: true, max: 6 });
+    expect(p.pacing).toMatchObject({ minHoldFrames: 36, maxHoldFrames: 120 });
+    expect(p.preferKinds).toEqual(["stock_clip", "story_kenburns"]);
+    expect(styleGuidance("documentary_montage")).toMatch(/25% of scenes as text cards.*Pace: scenes usually hold 1\.2 to 4\.0 seconds/s);
+    expect(PRESETS.clean_pro.grade ?? PRESETS.clean_pro.clips).toBeUndefined();
+  });
   it("blueprint whiteboard: dark paper, one accent, slow even holds, 12-frame fade", () => {
     const p = PRESETS.blueprint_whiteboard;
     expect(p.look?.from).toBe("#0c2340");

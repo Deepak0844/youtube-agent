@@ -9,6 +9,18 @@ const SceneIn: React.FC<{ on: boolean; motion: StylePreset["motion"]; children: 
   const dy = motion.kind === "spring" ? (1 - spring({ frame, fps, config: { stiffness: motion.stiffness, damping: motion.damping } })) * motion.rise : t.dy;
   return on ? <AbsoluteFill style={{ opacity: t.opacity, transform: `translateY(${dy}px)` }}>{children}</AbsoluteFill> : <>{children}</>;
 };
+// Documentary grade: slow push-in on clips (stock_clip only; photos already drift in Story) and a dark vignette on picture scenes.
+const Grade: React.FC<{ grade: NonNullable<StylePreset["grade"]>; clip: boolean; children: React.ReactNode }> = ({ grade, clip, children }) => {
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  const scale = clip ? 1 + grade.pushIn * Math.min(1, frame / Math.max(1, durationInFrames)) : 1;
+  return (
+    <AbsoluteFill>
+      <AbsoluteFill style={{ transform: `scale(${scale})` }}>{children}</AbsoluteFill>
+      <AbsoluteFill style={{ background: `radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(0,0,0,${grade.vignette}) 100%)` }} />
+    </AbsoluteFill>
+  );
+};
 import { Browser, type BrowserProps } from "./Browser";
 import { ChatThread, type ChatThreadProps } from "./ChatThread";
 import { PauseCard, type PauseCardProps } from "./PauseCard";
@@ -325,7 +337,9 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
       const r = sceneRange(scene, fps);
       // First scene: its clock starts `skip` frames in (negative-from nested Sequence), so frame 0 is already composed.
       const skip = i === 0 && r.from === 0 ? introSkipFrames(r.duration) : 0;
-      const body = <KitScene scene={scene} resolveAsset={resolveAsset} fps={fps} />;
+      const inner = <KitScene scene={scene} resolveAsset={resolveAsset} fps={fps} />;
+      const pic = scene.kind === "stock_clip" || scene.kind === "story_kenburns";
+      const body = preset.grade && pic ? <Grade grade={preset.grade} clip={scene.kind === "stock_clip"}>{inner}</Grade> : inner;
       return (
         <Sequence key={scene.id} from={r.from} durationInFrames={sequenceFrames(r.duration, i === doc.scenes.length - 1, preset.motion.transitionFrames)}>
           <SceneIn on={i > 0} motion={preset.motion}>{skip ? <Sequence from={-skip} durationInFrames={r.duration + skip}>{body}</Sequence> : body}</SceneIn>
