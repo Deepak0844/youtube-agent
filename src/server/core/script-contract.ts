@@ -19,7 +19,7 @@ const httpUrl = z.string().refine((s) => {
 // visual / search: optional picture brief per beat (English plain nouns) that Build uses to pick honest scenes.
 export const beatSchema = z.looseObject({
   id: z.string().min(1),
-  visual: z.string().max(300).optional(),
+  visual: z.string().max(320).optional(),
   search: z.array(z.string().min(1).max(80)).max(5).optional(),
 });
 export const claimSchema = z.discriminatedUnion("kind", [
@@ -31,6 +31,8 @@ export const scriptSchema = z.object({
   beats: z.array(beatSchema),
   title: z.string().min(1),
   description: z.string().optional(),
+  /** What is actually computed or drawn on screen (e.g. the real binary-search steps); Build tells the scene picker. */
+  shown_for_real: z.string().max(200).optional(),
   evidence: z.array(claimSchema),
 });
 export type Beat = z.infer<typeof beatSchema>;

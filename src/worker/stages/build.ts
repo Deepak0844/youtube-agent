@@ -67,7 +67,8 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
       const ask = sceneAsk(llm, ctx);
       const links = await deps.scenePictures?.(video.id);
       const pictures = links ? links.reduce<Record<string, string[]>>((m, l) => ((m[l.beatId] ??= []).push(l.assetId), m), {}) : undefined;
-      const doc = await buildSceneDoc(beats, ask, pictures ? { pictures, language: langName(video.language) } : { assets: (await deps.sceneAssets?.(video.id)) ?? [] });
+      const shownForReal = typeof script.script.shown_for_real === "string" && script.script.shown_for_real ? script.script.shown_for_real : undefined;
+      const doc = await buildSceneDoc(beats, ask, pictures ? { pictures, language: langName(video.language), shownForReal } : { assets: (await deps.sceneAssets?.(video.id)) ?? [], shownForReal });
       await writeFile(path.join(ctx.attemptDir, "scenes.json"), JSON.stringify(doc));
       files.push("scenes.json");
       content.push({ kind: "scenes", body: doc });
