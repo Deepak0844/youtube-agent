@@ -42,7 +42,7 @@ import { Piano, type PianoProps } from "./Piano";
 import { MapPiece, type MapProps } from "./MapPiece";
 import { Orbit, type OrbitProps } from "./Orbit";
 import { SvgDiagram, type SvgDiagramProps } from "./SvgDiagram";
-import { SVG_EXAMPLE } from "./svgDiagram";
+import { SVG_EXAMPLE } from "./svgLogic";
 import { Captions } from "./Captions";
 import { captionStyleOf, presetOf, type StylePreset } from "./presets";
 import { StyleFontCtx } from "./ScriptText";

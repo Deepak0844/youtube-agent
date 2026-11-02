@@ -1,5 +1,5 @@
 // One small valid sample scene per kind, for the /dev/kit page. Picture ids point at nothing, so the kit shows its stand-in picture.
-import { SVG_EXAMPLE } from "../../../remotion/kit/svgDiagram";
+import { SVG_EXAMPLE } from "../../../remotion/kit/svgLogic";
 import type { SceneDoc } from "./schema";
 
 const b = (kind: string) => ({ id: `s-${kind}`.slice(0, 32).replace(/_/g, "-"), beat: "b1", startMs: 0, durationMs: 4000, kind });

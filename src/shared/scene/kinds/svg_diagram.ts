@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { sanitizeSvg, SVG_COLOR_TOKENS, SVG_LIMITS } from "../../../../remotion/kit/svgDiagram";
+import { sanitizeSvg, SVG_COLOR_TOKENS, SVG_LIMITS } from "../../../../remotion/kit/svgLogic";
 import { base, copy, LIMITS } from "./common";
 
 // The svg is DATA, checked by a strict allow-list sanitizer (it rejects anything else, never strips). Layout rules live in rules.ts.

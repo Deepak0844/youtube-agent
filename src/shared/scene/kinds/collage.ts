@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { assetId, base, copy, LIMITS } from "./common";
 
-// Re-frame must skip collage shots (remotion/kit/reframe.ts shouldReframe); keep this id in sync.
+// Re-frame must skip collage shots (remotion/kit/reframeMath.ts shouldReframe); keep this id in sync.
 export const KIND = "collage";
 
 export const schema = z.object({

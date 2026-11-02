@@ -1,6 +1,6 @@
 // House rules checked after the schema passes. One table: add a rule = add one entry.
 // Pure; src/shared must not import from remotion/kit at runtime, so the banned list is copied here (a test pins it to the theme).
-import { sanitizeSvg, svgLabels, svgLayoutProblems } from "../../../remotion/kit/svgDiagram";
+import { sanitizeSvg, svgLabels, svgLayoutProblems } from "../../../remotion/kit/svgLogic";
 import { LIMITS } from "./kinds/common";
 import type { Scene, SceneDoc } from "./schema";
 import { validateScenes } from "./validate";
