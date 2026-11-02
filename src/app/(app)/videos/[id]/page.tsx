@@ -21,6 +21,7 @@ import { VideoBox } from "@/ui/domain/video-box";
 import { Pill } from "@/ui/primitives/pill";
 import { Skeleton } from "@/ui/primitives/skeleton";
 import { ForceRerunForm, ReframeButtons, RerunForm, SceneButtons } from "./controls";
+import { SoundTabPanel } from "./sound-tab";
 
 // The video page (Doc 4 /videos/[id]): where it is now, what it cost, and the content of each step, one tab at a time
 // (?tab=). Read only except the buttons: Run again, Cancel, the gate card (all owner-only server actions) and the free scene checks.
@@ -242,6 +243,8 @@ function Panel({ tab, p }: { tab: TabId; p: VideoPage }) {
         </>
       );
     }
+    case "sound":
+      return <SoundTabPanel p={p} />;
     case "audit":
       return p.audit.length === 0 ? <Empty>Nothing in the audit log for this video yet.</Empty> : (
         <ul className="m-0 flex list-none flex-col gap-3 p-0">
