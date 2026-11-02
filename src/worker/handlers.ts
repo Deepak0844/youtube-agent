@@ -133,7 +133,7 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     // Render runs in the locked-down render container (remotion-container.ts). The kit is read from the repo the worker runs in.
     renderer: createContainerRenderer({
       root, kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId,
-      assetFile: async (id) => { const a = await getAsset(pool, id); return a && !a.deletedAt && a.kind === "image" ? a.storageRef : null; },
+      assetFile: async (id) => { const a = await getAsset(pool, id); return a && !a.deletedAt && (a.kind === "image" || a.kind === "video") ? a.storageRef : null; },
       probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
     }),
   };

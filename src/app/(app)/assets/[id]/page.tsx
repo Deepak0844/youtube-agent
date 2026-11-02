@@ -41,7 +41,7 @@ async function Owned({ params }: { params: PageProps<"/assets/[id]">["params"] }
         </Link>
         <h1 className="mt-2 text-page-title font-semibold tracking-tight [overflow-wrap:anywhere]">{asset.originalName}</h1>
         <p className="mt-1 text-small text-muted">
-          {asset.kind === "image" ? "Image" : "Sound"} · {asset.source} · {(asset.bytes / 1024).toFixed(0)} KB
+          {asset.kind === "image" ? "Image" : asset.kind === "video" ? "Clip" : "Sound"} · {asset.source} · {(asset.bytes / 1024).toFixed(0)} KB
           {asset.width && asset.height ? ` · ${asset.width}×${asset.height}` : ""}
           {asset.durationS !== null ? ` · ${asset.durationS.toFixed(1)} s` : ""}
         </p>
@@ -53,9 +53,9 @@ async function Owned({ params }: { params: PageProps<"/assets/[id]">["params"] }
           {asset.kind === "image" ? (
             // eslint-disable-next-line @next/next/no-img-element -- a signed media URL
             <img src={card.url} alt={asset.caption ?? ""} className="max-h-96 rounded-card" />
-          ) : (
+          ) : asset.kind === "audio" ? (
             <audio controls src={card.url} className="w-full" />
-          )}
+          ) : null}
         </section>
       ) : null}
 

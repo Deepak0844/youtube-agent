@@ -24,9 +24,11 @@ export interface SceneBeat {
 export type AskScene = (messages: Message[]) => Promise<string>;
 
 /** The deterministic part of a beat that has linked pictures: one picture is a Ken Burns shot, 2-6 a collage, more are cut to 6, none = the model picks. */
-export function planPictureBeat(ids: readonly string[]): { kind: "story_kenburns" | "collage"; assets: string[] } | null {
+export function planPictureBeat(ids: readonly string[], clips?: ReadonlySet<string>): { kind: "story_kenburns" | "collage" | "stock_clip"; assets: string[] } | null {
   const a = ids.slice(0, MAX_PICTURES);
   if (a.length === 0) return null;
+  const clip = clips ? a.find((id) => clips.has(id)) : undefined;
+  if (clip) return { kind: "stock_clip", assets: [clip] }; // a linked clip wins: one muted clip, trimmed to the beat
   return a.length === 1 ? { kind: "story_kenburns", assets: a } : { kind: "collage", assets: a };
 }
 
@@ -49,7 +51,7 @@ export function limitRepeats(lists: readonly (readonly string[])[]): string[][] 
 
 /** Errors when the scene does not use exactly these asset ids (collage: in this order). */
 export function checkPictureIds(scene: Record<string, unknown>, ids: readonly string[]): string[] {
-  const used = scene.kind === "collage" ? ((scene.tiles as Array<{ asset?: unknown }> | undefined) ?? []).map((t) => t.asset) : [scene.image];
+  const used = scene.kind === "collage" ? ((scene.tiles as Array<{ asset?: unknown }> | undefined) ?? []).map((t) => t.asset) : scene.kind === "stock_clip" ? [scene.asset] : [scene.image];
   return used.length === ids.length && used.every((u, i) => u === ids[i]) ? [] : [`scene 1: the picture ids must be exactly ${ids.map((i) => `'${i}'`).join(", ")}${ids.length > 1 ? " in this order" : ""}`];
 }
 
@@ -79,7 +81,7 @@ export function fillMessages(beat: SceneBeat, kind: string, assets: readonly str
     "You turn one beat of a script into ONE scene of JSON for a short portrait video.",
     describeSceneFormat([kind]),
     opts.exact
-      ? `The pictures for this beat are fixed. Use exactly these asset ids${assets.length > 1 ? ", in this order" : ""}: ${assets.join(", ")}. Write only a short caption${opts.language ? ` in the narration language (${opts.language})` : " in the narration language"}, based on the visual brief, and choose a gentle pan/zoom or tile layout.`
+      ? `The pictures for this beat are fixed. Use exactly these asset ids${assets.length > 1 ? ", in this order" : ""}: ${assets.join(", ")}. Write only a short caption${opts.language ? ` in the narration language (${opts.language})` : " in the narration language"}, based on the visual brief, and ${kind === "stock_clip" ? "leave dim at its default" : "choose a gentle pan/zoom or tile layout"}.`
       : assets.length > 0 ? `Allowed asset ids (use only these): ${assets.join(", ")}.` : "No images or clips exist for this video: do not use asset ids.",
     `Reply with only JSON: {"version": 1, "scenes": [ONE scene of kind "${kind}"]}. The app sets id, beat, startMs and durationMs: use id "s1", beat "${beat.id}", startMs 0, durationMs 3000.`,
   ].join("\n\n");
@@ -153,7 +155,7 @@ export async function withRetries<T>(ask: AskScene, messages: Message[], check: 
   }
 }
 
-export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, opts: { assets?: readonly string[]; pictures?: Readonly<Record<string, readonly string[]>>; language?: string; shownForReal?: string } = {}): Promise<SceneDoc> {
+export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, opts: { assets?: readonly string[]; pictures?: Readonly<Record<string, readonly string[]>>; clips?: ReadonlySet<string>; language?: string; shownForReal?: string } = {}): Promise<SceneDoc> {
   // With `pictures` (beat id -> linked asset ids) beats that have pictures are planned by the app and the rest never see image kinds.
   const perBeat = opts.pictures !== undefined;
   const limited = perBeat ? limitRepeats(beats.map((b) => (opts.pictures![b.id] ?? []).slice(0, MAX_PICTURES))) : [];
@@ -169,7 +171,7 @@ export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, 
   let startMs = 0;
   for (const [i, beat] of beats.entries()) {
     const fail = (errors: string[]) => new KnownFailure(`scenes_invalid: beat '${beat.id}' could not get a valid scene. Last problems: ${errors.slice(0, 5).join("; ")}`.slice(0, 600));
-    const plan = perBeat ? planPictureBeat(pictureOf(i)) : null;
+    const plan = perBeat ? planPictureBeat(pictureOf(i), opts.clips) : null;
     const beatAssets = perBeat ? (plan?.assets ?? []) : assets;
     let kind: string;
     if (plan) kind = plan.kind;
