@@ -6,6 +6,7 @@ import { useMemo, useRef, useState } from "react";
 import { KitScene, KitVideo } from "./kit-bridge";
 import { LOOKS } from "../../../remotion/kit/look";
 import { theme } from "../../../remotion/kit/theme";
+import { slideshowRisk } from "@/shared/scene/slideshow";
 import { docFrames } from "../../../remotion/kit/timeline";
 import { seedForLook, type PreviewData } from "@/shared/preview";
 import { sampleDoc, SAMPLE_SCENES } from "@/shared/scene/samples";
@@ -17,19 +18,21 @@ const abs = (u: string | null) => (u && typeof location !== "undefined" ? new UR
 const fail = () => <div className="p-4 text-small text-white">This scene could not be drawn. Re-check the scenes.</div>;
 const box = "flex flex-col gap-1";
 
-export function PreviewStage({ data, videoId, title }: { data: PreviewData; videoId: string; title: string }) {
+export function PreviewStage({ data, videoId, title, style, captionStyle }: { data: PreviewData; videoId: string; title: string; style?: string | null; captionStyle?: string | null }) {
   const ref = useRef<PlayerRef>(null);
   const [look, setLook] = useState<number | null>(null);
   const [captions, setCaptions] = useState(true);
   const [safe, setSafe] = useState(false);
+  const risks = useMemo(() => slideshowRisk(data.doc.scenes as unknown as Array<{ kind: string }>), [data]);
   const frames = docFrames(data.doc.scenes, data.fps);
   const props = useMemo(
     () => ({
       doc: data.doc, fps: data.fps, title, seed: look === null ? videoId : seedForLook(look), assets: data.assets,
       resolveAsset: (id: string) => data.assets[id] ?? FALLBACK,
       audioSrc: abs(data.audio.src), captions: captions ? (data.captions ?? undefined) : undefined,
+      style: style ?? undefined, captionStyle: captionStyle ?? undefined,
     }),
-    [data, title, videoId, look, captions],
+    [data, title, videoId, look, captions, style, captionStyle],
   );
   return (
     <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
@@ -61,6 +64,7 @@ export function PreviewStage({ data, videoId, title }: { data: PreviewData; vide
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <h3 className="m-0 text-section font-medium">Scenes ({data.rows.length})</h3>
+        {risks.map((r) => <p key={r} className="m-0 text-small text-pill-warning-ink" data-testid="slideshow-warning">{r}</p>)}
         {data.documentProblems > 0 ? <p className="m-0 text-small text-pill-warning-ink">The scene file has a problem that is not about one scene. Use Re-check scenes on the Beats tab.</p> : null}
         <ol className="m-0 flex list-none flex-col gap-1 p-0" data-testid="scene-list">
           {data.rows.map((r) => (

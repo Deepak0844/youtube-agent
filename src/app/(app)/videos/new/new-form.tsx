@@ -1,6 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
+import { LOOKS } from "../../../../../remotion/kit/look";
+import { DEFAULT_STYLE, PRESETS, STYLE_IDS } from "../../../../../remotion/kit/presets";
 import { LANGUAGE_ORDER, LANGUAGE_WORDS } from "@/server/core/videos-view";
 import { cn, control, fade, focusRing } from "@/ui/lib/cn";
 import { Button } from "@/ui/primitives/button";
@@ -47,6 +49,31 @@ export function NewForm() {
           </select>
         </div>
       </div>
+      <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+        <legend className="mb-1 text-body font-medium">Style</legend>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {STYLE_IDS.map((id) => {
+            const s = PRESETS[id];
+            const sw = s.look ? [s.look.from, s.look.to, s.look.accent] : LOOKS.slice(0, 3).map((l) => l.to);
+            return (
+              <label key={id} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-rule bg-surface p-3 has-checked:outline-2 has-checked:outline">
+                <input type="radio" name="style" value={id === DEFAULT_STYLE ? "" : id} defaultChecked={id === DEFAULT_STYLE} className="mt-1" />
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="flex items-center gap-2 text-body font-medium">
+                    <span aria-hidden className="flex">{sw.map((c) => <span key={c} className="size-4 first:rounded-l-full last:rounded-r-full" style={{ background: c }} />)}</span>
+                    {s.label}
+                  </span>
+                  <span className="text-small text-muted">{s.mood}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+      <label className="flex items-start gap-3 text-body">
+        <input type="checkbox" name="captionStyle" value="punchy_captions" className="mt-1" />
+        <span>Punchy captions <span className="block text-small text-muted">Big 1-3 word captions, yellow active word, black outline. Works with any style.</span></span>
+      </label>
       <div className="flex flex-col gap-2">
         <Label htmlFor="notes">Notes (optional)</Label>
         <textarea id="notes" name="notes" rows={4} maxLength={2000} placeholder="Angle, tone, things to include or avoid" className={cn(selectClass, "py-2")} />

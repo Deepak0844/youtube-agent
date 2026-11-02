@@ -70,12 +70,14 @@ interface VideoLocked {
   language: string;
   topic: string;
   notes: string | null;
+  style: string | null;
+  caption_style: string | null;
   status: string;
   stage_nonces: Partial<Record<StageName, string>>;
 }
 
 async function lockVideo(c: pg.PoolClient, videoId: string): Promise<VideoLocked> {
-  const r = await c.query<VideoLocked>("select id, format, kind, language, topic, notes, status, stage_nonces from videos where id = $1 for update", [videoId]);
+  const r = await c.query<VideoLocked>("select id, format, kind, language, topic, notes, style, caption_style, status, stage_nonces from videos where id = $1 for update", [videoId]);
   const v = r.rows[0];
   if (!v) throw new Error(`video not found: ${videoId}`);
   return v;
@@ -112,6 +114,7 @@ async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineRead
     runs,
     approved: await readers.approvedGates(c, v.id),
     nonces: v.stage_nonces ?? {},
+    ...(v.style || v.caption_style ? { style: { style: v.style, captionStyle: v.caption_style } } : {}),
   };
 }
 

@@ -73,13 +73,17 @@ export interface VideoInfo {
   kind: VideoKind;
   format: VideoFormat;
   language: VideoLanguage;
+  /** null = default look */
+  style: string | null;
+  captionStyle: string | null;
 }
 
 export async function loadVideo(db: pg.Pool, ctx: StageContext): Promise<VideoInfo> {
   const id = videoIdOf(ctx);
-  const r = await db.query<{ kind: VideoKind; format: VideoFormat; language: VideoLanguage }>("select kind, format, language from videos where id = $1", [id]);
+  const r = await db.query<{ kind: VideoKind; format: VideoFormat; language: VideoLanguage; style: string | null; caption_style: string | null }>("select kind, format, language, style, caption_style from videos where id = $1", [id]);
   if (!r.rows[0]) throw new KnownFailure("The video for this stage no longer exists.");
-  return { id, ...r.rows[0] };
+  const { style, caption_style, ...rest } = r.rows[0];
+  return { id, ...rest, style, captionStyle: caption_style };
 }
 
 /**

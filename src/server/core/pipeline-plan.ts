@@ -1,4 +1,5 @@
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
+import { styleHashParts } from "../../../remotion/kit/presets";
 import type { GateId } from "@/server/core/gates";
 
 // The route a video takes (Doc 2 4.1), and the pure decision "what happens next". No IO: the db layer builds the
@@ -109,6 +110,8 @@ export interface PipelineView {
   flags: PlanFlags;
   /** hash of the video's own parameters (topic, language, notes, kind, format) */
   paramsHash: string;
+  /** chosen look and caption layer; absent when none was chosen (then no hash changes) */
+  style?: { style: string | null; captionStyle: string | null };
   /** latest owner send-back note for the script, or null */
   feedback: string | null;
   /** sha256 of the latest version of each content kind that exists */
@@ -162,6 +165,7 @@ export function expectedInputHash(view: PipelineView, stage: StageName, prevHash
   }
   for (const k of STAGE_CONTENT_INPUTS[stage]) upstream[k] = view.content[k] ?? "none";
   const nonce = view.nonces?.[stage];
+  if (view.style && (stage === "build" || stage === "render")) Object.assign(upstream, styleHashParts(view.style.style, view.style.captionStyle)); // only when chosen: older hashes stay identical
   if (nonce) upstream.nonce = nonce; // only when set: every hash made before forced reruns existed stays identical
   return stageInputHash(stage, upstream, {});
 }
