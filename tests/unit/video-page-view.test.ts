@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateLabel, forceRerunOffered, voiceChanged, fmtDuration, headline, median, parseFindings, parseTab, rerunCostNote, rerunOffered, stageViews, TABS, type RunFact } from "@/server/core/video-page-view";
+import { estimateLabel, forceRerunOffered, voiceChanged, fmtDuration, headline, median, parseFindings, parseTab, rerunCostNote, rerunOffered, reframedFormats, stageViews, TABS, type RunFact } from "@/server/core/video-page-view";
 
 const run = (o: Partial<RunFact>): RunFact => ({ status: "succeeded", createdAt: 0, updatedAt: 0, retryNumber: 0, error: null, percent: null, ...o });
 const plan = ["draft", "build", "tts", "render"] as const;
@@ -106,5 +106,15 @@ describe("voiceChanged", () => {
     expect(voiceChanged({ provider: "edge", voice: "en-US-B" }, cur)).toBe(true);
     expect(voiceChanged({ provider: "edge", voice: "en-US-A" }, null)).toBe(false);
     expect(voiceChanged({ provider: "edge", voice: "en-US-A" }, { provider: "edge", voice: "" })).toBe(false);
+  });
+});
+
+describe("reframedFormats", () => {
+  it("lists only formats with a succeeded reframe run, in fixed order", () => {
+    const r = (status: string, format: unknown, name = "reframe") => ({ name, status, result: { format } });
+    expect(reframedFormats([])).toEqual([]);
+    expect(reframedFormats([r("succeeded", "1x1"), r("succeeded", "16x9")])).toEqual(["16x9", "1x1"]);
+    expect(reframedFormats([r("queued", "16x9"), r("failed", "1x1"), r("succeeded", "4x3"), r("succeeded", "16x9", "render")])).toEqual([]);
+    expect(reframedFormats([{ name: "reframe", status: "succeeded", result: null }])).toEqual([]);
   });
 });
