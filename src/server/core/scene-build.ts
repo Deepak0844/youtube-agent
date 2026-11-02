@@ -15,6 +15,9 @@ const BEAT_ID = /^[a-z0-9_-]{1,32}$/;
 export interface SceneBeat {
   id: string;
   text: string;
+  /** Picture brief from the script (English). */
+  visual?: string;
+  search?: string[];
 }
 /** One paid, reserved model call; returns the raw answer text. */
 export type AskScene = (messages: Message[]) => Promise<string>;
@@ -25,14 +28,21 @@ export function beatDurationMs(text: string): number {
 
 // Two small calls per beat instead of one call carrying all 18 kind descriptions (~6,700 tokens): first pick the kind from
 // one-line blurbs, then fill it with ONLY that kind's description. Retries stay on the same kind.
-function pickMessages(beat: SceneBeat, kinds: readonly string[]): Message[] {
+/** The beat as the model sees it: its text plus the visual brief and search words when the script has them. */
+export function beatBlock(beat: SceneBeat): string {
+  const brief = beat.visual ? `\nVisual brief: ${beat.visual}` : "";
+  const search = beat.search?.length ? `\nSearch words: ${beat.search.join("; ")}` : "";
+  return `Beat ${beat.id}:\n${beat.text}${brief}${search}`;
+}
+
+export function pickMessages(beat: SceneBeat, kinds: readonly string[]): Message[] {
   return [
-    { role: "system", content: `Pick the scene kind that best shows one beat of a short portrait video script.\nKinds:\n${kindBlurbs(kinds)}\nReply with only JSON: {"kind": "<one of the kinds>"}.` },
-    { role: "user", content: `Beat ${beat.id}:\n${beat.text}` },
+    { role: "system", content: `Pick the scene kind that best shows one beat of a short portrait video script. Choose the scene kind that can SHOW the visual brief. If no available kind can show it truthfully, choose the most abstract honest kind that fits the content (chart, math, chat, terminal, pause_card...). NEVER use drawn_objects unless the brief literally names one of its eight objects (jug, measuring_cup, ruler, laptop, server_rack, container, cloud, padlock).\nKinds:\n${kindBlurbs(kinds)}\nReply with only JSON: {"kind": "<one of the kinds>"}.` },
+    { role: "user", content: beatBlock(beat) },
   ];
 }
 
-function fillMessages(beat: SceneBeat, kind: string, assets: readonly string[]): Message[] {
+export function fillMessages(beat: SceneBeat, kind: string, assets: readonly string[]): Message[] {
   const system = [
     "You turn one beat of a script into ONE scene of JSON for a short portrait video.",
     describeSceneFormat([kind]),
@@ -41,7 +51,7 @@ function fillMessages(beat: SceneBeat, kind: string, assets: readonly string[]):
   ].join("\n\n");
   return [
     { role: "system", content: system },
-    { role: "user", content: `Beat ${beat.id}:\n${beat.text}` },
+    { role: "user", content: beatBlock(beat) },
   ];
 }
 
@@ -75,7 +85,7 @@ export function assetRefs(v: unknown, out: string[] = []): string[] {
 }
 
 /** Returns the single scene (the model's own ids and timing still in it) or plain-text errors. */
-function check(text: string, kind: string, assets: readonly string[]): { ok: true; scene: Record<string, unknown> } | { ok: false; errors: string[] } {
+function check(text: string, kind: string, assets: readonly string[], visual?: string): { ok: true; scene: Record<string, unknown> } | { ok: false; errors: string[] } {
   const raw = parseJson(text);
   if (raw === undefined) return { ok: false, errors: ["The answer was not valid JSON."] };
   const r = validateScenes(raw);
@@ -85,7 +95,7 @@ function check(text: string, kind: string, assets: readonly string[]): { ok: tru
   if (scene.kind !== kind) return { ok: false, errors: [`scene 1 > kind: must be '${kind}'`] };
   const bad = [...new Set(assetRefs(scene).filter((a) => !assets.includes(a)))];
   if (bad.length > 0) return { ok: false, errors: [`scene 1: asset id ${bad.map((b) => `'${b}'`).join(", ")} does not exist for this video${assets.length ? `; allowed: ${assets.join(", ")}` : ""}`] };
-  const rules = checkSceneRules({ ...r.doc, scenes: [{ ...scene, startMs: 0 }] }, { assetIds: [...assets] }); // the app sets timing, so judge the scene at 0 ms; house rules (no CTA wording, text cap, frame 0...) feed the same retry
+  const rules = checkSceneRules({ ...r.doc, scenes: [{ ...scene, startMs: 0 }] }, { assetIds: [...assets], visual }); // the app sets timing, so judge the scene at 0 ms; house rules (no CTA wording, text cap, frame 0...) feed the same retry
   if (rules.length > 0) return { ok: false, errors: rules };
   return { ok: true, scene: scene as unknown as Record<string, unknown> };
 }
@@ -120,7 +130,7 @@ export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, 
     const pick = await withRetries(ask, pickMessages(beat, kinds), (t) => checkPick(t, kinds));
     if ("errors" in pick) throw fail(pick.errors);
     const fill = await withRetries(ask, fillMessages(beat, pick.value, assets), (t) => {
-      const r = check(t, pick.value, assets);
+      const r = check(t, pick.value, assets, beat.visual);
       return r.ok ? { ok: true, value: r.scene } : r;
     });
     if ("errors" in fill) throw fail(fill.errors);

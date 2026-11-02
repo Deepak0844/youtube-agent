@@ -12,6 +12,8 @@ export interface RuleOpts {
   maxScenesPerBeat?: number;
   /** Asset ids that exist for this video. When given, scenes may use only these. */
   assetIds?: string[];
+  /** The current beat's visual brief (Build, one beat at a time); an object it names may carry any label. */
+  visual?: string;
   /** Run one rule only (tests). */
   only?: string;
 }
@@ -46,6 +48,19 @@ const FRAME0: Record<string, (s: Scene) => boolean> = {
 };
 const NEEDS_OBJECTS: Record<string, string> = { drawn_objects: "objects", network: "nodes" };
 const NEEDS_ASSET = new Set(["stock_clip", "story_kenburns", "collage"]);
+
+// Plain words a drawn_objects label may use for each icon (the label must not claim the icon is something else).
+const ICON_WORDS: Record<string, string[]> = {
+  container: ["container", "box", "tank", "bin"],
+  jug: ["jug", "bottle", "liquid"],
+  measuring_cup: ["cup", "measuring cup"],
+  ruler: ["ruler", "measure", "length"],
+  laptop: ["laptop", "computer", "screen", "code"],
+  server_rack: ["server", "rack", "database", "host"],
+  cloud: ["cloud", "internet", "network", "online"],
+  padlock: ["lock", "padlock", "security", "private"],
+};
+const LATIN = /^[\p{Script=Latin}\p{N}\p{P}\p{S}\s]+$/u;
 
 export const RULES: Rule[] = [
   {
@@ -132,6 +147,24 @@ export const RULES: Rule[] = [
     code: "has-objects",
     fix: "Add at least one real object or node; never text only.",
     run: (sc) => sc.flatMap((s, i) => (NEEDS_OBJECTS[s.kind] && arr(s, NEEDS_OBJECTS[s.kind]!).length === 0 ? [{ scene: i, text: `${s.kind} has no ${NEEDS_OBJECTS[s.kind]}` }] : [])),
+  },
+  {
+    code: "icon-label-honest",
+    fix: "Pick a scene kind that can really show it, or label the icon as what it is.",
+    run: (sc, o) =>
+      sc.flatMap((s, i) =>
+        s.kind !== "drawn_objects"
+          ? []
+          : (arr(s, "objects") as Any[]).flatMap((ob) => {
+              const id = String(ob.object);
+              const label = typeof ob.label === "string" ? ob.label.trim() : "";
+              const low = label.toLowerCase();
+              const words = ICON_WORDS[id];
+              if (!label || !words || /\d/.test(label) || !LATIN.test(label)) return []; // empty, has digits/units, or non-Latin script: skipped
+              if (words.some((w) => low.includes(w)) || (o.visual ?? "").toLowerCase().includes(id.replace("_", " "))) return [];
+              return [{ scene: i, text: `Label "${label}" does not describe a ${id.replace("_", " ")} icon: pick a scene kind that can really show it, or label it as what it is.` }];
+            }),
+      ),
   },
   {
     code: "has-asset",
