@@ -10,7 +10,7 @@ export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai";
 export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
-export const STAGE_NAMES = ["draft", "build", "generate", "tts", "render", "voice", "sfx", "qa", "repair_scenes"] as const;
+export const STAGE_NAMES = ["draft", "pictures", "build", "generate", "tts", "render", "voice", "sfx", "qa", "repair_scenes"] as const;
 export type StageName = (typeof STAGE_NAMES)[number];
 
 export interface PlanStep {
@@ -38,6 +38,7 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
     ? []
     : [
         { stage: "draft", gateAfter: "script", resource: "net" },
+        { stage: "pictures", resource: "net" },
         { stage: "build", resource: "cpu" },
       ];
   if (flags.paidGeneration) steps.push({ stage: "generate", gateBefore: "cost", resource: "net" });
@@ -65,6 +66,7 @@ export function postStageGates(plan: readonly PlanStep[], flags: PlanFlags): Gat
 // Render reads beats, narration and the scenes (scenes.json from Build): a new scenes version makes Render stale.
 export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKindName[]>> = {
   draft: [],
+  pictures: ["script", "beats"],
   build: ["script"],
   generate: ["cost_plan"],
   tts: ["script"],
@@ -74,6 +76,24 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   qa: [],
   repair_scenes: ["scenes", "script"],
 };
+
+/**
+ * Stages that are NOT part of the hash chain: the next stage's hash is built on the last on-chain stage, as if they were
+ * not there. Pictures is one: Build's hash stays exactly what it was before the stage existed, so no finished video turns stale.
+ */
+export const OFF_CHAIN_STAGES: readonly StageName[] = ["pictures"];
+
+/** The route for one video. A video whose Build already started never gets the (newer) pictures stage queued late. */
+export function routeFor(view: PipelineView): PlanStep[] {
+  const plan = stagePlan(view.kind, view.format, view.flags);
+  return !view.runs.pictures && view.runs.build ? plan.filter((s) => s.stage !== "pictures") : plan;
+}
+
+/** The nearest earlier step whose hash chains into plan[idx], or undefined for the first. */
+export function chainPrev(plan: readonly PlanStep[], idx: number): PlanStep | undefined {
+  for (let i = idx - 1; i >= 0; i--) if (!OFF_CHAIN_STAGES.includes(plan[i]!.stage)) return plan[i];
+  return undefined;
+}
 
 export function stageInputHash(stage: StageName, upstream: Record<string, string>, settingsSnapshot: Record<string, unknown>): string {
   return sha256Hex(canonicalJson({ stage, upstream, settings: settingsSnapshot }));
@@ -127,7 +147,7 @@ export function expectedInputHash(view: PipelineView, stage: StageName, prevHash
 /** Exactly one next action for a video (the route is sequential). Never reruns a stage that has an active run and never
  *  touches anything after the last stage except to say which owner gate is open. */
 export function nextActions(view: PipelineView): Action[] {
-  const plan = stagePlan(view.kind, view.format, view.flags);
+  const plan = routeFor(view);
   let prevHash: string | null = null;
   let prev: PlanStep | undefined;
   for (const step of plan) {
@@ -138,7 +158,7 @@ export function nextActions(view: PipelineView): Action[] {
     if (run && ACTIVE_STATUSES.includes(run.status)) return [{ kind: "wait_stage", stage: step.stage, status: run.status }];
     if (!run || run.inputHash !== want) return [{ kind: "enqueue", stage: step.stage, inputHash: want }];
     if (run.status !== "succeeded") return [{ kind: "wait_stage", stage: step.stage, status: run.status }]; // failed or cancelled: a human reruns it
-    prevHash = run.inputHash;
+    if (!OFF_CHAIN_STAGES.includes(step.stage)) prevHash = run.inputHash;
     prev = step;
   }
   for (const g of postStageGates(plan, view.flags)) if (!view.approved.has(g)) return [{ kind: "wait_gate", gate: g }];

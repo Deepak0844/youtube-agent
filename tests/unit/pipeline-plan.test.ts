@@ -34,7 +34,10 @@ function walk(view: PipelineView, opts: { approve?: boolean } = { approve: true 
     if (a.kind === "enqueue") {
       trail.push(a.stage);
       v.runs[a.stage] = { status: "succeeded", inputHash: a.inputHash };
-      if (a.stage === "draft") v.content.script = "s1";
+      if (a.stage === "draft") {
+        v.content.script = "s1";
+        v.content.beats = "b1";
+      }
       if (a.stage === "build") {
         v.content.beats = "b1";
         v.content.cost_plan = "c1";
@@ -54,10 +57,38 @@ function walk(view: PipelineView, opts: { approve?: boolean } = { approve: true 
   throw new Error("did not settle");
 }
 
+describe("pictures stage", () => {
+  const done = (view: PipelineView) => walk(view).v;
+  it("runs_after_the_script_gate_before_build", () => {
+    const first = walk(base(), { approve: false });
+    expect(first.trail).toEqual(["draft", "gate:script"]);
+    const v = { ...first.v, approved: new Set<GateId>(["script"]) };
+    expect(nextActions(v)).toMatchObject([{ kind: "enqueue", stage: "pictures" }]);
+  });
+  it("does_not_change_the_build_hash_chain", () => {
+    const v = done(base());
+    expect(v.runs.pictures).toBeDefined();
+    expect(v.runs.build?.inputHash).toBe(expectedInputHash(v, "build", v.runs.draft!.inputHash));
+  });
+  it("old_video_without_a_pictures_run_gets_no_pictures_and_no_stale_build", () => {
+    const v = done(base());
+    const old = { ...v, runs: { ...v.runs } };
+    delete old.runs.pictures;
+    const [a] = nextActions(old);
+    expect(a).not.toMatchObject({ kind: "enqueue" });
+    expect(old.runs.build?.inputHash).toBe(expectedInputHash(old, "build", old.runs.draft!.inputHash));
+  });
+  it("new_script_makes_pictures_stale_first", () => {
+    const v = done(base());
+    const re = { ...v, content: { ...v.content, script: "s2" } };
+    expect(nextActions(re)).toMatchObject([{ kind: "enqueue", stage: "pictures" }]);
+  });
+});
+
 describe("stagePlan", () => {
   it("has_the_documented_stages_and_gates_in_order", () => {
     const p = stagePlan("scene_kit", "short", flags);
-    expect(p.map((s) => s.stage)).toEqual(["draft", "build", "generate", "tts", "render", "voice", "sfx", "qa"]);
+    expect(p.map((s) => s.stage)).toEqual(["draft", "pictures", "build", "generate", "tts", "render", "voice", "sfx", "qa"]);
     expect(p.find((s) => s.stage === "draft")?.gateAfter).toBe("script");
     expect(p.find((s) => s.stage === "generate")?.gateBefore).toBe("cost");
     expect(p.find((s) => s.stage === "qa")?.gateAfter).toBe("video");
@@ -91,15 +122,18 @@ describe("nextActions", () => {
     expect(first.trail).toEqual(["draft", "gate:script"]);
     expect(walk(first.v, { approve: false }).trail).toEqual(["gate:script"]);
     const rest = walk(first.v);
-    expect(rest.trail).toEqual(["gate:script", "build", "gate:cost", "generate", "tts", "render", "voice", "sfx", "qa", "gate:video", "gate:evidence", "gate:publish", "done"]);
+    expect(rest.trail).toEqual(["gate:script", "pictures", "build", "gate:cost", "generate", "tts", "render", "voice", "sfx", "qa", "gate:video", "gate:evidence", "gate:publish", "done"]);
     // an approval that stopped being valid (the db layer drops it from `approved`) re-opens the gate and nothing else moves
     const voided = { ...rest.v, approved: new Set<GateId>(["script", "cost", "video", "evidence"]) };
     expect(nextActions(voided)).toEqual([{ kind: "wait_gate", gate: "publish" }]);
   });
   it("stale_input_reruns_stage", () => {
     const { v } = walk(base());
-    const stale = { ...v, content: { ...v.content, script: "s2" } }; // a new script version
-    const [a] = nextActions(stale);
+    const stale = { ...v, content: { ...v.content, script: "s2" } }; // a new script version: pictures first, then build
+    expect(nextActions(stale)).toMatchObject([{ kind: "enqueue", stage: "pictures" }]);
+    const { pictures: _p, ...noPictures } = stale.runs; // a video made before the stage existed
+    void _p;
+    const [a] = nextActions({ ...stale, runs: noPictures });
     expect(a).toMatchObject({ kind: "enqueue", stage: "build" });
     expect((a as { inputHash: string }).inputHash).not.toBe(v.runs.build?.inputHash);
   });
@@ -111,7 +145,7 @@ describe("nextActions", () => {
   it("cannot_rerun_while_job_active", () => {
     for (const status of ["queued", "running", "needs_decision"] as RunStatus[]) {
       const { v } = walk(base());
-      const active = { ...v, content: { ...v.content, script: "s2" }, runs: { ...v.runs, build: { status, inputHash: v.runs.build!.inputHash } } };
+      const active = { ...v, content: { ...v.content, script: "s2" }, runs: { ...v.runs, pictures: { status: "succeeded" as RunStatus, inputHash: expectedInputHash({ ...v, content: { ...v.content, script: "s2" } }, "pictures", v.runs.draft!.inputHash) }, build: { status, inputHash: v.runs.build!.inputHash } } };
       expect(nextActions(active)).toEqual([{ kind: "wait_stage", stage: "build", status }]);
     }
   });

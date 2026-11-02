@@ -13,7 +13,7 @@ import { buildEngineConfig } from "@/server/core/engine-config";
 import { buildCostPlan, costPlanBody } from "@/server/core/cost-plan";
 import { uuidv7 } from "@/server/core/ids";
 import { LeaseLostError } from "@/server/core/paid-call";
-import { expectedInputHash, nextActions, stagePlan, type PipelineView, type StageName } from "@/server/core/pipeline-plan";
+import { expectedInputHash, nextActions, OFF_CHAIN_STAGES, stagePlan, type PipelineView, type StageName } from "@/server/core/pipeline-plan";
 import { createStageContext, type StageContext, type StageHandler } from "@/server/core/stage-handler";
 import type { StageOutcome } from "@/server/core/stage-runner";
 import { approvalState, approveGate, liveGateHash } from "@/server/db/approvals";
@@ -783,7 +783,8 @@ describe("stage inputs", () => {
     const out: Record<string, string> = {};
     let prev: string | null = null;
     for (const step of stagePlan(v.kind, v.format, v.flags)) {
-      prev = out[step.stage] = expectedInputHash(v, step.stage, prev);
+      const h: string = (out[step.stage] = expectedInputHash(v, step.stage, prev));
+      if (!OFF_CHAIN_STAGES.includes(step.stage)) prev = h;
     }
     return out;
   };
@@ -791,17 +792,19 @@ describe("stage inputs", () => {
   it("stage_inputs_chain_so_changing_the_script_reruns_every_later_stage", () => {
     const a = chainHashes(view("script-1"));
     const b = chainHashes(view("script-2"));
-    expect(Object.keys(a)).toEqual(["draft", "build", "generate", "tts", "render", "voice", "sfx", "qa"]);
+    expect(Object.keys(a)).toEqual(["draft", "pictures", "build", "generate", "tts", "render", "voice", "sfx", "qa"]);
     expect(b.draft).toBe(a.draft); // Draft does not read the script, it makes it
-    for (const s of ["build", "generate", "tts", "render", "voice", "sfx", "qa"]) expect(b[s], s).not.toBe(a[s]);
+    for (const s of ["pictures", "build", "generate", "tts", "render", "voice", "sfx", "qa"]) expect(b[s], s).not.toBe(a[s]);
 
     // Walk it the way the pipeline does: everything succeeded on script-1; with script-2 the first action is Build, and once
     // Build has a new hash every later stage is stale too, even though none of THEIR own content inputs changed.
     const runs = Object.fromEntries(Object.entries(a).map(([s, h]) => [s, { status: "succeeded" as const, inputHash: h }]));
     const done = { ...view("script-1"), runs, approved: new Set(["script", "cost", "video", "evidence", "publish"] as const) };
     expect(nextActions(done)).toEqual([{ kind: "done" }]);
-    expect(nextActions({ ...done, content: { ...done.content, script: "script-2" } })).toMatchObject([{ kind: "enqueue", stage: "build" }]);
-    const rebuilt = { ...done, content: { ...done.content, script: "script-2" }, runs: { ...runs, build: { status: "succeeded" as const, inputHash: b.build! } } };
+    expect(nextActions({ ...done, content: { ...done.content, script: "script-2" } })).toMatchObject([{ kind: "enqueue", stage: "pictures", inputHash: b.pictures }]);
+    const repictured = { ...done, content: { ...done.content, script: "script-2" }, runs: { ...runs, pictures: { status: "succeeded" as const, inputHash: b.pictures! } } };
+    expect(nextActions(repictured)).toMatchObject([{ kind: "enqueue", stage: "build", inputHash: b.build }]);
+    const rebuilt = { ...done, content: { ...done.content, script: "script-2" }, runs: { ...runs, pictures: { status: "succeeded" as const, inputHash: b.pictures! }, build: { status: "succeeded" as const, inputHash: b.build! } } };
     expect(nextActions(rebuilt)).toMatchObject([{ kind: "enqueue", stage: "generate", inputHash: b.generate }]);
   });
 

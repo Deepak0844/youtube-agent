@@ -14,10 +14,16 @@ export const ASSET_LIMIT_DEFAULTS = {
   maxAudioSeconds: 60 * 60,
 } as const;
 
+const SYSTEM_TEXT_RE = /^Free licence \([A-Za-z0-9 .+-]{1,60}\) checked automatically from (Wikimedia Commons|Pixabay)$/;
+/** Not a person's attestation: the stock picture's free licence was checked by the app. */
+export const systemRightsText = (licence: string, source: "Wikimedia Commons" | "Pixabay"): string => `Free licence (${licence.replace(/[^A-Za-z0-9 .+-]/g, "").slice(0, 60) || "free"}) checked automatically from ${source}`;
+
 export const attestationSchema = z
   .object({
     at: z.string().refine((s) => !Number.isNaN(Date.parse(s)), "attestation time must be a date"),
-    text: z.literal(RIGHTS_TEXT),
+    // The owner's "I have the rights" statement, or the system's licence check (pictures stage; see SYSTEM_RIGHTS_TEXT).
+    text: z.union([z.literal(RIGHTS_TEXT), z.string().regex(SYSTEM_TEXT_RE)]),
+    by: z.literal("system").optional(),
     consent_likeness: z.boolean().optional(),
     consent_voice: z.boolean().optional(),
   })

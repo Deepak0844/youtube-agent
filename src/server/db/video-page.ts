@@ -115,6 +115,8 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   } catch {
     plan = stagePlan("scene_kit", "short", { requireEvidence: false, paidGeneration: paid });
   }
+  // A video made before the pictures stage existed has no such step on its strip.
+  if (!newest.has("pictures")) plan = plan.filter((s) => s.stage !== "pictures");
   const gates: Partial<Record<StageName, StageGate>> = {};
   for (const s of plan) {
     if (s.gateBefore) gates[s.stage] = { gate: s.gateBefore, when: "before" };

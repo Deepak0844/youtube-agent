@@ -114,7 +114,7 @@ describe("approval readers (the pipeline's real view of the owner's decisions)",
     await draftDone(videoId, q);
     expect(await readNextAction(db.pool, videoId, approvalReaders)).toMatchObject({ kind: "wait_gate", gate: "script" });
     expect((await decideGate(db.pool, q, actor, await inputFor(videoId, "script"), "approve")).ok).toBe(true);
-    expect(await readNextAction(db.pool, videoId, approvalReaders)).toMatchObject({ kind: "wait_stage", stage: "build" });
+    expect(await readNextAction(db.pool, videoId, approvalReaders)).toMatchObject({ kind: "wait_stage", stage: "pictures" });
     await addContent(db.pool, videoId, "script", { body: script("A different title"), sha256: sha256Hex("script-2") });
     expect(await readNextAction(db.pool, videoId, approvalReaders)).toMatchObject({ kind: "wait_gate", gate: "script" });
   });
@@ -231,7 +231,7 @@ describe("decideGate: approve and send back", () => {
     const videoId = await seedScriptVideo();
     await draftDone(videoId, q);
     expect((await decideGate(db.pool, q, actor, await inputFor(videoId, "script"), "approve")).ok).toBe(true);
-    expect((await db.pool.query("select status from stage_runs where video_id = $1 and name = 'build'", [videoId])).rows[0].status).toBe("queued");
+    expect((await db.pool.query("select status from stage_runs where video_id = $1 and name = 'pictures'", [videoId])).rows[0].status).toBe("queued");
   });
 });
 
@@ -248,7 +248,7 @@ describe("decideGate: publish", () => {
     await addContent(db.pool, v.id, "metadata", { body: { title: "Publish me", visibility: "private", publish_at: null }, sha256: sha256Hex("meta-1") });
     for (const g of ["video", "evidence"] as const) await approveGate(db.pool, { videoId: v.id, gate: g, seenHash: (await liveGateHash(db.pool, v.id, g))!.hash, actor });
     // Every stage ran (as a worker would) and the script was approved: the pipeline now waits at the publish gate.
-    for (const stage of ["draft", "build", "tts", "render", "voice", "sfx", "qa"]) {
+    for (const stage of ["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]) {
       await advanceVideo(db.pool, q.stage, v.id, approvalReaders);
       const { rows } = await db.pool.query<{ id: string; input_hash: string }>("select id, input_hash from stage_runs where video_id = $1 and name = $2 and status = 'queued'", [v.id, stage]);
       const c = await claimStage(db.pool, { id: rows[0]!.id, inputHash: rows[0]!.input_hash, workerId: "w", ttlMs: 60_000 });
@@ -330,11 +330,13 @@ describe("loadQueue", () => {
     await addContent(db.pool, videoId, "cost_plan", { body: plan, sha256: sha256Hex("plan-1") });
     await draftDone(videoId, q);
     await decideGate(db.pool, q, actor, await inputFor(videoId, "script"), "approve");
-    // build succeeds (as a worker would), then the cost gate opens because the plan has paid items
-    const { rows } = await db.pool.query<{ id: string; input_hash: string }>("select id, input_hash from stage_runs where video_id = $1 and name = 'build'", [videoId]);
-    const c = await claimStage(db.pool, { id: rows[0]!.id, inputHash: rows[0]!.input_hash, workerId: "w", ttlMs: 60_000 });
-    await commitStage(db.pool, c!, {});
-    await advanceVideo(db.pool, q.stage, videoId, approvalReaders);
+    // pictures and build succeed (as a worker would), then the cost gate opens because the plan has paid items
+    for (const stage of ["pictures", "build"]) {
+      const { rows } = await db.pool.query<{ id: string; input_hash: string }>("select id, input_hash from stage_runs where video_id = $1 and name = $2", [videoId, stage]);
+      const c = await claimStage(db.pool, { id: rows[0]!.id, inputHash: rows[0]!.input_hash, workerId: "w", ttlMs: 60_000 });
+      await commitStage(db.pool, c!, {});
+      await advanceVideo(db.pool, q.stage, videoId, approvalReaders);
+    }
     const { items } = await loadQueue(db.pool);
     expect(items[0]).toMatchObject({ kind: "gate", gate: "cost", content: { kind: "cost", totalMicroUsd: 2_500_000, path: "scene_kit" } });
   });

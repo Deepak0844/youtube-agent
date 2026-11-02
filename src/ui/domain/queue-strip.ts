@@ -1,7 +1,7 @@
 import { stagesFor, type CutStage, type StageStatus } from "./stages";
 
 // Plain string unions on purpose: the UI layer does not import from the server layers (eslint import boundaries).
-export type EngineStage = "draft" | "build" | "generate" | "tts" | "render" | "voice" | "sfx" | "qa";
+export type EngineStage = "draft" | "pictures" | "build" | "generate" | "tts" | "render" | "voice" | "sfx" | "qa";
 export type RunState = "queued" | "running" | "succeeded" | "failed" | "needs_decision" | "cancelled";
 export type OpenGate = "script" | "cost" | "video" | "evidence" | "publish";
 
@@ -11,7 +11,7 @@ export type OpenGate = "script" | "cost" | "video" | "evidence" | "publish";
 
 const GROUPS: ReadonlyArray<{ key: string; stages: readonly EngineStage[] }> = [
   { key: "draft", stages: ["draft"] },
-  { key: "build", stages: ["build", "generate"] },
+  { key: "build", stages: ["pictures", "build", "generate"] },
   { key: "voice", stages: ["tts", "voice"] },
   { key: "render", stages: ["render"] },
   { key: "sound", stages: ["sfx"] },

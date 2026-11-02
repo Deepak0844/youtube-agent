@@ -45,7 +45,7 @@ afterAll(async () => {
 });
 
 const N_LOAD = Number(process.env.ENGINE_LOAD_N ?? 30);
-const STAGES = ["draft", "build", "generate", "tts", "render", "voice", "sfx", "qa"];
+const STAGES = ["draft", "pictures", "build", "generate", "tts", "render", "voice", "sfx", "qa"];
 const GATES = ["script", "cost", "video", "evidence", "publish"];
 const q = (sql: string, args: unknown[] = []) => db.pool.query(sql, args);
 
