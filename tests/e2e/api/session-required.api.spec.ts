@@ -40,7 +40,7 @@ const isApiRoute = (e: RouteEntry) => e.kind === "route" && isApiPath(e.url);
 // instead of a 404 status, and the page's own <h1>/<h2> never exist to be used as markers. So for these routes ONLY: every
 // refusal state below still applies unchanged, the valid-session control expects "signed in, not redirected, not-found page,
 // noindex" instead of the page, and the h1/h2 marker check is skipped. The static route-inventory check still demands the guard.
-const DEV_ONLY_ROUTES = ["/dev/ui", "/dev/ui/home", "/dev/ui/video"];
+const DEV_ONLY_ROUTES = ["/dev/ui", "/dev/ui/home", "/dev/ui/video", "/dev/kit"];
 const isDevOnly = (e: RouteEntry) => DEV_ONLY_ROUTES.includes(e.url);
 const PAGES = PROTECTED.filter((r) => r.kind === "page" && !isDevOnly(r));
 const MARKERS = new Map<string, string[]>();

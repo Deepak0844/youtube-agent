@@ -8,6 +8,7 @@ import { microToUsd } from "@/server/core/llm-catalog";
 export const TABS = [
   { id: "script", label: "Script" },
   { id: "beats", label: "Beats" },
+  { id: "preview", label: "Preview" },
   { id: "evidence", label: "Evidence" },
   { id: "titles", label: "Titles" },
   { id: "cost", label: "Cost" },
