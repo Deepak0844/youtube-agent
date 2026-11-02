@@ -80,7 +80,7 @@ export const defaultTheme: BrandTheme = {
     easeInOut: [0.37, 0, 0.63, 1],
   },
   radii: { card: 16, window: 10, bubble: 36, pill: 999 },
-  safe: { top: 220, bottom: 380, side: 72 },
+  safe: { top: 220, bottom: 424, side: 72 },
   type: {
     caption: 54,
     body: 46,

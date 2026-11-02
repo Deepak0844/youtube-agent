@@ -1,3 +1,4 @@
+import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { tallyAt } from "./helpers";
@@ -25,7 +26,7 @@ export const Probability: React.FC<ProbabilityProps> = ({ experiment, title, tri
   return (
     <AbsoluteFill
       style={{
-        background: theme.palette.bg,
+        background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.ui,
         color: theme.palette.text,

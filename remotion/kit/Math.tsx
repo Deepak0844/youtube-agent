@@ -1,7 +1,9 @@
+import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { mathReveal } from "./helpers";
 import { fitFont, safeSize } from "./layout";
+import { Headline } from "./LookParts";
 import { theme } from "./theme";
 
 export type MathProps = {
@@ -43,25 +45,14 @@ export const MathSteps: React.FC<MathProps> = ({ title, steps, framesPerStep }) 
   return (
     <AbsoluteFill
       style={{
-        background: theme.palette.bg,
+        background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.mono,
         color: theme.palette.text,
         justifyContent: "center",
       }}
     >
-      {title && (
-        <div
-          style={{
-            fontFamily: theme.fonts.ui,
-            fontSize: theme.type.body,
-            color: theme.palette.muted,
-            marginBottom: 40,
-          }}
-        >
-          {title}
-        </div>
-      )}
+      {title && <Headline text={title} size={64} style={{ marginBottom: 40 }} />}
       {steps.slice(0, n).map((s, i) => (
         <div
           key={i}

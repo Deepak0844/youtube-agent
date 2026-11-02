@@ -1,6 +1,8 @@
 import React from "react";
-import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { kenBurns, type KenBurns } from "./helpers";
+import { gentleMotion, lookBg } from "./look";
+import { PhotoFit, useSceneCaptions } from "./LookParts";
 import { ScriptText } from "./ScriptText";
 import { theme } from "./theme";
 
@@ -12,22 +14,17 @@ export type StoryProps = {
   captionZone?: "upper_safe" | "lower_safe";
 };
 
+// The whole picture sits sharp inside the safe area over a blurred copy of itself; zoom is capped at 6%.
 export const Story: React.FC<StoryProps> = ({ image, motion, caption, captionZone = "lower_safe" }) => {
   const frame = useCurrentFrame();
   const { durationInFrames, width, height } = useVideoConfig();
-  const { scale, x, y } = kenBurns(frame, durationInFrames, motion);
+  const showCaption = useSceneCaptions();
+  const { scale, x, y } = kenBurns(frame, durationInFrames, gentleMotion(motion));
+  const { top, bottom, side } = theme.safe;
   return (
-    <AbsoluteFill style={{ background: theme.palette.bg, overflow: "hidden" }}>
-      <Img
-        src={image}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          transform: `translate(${x * width}px, ${y * height}px) scale(${scale})`,
-        }}
-      />
-      {caption ? (
+    <AbsoluteFill style={{ background: lookBg, overflow: "hidden" }}>
+      <PhotoFit src={image} box={{ x: side, y: top, w: width - 2 * side, h: height - top - bottom }} zoom={scale} tx={x * width} ty={y * height} />
+      {caption && showCaption ? (
         <div
           style={{
             position: "absolute",

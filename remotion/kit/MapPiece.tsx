@@ -1,6 +1,8 @@
+import { lookBg } from "./look";
 import React, { useMemo } from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import { inRegion, REGIONS, kitProject, placeLabels, visibleCount, type Region } from "./helpers";
+import { Headline } from "./LookParts";
 import { theme } from "./theme";
 import { WORLD_RINGS } from "./world";
 
@@ -41,9 +43,9 @@ export const MapPiece: React.FC<MapProps> = ({ title, region, markers, route, fr
   const slots = placeLabels(pts, shown.map((m) => m.label.length * 21), { w: W, h: H });
   const routeD = pts.slice(0, n).map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("");
   return (
-    <AbsoluteFill style={{ background: theme.palette.bg, fontFamily: theme.fonts.ui, color: theme.palette.text }}>
+    <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.ui, color: theme.palette.text }}>
       {title ? (
-        <div style={{ position: "absolute", top: theme.safe.top, left: theme.safe.side, right: theme.safe.side, fontSize: 56, fontWeight: 700 }}>{title}</div>
+        <div style={{ position: "absolute", top: theme.safe.top, left: theme.safe.side, right: theme.safe.side, }}><Headline text={title} size={64} /></div>
       ) : null}
       <svg width={W} height={H} style={{ position: "absolute", left: theme.safe.side, top: theme.safe.top + 160 }} viewBox={`0 0 ${W} ${H}`}>
         <defs>

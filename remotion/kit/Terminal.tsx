@@ -1,3 +1,4 @@
+import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { typedChars } from "./helpers";
@@ -39,7 +40,7 @@ export const Terminal: React.FC<TerminalProps> = ({ lines, framesPerChar, gapFra
   return (
     <AbsoluteFill
       style={{
-        background: theme.palette.bg,
+        background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.mono,
         fontSize: size,

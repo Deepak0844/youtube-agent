@@ -1,3 +1,4 @@
+import { lookBg } from "./look";
 // Piano keyboard that lights notes/chords on a schedule. Pure drawn rectangles, no assets or third-party art.
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
@@ -27,7 +28,7 @@ export const Piano: React.FC<PianoProps> = ({ from, to, events }) => {
   const glow = current ? Math.min(1, (frame - current.at) / 6) : 0;
   const lit = new Set((current?.notes ?? []).map((n) => noteMidi(n)));
   return (
-    <AbsoluteFill style={{ background: theme.palette.bg, fontFamily: theme.fonts.ui }}>
+    <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.ui }}>
       <div
         style={{
           position: "absolute",

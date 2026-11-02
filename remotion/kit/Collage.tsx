@@ -1,6 +1,8 @@
+import { lookBg } from "./look";
 import React from "react";
-import { AbsoluteFill, Img, OffthreadVideo, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, OffthreadVideo, useCurrentFrame, useVideoConfig } from "remotion";
 import { collageRects, enterState, type CollageEnter, type CollageLayout } from "./helpers";
+import { PhotoFit, useLook, useSceneCaptions } from "./LookParts";
 import { theme } from "./theme";
 
 export type CollageTile = {
@@ -17,10 +19,12 @@ export type CollageProps = { layout: CollageLayout; tiles: CollageTile[] };
 export const Collage: React.FC<CollageProps> = ({ layout, tiles }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
+  const showCaption = useSceneCaptions();
+  const look = useLook();
   const { top, bottom, side } = theme.safe;
   const rects = collageRects(layout, tiles.length, { x: side, y: top, w: width - side * 2, h: height - top - bottom });
   return (
-    <AbsoluteFill style={{ background: theme.palette.bg }}>
+    <AbsoluteFill style={{ background: lookBg }}>
       {tiles.map((t, i) => {
         const r = rects[i];
         const s = enterState(t.enter, frame, t.startFrame);
@@ -36,6 +40,9 @@ export const Collage: React.FC<CollageProps> = ({ layout, tiles }) => {
               overflow: "hidden",
               borderRadius: 24,
               background: theme.palette.surface,
+              boxShadow: "0 14px 40px rgba(0,0,0,0.45)",
+              border: `4px solid ${look.accent}`,
+              boxSizing: "border-box",
               opacity: s.opacity,
               transform: `translate(${s.x}px, ${s.y}px) scale(${s.scale})`,
             }}
@@ -43,9 +50,9 @@ export const Collage: React.FC<CollageProps> = ({ layout, tiles }) => {
             {t.media === "clip" ? (
               <OffthreadVideo src={t.src} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             ) : (
-              <Img src={t.src} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <PhotoFit src={t.src} box={{ x: 0, y: 0, w: r.w, h: r.h }} radius={0} border={0} />
             )}
-            {t.caption ? (
+            {t.caption && showCaption ? (
               <div
                 style={{
                   position: "absolute",

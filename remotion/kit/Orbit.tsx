@@ -1,6 +1,8 @@
+import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { orbitPoint, resolveBodies, type OrbitBody, type OrbitPreset } from "./helpers";
+import { Headline } from "./LookParts";
 import { theme } from "./theme";
 
 export type OrbitProps = {
@@ -20,11 +22,11 @@ export const Orbit: React.FC<OrbitProps> = ({ title, preset, center, bodies }) =
   const rMax = Math.max(...list.map((b) => b.radius), 1);
   const centerLabel = center ?? (preset === "solar_system" ? "Sun" : preset === "moon_earth" ? "Earth" : undefined);
   return (
-    <AbsoluteFill style={{ background: theme.palette.bg, fontFamily: theme.fonts.ui, color: theme.palette.text }}>
+    <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.ui, color: theme.palette.text }}>
       {title ? (
-        <div style={{ position: "absolute", top: theme.safe.top, left: theme.safe.side, right: theme.safe.side, fontSize: 56, fontWeight: 700 }}>{title}</div>
+        <div style={{ position: "absolute", top: theme.safe.top, left: theme.safe.side, right: theme.safe.side, }}><Headline text={title} size={64} /></div>
       ) : null}
-      <svg width={SIZE} height={SIZE} viewBox={`${-SIZE / 2} ${-SIZE / 2} ${SIZE} ${SIZE}`} style={{ position: "absolute", left: theme.safe.side, top: 640, overflow: "visible" }}>
+      <svg width={SIZE} height={SIZE} viewBox={`${-SIZE / 2} ${-SIZE / 2} ${SIZE} ${SIZE}`} style={{ position: "absolute", left: theme.safe.side, top: 540, overflow: "visible" }}>
         {list.map((b, i) => {
           const rx = (b.radius / rMax) * MAX_R;
           const ry = rx * 0.9;

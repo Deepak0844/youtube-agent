@@ -1,8 +1,10 @@
+import { lookBg } from "./look";
 // Chess board with scripted moves. Piece art: ORIGINAL flat glyphs drawn for this project (simple polygons below),
 // no third-party art. The old kit used the cburnett set (GPL/BSD/GFDL tri-licence), which is not CC0/MIT/CC-BY, so it was NOT copied.
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { FILES, spritesAt, squareCenter, squareRC, type BoardMap, type Move, type Piece } from "./chessLogic";
+import { useSceneCaptions } from "./LookParts";
 import { theme } from "./theme";
 
 export type ChessProps = {
@@ -78,13 +80,14 @@ export const PieceGlyph: React.FC<{ piece: Piece; size: number }> = ({ piece, si
 
 export const Chess: React.FC<ChessProps> = ({ board, moves, highlights, arrows, flip, caption, framesPerMove }) => {
   const frame = useCurrentFrame();
+  const showCaption = useSceneCaptions();
   const size = theme.width - 2 * theme.safe.side;
   const s = size / 8;
   const top = theme.safe.top + 120;
   const center = (sq: string) => squareCenter(sq, s, flip);
   const appear = Math.min(1, frame / 10);
   return (
-    <AbsoluteFill style={{ background: theme.palette.bg, fontFamily: theme.fonts.mono }}>
+    <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.mono }}>
       <div style={{ position: "absolute", left: theme.safe.side, top, width: size, height: size, overflow: "hidden", borderRadius: 16 }}>
         {Array.from({ length: 64 }, (_, i) => {
           const col = i % 8;
@@ -135,7 +138,7 @@ export const Chess: React.FC<ChessProps> = ({ board, moves, highlights, arrows, 
           })}
         </svg>
       </div>
-      {caption && (
+      {caption && showCaption && (
         <div style={{ position: "absolute", left: theme.safe.side, right: theme.safe.side, top: top + size + 56, fontFamily: theme.fonts.ui, fontSize: 52, fontWeight: 700, color: theme.palette.text, textAlign: "center" }}>
           {caption}
         </div>

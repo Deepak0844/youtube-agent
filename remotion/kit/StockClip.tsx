@@ -1,5 +1,7 @@
 import React from "react";
-import { AbsoluteFill, Img, OffthreadVideo } from "remotion";
+import { AbsoluteFill, OffthreadVideo } from "remotion";
+import { lookBg } from "./look";
+import { PhotoFit, useSceneCaptions } from "./LookParts";
 import { theme } from "./theme";
 
 export type StockClipProps = {
@@ -13,27 +15,35 @@ export type StockClipProps = {
 
 const fill: React.CSSProperties = { width: "100%", height: "100%", objectFit: "cover" };
 
-export const StockClip: React.FC<StockClipProps> = ({ src, media, dim, caption, captionZone = "lower_safe" }) => (
-  <AbsoluteFill style={{ background: theme.palette.bg }}>
-    {media === "image" ? <Img src={src} style={fill} /> : <OffthreadVideo src={src} muted style={fill} />}
-    {dim > 0 ? <AbsoluteFill style={{ background: `rgba(0,0,0,${dim})` }} /> : null}
-    {caption ? (
-      <div
-        style={{
-          position: "absolute",
-          left: theme.safe.side,
-          right: theme.safe.side,
-          ...(captionZone === "upper_safe" ? { top: theme.safe.top } : { bottom: theme.safe.bottom }),
-          textAlign: "center",
-          fontFamily: theme.fonts.ui,
-          fontWeight: 700,
-          fontSize: 64,
-          color: theme.palette.text,
-          textShadow: "0 4px 24px rgba(0,0,0,0.7)",
-        }}
-      >
-        {caption}
-      </div>
-    ) : null}
-  </AbsoluteFill>
-);
+export const StockClip: React.FC<StockClipProps> = ({ src, media, dim, caption, captionZone = "lower_safe" }) => {
+  const showCaption = useSceneCaptions();
+  const { top, bottom, side } = theme.safe;
+  return (
+    <AbsoluteFill style={{ background: lookBg }}>
+      {media === "image" ? (
+        <PhotoFit src={src} box={{ x: side, y: top, w: theme.width - 2 * side, h: theme.height - top - bottom }} />
+      ) : (
+        <OffthreadVideo src={src} muted style={fill} />
+      )}
+      {dim > 0 ? <AbsoluteFill style={{ background: `rgba(0,0,0,${dim})` }} /> : null}
+      {caption && showCaption ? (
+        <div
+          style={{
+            position: "absolute",
+            left: theme.safe.side,
+            right: theme.safe.side,
+            ...(captionZone === "upper_safe" ? { top: theme.safe.top } : { bottom: theme.safe.bottom }),
+            textAlign: "center",
+            fontFamily: theme.fonts.ui,
+            fontWeight: 700,
+            fontSize: 64,
+            color: theme.palette.text,
+            textShadow: "0 4px 24px rgba(0,0,0,0.7)",
+          }}
+        >
+          {caption}
+        </div>
+      ) : null}
+    </AbsoluteFill>
+  );
+};

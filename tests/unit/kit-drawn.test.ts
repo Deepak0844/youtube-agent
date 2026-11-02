@@ -7,8 +7,8 @@ describe("drawn helpers", () => {
     for (let n = 1; n <= 4; n++) {
       const { ys, rowH } = objectRows(n, "center");
       expect(ys).toHaveLength(n);
-      expect(ys[0]! - rowH / 2).toBeGreaterThanOrEqual(theme.safe.top);
-      expect(ys[n - 1]! + rowH / 2).toBeLessThanOrEqual(theme.height - theme.safe.bottom);
+      expect(ys[0]! - rowH / 2).toBeGreaterThanOrEqual(theme.safe.top - 1e-6);
+      expect(ys[n - 1]! + rowH / 2).toBeLessThanOrEqual(theme.height - theme.safe.bottom + 1e-6);
     }
     expect(objectRows(1, "left").x).toBeLessThan(objectRows(1, "right").x);
   });
@@ -26,8 +26,8 @@ describe("drawn helpers", () => {
   });
   it("network layout fits the safe area and packets run link by link", () => {
     for (const p of networkLayout(6)) {
-      expect(p.y).toBeGreaterThanOrEqual(theme.safe.top);
-      expect(p.y).toBeLessThanOrEqual(theme.height - theme.safe.bottom);
+      expect(p.y).toBeGreaterThanOrEqual(theme.safe.top - 1e-6);
+      expect(p.y).toBeLessThanOrEqual(theme.height - theme.safe.bottom + 1e-6);
       expect(p.x).toBeGreaterThan(theme.safe.side + 150);
       expect(p.x).toBeLessThan(theme.width - theme.safe.side - 150);
     }
