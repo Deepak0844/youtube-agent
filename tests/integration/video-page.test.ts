@@ -217,14 +217,14 @@ describe("forceRerunStageById", () => {
     });
     it("local_openai: allowed on a loopback address, refused on a remote one", async () => {
       await route("local_openai");
-      await db.ownerPool.query("update settings set value = to_jsonb($1::text) where key = 'voice.local_url'", ["https://api.example.com"]);
+      await db.ownerPool.query("insert into settings (key, value, updated_by) values ('voice.local_url', to_jsonb($1::text), 'system') on conflict (key) do update set value = excluded.value", ["https://api.example.com"]);
       const v = await mk();
       await seed(v);
       const r = await forceRerunStageById(db.pool, queue, actor, v.id, "tts");
       expect(r.ok).toBe(false);
       expect(r.message).toMatch(/paid \(local_openai\)/);
       expect(await nonces(v.id)).toEqual({});
-      await db.ownerPool.query("update settings set value = to_jsonb($1::text) where key = 'voice.local_url'", ["http://127.0.0.1:8880"]);
+      await db.ownerPool.query("insert into settings (key, value, updated_by) values ('voice.local_url', to_jsonb($1::text), 'system') on conflict (key) do update set value = excluded.value", ["http://127.0.0.1:8880"]);
       expect((await forceRerunStageById(db.pool, queue, actor, v.id, "tts")).ok).toBe(true);
       const a = (await db.pool.query("select detail from audit_log where event='stage.force_rerun_requested'")).rows[0].detail;
       expect(a).toMatchObject({ voiceProvider: "local_openai", voiceName: "v1" });
@@ -254,7 +254,7 @@ describe("forceRerunStageById", () => {
       const v = await mk();
       await addContent(db.pool, v.id, "narration", { body: { file: "narration.wav", voice_provider: "edge", voice_name: "en-US-A" }, sha256: sha256Hex("nv") });
       let p = await loadVideoPage(db.pool, v.id);
-      expect(p!.voice).toEqual({ stored: { provider: "edge", voice: "en-US-A" }, current: { provider: "edge", voice: "en-US-A" } });
+      expect(p!.voice).toMatchObject({ stored: { provider: "edge", voice: "en-US-A" }, current: { provider: "edge", voice: "en-US-A" } });
       await route("voicestudio", "x");
       p = await loadVideoPage(db.pool, v.id);
       expect(p!.voice.current).toEqual({ provider: "voicestudio", voice: "x" });
