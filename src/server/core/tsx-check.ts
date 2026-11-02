@@ -60,7 +60,7 @@ const FORBIDDEN_MEMBERS = lower([
   "srcdoc", "contentWindow", "contentDocument", "ownerDocument", "defaultView", "getRootNode", "sendBeacon", "cookie",
   "createElement", "cloneElement", "createPortal", "dangerouslySetInnerHTML", "now",
   "eval", "Function", "fetch", "require", "process", "window", "document", "globalThis", "importScripts", "self", "$$typeof",
-  "repeat", "callee", "caller",
+  "repeat", "callee", "caller", "padStart", "padEnd", "flatMap",
 ]);
 // Whole string values refused anywhere (case-insensitive): names only useful to rebuild a forbidden lookup. Ordinary
 // words ("process", "window", "Date") stay usable as caption text; computed keys must be numbers anyway (checkKey).
@@ -81,10 +81,17 @@ const FORBIDDEN_TAGS = new Set([
 const URL_ATTRS = new Set(["src", "href", "xlinkhref", "srcset", "poster", "action", "formaction", "data", "background", "ping", "manifest", "codebase"]);
 // Built-in objects that may only be used as X.name, X(...), new X(...) or `instanceof X`: never aliased, passed around,
 // destructured or shadowed (so `Math.floor` really is Math.floor).
-const GLOBAL_OBJECTS = new Set(["Math", "Object", "Array", "String", "Number", "Boolean", "JSON", "Promise", "Error", "Map", "Set", "WeakMap", "WeakSet"]);
+const GLOBAL_OBJECTS = new Set(["Math", "Array", "String", "Number", "Boolean"]);
+// The ONLY globals a scene may name (allow-list): everything else must be a local, an allowed import or React. No Object,
+// JSON, Map/Set, structuredClone, timers, DOM, scheduler, navigation...
+const SAFE_GLOBALS = new Set([...GLOBAL_OBJECTS, "parseFloat", "parseInt", "isNaN", "isFinite", "undefined", "NaN", "Infinity"]);
 const AS_ARGUMENT_OK = new Set(["Boolean", "Number", "String"]); // .filter(Boolean), .map(String)
-const NEW_OK = new Set(["Map", "Set", "Array"]);
-const NO_SHADOW = new Set([...GLOBAL_OBJECTS, "undefined", "NaN", "Infinity"]);
+const NEW_OK = new Set(["Array"]);
+const NO_SHADOW = SAFE_GLOBALS;
+const MAX_ARRAY_LEN = 1000;
+const MAX_CALLBACK_NEST = 2;
+// Array methods whose function argument runs once per element.
+const ITERATORS = new Set(["map", "filter", "reduce", "reduceRight", "forEach", "some", "every", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted"]);
 // Math functions that always return a number: Math.floor(x) is a safe computed key.
 const MATH_NUMERIC = new Set(["floor", "ceil", "round", "trunc", "abs", "min", "max", "sign"]);
 const ARITH = new Set([
@@ -259,6 +266,8 @@ function walk(source: string, problems: string[]): void {
     fn = top.fn;
     if (d > MAX_DEPTH) { add(n, "the code is nested too deeply."); return; }
     comments(n);
+    // `declare` (ambient) names are free variables webpack fills in (__webpack_public_path__ ...): refused everywhere.
+    if (ts.canHaveModifiers(n) && ts.getModifiers(n)?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword)) add(n, "'declare' is not allowed.");
     if (isTypeOnlyNode(n)) continue;
     visit(n);
     const inner = fnNameOf(n) ?? fn;
@@ -321,7 +330,7 @@ function walk(source: string, problems: string[]): void {
       case ts.SyntaxKind.WithStatement: return add(n, "'with' is not allowed.");
       case ts.SyntaxKind.WhileStatement:
       case ts.SyntaxKind.DoStatement: return add(n, "while/do loops are not allowed; use a for loop with a number bound, or .map().");
-      case ts.SyntaxKind.ForInStatement: return add(n, "for...in is not allowed; use Object.keys().");
+      case ts.SyntaxKind.ForInStatement: return add(n, "for...in is not allowed; loop over an array literal or use .map().");
       case ts.SyntaxKind.ForStatement: return checkFor(n as ts.ForStatement);
       case ts.SyntaxKind.ForOfStatement: return checkForOf(n as ts.ForOfStatement);
       case ts.SyntaxKind.AwaitExpression: return add(n, "await is not allowed: a frame must render synchronously.");
@@ -339,6 +348,8 @@ function walk(source: string, problems: string[]): void {
       case ts.SyntaxKind.GetAccessor:
       case ts.SyntaxKind.SetAccessor: return add(n, "getters and setters are not allowed.");
       case ts.SyntaxKind.RegularExpressionLiteral: return add(n, "regular expressions are not allowed.");
+      // {...x} copies every own key of x, $$typeof included: the way to forge a React element from a real one.
+      case ts.SyntaxKind.SpreadAssignment: return add(n, "object spread {...x} is not allowed; list the fields by name.");
       case ts.SyntaxKind.TaggedTemplateExpression: return add(n, "tagged templates are not allowed.");
       case ts.SyntaxKind.ElementAccessExpression: {
         const ea = n as ts.ElementAccessExpression;
@@ -363,7 +374,7 @@ function walk(source: string, problems: string[]): void {
       case ts.SyntaxKind.NewExpression: {
         const ne = n as ts.NewExpression;
         if (!ts.isIdentifier(ne.expression) || !NEW_OK.has(ne.expression.text)) return add(n, `'new ${snip(ne.expression)}' is not allowed (only new Map, new Set, new Array).`);
-        if (ne.expression.text === "Array" && !arrayArgsOk(ne.arguments)) add(n, `new Array(n) needs a number n up to ${MAX_LOOP_BOUND}.`);
+        if (ne.expression.text === "Array" && !arrayArgsOk(ne.arguments)) add(n, `new Array(n) needs a number n up to ${MAX_ARRAY_LEN}.`);
         return;
       }
       case ts.SyntaxKind.StringLiteral:
@@ -435,13 +446,14 @@ function walk(source: string, problems: string[]): void {
     if (FORBIDDEN_MEMBERS.has(id.text.toLowerCase())) add(id, `'${echo(id.text)}' is not allowed.`);
   }
 
-  // Forbidden names are judged by position: a member name (x.now) against FORBIDDEN_MEMBERS, a reference to a global
-  // against FORBIDDEN_GLOBALS (unless a local of that name is in scope), and HARD_GLOBALS everywhere.
+  // Names are judged by position: a member name (x.now) against FORBIDDEN_MEMBERS; a free name (no local of that name in
+  // scope) must be an allowed import, React or one of SAFE_GLOBALS; HARD_GLOBALS and `__` names are refused everywhere.
   function checkIdentifier(id: ts.Identifier): void {
     const p = id.parent;
     const jsxAttr = ts.isJsxAttribute(p) || ts.isJsxNamespacedName(p);
     const jsxTag = (ts.isJsxOpeningElement(p) || ts.isJsxSelfClosingElement(p) || ts.isJsxClosingElement(p)) && p.tagName === id;
     if (!(jsxAttr || jsxTag ? JSX_IDENT : IDENT).test(id.text) || id.getText(sf) !== id.text) return add(id, "identifiers must be plain ASCII letters, digits, _ or $ (no escapes).");
+    if (id.text.startsWith("__")) return add(id, `names starting with '__' ('${echo(id.text)}') are not allowed.`);
     if (HARD_GLOBALS.has(id.text) && !jsxAttr) return add(id, `'${echo(id.text)}' is not allowed${hint(id.text)}.`);
     if (jsxTag) { if (!ts.isJsxClosingElement(p)) edge(id.text); return; }
     const isMember = (ts.isPropertyAccessExpression(p) && p.name === id) || (ts.isQualifiedName(p) && p.right === id) ||
@@ -457,7 +469,9 @@ function walk(source: string, problems: string[]): void {
       return;
     }
     edge(id.text);
-    if (FORBIDDEN_GLOBALS.has(id.text) && !resolvesLocally(id)) return add(id, `'${echo(id.text)}' is not allowed${hint(id.text)}.`);
+    if (!resolvesLocally(id) && !imported.has(id.text) && !(reactDefault && id.text === REACT_DEFAULT) && !SAFE_GLOBALS.has(id.text)) {
+      return add(id, `'${echo(id.text)}' is not allowed${FORBIDDEN_GLOBALS.has(id.text) ? hint(id.text) : ""} (only locals, the allowed imports and ${[...SAFE_GLOBALS].join(", ")}).`);
+    }
     if (isProtected(id.text) && !directUse(id)) add(id, `'${echo(id.text)}' may only be used as ${echo(id.text)}.name or ${echo(id.text)}(...): not stored, passed, destructured or changed.`);
   }
 
@@ -478,7 +492,7 @@ function walk(source: string, problems: string[]): void {
     if (root === "Array" && name === "from") add(pa, "Array.from is not allowed; use an array literal, Array(n) or a bounded for loop.");
     if (root && isProtected(root) && isWriteTarget(pa)) add(pa, `changing '${echo(root)}.${echo(name)}' is not allowed.`);
     if (name === "length" && isWriteTarget(pa)) add(pa, "changing .length is not allowed.");
-    if (name === "fill" && !boundedArray(obj)) add(pa, `.fill() is only allowed on an array literal or Array(n) with a number n up to ${MAX_LOOP_BOUND}.`);
+    if (name === "fill" && !boundedArray(obj)) add(pa, `.fill() is only allowed on an array literal or Array(n) with a number n up to ${MAX_ARRAY_LEN}.`);
   }
 
   // Computed keys (x[k], { [k]: v }, const { [k]: v } = x) must be numbers: no text key can then spell a forbidden name.
@@ -532,19 +546,33 @@ function walk(source: string, problems: string[]): void {
   function checkStyleKey(p: ts.PropertyAssignment): void {
     const name = ts.isIdentifier(p.name) || ts.isStringLiteral(p.name) ? p.name.text.toLowerCase() : "";
     if (name.includes("animation") || name.includes("transition")) add(p, "CSS animations/transitions are not allowed; animate from useCurrentFrame().");
+    if (ts.isStringLiteral(p.name) && name.startsWith("__")) add(p, "keys starting with '__' are not allowed.");
   }
 
   function checkCall(c: ts.CallExpression): void {
     if (c.expression.kind === ts.SyntaxKind.ImportKeyword) return add(c, "dynamic import() is not allowed.");
-    if (!ts.isIdentifier(c.expression)) return;
-    if (c.expression.text === "random" && imported.has("random")) {
+    const callee = c.expression;
+    if (ts.isPropertyAccessExpression(callee) && ITERATORS.has(callee.name.text)) {
+      // a callback inside a callback inside a callback multiplies the work; two levels are plenty for a scene
+      let depth = 1;
+      for (let a: ts.Node | undefined = c.parent; a; a = a.parent) {
+        const q = a.parent;
+        if (ts.isFunctionLike(a) && q && ts.isCallExpression(q) && q.arguments.includes(a as ts.Expression) && ts.isPropertyAccessExpression(q.expression) && ITERATORS.has(q.expression.name.text)) depth++;
+      }
+      if (depth > MAX_CALLBACK_NEST) add(c, `.map/.filter/.reduce/... callbacks may be nested at most ${MAX_CALLBACK_NEST} deep.`);
+    }
+    // f(f): self-application, recursion without a name (x => x(x))
+    const self = unwrap(callee);
+    if (ts.isIdentifier(self) && c.arguments.some((a) => { const u = unwrap(a); return ts.isIdentifier(u) && u.text === self.text; })) add(c, `'${echo(self.text)}' may not be passed to itself (recursion is not allowed).`);
+    if (!ts.isIdentifier(callee)) return;
+    if (callee.text === "random" && imported.has("random")) {
       const a = c.arguments[0];
       const u = a && unwrap(a);
       const fixed = !!u && u.kind !== ts.SyntaxKind.NullKeyword && !ts.isVoidExpression(u) && !(ts.isIdentifier(u) && u.text === "undefined");
       if (!fixed) add(c, "random() needs a fixed seed, e.g. random('dot-1').");
     }
-    if (c.expression.text === "staticFile") checkStaticFile(c);
-    if (c.expression.text === "Array" && !arrayArgsOk(c.arguments)) add(c, `Array(n) needs a number n up to ${MAX_LOOP_BOUND}.`);
+    if (callee.text === "staticFile") checkStaticFile(c);
+    if (callee.text === "Array" && !arrayArgsOk(c.arguments)) add(c, `Array(n) needs a number n up to ${MAX_ARRAY_LEN}.`);
   }
 
   // Only a plain literal name: no template, no variable, so the files a scene can reach are known before it runs.
@@ -708,13 +736,13 @@ function isPlus(n: ts.Node): boolean {
   return ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken;
 }
 
-/** Array(n)/new Array(n): no argument, two or more elements, or one number literal up to MAX_LOOP_BOUND. */
+/** Array(n)/new Array(n): no argument, two or more elements, or one number literal up to MAX_ARRAY_LEN. */
 function arrayArgsOk(args: ts.NodeArray<ts.Expression> | undefined): boolean {
   if (!args || args.length === 0) return true;
   if (args.some(ts.isSpreadElement)) return false;
   if (args.length > 1) return true;
   const a = unwrap(args[0]!);
-  return ts.isNumericLiteral(a) && Number(a.text) <= MAX_LOOP_BOUND;
+  return ts.isNumericLiteral(a) && Number(a.text) <= MAX_ARRAY_LEN;
 }
 
 function boundedArray(e: ts.Expression): boolean {

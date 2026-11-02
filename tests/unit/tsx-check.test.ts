@@ -215,7 +215,7 @@ describe("checkTsx: forbidden globals and APIs", () => {
 
   it("refuses computed lookups on globals and imports", () => {
     badLine("const k = 'abs'; const f = Math[k];", /computed lookup on 'Math'/);
-    badLine("const k = 'keys'; const f = Object[k];", /computed lookup on 'Object'/);
+    badLine("const k = 'keys'; const f = Number[k];", /computed lookup on 'Number'/);
     badLine("const k = 'linear'; const e = Easing[k];", /computed lookup on 'Easing'/);
   });
 
@@ -393,7 +393,7 @@ describe("checkTsx: hardening (review findings)", () => {
     badLine("const F = Function;", /'Function' is not allowed/);
     badLine("const { floor } = Math;", /destructuring|may only be used/);
     badLine("const f = (m: unknown) => m; const x = f(Math);", /may only be used/);
-    badLine("const a = [Object];", /may only be used/);
+    badLine("const a = [Number];", /may only be used/);
     badLine("const o = { Math };", /may only be used/);
     badLine("const m = (Math as never);", /may only be used/);
     badLine("Math.floor = () => 1;", /changing 'Math\.floor'/);
@@ -410,7 +410,7 @@ describe("checkTsx: hardening (review findings)", () => {
     badLine("const o = { *g() { yield 1; } };", /generators/);
     badLine("const o = { get x() { return 1; } };", /getters and setters/);
     badLine("const o = { set x(v: number) {} };", /getters and setters/);
-    ok("const a = [0, 1].filter(Boolean).map(String); const m = new Map(); const s = new Set([1]); const t = a instanceof Array;");
+    ok("const a = [0, 1].filter(Boolean).map(String); const t = a instanceof Array;");
   });
 
   it("loops, arrays and strings stay bounded; no regex, no recursion", () => {
@@ -461,6 +461,49 @@ describe("checkTsx: hardening (review findings)", () => {
     badLine("const f = () => { const top = 1; return top; }; const t = top;", /'top' is not allowed/);
     badLine("const f = (x: never) => x.now;", /'now' is not allowed/);
     badLine("const { now } = performance;", /now|performance/);
+  });
+
+  it("no React element forgery: object spread, JSON and Object helpers are refused", () => {
+    const repro = `const el = <div />; const X = () => <AbsoluteFill>{{ ...el, type: "iframe", props: JSON.parse('{"srcDoc":"<script>..</script>"}') }}</AbsoluteFill>;`;
+    const p = badLine(repro, /object spread/);
+    expect(p).toMatch(/'JSON' is not allowed/);
+    for (const e of ["JSON.parse('{}')", "Object.fromEntries([])", "Object.assign({}, {})", "Object.entries({})", "Object.values({})", "Object.create(null)", "Object.defineProperty({}, 'a', {})", "Object.setPrototypeOf({}, null)", "structuredClone({})"]) {
+      badLine(`const z = () => ${e};`, /not allowed/);
+    }
+    badLine("const a = { b: 1 }; const c = { ...a };", /object spread/);
+  });
+
+  it("no webpack free variables: declare, ambient blocks and __ names are refused", () => {
+    badLine("declare const __webpack_public_path__: string;", /'declare' is not allowed|__/);
+    badLine("declare let x: number;", /'declare' is not allowed/);
+    badLine("declare function f(): void;", /'declare' is not allowed/);
+    badLine("declare module 'x' {}", /declare|namespaces/);
+    badLine("declare global { const q: number }", /declare|namespaces/);
+    badLine("declare type T = number;", /'declare' is not allowed/);
+    for (const e of ["__webpack_public_path__", "__webpack_chunk_load__('x')", "x.__proto__", "x.__foo", "({ __a: 1 })", "({ '__a': 1 })"]) {
+      badLine(`const z = (x: never) => ${e};`, /'__'/);
+    }
+    badLine("const __x = 1;", /'__'/);
+  });
+
+  it("free names must be on the allow-list", () => {
+    for (const e of ["AbortSignal.timeout(1)", "scheduler.postTask(f)", "navigation.navigate('/')", "addEventListener('x', f)", "Object.keys({})", "new Map()", "new Set()", "new WeakMap()", "new WeakRef({})", "Promise.resolve()", "console.log(1)", "Error('x')", "Date"]) {
+      badLine(`const f = () => 1; const z = () => ${e};`, /not allowed/);
+    }
+    ok("const z = Math.floor(parseFloat('1.5')) + parseInt('2', 10) + Number('3') + (isNaN(1) || !isFinite(2) ? NaN : Infinity) + String(1).length + (undefined ?? 0) + (Array.isArray([]) && Boolean(1) ? 1 : 0);");
+  });
+
+  it("hangs and bombs: padStart/padEnd, flatMap, self-application, deep callbacks, big arrays", () => {
+    badLine("const s = 'a'.padStart(1e9);", /padStart/);
+    badLine("const s = 'a'.padEnd(1e9);", /padEnd/);
+    badLine("const a = [1].flatMap((x) => [x, x]);", /flatMap/);
+    badLine("const y = (f: never) => (f as (g: never) => void)(f);", /passed to itself/);
+    badLine("const w = (f: (g: unknown) => void) => f(f);", /passed to itself/);
+    badLine("const a = [[[1]]].map((x) => x.map((y) => y.map((z) => z)));", /nested at most 2 deep/);
+    badLine("const a = [[1]].forEach((x) => x.filter((y) => [y].some((z) => z)));", /nested at most 2 deep/);
+    badLine("const a = Array(1001);", /up to 1000/);
+    badLine("const a = new Array(5000);", /up to 1000/);
+    ok("const a = [[1]].map((x) => x.map((y) => y + 1)); const b = Array(1000).fill(0);");
   });
 
   it("long + chains are fine up to 1000 parts", () => {
