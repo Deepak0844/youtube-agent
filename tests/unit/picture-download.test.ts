@@ -3,7 +3,7 @@ import { createPacer, fetchBounded, hostAllowed, PICTURE_MAX_BYTES } from "@/ser
 
 const HOSTS = ["upload.wikimedia.org", "thumb.wikimedia.org"];
 const resp = (body: Uint8Array | string, init: { status?: number; headers?: Record<string, string> } = {}) =>
-  new Response(body, { status: init.status ?? 200, headers: init.headers ?? { "content-type": "image/jpeg" } });
+  new Response(body as BodyInit, { status: init.status ?? 200, headers: init.headers ?? { "content-type": "image/jpeg" } });
 const sig = new AbortController().signal;
 const opts = { hosts: HOSTS, maxBytes: 1000, accept: /^image\/(jpeg|png|webp)$/, signal: sig };
 

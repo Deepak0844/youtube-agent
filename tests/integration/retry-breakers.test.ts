@@ -410,7 +410,7 @@ describe("breaker wiring", () => {
     await db.ownerPool.query("update breakers set status = 'open', failures = 3, opened_at = clock_timestamp() where stage = 'draft'");
     const r = await advanceVideo(db.pool, q, v.id, readers);
     expect(r.enqueued).toHaveLength(1);
-    expect((await latest(v.id, "build")).status).toBe("queued");
+    expect((await latest(v.id, "pictures")).status).toBe("queued"); // the stage after the script gate
   });
 
   it("cooldown_to_half_open_to_closed", async () => {

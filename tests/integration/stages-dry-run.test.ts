@@ -783,7 +783,7 @@ describe("stage inputs", () => {
     const out: Record<string, string> = {};
     let prev: string | null = null;
     for (const step of stagePlan(v.kind, v.format, v.flags)) {
-      const h = (out[step.stage] = expectedInputHash(v, step.stage, prev));
+      const h: string = (out[step.stage] = expectedInputHash(v, step.stage, prev));
       if (!OFF_CHAIN_STAGES.includes(step.stage)) prev = h;
     }
     return out;
