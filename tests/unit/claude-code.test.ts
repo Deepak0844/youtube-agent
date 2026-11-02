@@ -60,7 +60,7 @@ function harness(behave: Behaviour = ({ child }) => child.finish(OK), over: Part
       kills.push([pid, sig]);
       if (sig === "SIGKILL") for (const c of children) setImmediate(() => c.emit("close", null, "SIGKILL"));
     },
-    env: { PATH: "/usr/bin", HOME: "/Users/o", LANG: "en_US.UTF-8", TERM: "xterm", ANTHROPIC_API_KEY: "sk-ant-x", DATABASE_URL: "postgres://x", VAULT_MASTER_KEY: "v", SECRET: "s" },
+    env: { PATH: "/usr/bin", HOME: "/Users/o", LANG: "en_US.UTF-8", TERM: "xterm", USER: "o", ANTHROPIC_API_KEY: "sk-ant-x", DATABASE_URL: "postgres://x", VAULT_MASTER_KEY: "v", SECRET: "s" },
     timeoutMs: 200,
     killGraceMs: 20,
     ...over,
@@ -105,7 +105,7 @@ describe("claude code adapter", () => {
     expect(a.join(" ")).not.toContain("Make a title");
     expect(r!.stdin).toContain("Make a title about --dangerously-skip-permissions");
     expect(r!.stdin).toContain("Reply with JSON.");
-    expect(r!.opts.env).toEqual({ PATH: "/usr/bin", HOME: "/Users/o", LANG: "en_US.UTF-8", TERM: "xterm" });
+    expect(r!.opts.env).toEqual({ PATH: "/usr/bin", HOME: "/Users/o", LANG: "en_US.UTF-8", TERM: "xterm", USER: "o" });
     expect(r!.cwdWasEmpty).toBe(true);
     expect(existsSync(r!.opts.cwd)).toBe(false); // deleted afterwards
   });

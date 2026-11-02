@@ -57,7 +57,9 @@ export interface ClaudeCodeDeps {
   noWait?: boolean;
 }
 
-const ENV_ALLOW = ["PATH", "HOME", "LANG", "TERM"] as const;
+// USER is needed on macOS: without it the program cannot find the login in the keychain and reports "not logged in"
+// (measured: `env -i PATH HOME LANG TERM claude auth status` -> loggedIn false; adding USER alone -> true).
+const ENV_ALLOW = ["PATH", "HOME", "LANG", "TERM", "USER"] as const;
 const BUILTIN_TOOLS = [
   "Agent", "Task", "Bash", "BashOutput", "KillShell", "Edit", "MultiEdit", "Write", "Read", "Glob", "Grep", "LS",
   "NotebookEdit", "NotebookRead", "WebFetch", "WebSearch", "TodoWrite", "Skill", "SlashCommand", "ExitPlanMode",
