@@ -4,7 +4,7 @@ import { defaultTheme } from "./theme";
 import type { Look } from "./look";
 import { TRANSITION_FRAMES, type CaptionWord } from "./timeline";
 
-export const STYLE_IDS = ["clean_pro", "neon_flat", "documentary_montage"] as const;
+export const STYLE_IDS = ["clean_pro", "neon_flat", "blueprint_whiteboard", "documentary_montage"] as const;
 export type StyleId = (typeof STYLE_IDS)[number];
 export const CAPTION_STYLE_IDS = ["punchy_captions"] as const;
 export type CaptionStyleId = (typeof CAPTION_STYLE_IDS)[number];
@@ -91,6 +91,21 @@ export const PRESETS: Record<StyleId, StylePreset> = {
     preferKinds: ["stock_clip", "story_kenburns"],
     avoidKinds: [],
     antiPatterns: ["more than 25% of scenes as text cards (pause_card, hook titles)", "holding one clip longer than 4 seconds or cutting faster than 1.2 seconds; serious beats hold longer, light beats shorter", "bright colours or busy graphics over footage"],
+  },
+  // Light paper would need every kit piece to take dark ink, so this is the dark blueprint paper (#0C2340): white ink, one accent.
+  blueprint_whiteboard: {
+    id: "blueprint_whiteboard",
+    label: "Blueprint whiteboard",
+    mood: "Slow, exact, drawn by hand. Blueprint blue paper, white lines, one amber accent.",
+    look: { name: "blueprint", from: "#0c2340", to: "#10294a", accent: "#fbbf24", accent2: "#fbbf24" },
+    palette: { bg: "#0c2340", surface: "#12315a", text: "#f8fafc", muted: "#a9bbd3", accent: "#fbbf24", chart: ["#fbbf24", "#f8fafc", "#93c5fd", "#a9bbd3", "#fcd34d", "#bfdbfe"] },
+    fonts: { heading: defaultTheme.fonts.ui, body: defaultTheme.fonts.ui, headingWeight: 600 },
+    motion: { kind: "smooth", stiffness: 0, damping: 0, transitionFrames: 12, rise: 12 },
+    pacing: { minHoldFrames: 90, maxHoldFrames: 450, cutRhythm: "even" },
+    captions: PILL,
+    preferKinds: ["svg_diagram", "drawn_objects", "algo_cells", "network", "chart"],
+    avoidKinds: [],
+    antiPatterns: ["photos or stock clips unless the beat truly needs one", "more than one accent colour", "bouncy or springy motion; strokes draw in at a steady pace, one at a time"],
   },
 };
 

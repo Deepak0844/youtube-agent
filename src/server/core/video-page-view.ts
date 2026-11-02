@@ -1,6 +1,7 @@
 import type { GateId } from "@/server/core/gates";
 import { FORCE_RERUN_STAGES, ttsRerunProblem, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
 import { microToUsd } from "@/server/core/llm-catalog";
+import { isReframeFormat, REFRAME_FORMATS, type ReframeFormat } from "./reframe";
 
 // Pure view-model for the video page (/videos/[id]). No IO: tab parsing, the stage strip's plain words, the time estimate
 // rule, and the QA findings shape. Nothing here invents a number: no estimate unless there are enough past runs.
@@ -26,10 +27,10 @@ export function parseTab(raw: unknown): TabId {
 }
 
 export const STAGE_LABELS: Record<StageName, string> = {
-  draft: "Draft", pictures: "Pictures", build: "Build", generate: "Generate", tts: "Narration", render: "Render", voice: "Voice", sfx: "Sound", qa: "Check", repair_scenes: "Scene repair", reframe: "Re-frame",
+  draft: "Draft", pictures: "Pictures", build: "Build", generate: "Generate", tts: "Narration", render: "Render", voice: "Voice", sfx: "Sound", qa: "Check", repair_scenes: "Scene repair", reframe: "Re-frame", seo: "Titles",
 };
 const VERB: Record<StageName, string> = {
-  draft: "Drafting", pictures: "Finding pictures", build: "Building", generate: "Generating", tts: "Recording narration", render: "Rendering", voice: "Mixing voice", sfx: "Adding sound", qa: "Checking quality", repair_scenes: "Repairing scenes", reframe: "Re-framing",
+  draft: "Drafting", pictures: "Finding pictures", build: "Building", generate: "Generating", tts: "Recording narration", render: "Rendering", voice: "Mixing voice", sfx: "Adding sound", qa: "Checking quality", repair_scenes: "Repairing scenes", reframe: "Re-framing", seo: "Writing titles",
 };
 
 /** Samples needed before a time estimate is shown. */
@@ -160,4 +161,14 @@ export function parseFindings(raw: unknown): QaFinding[] {
     }
   }
   return out;
+}
+
+/** Formats that have a finished re-framed file: any succeeded `reframe` run whose result names it. */
+export function reframedFormats(runs: ReadonlyArray<{ name: string; status: string; result: unknown }>): ReframeFormat[] {
+  const done = new Set<string>();
+  for (const r of runs) {
+    const f = r.name === "reframe" && r.status === "succeeded" && typeof r.result === "object" && r.result !== null ? (r.result as { format?: unknown }).format : undefined;
+    if (isReframeFormat(f)) done.add(f);
+  }
+  return REFRAME_FORMATS.filter((f) => done.has(f));
 }
