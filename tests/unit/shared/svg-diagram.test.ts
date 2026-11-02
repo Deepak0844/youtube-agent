@@ -299,3 +299,37 @@ describe("animation maths", () => {
     expect(stepAt([], 0.5)).toBe(-1);
   });
 });
+
+describe("sanitizer hardening", () => {
+  const ms = (f: () => void) => {
+    const t = performance.now();
+    f();
+    return performance.now() - t;
+  };
+  it("ReDoS inputs finish fast", () => {
+    const n = "1".repeat(25);
+    const m = `<g transform="matrix(${[n, n, n, n, n, n].join(" ")} x)"/>`;
+    expect(ms(() => sanitizeSvg(wrap(m)))).toBeLessThan(50);
+    const big = wrap(`<g transform="translate(${"1".repeat(150)}x)"/>`);
+    expect(ms(() => sanitizeSvg(big))).toBeLessThan(50);
+    const huge = wrap(`<path d="M${"1".repeat(5900)}x"/>`);
+    expect(ms(() => sanitizeSvg(huge))).toBeLessThan(50);
+    expect(ms(() => sanitizeSvg(wrap(`<rect x="${"1.".repeat(2900)}x"/>`)))).toBeLessThan(50);
+    expect(ms(() => sanitizeSvg(wrap(`<polyline points="${"1 ".repeat(2900)}x"/>`)))).toBeLessThan(50);
+  });
+  it("transforms still parse", () => {
+    expect(sanitizeSvg(wrap('<g transform="translate(5, 5) rotate(45) scale(.5)"/>')).ok).toBe(true);
+    expect(sanitizeSvg(wrap('<g transform="translate()"/>')).ok).toBe(false);
+    expect(sanitizeSvg(wrap('<g transform="translate(1 2 3 4 5 6 7)"/>')).ok).toBe(false);
+  });
+  it("inherited object keys never throw", () => {
+    for (const k of ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"]) {
+      expect(() => sanitizeSvg(wrap(`<rect ${k}="x"/>`))).not.toThrow();
+      expect(sanitizeSvg(wrap(`<rect ${k}="x"/>`)).ok).toBe(false);
+    }
+    expect(sanitizeSvg(wrap("<constructor/>")).ok).toBe(false);
+  });
+  it("long tag names are cut in feedback", () => {
+    expect(bad(wrap(`<${"a".repeat(500)}/>`)).join().length).toBeLessThan(300);
+  });
+});

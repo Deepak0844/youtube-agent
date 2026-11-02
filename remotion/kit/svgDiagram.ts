@@ -23,7 +23,7 @@ export type SvgNode = { tag: string; attrs: Record<string, string>; kids: (SvgNo
 export type SvgResult = { ok: true; root: SvgNode } | { ok: false; problems: string[] };
 
 // ---- value checks ----
-const NUM = "-?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?";
+const NUM = "-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][-+]?\\d+)?"; // each number matches exactly one way (no ReDoS)
 const NUM_RE = new RegExp(`^${NUM}$`);
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
@@ -62,10 +62,21 @@ function pathData(v: string): string | null {
   return numList(v.replace(/[A-Za-z]/g, (c) => (c === "e" || c === "E" ? c : " ")), SVG_LIMITS.d);
 }
 function transform(v: string): string | null {
+  const msg = "must be translate(), scale(), rotate(), skewX(), skewY() or matrix() with plain numbers";
   if (v.length > 200) return "is too long";
-  const m = new RegExp(`^(?:\\s*(?:translate|scale|rotate|skewX|skewY|matrix)\\(\\s*${NUM}(?:\\s*[ ,]\\s*${NUM}){0,5}\\s*\\))+\\s*$`).test(v);
-  if (!m) return "must be translate(), scale(), rotate(), skewX(), skewY() or matrix() with plain numbers";
-  return numList(v.replace(/[a-zA-Z()]/g, (c) => (c === "e" || c === "E" ? c : " ")), 200);
+  const fn = /^\s*(translate|scale|rotate|skewX|skewY|matrix)\(([^()]*)\)/; // linear: no nested quantifiers
+  let rest = v;
+  let any = false;
+  while (rest.trim() !== "") {
+    const m = fn.exec(rest);
+    if (!m) return msg;
+    const args = m[2]!.split(/[\s,]+/).filter(Boolean);
+    if (args.length < 1 || args.length > 6 || !args.every((a) => NUM_RE.test(a))) return msg;
+    if (args.some((a) => !inRange(Number(a)))) return `has a number outside ${SVG_LIMITS.min}..${SVG_LIMITS.max}`;
+    rest = rest.slice(m[0].length);
+    any = true;
+  }
+  return any ? null : msg;
 }
 /** "none", currentColor, a token, hex, or (paint) url(#id). Returns a problem or null. */
 function color(v: string, paint: boolean, refs: string[]): string | null {
@@ -93,7 +104,7 @@ function checkAttr(tag: string, name: string, v: string, isRoot: boolean, refs: 
   if (GEOM.has(name)) return NUM_RE.test(v) && inRange(Number(v)) ? null : `must be a plain number in ${SVG_LIMITS.min}..${SVG_LIMITS.max}`;
   if (SIZE.has(name)) return NUM_RE.test(v) && Number(v) >= 0 && inRange(Number(v)) ? null : `must be a plain number in 0..${SVG_LIMITS.max}`;
   if (UNIT.has(name)) return NUM_RE.test(v) && Number(v) >= 0 && Number(v) <= 1 ? null : "must be a number from 0 to 1";
-  if (SIMPLE_ENUM[name]) return SIMPLE_ENUM[name]!.includes(v) ? null : `must be one of ${SIMPLE_ENUM[name]!.join("|")}`;
+  if (Object.hasOwn(SIMPLE_ENUM, name)) return SIMPLE_ENUM[name]!.includes(v) ? null : `must be one of ${SIMPLE_ENUM[name]!.join("|")}`;
   switch (name) {
     case "stroke-width":
       return NUM_RE.test(v) && Number(v) >= 0 && Number(v) <= 100 ? null : "must be a number from 0 to 100";
@@ -209,7 +220,7 @@ function parse(s: string, soft: string[], refs: string[], ids: Set<string>): Svg
       const m = CLOSE.exec(s);
       if (!m) fatal("malformed closing tag");
       const top = stack.pop();
-      if (!top || top.tag !== m![1]) fatal(`closing tag </${m![1]}> does not match the open <${top?.tag ?? "nothing"}>`);
+      if (!top || top.tag !== m![1]) fatal(`closing tag </${m![1]!.slice(0, 30)}> does not match the open <${top?.tag ?? "nothing"}>`);
       i = CLOSE.lastIndex;
       if (stack.length === 0) done = true;
       continue;
@@ -219,7 +230,7 @@ function parse(s: string, soft: string[], refs: string[], ids: Set<string>): Svg
     const m = OPEN.exec(s);
     if (!m) fatal("malformed tag");
     const tag = m![1]!;
-    if (!TAGS.has(tag)) fatal(`<${tag}> is not allowed (tags are case sensitive). Allowed: ${SVG_TAGS.join(", ")}`);
+    if (!TAGS.has(tag)) fatal(`<${tag.slice(0, 30)}> is not allowed (tags are case sensitive). Allowed: ${SVG_TAGS.join(", ")}`);
     if (!root && tag !== "svg") fatal("the first element must be <svg>");
     if (root && tag === "svg") fatal("nested <svg> is not allowed");
     if (++count > SVG_LIMITS.elements) fatal(`more than ${SVG_LIMITS.elements} elements`);
@@ -343,7 +354,7 @@ function pathBox(d: string): Box | null {
     if (/[A-Za-z]/.test(toks[i]!)) cmd = toks[i++]!;
     const lo = cmd.toLowerCase();
     const rel = cmd === lo;
-    const k = ARGS[lo];
+    const k = Object.hasOwn(ARGS, lo) ? ARGS[lo] : undefined;
     if (k === undefined) return null;
     if (k === 0) {
       cx = sx;
