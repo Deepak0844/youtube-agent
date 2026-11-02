@@ -139,7 +139,7 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
           const have = await client.query<{ id: string; kind: string; deleted_at: Date | null }>("select id, kind, deleted_at from assets where sha256 = $1 for update", [r.sha256]);
           const row = have.rows[0];
           if (row) {
-            if (row.deleted_at !== null) { await client.query("rollback"); return { ok: false, reason: "file was deleted from the library" }; }
+            if (row.deleted_at !== null) { await client.query("rollback"); return { ok: false, reason: c.clip ? "clip was deleted from the library" : "picture was deleted from the library" }; }
             assetId = row.id;
             duplicate = true;
           } else {
@@ -163,7 +163,7 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
           await linkAsset(deps.db, { videoId, assetId, beatId: videoBeat.id, credit: c.credit, sourceUrl: c.pageUrl, licence: c.licence, briefHash: videoBeat.hash });
         } catch (e) {
           if (!(e instanceof LinkRefused)) throw e;
-          return { ok: false, reason: "could not link the file" };
+          return { ok: false, reason: c.clip ? "could not link the clip" : "could not link the picture" };
         }
         return { ok: true, assetId, duplicate, bytes: r.bytes };
       } finally {
