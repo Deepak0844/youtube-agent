@@ -13,7 +13,8 @@ export interface PictureCandidate {
   mime: string;
   licence: string;
   credit: string;
-  pageUrl: string;
+  /** https page on an allowed host, or null when the source gave none/a bad one. */
+  pageUrl: string | null;
   /** Description, categories or tags, plain text. */
   text: string;
 }
@@ -27,17 +28,18 @@ const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 const STOP = new Set(["the", "and", "for", "with", "from", "that", "this", "showing", "shows", "show", "view", "picture", "photo", "image", "close", "into", "over", "its", "are", "type", "kind"]);
 const DIAGRAMISH = /\b(diagram|cutaway|cut-away|schematic|exploded|infographic|illustration|chart|blueprint|section)s?\b/i;
 const PORTRAITISH = /\b(portrait|headshot|mugshot|selfie)s?\b/i;
-const PERSON_WORDS = /\b(portrait|person|people|man|woman|men|women|face|scientist|inventor|president|king|queen|emperor|author|actor|singer|athlete)\b/i;
+const PERSON_WORDS = /\b(portrait|person|people|man|woman|men|women|girl|boy|child|children|baby|face|couple|family|crowd|model|scientist|inventor|president|king|queen|emperor|author|actor|singer|athlete)\b/i;
+// Pixabay tags that mean a person is the subject (a stranger's likeness): refused unless the brief is about people.
+const PERSON_TAGS = /\b(woman|man|girl|boy|people|person|child|children|baby|face|portrait|model|couple|family|crowd)\b/i;
 
 const stem = (w: string) => (w.length > 4 && w.endsWith("s") ? w.slice(0, -1) : w);
 export function words(s: string): string[] {
   return [...new Set((s.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => w.length >= 3 && !STOP.has(w)).map(stem))];
 }
 
-/** A brief names a person when it says so, or contains two capitalised words in a row (a proper name). */
+/** A brief names a person only when it says so with a person word (two capitalised words such as "Golden Gate" do not count). */
 function namesPerson(brief: PictureBrief): boolean {
-  const raw = [brief.visual, ...brief.search].join(" . ");
-  return PERSON_WORDS.test(raw) || /\b[A-Z][a-z]+ [A-Z][a-z]+\b/.test(raw);
+  return PERSON_WORDS.test([brief.visual, ...brief.search].join(" . "));
 }
 
 export function scoreCandidate(brief: PictureBrief, c: PictureCandidate): number | null {
@@ -45,7 +47,7 @@ export function scoreCandidate(brief: PictureBrief, c: PictureCandidate): number
   const aspect = c.height > 0 ? c.width / c.height : 0;
   if (!(long >= MIN_LONG_SIDE) || aspect < MIN_ASPECT || aspect > MAX_ASPECT) return null;
   if (!ALLOWED_MIME.has(c.mime.toLowerCase())) return null;
-  if (PORTRAITISH.test(c.title) && !namesPerson(brief)) return null;
+  if ((PORTRAITISH.test(c.title) || (c.source === "pixabay" && PERSON_TAGS.test(c.text))) && !namesPerson(brief)) return null;
 
   const want = words([...brief.search, brief.visual].join(" "));
   if (want.length === 0) return null;
@@ -61,12 +63,17 @@ export function scoreCandidate(brief: PictureBrief, c: PictureCandidate): number
   return score;
 }
 
-/** The best acceptable candidate at or above MIN_SCORE; the first one wins a tie. */
-export function pickBest(brief: PictureBrief, cands: readonly PictureCandidate[]): { cand: PictureCandidate; score: number } | null {
-  let best: { cand: PictureCandidate; score: number } | null = null;
+/** Acceptable candidates at or above MIN_SCORE, best first; equal scores keep input order. */
+export function rankCandidates(brief: PictureBrief, cands: readonly PictureCandidate[]): Array<{ cand: PictureCandidate; score: number }> {
+  const out: Array<{ cand: PictureCandidate; score: number }> = [];
   for (const cand of cands) {
     const score = scoreCandidate(brief, cand);
-    if (score !== null && score >= MIN_SCORE && (!best || score > best.score)) best = { cand, score };
+    if (score !== null && score >= MIN_SCORE) out.push({ cand, score });
   }
-  return best;
+  return out.sort((a, b) => b.score - a.score); // Array.sort is stable
+}
+
+/** The best one, or null. */
+export function pickBest(brief: PictureBrief, cands: readonly PictureCandidate[]): { cand: PictureCandidate; score: number } | null {
+  return rankCandidates(brief, cands)[0] ?? null;
 }

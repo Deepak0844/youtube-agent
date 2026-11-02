@@ -1,10 +1,12 @@
+import { safeFetch } from "@/server/providers/net/safe-fetch";
+
 // SECURITY CONTROL: the only way the pictures stage touches the web. https only, exact host allow-list (checked on every
 // redirect hop too), response capped while streaming, content type checked, no credentials in the address, a descriptive
 // User-Agent. Pure of IO except the injected fetcher (production: safeFetch in indirect mode = public addresses only).
 
 export const PICTURE_MAX_BYTES = 10 * 1024 * 1024;
 export const API_MAX_BYTES = 2 * 1024 * 1024;
-export const USER_AGENT = "YTStudio/0.1 (personal, local; contact owner)";
+export const USER_AGENT = "YTStudio/0.1 (https://github.com/Deepak0844/youtube-agent; personal local use)";
 const MAX_HOPS = 2;
 
 export const WIKIMEDIA_API_HOSTS = ["commons.wikimedia.org"] as const;
@@ -26,6 +28,14 @@ export function hostAllowed(url: string, hosts: readonly string[]): URL | null {
 }
 
 export interface BoundedOptions { hosts: readonly string[]; maxBytes: number; accept: RegExp; signal: AbortSignal }
+
+/**
+ * Production fetcher: safeFetch in indirect mode (public addresses only). maxRedirects 0, so a redirect throws inside safeFetch
+ * and the beat just gets no picture; the redirect loop in fetchBounded only matters for other fetchers (tests, a future change).
+ */
+export function createPictureFetcher(sf: typeof safeFetch = safeFetch): PictureFetcher {
+  return (url, init) => sf(url, init, { mode: "indirect", maxRedirects: 0, timeoutMs: 30_000 });
+}
 
 /** GET with every refusal returned as a reason (never a thrown network error, never a URL or key in the reason). */
 export async function fetchBounded(fetcher: PictureFetcher, rawUrl: string, o: BoundedOptions): Promise<Fetched> {

@@ -55,6 +55,47 @@ const page = (over: Record<string, unknown> = {}, em: Record<string, string> = {
   }],
 });
 
+describe("parseCommons: untrusted fields", () => {
+  const j = (ii: Record<string, unknown>, em: Record<string, string> = {}) => parseCommons({ query: { pages: { 0: page(ii, em) } } });
+  it("drops candidates whose file address is malformed, not https, off-list or has credentials", () => {
+    for (const url of ["not a url", "http://upload.wikimedia.org/a.jpg", "https://evil.example/a.jpg", "https://user:pw@upload.wikimedia.org/a.jpg", "javascript:alert(1)", "https://upload.wikimedia.org:444/a.jpg", ""]) {
+      expect(j({ url, thumburl: url }), url).toEqual([]);
+    }
+  });
+  it("trailing-dot hosts are refused and uppercase hosts are normalised", () => {
+    expect(j({ url: "https://upload.wikimedia.org./a.jpg", thumburl: "https://upload.wikimedia.org./t.jpg" })).toEqual([]);
+    const [c] = j({ url: "https://UPLOAD.Wikimedia.org/a.jpg", thumburl: "https://UPLOAD.Wikimedia.org/t.jpg" });
+    expect(c!.url.startsWith("https://upload.wikimedia.org/")).toBe(true);
+  });
+  it("a bad page address is stored as null and never reaches the credit; CC BY then needs it", () => {
+    const [c] = j({ descriptionurl: "https://evil.example/wiki/X" });
+    expect(c!.pageUrl).toBeNull();
+    expect(c!.credit).not.toContain("evil");
+    expect(j({ descriptionurl: "https://evil.example/wiki/X" }, { LicenseShortName: "CC BY 4.0" })).toEqual([]);
+  });
+  it("falls back to the original when only the thumbnail address is bad", () => {
+    expect(j({ thumburl: "https://evil.example/t.jpg" })[0]!.url).toContain("/a/ab/Engine_cutaway.jpg");
+  });
+  it("refuses personality, trademark and insignia restrictions and non-free files", () => {
+    for (const r of ["personality", "trademarked", "insignia", "copyright|personality"]) expect(j({}, { Restrictions: r }), r).toEqual([]);
+    expect(j({}, { NonFree: "true" })).toEqual([]);
+    expect(j({}, { Restrictions: "" })).toHaveLength(1);
+  });
+  it("refuses CC BY without an author but keeps public domain without one", () => {
+    expect(j({}, { LicenseShortName: "CC BY 4.0", Artist: "" })).toEqual([]);
+    const [pd] = j({}, { LicenseShortName: "Public domain", Artist: "" });
+    expect(pd!.credit).toContain("Unknown author");
+  });
+  it("puts the licence url in the credit (only a creativecommons.org one)", () => {
+    const [c] = j({}, { LicenseShortName: "CC BY 4.0", LicenseUrl: "https://creativecommons.org/licenses/by/4.0" });
+    expect(c!.credit).toContain("https://creativecommons.org/licenses/by/4.0");
+    expect(creditLine({ title: "t", author: "a", licence: "CC BY 4.0", licenceUrl: "https://evil.example/x", pageUrl: null })).not.toContain("evil");
+  });
+  it("a CC0 name with a share-alike licence url is refused", () => {
+    expect(j({}, { LicenseShortName: "CC0", LicenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" })).toEqual([]);
+  });
+});
+
 describe("parseCommons", () => {
   const json = (pages: unknown[]) => ({ query: { pages: Object.fromEntries(pages.map((p, i) => [String(i), p])) } });
   it("turns a page into a candidate and downloads the 1280 thumbnail of a big original", () => {
@@ -90,5 +131,10 @@ describe("pixabay candidates", () => {
     expect(c).toMatchObject({ source: "pixabay", licence: "Pixabay Content License", width: 4000, mime: "image/jpeg" });
     expect(c!.credit).toContain("bob");
     expect(parsePixabay(null)).toEqual([]);
+    const bad = (over: Record<string, unknown>) => parsePixabay({ hits: [{ id: 1, largeImageURL: "https://pixabay.com/get/x_1280.jpg", pageURL: "https://pixabay.com/photos/x-1/", imageWidth: 4000, imageHeight: 3000, tags: "t", user: "u", ...over }] });
+    expect(bad({ largeImageURL: "https://evil.example/x.jpg" })).toEqual([]);
+    expect(bad({ largeImageURL: "http://pixabay.com/x.jpg" })).toEqual([]);
+    expect(bad({ largeImageURL: "nope" })).toEqual([]);
+    expect(bad({ pageURL: "https://evil.example/p" })[0]!.pageUrl).toBeNull();
   });
 });

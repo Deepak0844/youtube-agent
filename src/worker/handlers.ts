@@ -16,7 +16,7 @@ import { loadKeyring } from "@/server/db/master-key";
 import { createLlmClient } from "@/server/llm/client";
 import { defaultModelDeps } from "@/server/llm/default-deps";
 import { createWebTools } from "@/server/llm/web-tools";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { createPictureFetcher } from "@/server/providers/stock/picture-download";
 import { secretName } from "@/server/core/provider-keys";
 import { getSecret, hasSecret } from "@/server/db/vault";
 import { createImageFor } from "@/server/providers/image/wire";
@@ -168,8 +168,8 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     draft: refuseDryRunVideos(pool, draft),
     pictures: refuseDryRunVideos(pool, picturesHandler({
       db: pool, root: deps.root, ingest: { runChild: (spec) => runChild(spec, { registry: env.childRegistry }) },
-      // indirect = public addresses only; redirects are refused (the picture fetch checks any it is shown against the host list)
-      fetcher: (url, init) => safeFetch(url, init, { mode: "indirect", maxRedirects: 0, timeoutMs: 30_000 }),
+      fetcher: createPictureFetcher(), // safeFetch indirect (public addresses only), no redirects, 30 s
+
       pixabayKey: async () => {
         try {
           const name = secretName("pixabay");

@@ -1,4 +1,5 @@
 import type { PictureCandidate } from "@/server/core/picture-rank";
+import { hostAllowed, WIKIMEDIA_API_HOSTS, WIKIMEDIA_FILE_HOSTS } from "./picture-download";
 
 // Wikimedia Commons search (public MediaWiki API, no key). Pure: builds the URL and parses the JSON; the caller fetches.
 // Only these licences are used: public domain, CC0, CC BY (credit kept). CC BY-SA, NC, ND, GFDL, unknown and empty are refused.
@@ -25,6 +26,9 @@ export function allowedLicence(shortName: string, url?: string): string | null {
   return ok ? name : null;
 }
 
+// Commons "Restrictions" flags: a likeness, a trademark or an insignia can be used only with extra permission.
+const RESTRICTED = /personality|trademark|insignia/i;
+
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 export function stripHtml(s: string, max: number): string {
   const text = s
@@ -43,10 +47,11 @@ export function stripHtml(s: string, max: number): string {
 const cleanTitle = (t: string) => t.replace(/^File:/i, "").replace(/\.[A-Za-z0-9]{2,5}$/, "").replace(/_/g, " ").trim();
 
 /** "Title by Author, LICENCE, url", at most 400 characters (title and author are cut first). */
-export function creditLine(a: { title: string; author: string; licence: string; pageUrl: string }): string {
+export function creditLine(a: { title: string; author: string; licence: string; licenceUrl?: string; pageUrl: string | null }): string {
   const author = stripHtml(a.author, 120) || "Unknown author";
   const title = cleanTitle(stripHtml(a.title, 200)).slice(0, 120);
-  const tail = `, ${a.licence}, ${a.pageUrl}`;
+  const lic = a.licenceUrl && /^https?:\/\/(www\.)?creativecommons\.org\/[A-Za-z0-9/._-]+$/.test(a.licenceUrl) ? ` (${a.licenceUrl})` : "";
+  const tail = `, ${a.licence}${lic}${a.pageUrl ? `, ${a.pageUrl}` : ""}`;
   const head = `${title} by ${author}`;
   return (head.slice(0, Math.max(0, MAX_CREDIT - tail.length)) + tail).slice(0, MAX_CREDIT);
 }
@@ -64,15 +69,24 @@ export function parseCommons(json: unknown): PictureCandidate[] {
   for (const p of sorted) {
     const ii = obj(Array.isArray(p.imageinfo) ? p.imageinfo[0] : undefined);
     const em = obj(ii.extmetadata);
-    const licence = allowedLicence(meta(em, "LicenseShortName"), meta(em, "LicenseUrl") || undefined);
+    const licenceUrl = meta(em, "LicenseUrl");
+    const licence = allowedLicence(meta(em, "LicenseShortName"), licenceUrl || undefined);
     const width = Number(ii.width), height = Number(ii.height);
-    const url = str(ii.url), pageUrl = str(ii.descriptionurl), title = str(p.title);
-    if (!licence || !url || !pageUrl || !title || !(width > 0) || !(height > 0)) continue;
-    const thumb = str(ii.thumburl);
+    const title = str(p.title);
+    // Every address from the answer is checked here: https, no credentials/port, exact host. A bad file address drops the candidate.
+    const original = hostAllowed(str(ii.url), WIKIMEDIA_FILE_HOSTS);
+    const thumb = hostAllowed(str(ii.thumburl), WIKIMEDIA_FILE_HOSTS);
+    const page = hostAllowed(str(ii.descriptionurl), WIKIMEDIA_API_HOSTS);
+    if (!licence || !original || !title || !(width > 0) || !(height > 0)) continue;
+    if (RESTRICTED.test(meta(em, "Restrictions")) || /^true$/i.test(meta(em, "NonFree"))) continue; // personality, trademark, insignia, non-free
+    const author = stripHtml(meta(em, "Artist"), 120);
+    const isCcBy = /^cc[- ]by/i.test(licence);
+    if (isCcBy && (!author || !page)) continue; // CC BY needs a named author and a page to credit
+    const pageUrl = page ? page.href : null;
     const text = stripHtml(`${meta(em, "ImageDescription")} ${meta(em, "Categories").split("|").join(" ")}`, 1500);
     out.push({
-      source: "wikimedia", title: cleanTitle(title), url: width > THUMB_WIDTH && thumb ? thumb : url, width, height, mime: str(ii.mime),
-      licence, credit: creditLine({ title, author: meta(em, "Artist"), licence, pageUrl }), pageUrl, text,
+      source: "wikimedia", title: cleanTitle(title), url: width > THUMB_WIDTH && thumb ? thumb.href : original.href, width, height, mime: str(ii.mime),
+      licence, credit: creditLine({ title, author, licence, licenceUrl, pageUrl }), pageUrl, text,
     });
   }
   return out;

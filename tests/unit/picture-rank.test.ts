@@ -28,6 +28,19 @@ describe("scoreCandidate", () => {
   });
 });
 
+describe("person rules", () => {
+  it("two capitalised words (Golden Gate) do not count as naming a person", () => {
+    const b = { search: ["Golden Gate bridge"], visual: "the Golden Gate bridge at sunrise" };
+    expect(scoreCandidate(b, cand({ title: "Golden Gate portrait view", text: "Golden Gate bridge" }))).toBeNull();
+  });
+  it("refuses person-tagged Pixabay hits unless the brief is about people", () => {
+    const hit = cand({ source: "pixabay", title: "engine mechanic", text: "engine, man, workshop, petrol" });
+    expect(scoreCandidate(brief, hit)).toBeNull();
+    expect(scoreCandidate({ search: ["mechanic man petrol engine"], visual: "a man repairing a petrol engine" }, hit)).not.toBeNull();
+    expect(scoreCandidate(brief, cand({ source: "pixabay", text: "petrol engine cutaway, metal" }))).not.toBeNull();
+  });
+});
+
 describe("pickBest", () => {
   it("picks the matching candidate over a stronger-looking but unrelated one", () => {
     const match = cand({ title: "Petrol engine cutaway", width: 1600, height: 1200 });

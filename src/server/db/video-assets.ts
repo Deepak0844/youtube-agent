@@ -15,6 +15,8 @@ export interface LinkInput {
   credit?: string | null;
   sourceUrl?: string | null;
   licence?: string | null;
+  /** Set only by the pictures stage (hash of the beat brief it picked this for). */
+  briefHash?: string | null;
   position?: number;
 }
 export interface VideoAsset {
@@ -23,6 +25,8 @@ export interface VideoAsset {
   position: number;
   caption?: string;
   credit?: string;
+  /** null = linked by hand; the pictures stage leaves those alone. */
+  briefHash: string | null;
 }
 
 /** Links one image to a beat. Linking the same (video, asset, beat) again changes nothing. */
@@ -40,23 +44,23 @@ export async function linkAsset(db: Db, a: LinkInput): Promise<void> {
   if (n.rows[0]!.beat >= MAX_PER_BEAT) throw new LinkRefused(`A beat can have at most ${MAX_PER_BEAT} pictures.`);
   if (n.rows[0]!.video >= MAX_PER_VIDEO) throw new LinkRefused(`A video can have at most ${MAX_PER_VIDEO} pictures.`);
   await db.query(
-    `insert into video_assets (video_id, asset_id, beat_id, position, credit, source_url, licence) values ($1,$2,$3,$4,$5,$6,$7)
+    `insert into video_assets (video_id, asset_id, beat_id, position, credit, source_url, licence, brief_hash) values ($1,$2,$3,$4,$5,$6,$7,$8)
      on conflict (video_id, asset_id, beat_id) do nothing`,
-    [a.videoId, a.assetId, a.beatId, a.position ?? 0, a.credit ?? null, a.sourceUrl ?? null, a.licence ?? null],
+    [a.videoId, a.assetId, a.beatId, a.position ?? 0, a.credit ?? null, a.sourceUrl ?? null, a.licence ?? null, a.briefHash ?? null],
   );
 }
 
 /** Linked pictures that are still live, in beat order of position then link time. */
 export async function assetsForVideo(db: Db, videoId: string): Promise<VideoAsset[]> {
-  const { rows } = await db.query<{ asset_id: string; beat_id: string; position: number; caption: string | null; credit: string | null }>(
-    `select va.asset_id, va.beat_id, va.position, a.caption, va.credit
+  const { rows } = await db.query<{ asset_id: string; beat_id: string; position: number; caption: string | null; credit: string | null; brief_hash: string | null }>(
+    `select va.asset_id, va.beat_id, va.position, a.caption, va.credit, va.brief_hash
        from video_assets va join assets a on a.id = va.asset_id
       where va.video_id = $1 and a.deleted_at is null
       order by va.beat_id, va.position, va.created_at, va.asset_id`,
     [videoId],
   );
   return rows.map((r) => ({
-    assetId: r.asset_id, beatId: r.beat_id, position: r.position,
+    assetId: r.asset_id, beatId: r.beat_id, position: r.position, briefHash: r.brief_hash,
     ...(r.caption ? { caption: r.caption } : {}), ...(r.credit ? { credit: r.credit } : {}),
   }));
 }
@@ -69,4 +73,10 @@ export async function unlinkAll(db: Db, videoId: string): Promise<void> {
 export async function creditsForVideo(db: Db, videoId: string): Promise<string[]> {
   const { rows } = await db.query<{ credit: string }>("select distinct credit from video_assets where video_id = $1 and credit is not null and credit <> '' order by credit", [videoId]);
   return rows.map((r) => r.credit);
+}
+
+/** Removes the links the pictures stage made (brief_hash set) for these beats; hand-made links stay. */
+export async function unlinkStageBeats(db: Db, videoId: string, beatIds: readonly string[]): Promise<void> {
+  if (beatIds.length === 0) return;
+  await db.query("delete from video_assets where video_id = $1 and beat_id = any($2::text[]) and brief_hash is not null", [videoId, [...beatIds]]);
 }

@@ -1,4 +1,5 @@
 import type { PictureCandidate } from "@/server/core/picture-rank";
+import { hostAllowed, PIXABAY_API_HOSTS, PIXABAY_FILE_HOSTS } from "./picture-download";
 import { stripHtml } from "./wikimedia";
 
 // Pixabay image search for the pictures stage (the key is a query parameter and goes only into the URL built here).
@@ -20,15 +21,17 @@ export function parsePixabay(json: unknown): PictureCandidate[] {
   const out: PictureCandidate[] = [];
   for (const raw of hits) {
     const h = obj(raw);
-    const url = typeof h.largeImageURL === "string" ? h.largeImageURL : "";
-    const pageUrl = typeof h.pageURL === "string" ? h.pageURL : "";
+    const file = hostAllowed(typeof h.largeImageURL === "string" ? h.largeImageURL : "", PIXABAY_FILE_HOSTS);
+    const page = hostAllowed(typeof h.pageURL === "string" ? h.pageURL : "", PIXABAY_API_HOSTS);
     const width = Number(h.imageWidth), height = Number(h.imageHeight);
-    if (!url || !pageUrl || !(width > 0) || !(height > 0)) continue;
+    if (!file || !(width > 0) || !(height > 0)) continue;
+    const url = file.href;
+    const pageUrl = page ? page.href : null;
     const tags = typeof h.tags === "string" ? stripHtml(h.tags.replace(/,/g, " "), 300) : "";
     const user = typeof h.user === "string" ? stripHtml(h.user, 80) : "";
     out.push({
       source: "pixabay", title: tags || `Pixabay image ${String(h.id ?? "")}`, url, width, height, mime: mimeOf(url), licence: LICENCE,
-      credit: `Image by ${user || "Pixabay"} on Pixabay, ${LICENCE}, ${pageUrl}`.slice(0, 400), pageUrl, text: tags,
+      credit: `Image by ${user || "Pixabay"} on Pixabay, ${LICENCE}${pageUrl ? `, ${pageUrl}` : ""}`.slice(0, 400), pageUrl, text: tags,
     });
   }
   return out;

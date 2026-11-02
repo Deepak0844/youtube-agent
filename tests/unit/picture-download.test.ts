@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPacer, fetchBounded, hostAllowed, PICTURE_MAX_BYTES } from "@/server/providers/stock/picture-download";
+import { createPictureFetcher, createPacer, fetchBounded, hostAllowed, PICTURE_MAX_BYTES } from "@/server/providers/stock/picture-download";
 
 const HOSTS = ["upload.wikimedia.org", "thumb.wikimedia.org"];
 const resp = (body: Uint8Array | string, init: { status?: number; headers?: Record<string, string> } = {}) =>
@@ -16,6 +16,22 @@ describe("hostAllowed", () => {
     expect(hostAllowed("https://user:pw@upload.wikimedia.org/a.jpg", HOSTS)).toBeNull();
     expect(hostAllowed("https://upload.wikimedia.org:8443/a.jpg", HOSTS)).toBeNull();
     expect(hostAllowed("not a url", HOSTS)).toBeNull();
+    expect(hostAllowed("https://upload.wikimedia.org./a.jpg", HOSTS)).toBeNull(); // trailing dot
+    expect(hostAllowed("https://UPLOAD.wikimedia.org/a.jpg", HOSTS)?.hostname).toBe("upload.wikimedia.org"); // normalised
+  });
+});
+
+describe("production wiring", () => {
+  it("goes through safeFetch in indirect mode with no redirects and a timeout", async () => {
+    let seen: { url: string; opts: unknown } | null = null;
+    const f = createPictureFetcher((async (url: string, _init: unknown, opts: unknown) => { seen = { url, opts }; return new Response("x"); }) as never);
+    await f("https://upload.wikimedia.org/a.jpg", {});
+    expect(seen).toEqual({ url: "https://upload.wikimedia.org/a.jpg", opts: { mode: "indirect", maxRedirects: 0, timeoutMs: 30_000 } });
+  });
+  it("sends a User-Agent with a contact url", async () => {
+    let ua = "";
+    await fetchBounded(async (_u, init) => { ua = new Headers(init.headers).get("user-agent") ?? ""; return resp(new Uint8Array([1])); }, "https://upload.wikimedia.org/a.jpg", opts);
+    expect(ua).toContain("https://github.com/Deepak0844/youtube-agent");
   });
 });
 
