@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { STAGE_NAMES, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
 import { BREAKER_STAGES, versionsKey, type BreakerStage, type QueueGate, QUEUE_GATES } from "@/server/core/queue-input";
+import { buildBeatRows, type BeatRow } from "@/server/core/beat-rows";
 import { scriptSchema } from "@/server/core/script-contract";
 import { wordCount, isLang } from "@/server/core/lang";
 import { getDecision, type DecisionDetail } from "@/server/db/decision";
@@ -21,7 +22,7 @@ export interface GateClaim {
   detail: string;
 }
 export type GateContent =
-  | { kind: "script"; title: string; description: string | null; narration: string; words: number; beats: number; claims: GateClaim[]; readable: boolean }
+  | { kind: "script"; title: string; description: string | null; narration: string; words: number; beats: number; beatRows: BeatRow[]; shownForReal: string | null; style: string | null; claims: GateClaim[]; readable: boolean }
   | { kind: "cost"; totalMicroUsd: number; path: string; models: Array<[string, string]>; items: Array<{ kind: string; provider: string; quoteMicroUsd: number }> }
   | { kind: "video"; src: string | null; shaPrefix: string; captions: "exact" | "approximate" | "check" | "checked"; rewriteLines: number[] }
   | { kind: "evidence"; claims: GateClaim[]; fileSrc: string | null; shaPrefix: string }
@@ -119,14 +120,14 @@ async function uploadFor(db: pg.Pool, videoId: string): Promise<StripInput["uplo
   return r.rows[0]?.status ?? null;
 }
 
-async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<ReturnType<typeof readSnapshot>>, "no_video">, lang: string, videoId: string, sign: Awaited<ReturnType<typeof mediaSigner>>): Promise<GateContent> {
+async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<ReturnType<typeof readSnapshot>>, "no_video">, lang: string, videoId: string, sign: Awaited<ReturnType<typeof mediaSigner>>, style: string | null): Promise<GateContent> {
   const c = snap.inputs.content;
   const src = (rel: string | null | undefined) => (sign ? sign(rel) : null);
   if (gate === "script") {
     const { parsed } = claimsOf(c.script?.body);
-    if (!parsed.success) return { kind: "script", title: "Script", description: null, narration: JSON.stringify(c.script?.body ?? null), words: 0, beats: 0, claims: [], readable: false };
+    if (!parsed.success) return { kind: "script", title: "Script", description: null, narration: JSON.stringify(c.script?.body ?? null), words: 0, beats: 0, beatRows: [], shownForReal: null, style, claims: [], readable: false };
     const s = parsed.data;
-    return { kind: "script", title: s.title, description: s.description ?? null, narration: s.narration, words: isLang(lang) ? wordCount(s.narration) : s.narration.split(/\s+/).filter(Boolean).length, beats: s.beats.length, claims: claimsOf(s).claims, readable: true };
+    return { kind: "script", title: s.title, description: s.description ?? null, narration: s.narration, words: isLang(lang) ? wordCount(s.narration) : s.narration.split(/\s+/).filter(Boolean).length, beats: s.beats.length, beatRows: buildBeatRows(s.beats), shownForReal: s.shown_for_real ?? null, style, claims: claimsOf(s).claims, readable: true };
   }
   if (gate === "cost") {
     const b = asObj(c.cost_plan?.body);
@@ -157,8 +158,8 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
 
 export async function loadQueue(db: pg.Pool, checkable: ReadonlySet<string> = new Set(), only?: { videoId: string }): Promise<QueueData> {
   const sign = await mediaSigner(db);
-  const vids = await db.query<{ id: string; topic: string; language: string; channel_id: string | null; updated_at: Date }>(
-    "select id, topic, language, channel_id, updated_at from videos where status in ('waiting','active') and format = 'short' and ($2::uuid is null or id = $2) order by updated_at, id limit $1",
+  const vids = await db.query<{ id: string; topic: string; language: string; channel_id: string | null; updated_at: Date; style: string | null }>(
+    "select id, topic, language, channel_id, updated_at, style from videos where status in ('waiting','active') and format = 'short' and ($2::uuid is null or id = $2) order by updated_at, id limit $1",
     [MAX_ITEMS * 2, only?.videoId ?? null],
   );
   const parked = await db.query<{ id: string; video_id: string }>("select id, video_id from stage_runs where status = 'needs_decision' order by created_at, id limit $1", [MAX_ITEMS]);
@@ -178,7 +179,7 @@ export async function loadQueue(db: pg.Pool, checkable: ReadonlySet<string> = ne
     const gate = action.gate as QueueGate;
     const snap = await readSnapshot(db, v.id, gate);
     if (snap === "no_video" || !snap.live.ok) continue;
-    const content = await contentFor(db, gate, snap, v.language, v.id, sign);
+    const content = await contentFor(db, gate, snap, v.language, v.id, sign, v.style);
     items.push({
       ...base,
       kind: "gate",

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { buildBeatRows } from "@/server/core/beat-rows";
+import { BeatTable } from "@/ui/domain/beat-table";
 import { Suspense } from "react";
 import { z } from "zod";
 import { requireOwner } from "@/lib/auth/require-owner";
@@ -159,8 +161,7 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
               <H>{s.data.title}</H>
               <p lang={lang} data-testid="script-text" className="m-0 max-w-[68ch] whitespace-pre-wrap text-body [overflow-wrap:anywhere]">{s.data.narration}</p>
               {s.data.description ? <p className="m-0 max-w-[68ch] text-body text-muted [overflow-wrap:anywhere]">{s.data.description}</p> : null}
-              <h3 className="m-0 text-section font-medium">Scenes ({s.data.beats.length})</h3>
-              <BeatList beats={s.data.beats} />
+              <BeatTable rows={buildBeatRows(s.data.beats)} shownForReal={s.data.shown_for_real} style={p.head.style} />
             </>
           ) : (
             <pre className="m-0 max-w-full overflow-x-auto whitespace-pre-wrap text-small [overflow-wrap:anywhere]">{JSON.stringify(p.script.body, null, 2)}</pre>

@@ -1,6 +1,7 @@
 import { microToUsd } from "@/server/core/llm-catalog";
 import type { GateClaim, GateContent, GateItem } from "@/server/db/queue-data";
 import { ChannelInitial } from "@/ui/domain/channel-initial";
+import { BeatTable } from "@/ui/domain/beat-table";
 import { CutStrip } from "@/ui/domain/cut-strip";
 import { cutStages } from "@/ui/domain/queue-strip";
 import { Pill } from "@/ui/primitives/pill";
@@ -66,6 +67,7 @@ function Content({ c, lang }: { c: GateContent; lang: string }) {
           <p className="m-0 text-small text-muted tabular-nums">{c.readable ? `${c.words} words, ${c.beats} scenes` : "This script could not be read in the usual shape; the raw text is shown."}</p>
           <p lang={lang} data-testid="script-text" className="m-0 max-w-[68ch] whitespace-pre-wrap text-body [overflow-wrap:anywhere]">{c.narration}</p>
           {c.description ? <p className="m-0 max-w-[68ch] text-body text-muted [overflow-wrap:anywhere]">{c.description}</p> : null}
+          <BeatTable rows={c.beatRows} shownForReal={c.shownForReal} style={c.style} />
           <h4 className="m-0 mt-2 text-small font-medium text-muted">Evidence</h4>
           <Claims claims={c.claims} />
         </div>
