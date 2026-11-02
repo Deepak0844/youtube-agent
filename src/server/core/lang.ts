@@ -24,6 +24,7 @@ export function wordCount(text: string): number {
 }
 
 /** Spoken words per second at the language's normal pace. */
+export const langName = (lang: Lang): string => INFO[lang].name;
 export const speakingRate = (lang: Lang): number => INFO[lang].wps;
 
 export function wordRange(lang: Lang, speakingRate: number = INFO[lang].wps): { min: number; max: number } {

@@ -10,6 +10,7 @@ import { createSemaphore } from "@/server/core/semaphore";
 import type { StageHandler } from "@/server/core/stage-handler";
 import { AssetRefused, getAsset, registerAsset } from "@/server/db/assets";
 import { recordAudit } from "@/server/db/audit";
+import { assetsForVideo } from "@/server/db/video-assets";
 import { assetForJob, claimIngestJob, expireReceiving, loadLimits, MAX_INGEST_TRIES, markDone, markRejected, requeueJob, runningIngestIds } from "@/server/db/ingest-jobs";
 import { loadKeyring } from "@/server/db/master-key";
 import { createLlmClient } from "@/server/llm/client";
@@ -117,6 +118,9 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     mix: { runChild: run, audioRoot: path.join(root, "audio") },
     // Build plans no paid images (empty cost plan); generate is not wired. Nothing calls image, and if it did it refuses.
     paidImages: false,
+    // Pictures linked to beats (video_assets): Build plans those beats itself; repair sees the same ids.
+    sceneAssets: async (videoId) => [...new Set((await assetsForVideo(pool, videoId)).map((a) => a.assetId))],
+    scenePictures: (videoId) => assetsForVideo(pool, videoId),
     imageFor: createImageFor(pool, () => loadKeyring(), root),
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
     // Render runs in the locked-down render container (remotion-container.ts). The kit is read from the repo the worker runs in.
