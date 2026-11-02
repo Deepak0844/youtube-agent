@@ -2,7 +2,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { KnownFailure } from "@/server/core/paid-call";
 import { parsePalette } from "@/server/core/sfx-palette";
-import { planFromCueSheet } from "@/server/core/sfx-plan";
+import { planFromCueSheet, SfxPlan } from "@/server/core/sfx-plan";
+import { BedChoice, bedChoiceHash, withBedChoice } from "@/server/core/sound-view";
 import { findLibraryFirst, markUsed } from "@/server/db/audio-library";
 import type { StageHandler } from "@/server/core/stage-handler";
 import { mixPlan } from "@/server/render/mix";
@@ -45,12 +46,21 @@ export function sfxAttempt(deps: StageDeps): AttemptHandler {
       return { files: ["final.mp4"], result: { final: "final.mp4" } };
     }
     const id = videoIdOf(ctx);
+    let planPath = await planFile(deps, ctx, id, deps.mix.audioRoot);
+    // The owner's bed pick from the Sound tab (sound-bed.json) is laid over the plan; no file = the plan as it was.
+    const bedRaw = await readIfThere(await promotedPath(deps.root, id, "sound-bed.json"));
+    const bed = bedRaw === null ? null : BedChoice.safeParse(JSON.parse(bedRaw));
+    if (bed?.success) {
+      const planRaw = (await readIfThere(planPath)) ?? '{"version":1,"cues":[]}';
+      planPath = path.join(ctx.attemptDir, "sfx-plan-with-bed.json");
+      await writeFile(planPath, JSON.stringify(withBedChoice(SfxPlan.parse(JSON.parse(planRaw)), bed.data)));
+    }
     const r = await mixPlan(deps.mix, deps.db, ctx, ctx.config.qa, {
       voiced: await promotedPath(deps.root, id, "voiced.mp4"),
-      planFile: await planFile(deps, ctx, id, deps.mix.audioRoot),
+      planFile: planPath,
       out: path.join(ctx.attemptDir, "final.mp4"),
     });
-    return { files: ["final.mp4", "cue-sheet.txt"], result: { final: "final.mp4", droppedCues: r.droppedCues, usedItems: r.usedItems } };
+    return { files: ["final.mp4", "cue-sheet.txt"], result: { final: "final.mp4", droppedCues: r.droppedCues, usedItems: r.usedItems, audibility: r.verdicts, bedHash: bedChoiceHash(bed?.success ? bed.data : null) } };
   };
 }
 
