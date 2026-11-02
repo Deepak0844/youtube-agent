@@ -14,7 +14,7 @@ import { loadQueue } from "@/server/db/queue-data";
 import { loadVideoPage, type VideoPage } from "@/server/db/video-page";
 import { loadPreview } from "@/server/db/video-preview";
 import type { PreviewData } from "@/shared/preview";
-import { LazyPreviewStage } from "@/ui/domain/kit-lazy";
+import { LazyPreviewStage } from "@/ui/kit/kit-lazy";
 import { Button } from "@/ui/primitives/button";
 import { ageLabel, GateCard } from "../../queue/gate-card";
 import { DecisionCard } from "../../queue/decision-card";

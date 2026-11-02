@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { requireOwner } from "@/lib/auth/require-owner";
-import { LazyKitSamples } from "@/ui/domain/kit-lazy";
+import { LazyKitSamples } from "@/ui/kit/kit-lazy";
 
 // Every scene kind on a small player, with sample data. Dev/staging only, never in the nav.
 export default function DevKit() {
