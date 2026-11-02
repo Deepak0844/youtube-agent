@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { StepResult } from "@/server/core/agent-loop";
 import type { ModelRow } from "@/server/core/llm-catalog";
 import { BudgetRefusedError, KnownFailure, NeedsDecisionError } from "@/server/core/paid-call";
-import { beatDurationMs, buildSceneDoc } from "@/server/core/scene-build";
+import { beatDurationMs, buildSceneDoc, pickMessages } from "@/server/core/scene-build";
 import { fakeModelStep } from "@/server/llm/fake-step";
 import { createLlmClient, type LlmStageContext } from "@/server/llm/client";
 
@@ -192,5 +192,14 @@ describe("buildSceneDoc", () => {
     const d = await buildSceneDoc([beats[0]!], h.ask, { assets: ["img_1", "img_2"] });
     expect(h.prompts[2]).toContain("'img_9' does not exist");
     expect(d.scenes[0]!.kind).toBe("collage");
+  });
+});
+
+describe("pick prompt", () => {
+  it("carries_the_long_visual_and_shown_for_real", () => {
+    const m = pickMessages({ id: "reveal", text: "t", visual: "marker drops to the middle, losing half dims" }, ["algo_cells", "chart"], "real binary search steps");
+    expect(m[1]!.content).toContain("marker drops to the middle");
+    expect(m[1]!.content).toContain("real binary search steps");
+    expect(m[0]!.content).toMatch(/prefer a drawn or animated kind/);
   });
 });

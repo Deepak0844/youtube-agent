@@ -34,6 +34,9 @@ const KIND_NOTES: Record<string, string> = {
   ai: "Beats: one object per shot with id, text, the shot prompt and the start-frame idea. The locked character is reused, never generated from text. Build prices the clips later; do not write a cost plan.",
 };
 
+const BEAT_GRAMMAR = `- Beat grammar for this short, in this order (use the ids hook, setup, quiz, reveal, twist, loop): HOOK (the payoff is already visible at frame 0), SETUP (the problem or the idea), QUIZ (optional: a short question or pause beat that makes the viewer guess), REVEAL (the answer, shown), TWIST (a surprising turn or consequence), LOOP (the last line leads straight back into the hook frame, still no call-to-action).
+- Add one optional top-level "shown_for_real" (max 200 characters): what is actually computed or drawn on screen, e.g. "the real steps of a binary search over 16 sorted numbers". Leave it out when nothing is computed.`;
+
 const SYSTEM_QUERIES = `You plan web searches for a short faceless video. ${RULES}
 Reply with ONLY JSON: {"queries":["..."]} with 1 to 4 short search queries that would find reliable sources for the topic.`;
 
@@ -48,11 +51,11 @@ Write the script for ONE video. Rules:
 - Facts must come from the numbered excerpts you were given. One evidence claim per factual statement.
 - A "sourced" claim needs the excerpt's exact URL in source_url and a quote copied word for word from that excerpt: a full sentence or clause of at least 5 words (25 characters) that backs the claim text. A "computed" claim (arithmetic; the old app called it "derived") needs a reproducible method. Never cite a page you were not given.
 - Never write verified_by, verified or any verification field: only a person verifies evidence, and anything you put there is deleted.
-- Every beat also needs "visual" (English, max 160 characters): a brief naming concrete real-world things a viewer could SEE, e.g. "cutaway of a four-stroke petrol engine, piston moving in a cylinder, spark plug on top". No abstract words, no brand names, no people's faces. Add "search" too: 1-3 short English phrases usable as picture search terms. Write both in English even when the narration is not.
-- ${KIND_NOTES[i.kind] ?? KIND_NOTES.scene_kit}${i.format === "long" ? " Long form: also add chapters (title, start beat) to the beats." : ""}
+- Every beat also needs "visual" (English, max 320 characters): the ON-SCREEN ACTION, meaning what appears, what moves and what changes, e.g. "marker drops to the middle, the losing half dims, the bar zooms in". Name concrete things a viewer could SEE. No abstract words, no brand names, no people's faces. Add "search" too: 1-3 short English phrases usable as picture search terms. Write both in English even when the narration is not.
+- ${KIND_NOTES[i.kind] ?? KIND_NOTES.scene_kit}${i.kind === "scene_kit" && i.format === "short" ? `\n${BEAT_GRAMMAR}` : ""}${i.format === "long" ? " Long form: also add chapters (title, start beat) to the beats." : ""}
 ${tail ? tail + "\n" : ""}
 Reply with ONLY JSON of this shape:
-{"title":"...","description":"...","narration":"<all spoken words>","beats":[{"id":"hook","text":"...","visual":"...","search":["..."]}],"evidence":[{"text":"<what the viewer hears>","kind":"sourced","source_url":"<excerpt url>","quote":"<exact words>"},{"text":"...","kind":"computed","method":"..."}]}`;
+{"title":"...","description":"...","shown_for_real":"<optional>","narration":"<all spoken words>","beats":[{"id":"hook","text":"...","visual":"...","search":["..."]}],"evidence":[{"text":"<what the viewer hears>","kind":"sourced","source_url":"<excerpt url>","quote":"<exact words>"},{"text":"...","kind":"computed","method":"..."}]}`;
 }
 
 function topicBlocks(i: DraftPromptInput): string {

@@ -52,4 +52,11 @@ describe("validateScript", () => {
     expect(validateScript(null, "en", "short").ok).toBe(false);
     expect(validateScript(undefined, "en", "short").ok).toBe(false);
   });
+  it("old_beats_and_new_visual_and_shown_for_real_validate", () => {
+    expect(validateScript(good(), "en", "short").ok).toBe(true);
+    const r = validateScript({ ...good(), shown_for_real: "real binary search steps", beats: [{ id: "hook", visual: "x".repeat(320) }] }, "en", "short");
+    expect(r.ok && r.script.shown_for_real).toBe("real binary search steps");
+    expect(validateScript({ ...good(), beats: [{ id: "hook", visual: "x".repeat(321) }] }, "en", "short").ok).toBe(false);
+    expect(validateScript({ ...good(), shown_for_real: "x".repeat(201) }, "en", "short").ok).toBe(false);
+  });
 });
