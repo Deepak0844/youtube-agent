@@ -20,6 +20,7 @@ import * as piano from "./piano";
 import * as map from "./map";
 import * as orbit from "./orbit";
 import * as story_kenburns from "./story_kenburns";
+import * as svg_diagram from "./svg_diagram";
 import * as terminal from "./terminal";
 
 export const kinds = {
@@ -40,5 +41,6 @@ export const kinds = {
   map,
   orbit,
   story_kenburns,
+  svg_diagram,
   terminal,
 };

@@ -38,5 +38,7 @@
   {"id": "mp1", "kind": "map", "beats": [{"id": "b1", "text": "A map of Europe with three cities: Paris, Berlin and Rome."}, {"id": "b2", "text": "Draw a route through them in order."}]},
   {"id": "mp2", "kind": "map", "beats": [{"id": "b1", "text": "Mark Tokyo and Sydney on a world map."}, {"id": "b2", "text": "Add a title: two big hubs."}]},
   {"id": "or1", "kind": "orbit", "beats": [{"id": "b1", "text": "The planets orbit the Sun."}, {"id": "b2", "text": "Inner planets move faster than outer ones."}]},
-  {"id": "or2", "kind": "orbit", "beats": [{"id": "b1", "text": "The Moon circles the Earth once a month."}, {"id": "b2", "text": "Show them as a small orbit."}]}
+  {"id": "or2", "kind": "orbit", "beats": [{"id": "b1", "text": "The Moon circles the Earth once a month."}, {"id": "b2", "text": "Show them as a small orbit."}]},
+  {"id": "sv1", "kind": "svg_diagram", "beats": [{"id": "b1", "text": "A request hits the load balancer, which hands it to one of three servers."}, {"id": "b2", "text": "A packet hops from the client to the balancer and on to a server."}]},
+  {"id": "sv2", "kind": "svg_diagram", "beats": [{"id": "b1", "text": "In a battery, electrons flow from the minus end through the wire to the plus end."}, {"id": "b2", "text": "The Moon pulls the ocean into a bulge that follows it around the Earth."}]}
 ]

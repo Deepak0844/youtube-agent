@@ -29,6 +29,8 @@ import { START_FEN, parseFen } from "./chessLogic";
 import { Piano, type PianoProps } from "./Piano";
 import { MapPiece, type MapProps } from "./MapPiece";
 import { Orbit, type OrbitProps } from "./Orbit";
+import { SvgDiagram, type SvgDiagramProps } from "./SvgDiagram";
+import { SVG_EXAMPLE } from "./svgDiagram";
 import { Captions } from "./Captions";
 import { captionStyleOf, presetOf, type StylePreset } from "./presets";
 import { StyleFontCtx } from "./ScriptText";
@@ -175,6 +177,7 @@ const piano: PianoProps = {
   ],
 };
 const orbit: OrbitProps = { title: "Planets", preset: "solar_system" };
+const svgDiagram: SvgDiagramProps = { title: "Load balancer", svg: SVG_EXAMPLE, steps: [{ at: 0, caption: "One request arrives" }, { at: 0.6, caption: "It is passed to a server" }] };
 const map: MapProps = {
   title: "Route",
   region: "world",
@@ -215,6 +218,7 @@ export const kitCompositions = [
   { id: "kit-piano", component: Piano, defaultProps: piano },
   { id: "kit-orbit", component: Orbit, defaultProps: orbit },
   { id: "kit-map", component: MapPiece, defaultProps: map },
+  { id: "kit-svg", component: SvgDiagram, defaultProps: svgDiagram },
 ] as const;
 
 // Asset ids resolve to a placeholder colour picture in preview; real jobs stage the real image.
@@ -274,6 +278,8 @@ export const KitScene: React.FC<KitSceneProps> = ({ scene, resolveAsset = placeh
       return <Network nodes={scene.nodes} links={scene.links} />;
     case "orbit":
       return <Orbit title={scene.title} preset={scene.preset} center={scene.center} bodies={scene.bodies} />;
+    case "svg_diagram":
+      return <SvgDiagram title={scene.title} svg={scene.svg} steps={scene.steps} />;
     case "pause_card":
       return <PauseCard question={scene.question} options={scene.options} answer={scene.answer} revealAtFrame={f(scene.revealAtMs)} />;
     case "piano":
