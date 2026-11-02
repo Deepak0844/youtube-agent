@@ -238,6 +238,9 @@ export async function rerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: strin
   return { ...(await deliver(queue, decided.created)), action: null, ...(decided.held ? { held: decided.held } : {}) };
 }
 
+/** The saved local voice server address (read-only; the settings importer allow-list lets only this file read settings). */
+export const localVoiceUrl = async (db: pg.Pool | pg.PoolClient): Promise<string> => String(await getSetting(db, "voice.local_url"));
+
 /**
  * Owner-forced rerun of a FREE, LOCAL step that already succeeded (render, voice, sfx, qa). Bumps the step's nonce, which
  * changes its expected hash (and so every later step's); then queues it like rerunStage. Refused while any step of the
@@ -270,7 +273,7 @@ export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: 
     if ((await c.query("select 1 from uploads where video_id = $1 and status <> 'upload_failed' limit 1", [videoId])).rowCount) throw new Error("force_rerun_uploaded");
     if (stage === "tts") {
       const route = await resolveRoute(c, "voice", { format: v.format, videoKind: v.kind });
-      const localUrl = route?.provider === "local_openai" ? String(await getSetting(c, "voice.local_url")) : null;
+      const localUrl = route?.provider === "local_openai" ? await localVoiceUrl(c) : null;
       const problem = ttsRerunProblem(route?.provider, localUrl);
       if (problem) throw new Error(`voice_problem:${problem}`);
       routed = { provider: route!.provider, voice: route!.voice ?? "" };
