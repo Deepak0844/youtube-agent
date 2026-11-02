@@ -90,7 +90,7 @@ export async function searchThenWrite(ctx: StageContext, deps: DraftDeps, input:
   for (let attempt = 0; ; attempt++) {
     const w = await deps.llm.generate(ctx, { stage: "draft", schema: rawDraftSchema, messages, maxOutputTokens: DRAFT_MAX_OUTPUT_TOKENS, invalidRetries: 1 });
     spent += w.spentMicroUsd;
-    const verdict = judgeDraft(w.value, input.lang, input.format, fetched);
+    const verdict = judgeDraft(w.value, input.lang, input.format, fetched, input.kind);
     if (verdict.ok) return { script: verdict.script, spentMicroUsd: spent };
     if (attempt >= MAX_DRAFT_RETRIES) throw new DraftInvalidError(verdict.problems, spent);
     messages.push({ role: "assistant", content: JSON.stringify(w.value).slice(0, 4000), toolCalls: [] });

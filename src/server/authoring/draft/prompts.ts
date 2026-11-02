@@ -35,6 +35,7 @@ const KIND_NOTES: Record<string, string> = {
 };
 
 const BEAT_GRAMMAR = `- Beat grammar for this short, in this order (use the ids hook, setup, quiz, reveal, twist, loop): HOOK (the payoff is already visible at frame 0), SETUP (the problem or the idea), QUIZ (optional: a short question or pause beat that makes the viewer guess), REVEAL (the answer, shown), TWIST (a surprising turn or consequence), LOOP (the last line leads straight back into the hook frame, still no call-to-action).
+- REVEAL in 2-4 steps: 2-4 reveal beats, or one reveal beat whose "visual" names 2-4 sub-steps, each tied to a spoken word. QUIZ is optional (about a 2.5 second pause). Extra ids between (payoff, trap, teach, proof, why) are allowed. The first beat id must be hook and the last must be loop. The loop line leads back to the hook frame, and there is no dead air after the payoff.
 - Add one optional top-level "shown_for_real" (max 200 characters): what is actually computed or drawn on screen, e.g. "the real steps of a binary search over 16 sorted numbers". Leave it out when nothing is computed.`;
 
 const SYSTEM_QUERIES = `You plan web searches for a short faceless video. ${RULES}

@@ -74,3 +74,15 @@ export function transitionIn(frame: number, frames = TRANSITION_FRAMES, rise = 4
   const t = Math.min(1, Math.max(0, frame / Math.max(1, frames)));
   return { opacity: t, dy: (1 - t) * rise };
 }
+
+export const LOOP_FADE_FRAMES = 12;
+
+/** Where the loop overlay (scene 1 at its frame 0 look, fading in) sits: the last 12 frames. Null without a loop beat or with fewer than 2 scenes. */
+export function loopOverlay(scenes: readonly (Span & { beat: string })[], fps: number): { from: number; duration: number } | null {
+  if (scenes.length < 2 || scenes[scenes.length - 1]!.beat !== "loop") return null;
+  const total = docFrames(scenes, fps);
+  return total > 2 * LOOP_FADE_FRAMES ? { from: total - LOOP_FADE_FRAMES, duration: LOOP_FADE_FRAMES } : null;
+}
+
+/** Overlay opacity at a local frame: 0 on its first frame, 1 on its last, so the video's last frame equals frame 0. */
+export const loopOpacity = (local: number, duration = LOOP_FADE_FRAMES): number => Math.min(1, Math.max(0, local / Math.max(1, duration - 1)));

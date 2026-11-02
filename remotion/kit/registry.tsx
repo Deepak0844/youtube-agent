@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { AbsoluteFill, Audio, Composition, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Composition, Freeze, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 
 // Fades and slides a scene in over the one before it (the first scene has no transition). A spring style bounces the slide.
 const SceneIn: React.FC<{ on: boolean; motion: StylePreset["motion"]; children: React.ReactNode }> = ({ on, motion, children }) => {
@@ -49,7 +49,7 @@ import { StyleFontCtx } from "./ScriptText";
 import { LookProvider } from "./LookParts";
 import { HookCard } from "./HookCard";
 import { firstPictureId, HOOK_FRAMES, hashString, lookBackground, pickLook, sceneCaptionAllowed } from "./look";
-import { collageStarts, docFrames, introSkipFrames, mediaOf, msToFrame, sceneRange, sequenceFrames, transitionIn, type CaptionWord } from "./timeline";
+import { collageStarts, docFrames, introSkipFrames, loopOpacity, loopOverlay, mediaOf, msToFrame, sceneRange, sequenceFrames, transitionIn, type CaptionWord } from "./timeline";
 import type { Scene, SceneDoc } from "../../src/shared/scene";
 
 const terminal: TerminalProps = {
@@ -318,6 +318,10 @@ const fromStaged = (assets: Record<string, string>): ResolveAsset => (id) => (Ob
 
 // Whole video: scenes on a timeline, optional narration, optional karaoke captions on top.
 // The palette comes from `seed` (the video id, when the job passes one), else from the scene file itself, so old data works.
+const LoopIn: React.FC<{ duration: number; children: React.ReactNode }> = ({ duration, children }) => (
+  <AbsoluteFill style={{ opacity: loopOpacity(useCurrentFrame(), duration) }}>{children}</AbsoluteFill>
+);
+
 export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAsset = assets ? fromStaged(assets) : placeholder, audioSrc, captions, fps = theme.fps, title, style, captionStyle }) => {
   const preset = presetOf(style);
   const look = useMemo(() => preset.look ?? pickLook(seed ?? String(hashString(JSON.stringify(doc)))), [preset, seed, doc]);
@@ -329,6 +333,12 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
     const id = firstPictureId(doc, (a) => (assets ? Object.hasOwn(assets, a) : true) && mediaOf(resolveAsset(a)) === "image");
     return id ? resolveAsset(id) : undefined;
   }, [doc, assets, resolveAsset]);
+  const loop = loopOverlay(doc.scenes, fps);
+  const firstBody = (() => {
+    const s = doc.scenes[0]!;
+    const inner = <KitScene scene={s} resolveAsset={resolveAsset} fps={fps} />;
+    return preset.grade && (s.kind === "stock_clip" || s.kind === "story_kenburns") ? <Grade grade={preset.grade} clip={s.kind === "stock_clip"}>{inner}</Grade> : inner;
+  })();
   return (
   <StyleFontCtx.Provider value={preset.fonts.body}>
   <LookProvider value={{ look, sceneCaptions }}>
@@ -346,6 +356,15 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
         </Sequence>
       );
     })}
+    {/* Loop ending: scene 1 as it looks at frame 0 (hook card included) fades in over the last 12 frames, so the last frame equals frame 0. No time inserted. */}
+    {loop ? (
+      <Sequence from={loop.from} durationInFrames={loop.duration}>
+        <LoopIn duration={loop.duration}>
+          <Freeze frame={introSkipFrames(sceneRange(doc.scenes[0]!, fps).duration)}>{firstBody}</Freeze>
+          <Freeze frame={0}><HookCard title={title} src={heroSrc} /></Freeze>
+        </LoopIn>
+      </Sequence>
+    ) : null}
     {audioSrc ? <Audio src={/^(https?:|data:|blob:)/.test(audioSrc) ? audioSrc : staticFile(audioSrc)} /> : null}
     {captions?.length ? <Captions words={captions} style={captionStyleOf(preset, captionStyle)} /> : null}
     {/* Title card on top of scene 1 (no time inserted, so narration sync is unchanged). Frame 0 of the video is this card. */}

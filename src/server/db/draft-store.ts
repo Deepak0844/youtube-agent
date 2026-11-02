@@ -1,3 +1,4 @@
+import { withTimeEstimates } from "@/shared/scene/beat-roles";
 import type pg from "pg";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import type { Script } from "@/server/core/script-contract";
@@ -51,7 +52,7 @@ export async function pendingScriptFeedback(db: pg.Pool, videoId: string): Promi
 export async function saveDraftContent(db: pg.Pool, videoId: string, claim: ClaimLike, script: Script): Promise<Record<string, number>> {
   const parts: Array<[ContentKind, unknown]> = [
     ["script", { title: script.title, ...(script.description !== undefined ? { description: script.description } : {}), narration: script.narration }],
-    ["beats", { beats: script.beats }],
+    ["beats", { beats: withTimeEstimates(script.beats) }],
     ["evidence", { claims: script.evidence }],
   ];
   const client = await db.connect();

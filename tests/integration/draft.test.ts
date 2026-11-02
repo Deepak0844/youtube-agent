@@ -65,7 +65,7 @@ function goodScript(over: Record<string, unknown> = {}) {
     title: "Three hearts",
     description: "d",
     narration,
-    beats: [{ id: "hook", text: narration }],
+    beats: [{ id: "hook", text: narration }, { id: "reveal", text: "r" }, { id: "loop", text: "l" }],
     evidence: [{ text: "Two hearts feed the gills", kind: "sourced", source_url: PAGE_URL, quote: QUOTE }],
     ...over,
   };
