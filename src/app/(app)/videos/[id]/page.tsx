@@ -6,7 +6,7 @@ import { describeDetail } from "@/server/core/audit-view";
 import { microToUsd } from "@/server/core/llm-catalog";
 import type { StageName } from "@/server/core/pipeline-plan";
 import { scriptSchema } from "@/server/core/script-contract";
-import { estimateLabel, parseTab, rerunCostNote, rerunOffered, SEVERITY_WORDS, STAGE_LABELS, STATE_WORDS, TABS, type StageView, type TabId, type UiState } from "@/server/core/video-page-view";
+import { estimateLabel, parseTab, forceRerunOffered, rerunCostNote, rerunOffered, SEVERITY_WORDS, STAGE_LABELS, STATE_WORDS, TABS, type StageView, type TabId, type UiState } from "@/server/core/video-page-view";
 import { FORMAT_WORDS, KIND_WORDS, LANGUAGE_WORDS, STATUS_WORDS } from "@/server/core/videos-view";
 import { getPool } from "@/server/db/pool";
 import { jobCheckers } from "../../queue/job-checkers";
@@ -20,7 +20,7 @@ import { LogTail } from "@/ui/domain/log-tail";
 import { VideoBox } from "@/ui/domain/video-box";
 import { Pill } from "@/ui/primitives/pill";
 import { Skeleton } from "@/ui/primitives/skeleton";
-import { RerunForm, SceneButtons } from "./controls";
+import { ForceRerunForm, RerunForm, SceneButtons } from "./controls";
 
 // The video page (Doc 4 /videos/[id]): where it is now, what it cost, and the content of each step, one tab at a time
 // (?tab=). Read only except the buttons: Run again, Cancel, the gate card (all owner-only server actions) and the free scene checks.
@@ -103,10 +103,12 @@ function Missing() {
 }
 
 function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
+  const anyActive = Object.values(p.runStatus).some((r) => r === "queued" || r === "running" || r === "needs_decision");
   return (
     <section aria-label="Steps" className="flex min-w-0 flex-col gap-3 rounded-card bg-surface p-pad">
       <ol data-testid="stage-strip" className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2">
         {p.stages.map((s: StageView) => {
+          const force = forceRerunOffered(s.stage as StageName, p.runStatus[s.stage as StageName], p.head.status, anyActive, p.hasUpload);
           const again = rerunOffered(p.runStatus[s.stage as StageName], p.head.status);
           return (
             <li key={s.stage} data-stage={s.stage} data-state={s.state} className="flex min-w-0 flex-col gap-2">
@@ -117,6 +119,7 @@ function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
               <p className="m-0 text-small text-muted [overflow-wrap:anywhere]">{s.detail}{s.timeLeft ? ` · ${s.timeLeft}` : ""}</p>
               {s.state === "running" && s.percent !== null ? <progress value={s.percent} max={100} aria-label={`${s.label} progress`} className="h-1 w-full" /> : null}
               {live && again ? <RerunForm videoId={p.head.id} stage={s.stage} label={STAGE_LABELS[s.stage as StageName]} estimate={estimateLabel(p.estimates[s.stage as StageName] ?? null)} costNote={rerunCostNote(s.stage as StageName, p.costPlanTotalMicroUsd)} /> : null}
+              {live && force ? <ForceRerunForm videoId={p.head.id} stage={s.stage} label={STAGE_LABELS[s.stage as StageName]} /> : null}
             </li>
           );
         })}

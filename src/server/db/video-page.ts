@@ -30,6 +30,8 @@ export interface VideoPage {
   stages: StageView[];
   /** The newest run status per stage, for the re-run buttons. */
   runStatus: Partial<Record<StageName, RunStatus>>;
+  /** an upload row exists that is not a failed one: the file is spoken for */
+  hasUpload: boolean;
   /** Median past duration per stage (ms), or null when fewer than 3 past runs exist. */
   estimates: Partial<Record<StageName, number | null>>;
   openGate: GateId | null;
@@ -101,6 +103,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
     runStatus[name as StageName] = r.status;
   }
 
+  const hasUpload = ((await db.query("select 1 from uploads where video_id = $1 and status <> 'upload_failed' limit 1", [videoId])).rowCount ?? 0) > 0;
   const cost = await latestContent(db, videoId, "cost_plan");
   const costBody = asObj(cost?.body);
   const items = Array.isArray(costBody.items) ? costBody.items : [];
@@ -168,7 +171,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   return {
-    head, stages, runStatus, estimates, openGate, script,
+    head, stages, runStatus, hasUpload, estimates, openGate, script,
     beats: beats?.body ?? null,
     evidence: evidence ? { body: evidence.body, fileSrc: sign?.(evidence.filePath) ?? null } : null,
     titles: titles?.body ?? null,
