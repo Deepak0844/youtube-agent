@@ -263,6 +263,7 @@ function BeatList({ beats }: { beats: unknown[] }) {
           <li key={i} className="flex min-w-0 flex-col gap-0.5 text-body">
             <span><code className="font-mono text-small">{typeof b.id === "string" ? b.id : `beat-${i + 1}`}</code>{timing ? <span className="text-small text-faint"> · {timing}</span> : null}</span>
             {typeof b.text === "string" ? <span className="text-muted [overflow-wrap:anywhere]">{b.text}</span> : null}
+            {typeof b.visual === "string" && b.visual ? <span className="text-small text-faint [overflow-wrap:anywhere]">Picture: {b.visual}</span> : null}
           </li>
         );
       })}

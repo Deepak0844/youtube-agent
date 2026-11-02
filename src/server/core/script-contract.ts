@@ -16,7 +16,12 @@ const httpUrl = z.string().refine((s) => {
   }
 }, "must be an http(s) URL");
 
-export const beatSchema = z.looseObject({ id: z.string().min(1) });
+// visual / search: optional picture brief per beat (English plain nouns) that Build uses to pick honest scenes.
+export const beatSchema = z.looseObject({
+  id: z.string().min(1),
+  visual: z.string().max(300).optional(),
+  search: z.array(z.string().min(1).max(80)).max(5).optional(),
+});
 export const claimSchema = z.discriminatedUnion("kind", [
   z.object({ text: z.string().min(1), kind: z.literal("sourced"), source_url: httpUrl, quote: z.string().min(1) }),
   z.object({ text: z.string().min(1), kind: z.literal("computed"), method: z.string().min(1) }),

@@ -17,6 +17,14 @@ export function sceneAsk(llm: LlmClient, ctx: LlmStageContext): AskScene {
   return async (messages: Message[]) => (await llm.agent(ctx, { stage: "build_scene_kit", tools: [], messages, maxSteps: 1, maxOutputTokens: SCENE_MAX_OUTPUT_TOKENS })).text;
 }
 
+function briefOf(b: unknown): { visual?: string; search?: string[] } {
+  const { visual, search } = (b ?? {}) as { visual?: unknown; search?: unknown };
+  return {
+    ...(typeof visual === "string" && visual ? { visual } : {}),
+    ...(Array.isArray(search) ? { search: search.filter((x): x is string => typeof x === "string") } : {}),
+  };
+}
+
 /**
  * Build: reads the script and beats, plans what Generate will buy, and writes the cost plan the owner approves. Nothing is
  * bought here. A plan that cannot fit under the per-video, daily or monthly cap is refused BEFORE any money moves, so the
@@ -54,7 +62,7 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
     if (deps.makeLlm) {
       // Scenes: one reserved model call per attempt, per beat. A budget refusal or a bad scene fails the stage with no scenes file.
       const llm = deps.makeLlm(await videoMoneyScopes(deps.db, video));
-      const beats = script.beats.map((b, i) => ({ id: beatIds[i]!, text: typeof (b as { text?: unknown })?.text === "string" ? (b as { text: string }).text : "" }));
+      const beats = script.beats.map((b, i) => ({ id: beatIds[i]!, text: typeof (b as { text?: unknown })?.text === "string" ? (b as { text: string }).text : "", ...briefOf(b) }));
       const ask = sceneAsk(llm, ctx);
       const doc = await buildSceneDoc(beats, ask, { assets: (await deps.sceneAssets?.(video.id)) ?? [] });
       await writeFile(path.join(ctx.attemptDir, "scenes.json"), JSON.stringify(doc));

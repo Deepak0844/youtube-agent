@@ -48,10 +48,11 @@ Write the script for ONE video. Rules:
 - Facts must come from the numbered excerpts you were given. One evidence claim per factual statement.
 - A "sourced" claim needs the excerpt's exact URL in source_url and a quote copied word for word from that excerpt: a full sentence or clause of at least 5 words (25 characters) that backs the claim text. A "computed" claim (arithmetic; the old app called it "derived") needs a reproducible method. Never cite a page you were not given.
 - Never write verified_by, verified or any verification field: only a person verifies evidence, and anything you put there is deleted.
+- Every beat also needs "visual" (English, max 160 characters): a brief naming concrete real-world things a viewer could SEE, e.g. "cutaway of a four-stroke petrol engine, piston moving in a cylinder, spark plug on top". No abstract words, no brand names, no people's faces. Add "search" too: 1-3 short English phrases usable as picture search terms. Write both in English even when the narration is not.
 - ${KIND_NOTES[i.kind] ?? KIND_NOTES.scene_kit}${i.format === "long" ? " Long form: also add chapters (title, start beat) to the beats." : ""}
 ${tail ? tail + "\n" : ""}
 Reply with ONLY JSON of this shape:
-{"title":"...","description":"...","narration":"<all spoken words>","beats":[{"id":"hook","text":"..."}],"evidence":[{"text":"<what the viewer hears>","kind":"sourced","source_url":"<excerpt url>","quote":"<exact words>"},{"text":"...","kind":"computed","method":"..."}]}`;
+{"title":"...","description":"...","narration":"<all spoken words>","beats":[{"id":"hook","text":"...","visual":"...","search":["..."]}],"evidence":[{"text":"<what the viewer hears>","kind":"sourced","source_url":"<excerpt url>","quote":"<exact words>"},{"text":"...","kind":"computed","method":"..."}]}`;
 }
 
 function topicBlocks(i: DraftPromptInput): string {
