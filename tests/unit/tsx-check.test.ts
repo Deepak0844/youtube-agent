@@ -25,7 +25,7 @@ export default function Scene() {
   return (
     <AbsoluteFill style={{ backgroundColor: "#111", opacity, backgroundImage: \`url(\${staticFile("bg.png")})\` }}>
       <Sequence from={10}><Img src={staticFile("assets/a.png")} style={box} /></Sequence>
-      <Img src={staticFile(\`frames/\${frame % 10}.png\`)} />
+      <Img src={staticFile("frames/1.png")} />
       <svg width={100} height={100}><use href="#shape" /><rect stroke-width={2} /></svg>
       {items.map((t) => <p key={t}>{t} fetch it // later</p>)}
       <React.Fragment>{dots}</React.Fragment>
@@ -36,7 +36,7 @@ ${META}
 `;
 
 /** GOOD with one extra line in the component module scope. */
-const withLine = (line: string) => GOOD.replace("// A title that fades in.", line);
+const withLine = (line: string) => GOOD.replace("// A title that fades in.", () => line);
 const bad = (src: string) => {
   const r = checkTsx(src);
   expect(r.ok, `expected a problem for:\n${src.slice(0, 300)}`).toBe(false);
@@ -215,7 +215,7 @@ describe("checkTsx: forbidden globals and APIs", () => {
 
   it("refuses computed lookups on globals and imports", () => {
     badLine("const k = 'abs'; const f = Math[k];", /computed lookup on 'Math'/);
-    badLine("const k = 'keys'; const f = Object[k];", /computed lookup on 'Object'/);
+    badLine("const k = 'keys'; const f = Number[k];", /computed lookup on 'Number'/);
     badLine("const k = 'linear'; const e = Easing[k];", /computed lookup on 'Easing'/);
   });
 
@@ -360,5 +360,154 @@ describe("checkTsx: exports and meta", () => {
 
   it("reports a syntax error with its line", () => {
     expect(bad("export default () => <div>;\n")).toMatch(/line \d+: syntax error/);
+  });
+});
+
+describe("checkTsx: hardening (review findings)", () => {
+  const ok = (line: string) => {
+    const r = checkTsx(withLine(line));
+    expect(r.problems, line).toEqual([]);
+  };
+
+  it("computed keys must be numbers", () => {
+    badLine('const F = (() => 0)[["constr", "uctor"].join("")];', /computed keys must be numbers/);
+    badLine("const k = 'x'; const o = {}; const v = o[k.slice(0)];", /computed keys must be numbers/);
+    badLine("const o = {}; const v = o[`a${1}`];", /text keys|not allowed/);
+    badLine("const o = { a: 1 }; const v = o['a'];", /text keys/);
+    badLine("const s = 'x'; const o = {}; const v = o[s + 1];", /computed keys must be numbers/);
+    badLine("const k = 1; const o = [1]; const v = o[k];", /computed keys must be numbers/);
+    badLine("const o = [1]; const v = ['a'].map((x, i) => o[i]);", /computed keys must be numbers/);
+    badLine("const k = 'x'; const o = { [k]: 1 };", /computed keys must be numbers/);
+    badLine("const o = [1]; const v = o[String(1)];", /computed keys must be numbers/);
+    // a name that is a loop counter in one place and text in another is not a counter
+    badLine("for (let i = 0; i < 3; i++) {}\nconst f = () => { const i = 'x'; return ({} as never)[i]; };", /computed keys must be numbers/);
+    ok("const o = [1, 2, 3]; const n = 2; const x = 1.5; const a = o[0]; const b = o[n % 3]; const c = o[n - 1]; const d = o[Math.floor(x)]; const e = o[n > 1 ? 0 : 1]; const g = o[-n * 2];");
+    ok("const o = [1, 2, 3]; let t = 0; for (let i = 0; i < 3; i++) { t += o[i] + o[i + 1]; }");
+    ok("const o = { [0]: 1 };");
+  });
+
+  it("refuses aliasing, shadowing or changing globals and imports", () => {
+    badLine("const M = Math;", /may only be used as Math\.name/);
+    badLine("const R = React;", /may only be used as React\.name/);
+    badLine("const I = interpolate;", /may only be used as interpolate/);
+    badLine("const F = Function;", /'Function' is not allowed/);
+    badLine("const { floor } = Math;", /destructuring|may only be used/);
+    badLine("const f = (m: unknown) => m; const x = f(Math);", /may only be used/);
+    badLine("const a = [Number];", /may only be used/);
+    badLine("const o = { Math };", /may only be used/);
+    badLine("const m = (Math as never);", /may only be used/);
+    badLine("Math.floor = () => 1;", /changing 'Math\.floor'/);
+    badLine("const Math = { floor: () => 1 };", /may not be declared again/);
+    badLine("const f = (interpolate: number) => interpolate;", /may not be declared again/);
+    badLine("function g(undefined: number) { return undefined; }", /may not be declared again/);
+    for (const e of ["globalThis", "window", "self", "Reflect", "Proxy", "Symbol.iterator", "Intl.NumberFormat", "this", "x.self", "new RegExp('a')"]) {
+      badLine(`const z = (x: never) => ${e};`, /not allowed/);
+    }
+    badLine("const self = 1;", /'self' is not allowed/);
+    badLine("const A = class {};", /classes/);
+    badLine("class A {}", /classes/);
+    badLine("function* g() { yield 1; }", /generators/);
+    badLine("const o = { *g() { yield 1; } };", /generators/);
+    badLine("const o = { get x() { return 1; } };", /getters and setters/);
+    badLine("const o = { set x(v: number) {} };", /getters and setters/);
+    ok("const a = [0, 1].filter(Boolean).map(String); const t = a instanceof Array;");
+  });
+
+  it("loops, arrays and strings stay bounded; no regex, no recursion", () => {
+    badLine("const a = [1]; for (const x of a) {}", /for\.\.\.of only over an array literal/);
+    badLine("const a = [1]; for (const x of [...a]) {}", /for\.\.\.of only over an array literal/);
+    badLine("for (let i = 0; i < 2; i++) { for (let j = 0; j < 2; j++) { for (let k = 0; k < 2; k++) {} } }", /nested at most 2 deep/);
+    badLine("for (let i = 0; i < 2; i++) { const f = () => { for (const a of [1]) { for (const b of [2]) {} } }; }", /nested at most 2 deep/);
+    badLine("for (let i = 0; i < 1000; i++) { for (let j = 0; j < 1000; j++) {} }", /at most 100000 times/);
+    badLine("const r = /a+/;", /regular expressions/);
+    badLine("const r = new RegExp('a');", /RegExp/);
+    badLine("const s = 'a'.repeat(1e9);", /'repeat' is not allowed/);
+    badLine("const a = Array.from({ length: 5 });", /Array\.from/);
+    badLine("const n = 5; const a = new Array(n);", /new Array\(n\) needs a number/);
+    badLine("const a = Array(100000);", /Array\(n\) needs a number/);
+    badLine("const a: number[] = []; a.length = 1e9;", /changing \.length/);
+    badLine("const a: number[] = []; [a.length] = [1e9];", /changing \.length/);
+    badLine("const a: number[] = []; a.fill(0);", /\.fill\(\) is only allowed/);
+    badLine("const a = new Uint8Array(1e9);", /only new Map, new Set, new Array/);
+    badLine("function f(n: number): number { return n < 1 ? 0 : f(n - 1); }", /recursion/);
+    badLine("const f = (n: number): number => n < 1 ? 0 : f(n - 1);", /recursion/);
+    badLine("const a = (n: number): number => b(n); const b = (n: number): number => a(n);", /recursion/);
+    badLine("const X = (): React.ReactNode => <X />;", /recursion/);
+    ok("const a = Array(10).fill(0); const b = new Array(5).fill(1); const c = [0, 0].fill(2); for (let i = 0; i < 100; i++) { for (const x of [1, 2]) {} }");
+  });
+
+  it("forbidden member names match case-insensitively; no element forgery", () => {
+    badLine("const f = (x: never) => x.srcDoc;", /srcDoc/);
+    badLine("const f = (x: never) => x.InnerHTML;", /InnerHTML/);
+    badLine("const f = (x: never) => x.CONSTRUCTOR;", /CONSTRUCTOR/);
+    badLine("const s = 'Constructor';", /not allowed as a value/);
+    badLine("const o = { $$typeof: 1 };", /\$\$typeof/);
+    badLine("const o = { '$$typeof': 1 };", /\$\$typeof/);
+    badLine("const e = React.createElement('div');", /createElement/);
+    badLine("const e = React.cloneElement(<div />);", /cloneElement/);
+    badLine("const X = () => <div srcDoc='x' />;", /srcDoc/);
+  });
+
+  it("staticFile takes one plain literal name only", () => {
+    for (const arg of ["`a/${n}.png`", "n", "'./a.png'", "'a/../b.png'", "'/a.png'", "'a b.png'", "'a.png', 'b'", "''"]) {
+      badLine(`const n = 'a'; const s = staticFile(${arg});`, /staticFile\(\) needs one plain relative file name/);
+    }
+    ok("const s = staticFile('assets/a-1_b.png');");
+  });
+
+  it("ordinary local names are fine; the globals stay refused", () => {
+    ok("const now = 1; const raw = 2; const open = 3; const top = 4; const f = (parent: number, frames: number) => now + raw + open + top + parent + frames;");
+    badLine("const t = top;", /'top' is not allowed/);
+    badLine("const f = () => { const top = 1; return top; }; const t = top;", /'top' is not allowed/);
+    badLine("const f = (x: never) => x.now;", /'now' is not allowed/);
+    badLine("const { now } = performance;", /now|performance/);
+  });
+
+  it("no React element forgery: object spread, JSON and Object helpers are refused", () => {
+    const repro = `const el = <div />; const X = () => <AbsoluteFill>{{ ...el, type: "iframe", props: JSON.parse('{"srcDoc":"<script>..</script>"}') }}</AbsoluteFill>;`;
+    const p = badLine(repro, /object spread/);
+    expect(p).toMatch(/'JSON' is not allowed/);
+    for (const e of ["JSON.parse('{}')", "Object.fromEntries([])", "Object.assign({}, {})", "Object.entries({})", "Object.values({})", "Object.create(null)", "Object.defineProperty({}, 'a', {})", "Object.setPrototypeOf({}, null)", "structuredClone({})"]) {
+      badLine(`const z = () => ${e};`, /not allowed/);
+    }
+    badLine("const a = { b: 1 }; const c = { ...a };", /object spread/);
+  });
+
+  it("no webpack free variables: declare, ambient blocks and __ names are refused", () => {
+    badLine("declare const __webpack_public_path__: string;", /'declare' is not allowed|__/);
+    badLine("declare let x: number;", /'declare' is not allowed/);
+    badLine("declare function f(): void;", /'declare' is not allowed/);
+    badLine("declare module 'x' {}", /declare|namespaces/);
+    badLine("declare global { const q: number }", /declare|namespaces/);
+    badLine("declare type T = number;", /'declare' is not allowed/);
+    for (const e of ["__webpack_public_path__", "__webpack_chunk_load__('x')", "x.__proto__", "x.__foo", "({ __a: 1 })", "({ '__a': 1 })"]) {
+      badLine(`const z = (x: never) => ${e};`, /'__'/);
+    }
+    badLine("const __x = 1;", /'__'/);
+  });
+
+  it("free names must be on the allow-list", () => {
+    for (const e of ["AbortSignal.timeout(1)", "scheduler.postTask(f)", "navigation.navigate('/')", "addEventListener('x', f)", "Object.keys({})", "new Map()", "new Set()", "new WeakMap()", "new WeakRef({})", "Promise.resolve()", "console.log(1)", "Error('x')", "Date"]) {
+      badLine(`const f = () => 1; const z = () => ${e};`, /not allowed/);
+    }
+    ok("const z = Math.floor(parseFloat('1.5')) + parseInt('2', 10) + Number('3') + (isNaN(1) || !isFinite(2) ? NaN : Infinity) + String(1).length + (undefined ?? 0) + (Array.isArray([]) && Boolean(1) ? 1 : 0);");
+  });
+
+  it("hangs and bombs: padStart/padEnd, flatMap, self-application, deep callbacks, big arrays", () => {
+    badLine("const s = 'a'.padStart(1e9);", /padStart/);
+    badLine("const s = 'a'.padEnd(1e9);", /padEnd/);
+    badLine("const a = [1].flatMap((x) => [x, x]);", /flatMap/);
+    badLine("const y = (f: never) => (f as (g: never) => void)(f);", /passed to itself/);
+    badLine("const w = (f: (g: unknown) => void) => f(f);", /passed to itself/);
+    badLine("const a = [[[1]]].map((x) => x.map((y) => y.map((z) => z)));", /nested at most 2 deep/);
+    badLine("const a = [[1]].forEach((x) => x.filter((y) => [y].some((z) => z)));", /nested at most 2 deep/);
+    badLine("const a = Array(1001);", /up to 1000/);
+    badLine("const a = new Array(5000);", /up to 1000/);
+    ok("const a = [[1]].map((x) => x.map((y) => y + 1)); const b = Array(1000).fill(0);");
+  });
+
+  it("long + chains are fine up to 1000 parts", () => {
+    ok(`const s = ${Array.from({ length: 1000 }, (_, i) => `"p${i}"`).join(" + ")};`);
+    badLine(`const s = ${Array.from({ length: 1001 }, () => "1").join(" + ")};`, /at most 1000 parts/);
   });
 });

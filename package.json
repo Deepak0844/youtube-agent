@@ -53,7 +53,10 @@
     "@radix-ui/react-switch": "^1.4.1",
     "@radix-ui/react-tabs": "^1.2.1",
     "@radix-ui/react-tooltip": "^1.4.1",
+    "@remotion/paths": "4.0.538",
     "@remotion/player": "4.0.538",
+    "@remotion/shapes": "4.0.538",
+    "@types/react": "^19",
     "ai": "^7.0.153",
     "bullmq": "^6.4.2",
     "clsx": "^2.1.1",
@@ -68,6 +71,7 @@
     "sharp": "^0.35.5",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
+    "typescript": "^5",
     "undici": "^8.12.3",
     "zod": "^4.6.7"
   },
@@ -82,7 +86,6 @@
     "@types/node": "^22.20.5",
     "@types/pg": "^8.23.1",
     "@types/pngjs": "^6.0.5",
-    "@types/react": "^19",
     "@types/react-dom": "^19",
     "axe-core": "^4.14.0",
     "concurrently": "^10.0.6",
@@ -95,7 +98,6 @@
     "tailwindcss": "^4",
     "testcontainers": "^12.2.1",
     "tsx": "^4.23.15",
-    "typescript": "^5",
     "vitest": "^5.0.5"
   }
 }

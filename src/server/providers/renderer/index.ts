@@ -1,6 +1,9 @@
 import type { StageContext } from "@/server/core/stage-handler";
 import type { SceneDoc } from "@/shared/scene";
 
+// The TSX path (ADR 0009): built and tested, not called by any stage yet (slice 3 wires it).
+export type { TsxRenderer, TsxRenderInput, TsxRenderResult, TsxRenderFailure, TsxFailureKind } from "./tsx-render";
+
 export interface RenderArgs {
   /** The promoted scene file. The fake renderer only checks the call; the container renderer renders `doc`. */
   sceneFile: string;

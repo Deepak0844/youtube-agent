@@ -30,7 +30,7 @@ import type { Renderer } from "./index";
 // Cleanup: /out is 0777 with no sticky bit, so the worker can delete the files uid 10001 writes there. A subdirectory the
 // container made inside /out could not be emptied by the worker on Linux; it stays in the attempt folder for the sweep.
 
-const ASSET_EXT = new Set([".png", ".jpg", ".jpeg", ".webp", ".mp4"]);
+export const ASSET_EXT: ReadonlySet<string> = new Set([".png", ".jpg", ".jpeg", ".webp", ".mp4"]);
 const AUDIO_EXT = new Set([".wav", ".mp3", ".flac", ".m4a", ".aac"]);
 const ASSET_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/; // same rule as the scene schema
 const CONTAINER_ID = /^[0-9a-f]{12,64}$/;
@@ -38,7 +38,7 @@ const MOUNT_SAFE = /^[^:,\0\r\n]+$/;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const MAX_VIDEO_BYTES = 2 * 1024 ** 3;
 const FPS = 30; // keep equal to remotion/kit/theme.ts
-const NAME_PREFIX = "ytstudio-render-";
+export const NAME_PREFIX = "ytstudio-render-";
 const WORKER_LABEL = "ytstudio.worker";
 const WORKER_ID = /^[A-Za-z0-9_.-]{1,64}$/;
 
@@ -125,6 +125,8 @@ export interface RenderArgsInput {
   kitDir: string;
   /** Extra hardening flags placed after the shared locks; only ever adds limits (see tsx-sandbox.ts). */
   extra?: readonly string[];
+  /** Arguments of render-entry.mjs (after the image). Default: the kit render, /in /out/out.mp4. */
+  entry?: readonly string[];
 }
 
 /** The `docker run` argument list of one render. Builds only; runs nothing. */
@@ -142,16 +144,16 @@ export function renderArgs(o: RenderArgsInput): string[] {
     "-w", "/tmp",
     "--entrypoint", "node",
     o.imageRef,
-    "/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4",
+    "/opt/render/kit/render-entry.mjs", ...(o.entry ?? ["/in", "/out/out.mp4"]),
   ];
 }
 
-function mountable(p: string): string {
+export function mountable(p: string): string {
   if (!path.isAbsolute(p) || path.normalize(p) !== p || !MOUNT_SAFE.test(p)) throw new KnownFailure("A render folder has a path that cannot be mounted safely.");
   return p;
 }
 
-async function realDir(p: string, what: string): Promise<void> {
+export async function realDir(p: string, what: string): Promise<void> {
   try {
     await assertRealDir(p, what);
   } catch (e) {
@@ -190,6 +192,52 @@ export async function copyRegular(src: string, dest: string, maxBytes = MAX_VIDE
   } finally {
     await fh.close();
   }
+}
+
+/**
+ * Runs one `docker run` (args from renderArgs) and always removes the container afterwards. PROGRESS lines go to
+ * ctx.progress; other lines are redacted, logged and the last 8 kept in `tail`.
+ */
+export async function runRenderContainer(
+  deps: Pick<ContainerRendererDeps, "runChild" | "sweepDelayMs">,
+  ctx: StageContext,
+  o: { name: string; args: string[]; timeoutMs: number; maxOutputBytes: number },
+): Promise<{ r: ChildResult; tail: string[] }> {
+  const docker = (dargs: string[], onLine?: (l: string) => void) =>
+    deps.runChild({
+      command: "docker", args: dargs, cwd: ctx.attemptDir, envAllow: ["PATH"], timeoutMs: 30_000, maxOutputBytes: 64 * 1024,
+      signal: new AbortController().signal, stageRunId: ctx.claim.stageRunId, onLine,
+    }).catch(() => undefined);
+  const sweepByLabel = async () => {
+    const ids: string[] = [];
+    await docker(["ps", "-aq", "--filter", `label=${JOB_LABEL}=${o.name}`], (l) => { if (CONTAINER_ID.test(l.trim())) ids.push(l.trim()); });
+    if (ids.length > 0) await docker(["rm", "-f", ...ids]);
+  };
+
+  const tail: string[] = [];
+  let r: ChildResult;
+  try {
+    r = await deps.runChild({
+      command: "docker", args: o.args, cwd: ctx.attemptDir, cwdRoot: ctx.attemptDir, envAllow: ["PATH"],
+      timeoutMs: o.timeoutMs, maxOutputBytes: o.maxOutputBytes, signal: ctx.signal, stageRunId: ctx.claim.stageRunId,
+      onLine: (line) => {
+        const p = parseProgress(line);
+        if (p !== null) { ctx.progress?.(p); return ctx.log(`render: ${p}%`); }
+        const clean = redactLine(line).slice(0, 300);
+        if (!clean.trim()) return;
+        ctx.log(`render: ${clean}`);
+        tail.push(clean);
+        if (tail.length > 8) tail.shift();
+      },
+    });
+  } finally {
+    // Killing the docker CLI does not stop the container: remove it by name, then by label now and once more shortly
+    // after (the daemon may still create it after the CLI died). Each call has its own signal, never the stage's.
+    await docker(["rm", "-f", o.name]);
+    await sweepByLabel();
+    setTimeout(() => void sweepByLabel(), deps.sweepDelayMs ?? 1000).unref();
+  }
+  return { r, tail };
 }
 
 export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
@@ -246,41 +294,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         const image = deps.image ? await deps.image() : { ref: RENDER_IMAGE, pinned: false };
         if (!image.pinned) ctx.log(`render: image not pinned (could not resolve its id); running the tag ${image.ref}`);
         const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir });
-
-        const docker = (dargs: string[], onLine?: (l: string) => void) =>
-          deps.runChild({
-            command: "docker", args: dargs, cwd: ctx.attemptDir, envAllow: ["PATH"], timeoutMs: 30_000, maxOutputBytes: 64 * 1024,
-            signal: new AbortController().signal, stageRunId: ctx.claim.stageRunId, onLine,
-          }).catch(() => undefined);
-        const sweepByLabel = async () => {
-          const ids: string[] = [];
-          await docker(["ps", "-aq", "--filter", `label=${JOB_LABEL}=${name}`], (l) => { if (CONTAINER_ID.test(l.trim())) ids.push(l.trim()); });
-          if (ids.length > 0) await docker(["rm", "-f", ...ids]);
-        };
-
-        const tail: string[] = [];
-        let r: ChildResult;
-        try {
-          r = await deps.runChild({
-            command: "docker", args, cwd: ctx.attemptDir, cwdRoot: ctx.attemptDir, envAllow: ["PATH"],
-            timeoutMs: lim.timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES, signal: ctx.signal, stageRunId: ctx.claim.stageRunId,
-            onLine: (line) => {
-              const p = parseProgress(line);
-              if (p !== null) { ctx.progress?.(p); return ctx.log(`render: ${p}%`); }
-              const clean = redactLine(line).slice(0, 300);
-              if (!clean.trim()) return;
-              ctx.log(`render: ${clean}`);
-              tail.push(clean);
-              if (tail.length > 8) tail.shift();
-            },
-          });
-        } finally {
-          // Killing the docker CLI does not stop the container: remove it by name, then by label now and once more shortly
-          // after (the daemon may still create it after the CLI died). Each call has its own signal, never the stage's.
-          await docker(["rm", "-f", name]);
-          await sweepByLabel();
-          setTimeout(() => void sweepByLabel(), deps.sweepDelayMs ?? 1000).unref();
-        }
+        const { r, tail } = await runRenderContainer(deps, ctx, { name, args, timeoutMs: lim.timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES });
         if (r.aborted) throw ctx.signal.reason ?? new Error("render aborted");
         if (r.timedOut) throw new KnownFailure(`The render took longer than its ${Math.ceil(lim.timeoutS / 60)} min limit and was stopped.`);
         if (r.truncated) throw new KnownFailure("The render printed too much output and was stopped.");

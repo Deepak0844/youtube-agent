@@ -10,6 +10,7 @@ const base = {
   inDir: "/data/a/render-in",
   outDir: "/data/a/render-out",
   kitDir: "/repo/remotion/kit",
+  mode: "video" as const,
 };
 const kitConfig = { timeoutS: 1800, cpus: 4, memoryMb: 4096, pids: 512 };
 const flag = (a: string[], f: string) => a[a.indexOf(f) + 1];
@@ -25,8 +26,13 @@ describe("tsxRenderPlan", () => {
       "--ulimit", `fsize=${512 * 1024 * 1024}:${512 * 1024 * 1024}`, "--ulimit", "core=0:0",
       "--log-driver", "none", "--label", `ytstudio.job=${base.name}`, "--label", "ytstudio.worker=w-1",
       "-v", "/data/a/render-in:/in:ro", "-v", "/data/a/render-out:/out:rw", "-v", "/repo/remotion/kit:/opt/render/kit:ro",
-      "-w", "/tmp", "--entrypoint", "node", base.imageRef, "/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4",
+      "-w", "/tmp", "--entrypoint", "node", base.imageRef, "/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4", "--tsx",
     ]);
+    const stills = tsxRenderPlan({ ...base, mode: "stills", config: kitConfig });
+    expect(stills.args.slice(-3)).toEqual(["/in", "/out", "--tsx-stills"]);
+    expect(stills.args.slice(0, -3)).toEqual(p.args.slice(0, -3)); // same flags and mounts for the preflight stills
+    expect(stills.timeoutMs).toBe(p.timeoutMs);
+    expect(() => tsxRenderPlan({ ...base, mode: "kit" as never, config: kitConfig })).toThrow();
     expect(p.timeoutMs).toBe(300_000);
     expect(p.maxVideoBytes).toBe(512 * 1024 * 1024);
     expect(p.maxOutputBytes).toBe(256 * 1024);
@@ -44,7 +50,7 @@ describe("tsxRenderPlan", () => {
     expect(tsx).toContain("--pull=never");
     // same tail (labels, the three mounts, workdir, entrypoint, image, entry script) and same lock head
     const tail = kit.indexOf("--log-driver");
-    expect(tsx.slice(tsx.indexOf("--log-driver"))).toEqual(kit.slice(tail));
+    expect(tsx.slice(tsx.indexOf("--log-driver"), -1)).toEqual(kit.slice(tail)); // plus the trailing --tsx mode flag
     expect(tsx.slice(0, kit.indexOf("--pids-limit"))).toEqual(kit.slice(0, kit.indexOf("--pids-limit")));
     expect(tsx.filter((a) => a === "-v")).toHaveLength(3);
     for (const f of ["--privileged", "--cap-add", "--network=host", "host", "--pid", "--ipc", "--device", "-e", "--env", "--env-file", "--volumes-from", "-p", "--publish"]) {

@@ -4,7 +4,7 @@ import { renderArgs, type RenderArgsInput } from "./remotion-container";
 // container as the scene kit (renderArgs + lockFlags: no network, read-only root, noexec /tmp tmpfs, cap-drop ALL,
 // no-new-privileges, uid 10001, pids/memory/cpu limits, no env, three exact mounts) with tighter limits on top. Every value
 // here can only lower a limit: the config and the daemon can make them smaller, never bigger. Builds the plan only; runs
-// nothing (slice 3 wires it into the render step).
+// nothing (tsx-render.ts runs it; slice 3 wires that into the render step).
 
 const MiB = 1024 * 1024;
 export const TSX_SANDBOX = {
@@ -32,17 +32,26 @@ export interface TsxRenderPlan {
   maxOutputBytes: number;
 }
 
-export type TsxRenderPlanInput = Omit<RenderArgsInput, "limits" | "extra"> & {
+export type TsxRenderPlanInput = Omit<RenderArgsInput, "limits" | "extra" | "entry"> & {
   /** The kit render settings (EngineConfig.render); the TSX plan is clamped below them. */
   config: { timeoutS: number; cpus: number; memoryMb: number; pids: number };
+  /** "stills": the preflight frames as /out/still-<n>.png; "video": /out/out.mp4. Same flags and limits for both. */
+  mode: "stills" | "video";
 };
+
+/** render-entry.mjs arguments per TSX mode (/in holds video.tsx, props.json, meta.json and public/). */
+export const TSX_ENTRY = {
+  stills: ["/in", "/out", "--tsx-stills"],
+  video: ["/in", "/out/out.mp4", "--tsx"],
+} as const;
 
 /** The docker args and limits of one TSX render. Throws on unusable settings (never falls back to looser ones). */
 export function tsxRenderPlan(o: TsxRenderPlanInput): TsxRenderPlan {
-  const { config: c, ...rest } = o;
+  const { config: c, mode, ...rest } = o;
   for (const v of [c.timeoutS, c.cpus, c.memoryMb, c.pids]) {
     if (!Number.isFinite(v) || v <= 0) throw new Error("invalid render settings");
   }
+  if (mode !== "stills" && mode !== "video") throw new Error("invalid TSX render mode");
   const limits = {
     cpus: Math.min(c.cpus, TSX_SANDBOX.cpus),
     memoryMb: Math.min(c.memoryMb, TSX_SANDBOX.memoryMb),
@@ -50,7 +59,7 @@ export function tsxRenderPlan(o: TsxRenderPlanInput): TsxRenderPlan {
   };
   const timeoutS = Math.max(1, Math.min(TSX_SANDBOX.timeoutS, Math.floor(c.timeoutS / 2)));
   return {
-    args: renderArgs({ ...rest, limits, extra: TSX_EXTRA_FLAGS }),
+    args: renderArgs({ ...rest, limits, extra: TSX_EXTRA_FLAGS, entry: TSX_ENTRY[mode] }),
     timeoutMs: timeoutS * 1000,
     maxVideoBytes: TSX_SANDBOX.maxFileBytes,
     maxOutputBytes: TSX_SANDBOX.maxOutputBytes,
