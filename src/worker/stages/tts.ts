@@ -71,6 +71,7 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
     let made = 0;
     for (const [lineIndex, line] of lines.entries()) {
       // The provider is part of the key, so a different provider (or a fake) can never be served this provider's line.
+      // voice and provider:model are part of the key, so a changed voice can never reuse the old voice's saved audio
       const key = lineCacheKey({ text: line.text, voice, model: `${providerId}:${model ?? ""}`, lang: video.language, settings: {} });
       const hit = await cachedLine(deps, key);
       if (hit) {
@@ -178,10 +179,10 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
       return {
         files: [name],
         content: [
-          { kind: "narration", body: { file: name, audio_sha256: await sha256File(path.join(ctx.attemptDir, name)), word_timings: kind, lang: video.language, provider: providerId } },
+          { kind: "narration", body: { file: name, audio_sha256: await sha256File(path.join(ctx.attemptDir, name)), word_timings: kind, lang: video.language, provider: providerId, voice_provider: providerId, voice_name: voice } },
           { kind: "captions", body: captions },
         ],
-        result: { audio: name, wordTimings: kind, lines: lines.length, paidLines: made, needs_check: captions.needs_check, approximate: captions.approximate },
+        result: { audio: name, voice: { provider: providerId, voice, ...(model && { model }) }, wordTimings: kind, lines: lines.length, paidLines: made, needs_check: captions.needs_check, approximate: captions.approximate },
       };
     } finally {
       await Promise.all(files.map((f) => rm(f, { force: true })));

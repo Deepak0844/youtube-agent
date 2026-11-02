@@ -8,6 +8,7 @@ import {
   ACTIVE_STATUSES,
   expectedInputHash,
   FORCE_RERUN_STAGES,
+  ttsRerunProblem,
   nextActions,
   routeFor,
   chainPrev,
@@ -20,6 +21,7 @@ import {
 } from "@/server/core/pipeline-plan";
 import type { StageQueue } from "@/server/queue/job-queue";
 import { admitStage, releaseProbe } from "@/server/db/breakers";
+import { resolveRoute } from "@/server/db/media-registry";
 import { getSetting } from "@/server/db/settings";
 import { cancelQueuedStage, requestCancel } from "@/server/db/stages";
 import { createVideoRow, type VideoInput, type VideoRow } from "@/server/db/videos";
@@ -237,7 +239,10 @@ export async function rerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: strin
 /**
  * Owner-forced rerun of a FREE, LOCAL step that already succeeded (render, voice, sfx, qa). Bumps the step's nonce, which
  * changes its expected hash (and so every later step's); then queues it like rerunStage. Refused while any step of the
- * video is active, so a double click makes one run. Paid or model steps are never allowed.
+ * video is active, so a double click makes one run. Paid or model steps are never allowed. Narration (tts) is allowed only
+ * while the CURRENT voice route is a free provider; the route is read inside this transaction, after the video row lock.
+ * The worker reads the route again when it runs (voice-for), so a route switched to a paid voice in between would still be
+ * a normal budget-checked paid run, not a hidden one.
  */
 export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: string, stage: StageName, readers: PipelineReaders = NO_DECISIONS): Promise<AdvanceResult> {
   if (!FORCE_RERUN_STAGES.includes(stage)) throw new Error("force_rerun_not_allowed");
@@ -260,6 +265,10 @@ export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: 
     }
     const prior = view.runs[chainPrev(plan, idx)!.stage]!; // render/voice/sfx/qa always have an earlier step
     if ((await c.query("select 1 from uploads where video_id = $1 and status <> 'upload_failed' limit 1", [videoId])).rowCount) throw new Error("force_rerun_uploaded");
+    if (stage === "tts") {
+      const problem = ttsRerunProblem((await resolveRoute(c, "voice", { format: v.format, videoKind: v.kind }))?.provider);
+      if (problem) throw new Error(`voice_problem:${problem}`);
+    }
     const nonce = uuidv7();
     await c.query("update videos set stage_nonces = stage_nonces || jsonb_build_object($2::text, $3::text) where id = $1", [videoId, stage, nonce]);
     const want = expectedInputHash({ ...view, nonces: { ...view.nonces, [stage]: nonce } }, stage, prior.inputHash);

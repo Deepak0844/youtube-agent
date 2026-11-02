@@ -1,5 +1,5 @@
 import type { GateId } from "@/server/core/gates";
-import { FORCE_RERUN_STAGES, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
+import { FORCE_RERUN_STAGES, ttsRerunProblem, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
 import { microToUsd } from "@/server/core/llm-catalog";
 
 // Pure view-model for the video page (/videos/[id]). No IO: tab parsing, the stage strip's plain words, the time estimate
@@ -122,9 +122,14 @@ export function headline(views: readonly StageView[], status: string): string {
 export const rerunOffered = (runStatus: RunStatus | undefined, videoStatus: string): boolean =>
   (runStatus === "failed" || runStatus === "cancelled") && (videoStatus === "active" || videoStatus === "waiting");
 
-/** "Re-run this step" is offered for a finished free step (render, voice, sfx, qa) of a live video with nothing running and no upload. */
-export const forceRerunOffered = (stage: StageName, runStatus: RunStatus | undefined, videoStatus: string, anyActive = false, hasUpload = false): boolean =>
-  FORCE_RERUN_STAGES.includes(stage) && runStatus === "succeeded" && (videoStatus === "active" || videoStatus === "waiting") && !anyActive && !hasUpload;
+/** "Re-run this step" is offered for a finished free step (render, voice, sfx, qa; tts only while the current voice route is free) of a live video with nothing running and no upload. */
+export const forceRerunOffered = (stage: StageName, runStatus: RunStatus | undefined, videoStatus: string, anyActive = false, hasUpload = false, voiceProvider?: string | null): boolean =>
+  FORCE_RERUN_STAGES.includes(stage) && (stage !== "tts" || ttsRerunProblem(voiceProvider) === null) && runStatus === "succeeded" && (videoStatus === "active" || videoStatus === "waiting") && !anyActive && !hasUpload;
+
+export interface VoiceId { provider: string; voice: string }
+/** The narration voice setting no longer matches the voice that made the narration. Unknown stored voice (old rows) is never "changed". */
+export const voiceChanged = (stored: VoiceId | null, current: VoiceId | null): boolean =>
+  stored !== null && current !== null && (stored.provider !== current.provider || (current.voice !== "" && stored.voice !== current.voice)); // route without a named voice (edge default): provider only
 
 /** What a re-run costs: only the cost plan knows; the generate step is the one paid step it lists. */
 export function rerunCostNote(stage: StageName, planTotalMicroUsd: number | null): string {

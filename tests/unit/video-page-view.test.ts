@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateLabel, forceRerunOffered, fmtDuration, headline, median, parseFindings, parseTab, rerunCostNote, rerunOffered, stageViews, TABS, type RunFact } from "@/server/core/video-page-view";
+import { estimateLabel, forceRerunOffered, voiceChanged, fmtDuration, headline, median, parseFindings, parseTab, rerunCostNote, rerunOffered, stageViews, TABS, type RunFact } from "@/server/core/video-page-view";
 
 const run = (o: Partial<RunFact>): RunFact => ({ status: "succeeded", createdAt: 0, updatedAt: 0, retryNumber: 0, error: null, percent: null, ...o });
 const plan = ["draft", "build", "tts", "render"] as const;
@@ -68,7 +68,13 @@ describe("rerun", () => {
     expect(rerunOffered(undefined, "active")).toBe(false);
     expect(forceRerunOffered("render", "succeeded", "waiting")).toBe(true);
     expect(forceRerunOffered("qa", "succeeded", "active")).toBe(true);
-    expect(forceRerunOffered("tts", "succeeded", "active")).toBe(false);
+    expect(forceRerunOffered("tts", "succeeded", "active")).toBe(false); // unknown voice route
+    expect(forceRerunOffered("tts", "succeeded", "active", false, false, "voicestudio")).toBe(true);
+    expect(forceRerunOffered("tts", "succeeded", "active", false, false, "edge")).toBe(true);
+    expect(forceRerunOffered("tts", "succeeded", "active", false, false, "elevenlabs")).toBe(false);
+    expect(forceRerunOffered("tts", "succeeded", "active", false, false, null)).toBe(false);
+    expect(forceRerunOffered("tts", "succeeded", "active", true, false, "edge")).toBe(false);
+    expect(forceRerunOffered("render", "succeeded", "active", false, false, "elevenlabs")).toBe(true); // route only matters for tts
     expect(forceRerunOffered("draft", "succeeded", "active")).toBe(false);
     expect(forceRerunOffered("render", "failed", "active")).toBe(false);
     expect(forceRerunOffered("render", "succeeded", "cancelled")).toBe(false);
@@ -86,5 +92,17 @@ describe("parseFindings", () => {
   it("keeps valid findings, drops junk", () => {
     expect(parseFindings([{ id: "a", severity: "warn", text: "t" }, { id: 1 }, null, { id: "b", severity: "bogus", text: "x" }])).toEqual([{ id: "a", severity: "warn", text: "t" }]);
     expect(parseFindings("x")).toEqual([]);
+  });
+});
+
+describe("voiceChanged", () => {
+  it("only when the stored voice is known and differs", () => {
+    const cur = { provider: "edge", voice: "en-US-A" };
+    expect(voiceChanged(null, cur)).toBe(false);
+    expect(voiceChanged({ provider: "edge", voice: "en-US-A" }, cur)).toBe(false);
+    expect(voiceChanged({ provider: "voicestudio", voice: "en-US-A" }, cur)).toBe(true);
+    expect(voiceChanged({ provider: "edge", voice: "en-US-B" }, cur)).toBe(true);
+    expect(voiceChanged({ provider: "edge", voice: "en-US-A" }, null)).toBe(false);
+    expect(voiceChanged({ provider: "edge", voice: "en-US-A" }, { provider: "edge", voice: "" })).toBe(false);
   });
 });

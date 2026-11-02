@@ -22,14 +22,15 @@ export function RerunForm({ videoId, stage, label, estimate, costNote }: { video
 }
 
 /** "Re-run this step" for a finished free step. A tick is needed so a stray click cannot start it. */
-export function ForceRerunForm({ videoId, stage, label }: { videoId: string; stage: string; label: string }) {
+export function ForceRerunForm({ videoId, stage, label, hint, changed }: { videoId: string; stage: string; label: string; hint?: string; changed?: boolean }) {
   const [state, run, pending] = useActionState<RerunState, FormData>(forceRerunStageAction, {});
   const [sure, setSure] = useState(false);
   return (
     <form action={run} className="flex min-w-0 flex-col gap-2">
       <input type="hidden" name="videoId" value={videoId} />
       <input type="hidden" name="stage" value={stage} />
-      <p className="m-0 text-small text-muted">Runs it again from the same inputs (free, local). Later steps run again too.</p>
+      <p className="m-0 text-small text-muted">Runs it again from the same inputs (free, local). {hint ?? "Later steps run again too."}</p>
+      {changed ? <p data-testid="voice-changed" className="m-0 text-small text-pill-negative-ink">The narration voice setting changed. Re-run narration to use it.</p> : null}
       <label className="flex items-center gap-2 text-small"><input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} /> Yes, run {label} again</label>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" variant="secondary" disabled={pending || !sure} aria-label={`Re-run ${label}`}>Re-run this step</Button>

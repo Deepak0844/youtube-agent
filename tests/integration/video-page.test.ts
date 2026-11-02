@@ -137,7 +137,7 @@ describe("forceRerunStageById", () => {
     expect(again.ok).toBe(false);
     expect(await count(v.id, "render")).toBe(2);
   });
-  it("refuses paid or model steps, and steps that have not finished", async () => {
+  it("refuses paid or model steps (tts has no voice route here, so it is refused too), and steps that have not finished", async () => {
     const v = await mk();
     await seed(v);
     for (const st of ["tts", "draft", "build", "generate", "repair_scenes", "voice"]) expect((await forceRerunStageById(db.pool, queue, actor, v.id, st)).ok).toBe(false);
@@ -187,5 +187,66 @@ describe("forceRerunStageById", () => {
     expect((await forceRerunStageById(db.pool, queue, actor, v.id, "render")).ok).toBe(false);
     expect(await count(v.id, "render")).toBe(1);
     expect(await nonces(v.id)).toEqual({});
+  });
+  describe("narration (tts) only with a free voice", () => {
+    const route = (provider: string, voice = "v1") => db.ownerPool.query("insert into media_routes (kind, scope, provider, voice) values ('voice', 'default', $1, $2) on conflict (kind, scope) do update set provider = $1, voice = $2", [provider, voice]);
+    const hashOf = async (id: string, name: string) => (await db.pool.query("select input_hash from stage_runs where video_id=$1 and name=$2 order by created_at desc, id desc limit 1", [id, name])).rows[0].input_hash as string;
+    it("re-runs with a free voice: new hash, audited, double click refused", async () => {
+      await route("voicestudio");
+      const v = await mk();
+      await seed(v);
+      const before = await hashOf(v.id, "tts");
+      const r = await forceRerunStageById(db.pool, queue, actor, v.id, "tts");
+      expect(r.ok).toBe(true);
+      expect(await count(v.id, "tts")).toBe(2);
+      expect(await hashOf(v.id, "tts")).not.toBe(before);
+      expect(Object.keys(await nonces(v.id))).toEqual(["tts"]);
+      expect((await db.pool.query("select count(*)::int as n from audit_log where event='stage.force_rerun_requested'")).rows[0].n).toBe(1);
+      expect((await forceRerunStageById(db.pool, queue, actor, v.id, "tts")).ok).toBe(false);
+      expect(await count(v.id, "tts")).toBe(2);
+    });
+    it("refuses a paid voice with a plain sentence and leaves nonces alone", async () => {
+      await route("elevenlabs", "abc");
+      const v = await mk();
+      await seed(v);
+      const r = await forceRerunStageById(db.pool, queue, actor, v.id, "tts");
+      expect(r.ok).toBe(false);
+      expect(r.message).toMatch(/paid \(elevenlabs\)/);
+      expect(await count(v.id, "tts")).toBe(1);
+      expect(await nonces(v.id)).toEqual({});
+    });
+    it("refuses when no voice route exists", async () => {
+      const v = await mk();
+      await seed(v);
+      const r = await forceRerunStageById(db.pool, queue, actor, v.id, "tts");
+      expect(r.ok).toBe(false);
+      expect(r.message).toMatch(/No narration voice/);
+      expect(await nonces(v.id)).toEqual({});
+    });
+    it("still applies the common checks (earlier step stale, upload)", async () => {
+      await route("edge");
+      const v = await mk();
+      await seed(v, ["draft", "build", "tts"], { build: "failed" });
+      expect((await forceRerunStageById(db.pool, queue, actor, v.id, "tts")).ok).toBe(false);
+      const w = await mk("up");
+      await seed(w, ["draft", "build", "tts"]);
+      await db.pool.query("insert into uploads (id, video_id, status, approval_hash, file_sha) values ($1,$2,'publish_approved','a','b')", [uuidv7(), w.id]);
+      expect((await forceRerunStageById(db.pool, queue, actor, w.id, "tts")).ok).toBe(false);
+      expect(await nonces(v.id)).toEqual({});
+      expect(await nonces(w.id)).toEqual({});
+    });
+    it("the page shows the stored voice and flags a changed setting", async () => {
+      await route("edge", "en-US-A");
+      const v = await mk();
+      await addContent(db.pool, v.id, "narration", { body: { file: "narration.wav", voice_provider: "edge", voice_name: "en-US-A" }, sha256: sha256Hex("nv") });
+      let p = await loadVideoPage(db.pool, v.id);
+      expect(p!.voice).toEqual({ stored: { provider: "edge", voice: "en-US-A" }, current: { provider: "edge", voice: "en-US-A" } });
+      await route("voicestudio", "x");
+      p = await loadVideoPage(db.pool, v.id);
+      expect(p!.voice.current).toEqual({ provider: "voicestudio", voice: "x" });
+      const old = await mk("old"); // narration written before the voice fields existed
+      await addContent(db.pool, old.id, "narration", { body: { file: "narration.wav", provider: "edge" }, sha256: sha256Hex("nv2") });
+      expect((await loadVideoPage(db.pool, old.id))!.voice.stored).toBeNull();
+    });
   });
 });
