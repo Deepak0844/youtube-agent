@@ -27,6 +27,8 @@ export interface VideoAsset {
   credit?: string;
   /** null = linked by hand; the pictures stage leaves those alone. */
   briefHash: string | null;
+  /** "video" = a stock clip; absent on rows from older callers. */
+  kind?: "image" | "audio" | "video";
 }
 
 /** Links one image to a beat. Linking the same (video, asset, beat) again changes nothing. */
@@ -34,7 +36,7 @@ export async function linkAsset(db: Db, a: LinkInput): Promise<void> {
   if (a.beatId.length < 1 || a.beatId.length > 64) throw new LinkRefused("The beat id must be 1 to 64 characters.");
   const asset = await db.query<{ kind: string }>("select kind from assets where id = $1 and deleted_at is null", [a.assetId]);
   if (!asset.rows[0]) throw new LinkRefused("That asset does not exist.");
-  if (asset.rows[0].kind !== "image") throw new LinkRefused("Only images can be linked to a beat.");
+  if (asset.rows[0].kind !== "image" && asset.rows[0].kind !== "video") throw new LinkRefused("Only images and clips can be linked to a beat.");
   const have = await db.query("select 1 from video_assets where video_id = $1 and asset_id = $2 and beat_id = $3", [a.videoId, a.assetId, a.beatId]);
   if (have.rows.length > 0) return;
   const n = await db.query<{ beat: number; video: number }>(
@@ -52,15 +54,15 @@ export async function linkAsset(db: Db, a: LinkInput): Promise<void> {
 
 /** Linked pictures that are still live, in beat order of position then link time. */
 export async function assetsForVideo(db: Db, videoId: string): Promise<VideoAsset[]> {
-  const { rows } = await db.query<{ asset_id: string; beat_id: string; position: number; caption: string | null; credit: string | null; brief_hash: string | null }>(
-    `select va.asset_id, va.beat_id, va.position, a.caption, va.credit, va.brief_hash
+  const { rows } = await db.query<{ asset_id: string; beat_id: string; position: number; caption: string | null; credit: string | null; brief_hash: string | null; kind: "image" | "audio" | "video" }>(
+    `select va.asset_id, va.beat_id, va.position, a.caption, va.credit, va.brief_hash, a.kind
        from video_assets va join assets a on a.id = va.asset_id
       where va.video_id = $1 and a.deleted_at is null
       order by va.beat_id, va.position, va.created_at, va.asset_id`,
     [videoId],
   );
   return rows.map((r) => ({
-    assetId: r.asset_id, beatId: r.beat_id, position: r.position, briefHash: r.brief_hash,
+    assetId: r.asset_id, beatId: r.beat_id, position: r.position, briefHash: r.brief_hash, kind: r.kind,
     ...(r.caption ? { caption: r.caption } : {}), ...(r.credit ? { credit: r.credit } : {}),
   }));
 }

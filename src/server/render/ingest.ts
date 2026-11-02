@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { lstat, open, rm, stat } from "node:fs/promises";
+import { lstat, open, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ASSET_LIMIT_DEFAULTS } from "@/server/core/asset-rules";
@@ -13,11 +13,11 @@ import type { ChildResult, ChildSpec } from "./child";
 // The upload is deleted whatever happens (rejected, failed or accepted): the originals are not kept, only metadata-free
 // derived files, so EXIF/GPS never survives. Every file written has a fixed name inside destDir; no input text becomes a path.
 
-export type IngestRejection = SniffRejection | "empty" | "too_big" | "too_many_pixels" | "decode_failed" | "no_audio" | "too_long" | "probe_failed" | "failed";
+export type IngestRejection = SniffRejection | "empty" | "too_big" | "too_many_pixels" | "decode_failed" | "no_audio" | "too_long" | "probe_failed" | "bad_clip" | "failed";
 export type IngestResult =
   | {
       ok: true;
-      kind: "image" | "audio";
+      kind: "image" | "audio" | "video";
       mime: string; // of the stored main file
       width: number | null;
       height: number | null;
@@ -51,6 +51,7 @@ const MESSAGES: Record<string, string> = {
   no_audio: "This file has no audio in it.",
   too_long: "The recording is longer than the allowed length.",
   probe_failed: "The audio could not be read; it may be damaged.",
+  bad_clip: "The clip is not a plain H.264 MP4 of the allowed length and size.",
   failed: "The file could not be processed. Upload it again.",
 };
 const reject = (reason: IngestRejection, message?: string): IngestResult => ({
@@ -117,7 +118,7 @@ async function runCollect(deps: IngestDeps, a: IngestArgs, command: string, args
 }
 
 // Every file name ingest can create; on any failure all of them are removed (the caller should also delete destDir).
-const OUTPUT_NAMES = ["main.jpg", "main.png", "preview.webp", "thumb.webp", "crop_916.webp", "crop_169.webp", "main.flac", "preview.mp3"];
+const OUTPUT_NAMES = ["main.jpg", "main.png", "preview.webp", "thumb.webp", "crop_916.webp", "crop_169.webp", "main.flac", "preview.mp3", "main.mp4"];
 const cleanOutputs = (dir: string): Promise<unknown> => Promise.all(OUTPUT_NAMES.map((n) => rm(path.join(dir, n), { force: true })));
 // ffmpeg/ffprobe otherwise guess the format from content and could pick another demuxer (HLS, concat) for a file that only starts like audio.
 const DEMUXER: Record<string, string> = { "audio/wav": "wav", "audio/flac": "flac", "audio/mpeg": "mp3", "audio/mp4": "mov" };
@@ -151,7 +152,7 @@ export async function ingestImage(deps: IngestDeps, a: IngestArgs): Promise<Inge
 }
 
 interface ProbeJson {
-  streams?: Array<{ codec_type?: string; disposition?: { attached_pic?: number } }>;
+  streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number; disposition?: { attached_pic?: number } }>;
   format?: { duration?: string };
 }
 
@@ -190,6 +191,67 @@ export async function ingestAudio(deps: IngestDeps, a: IngestArgs): Promise<Inge
     const st = await stat(main);
     done = true;
     return { ok: true, kind: "audio", mime: "audio/flac", width: null, height: null, durationS, bytes: st.size, originalBytes: g.size, sha256: g.sha256, files: { main, preview } };
+  } finally {
+    if (!done) await cleanOutputs(a.destDir);
+    await rm(a.srcPath, { force: true });
+  }
+}
+
+// ---- Stock clips (pictures stage only; uploads never take video). ----
+export const CLIP_BRANDS = new Set(["isom", "iso2", "mp41", "mp42", "avc1", "M4V "]);
+export const CLIP_LIMITS = { minSeconds: 4.5, maxSeconds: 21, maxSide: 4096, maxStreams: 4 } as const;
+
+/** Pure: the ffprobe answer for a clip is acceptable (one H.264 video stream of the allowed size and length). */
+export function clipProbeOk(info: ProbeJson): { ok: true; durationS: number; width: number; height: number } | { ok: false } {
+  const streams = info.streams ?? [];
+  const vids = streams.filter((s) => s.codec_type === "video");
+  const v = vids[0];
+  const durationS = Number(info.format?.duration);
+  if (streams.length === 0 || streams.length > CLIP_LIMITS.maxStreams || vids.length !== 1 || !v || v.disposition?.attached_pic === 1 || v.codec_name !== "h264") return { ok: false };
+  const width = Number(v.width), height = Number(v.height);
+  if (!(width > 0 && height > 0 && width <= CLIP_LIMITS.maxSide && height <= CLIP_LIMITS.maxSide)) return { ok: false };
+  if (!(durationS >= CLIP_LIMITS.minSeconds && durationS <= CLIP_LIMITS.maxSeconds)) return { ok: false };
+  return { ok: true, durationS, width, height };
+}
+
+/**
+ * The same door as ingestAudio, for a downloaded stock clip: size, MP4 magic bytes (ftyp + a known brand), hash of the original,
+ * then ffprobe in the sandbox runner (protocol file only, demuxer forced to mp4/mov so no HLS or concat). The bytes are NOT
+ * re-encoded: the checked file itself becomes main.mp4 (the render container later decodes it with no network). The source is
+ * moved or deleted whatever happens.
+ */
+export async function ingestClip(deps: IngestDeps, a: IngestArgs): Promise<IngestResult> {
+  let done = false;
+  try {
+    let size: number;
+    try {
+      const st = await lstat(a.srcPath);
+      if (!st.isFile()) return reject("failed");
+      size = st.size;
+    } catch {
+      return reject("failed");
+    }
+    if (size === 0) return reject("empty");
+    if (size > (a.maxBytes ?? 25 * 1024 * 1024)) return reject("too_big");
+    const head = await readHead(a.srcPath);
+    const brand = head.length >= 12 && String.fromCharCode(...head.subarray(4, 8)) === "ftyp" ? String.fromCharCode(...head.subarray(8, 12)) : "";
+    if (!CLIP_BRANDS.has(brand)) return reject("bad_clip");
+    const sha256 = await sha256Of(a.srcPath);
+    const probeArgs = ["-v", "error", "-protocol_whitelist", "file", "-f", "mov,mp4,m4a,3gp,3g2,mj2", "-print_format", "json", "-show_streams", "-show_format", "-i", a.srcPath];
+    const p = await runCollect(deps, a, "ffprobe", probeArgs, a.destDir, 30_000);
+    let info: ProbeJson;
+    try {
+      info = JSON.parse(p.lines.join("\n"));
+    } catch {
+      return reject("probe_failed");
+    }
+    if (!childOk(p.r)) return reject("probe_failed");
+    const ok = clipProbeOk(info);
+    if (!ok.ok) return reject("bad_clip");
+    const main = path.join(a.destDir, "main.mp4");
+    await rename(a.srcPath, main);
+    done = true;
+    return { ok: true, kind: "video", mime: "video/mp4", width: ok.width, height: ok.height, durationS: ok.durationS, bytes: size, originalBytes: size, sha256, files: { main } };
   } finally {
     if (!done) await cleanOutputs(a.destDir);
     await rm(a.srcPath, { force: true });

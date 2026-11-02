@@ -30,7 +30,7 @@ import type { Renderer } from "./index";
 // Cleanup: /out is 0777 with no sticky bit, so the worker can delete the files uid 10001 writes there. A subdirectory the
 // container made inside /out could not be emptied by the worker on Linux; it stays in the attempt folder for the sweep.
 
-const ASSET_EXT = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+const ASSET_EXT = new Set([".png", ".jpg", ".jpeg", ".webp", ".mp4"]);
 const AUDIO_EXT = new Set([".wav", ".mp3", ".flac", ".m4a", ".aac"]);
 const ASSET_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/; // same rule as the scene schema
 const CONTAINER_ID = /^[0-9a-f]{12,64}$/;

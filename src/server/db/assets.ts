@@ -8,7 +8,7 @@ import type { Db } from "./stages";
 
 export interface Asset {
   id: string;
-  kind: "image" | "audio";
+  kind: "image" | "audio" | "video";
   originalName: string;
   mime: string;
   bytes: number;
@@ -37,7 +37,7 @@ export class AssetRefused extends Error {
 
 const SHA = /^[0-9a-f]{64}$/;
 const input = z.object({
-  kind: z.enum(["image", "audio"]),
+  kind: z.enum(["image", "audio", "video"]),
   originalName: z.string(),
   mime: z.string().min(1),
   bytes: z.number().int().positive(),

@@ -23,7 +23,11 @@ export const StockClip: React.FC<StockClipProps> = ({ src, media, dim, caption, 
       {media === "image" ? (
         <PhotoFit src={src} box={{ x: side, y: top, w: theme.width - 2 * side, h: theme.height - top - bottom }} />
       ) : (
-        <OffthreadVideo src={src} muted style={fill} />
+        <>
+          {/* Blur-fit like PhotoFit: a blurred cover copy fills the frame, the clip itself is shown whole (landscape gets soft bars). */}
+          <OffthreadVideo src={src} muted loop style={{ ...fill, filter: "blur(40px) brightness(0.45)", transform: "scale(1.2)" }} />
+          <OffthreadVideo src={src} muted loop style={{ ...fill, objectFit: "contain" }} />
+        </>
       )}
       {dim > 0 ? <AbsoluteFill style={{ background: `rgba(0,0,0,${dim})` }} /> : null}
       {caption && showCaption ? (

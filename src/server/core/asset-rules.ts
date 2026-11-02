@@ -66,7 +66,7 @@ export const isPersonTagged = (tags: readonly string[]): boolean => tags.some((t
 
 export function checkRights(
   rights: Rights,
-  ctx: { kind: "image" | "audio"; tags: readonly string[]; containsPerson?: boolean; voiceCloneReference?: boolean },
+  ctx: { kind: "image" | "audio" | "video"; tags: readonly string[]; containsPerson?: boolean; voiceCloneReference?: boolean },
 ): { ok: true } | { ok: false; reason: RightsRefusal } {
   if (rights.attestations.length === 0) return { ok: false, reason: "no_attestation" };
   if (ctx.voiceCloneReference && !rights.attestations.some((a) => a.consent_voice === true)) return { ok: false, reason: "voice_consent_missing" };

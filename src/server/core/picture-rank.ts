@@ -35,7 +35,7 @@ const DIAGRAMISH = /\b(diagram|cutaway|cut-away|schematic|exploded|infographic|i
 const PORTRAITISH = /\b(portrait|headshot|mugshot|selfie)s?\b/i;
 const PERSON_WORDS = /\b(portrait|person|people|man|woman|men|women|girl|boy|child|children|baby|face|couple|family|crowd|model|scientist|inventor|president|king|queen|emperor|author|actor|singer|athlete)\b/i;
 // Pixabay tags that mean a person is the subject (a stranger's likeness): refused unless the brief is about people.
-const PERSON_TAGS = /\b(woman|man|girl|boy|people|person|child|children|baby|face|portrait|model|couple|family|crowd)\b/i;
+export const PERSON_TAGS = /\b(woman|man|girl|boy|people|person|child|children|baby|face|portrait|model|couple|family|crowd)\b/i;
 
 const stem = (w: string) => (w.length > 4 && w.endsWith("s") ? w.slice(0, -1) : w);
 export function words(s: string): string[] {
@@ -43,7 +43,7 @@ export function words(s: string): string[] {
 }
 
 /** A brief names a person only when it says so with a person word (two capitalised words such as "Golden Gate" do not count). */
-function namesPerson(brief: PictureBrief): boolean {
+export function namesPerson(brief: PictureBrief): boolean {
   return PERSON_WORDS.test([brief.visual, ...brief.search].join(" . "));
 }
 

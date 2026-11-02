@@ -14,6 +14,7 @@ export const WIKIMEDIA_FILE_HOSTS = ["upload.wikimedia.org", "thumb.wikimedia.or
 export const PIXABAY_API_HOSTS = ["pixabay.com"] as const;
 export const PIXABAY_FILE_HOSTS = ["pixabay.com", "cdn.pixabay.com"] as const;
 export const IMAGE_TYPES = /^image\/(jpeg|png|webp)$/i;
+export const VIDEO_TYPE = /^video\/mp4$/i;
 export const JSON_TYPE = /^application\/json$/i;
 
 export type PictureFetcher = (url: string, init: RequestInit) => Promise<Response>;
@@ -27,7 +28,7 @@ export function hostAllowed(url: string, hosts: readonly string[]): URL | null {
   return u;
 }
 
-export interface BoundedOptions { hosts: readonly string[]; maxBytes: number; accept: RegExp; signal: AbortSignal }
+export interface BoundedOptions { hosts: readonly string[]; maxBytes: number; accept: RegExp; signal: AbortSignal; /** Request Accept header (default: images and JSON). */ acceptHeader?: string }
 
 /**
  * Production fetcher: safeFetch in indirect mode (public addresses only). maxRedirects 0, so a redirect throws inside safeFetch
@@ -44,7 +45,7 @@ export async function fetchBounded(fetcher: PictureFetcher, rawUrl: string, o: B
     if (!url) return { ok: false, reason: "host" };
     let res: Response;
     try {
-      res = await fetcher(url.href, { method: "GET", redirect: "manual", signal: o.signal, headers: { "user-agent": USER_AGENT, accept: "image/jpeg,image/png,image/webp,application/json" } });
+      res = await fetcher(url.href, { method: "GET", redirect: "manual", signal: o.signal, headers: { "user-agent": USER_AGENT, accept: o.acceptHeader ?? "image/jpeg,image/png,image/webp,application/json" } });
     } catch (e) {
       if (o.signal.aborted) throw o.signal.reason ?? e;
       return { ok: false, reason: "network" };
