@@ -47,6 +47,14 @@ export function gentleMotion<T extends { zoomFrom: number; zoomTo: number; panX:
   return { ...k, zoomFrom: z(k.zoomFrom), zoomTo: z(k.zoomTo), panX: p(k.panX), panY: p(k.panY) };
 }
 
+/** Scenes longer than this keep moving (slow zoom on photos, node pulse on diagrams) so something changes every few seconds. */
+export const LONG_SCENE_FRAMES = 180;
+
+/** A photo that would sit still on a long scene gets a slow 5% zoom-in instead. */
+export function keepMoving<T extends { zoomFrom: number; zoomTo: number }>(k: T, frames: number): T {
+  return frames > LONG_SCENE_FRAMES && Math.abs(k.zoomTo - k.zoomFrom) < 0.03 ? { ...k, zoomTo: k.zoomFrom + 0.05 } : k;
+}
+
 /** Largest rect with the picture's aspect that fits wholly inside the box, centred. Never crops. */
 export function fitContain(nat: { w: number; h: number }, box: { x: number; y: number; w: number; h: number }) {
   const s = Math.min(box.w / nat.w, box.h / nat.h);

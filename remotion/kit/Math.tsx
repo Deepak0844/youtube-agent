@@ -62,7 +62,7 @@ export const MathSteps: React.FC<MathProps> = ({ title, steps, framesPerStep }) 
             padding: "20px 28px",
             borderRadius: 24,
             background: theme.palette.surface,
-            opacity: i === n - 1 ? 1 : 0.7,
+            opacity: i === n - 1 ? 1 : 0.88,
             wordBreak: "break-word",
           }}
         >

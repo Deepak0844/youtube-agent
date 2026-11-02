@@ -62,3 +62,15 @@ export const INTRO_SKIP_FRAMES = 24;
 
 /** Head start for the first scene: INTRO_SKIP_FRAMES, at most half that scene. */
 export const introSkipFrames = (firstSceneFrames: number): number => Math.max(0, Math.min(INTRO_SKIP_FRAMES, Math.floor(firstSceneFrames / 2)));
+
+/** Frames a scene fades in over the one before it. */
+export const TRANSITION_FRAMES = 8;
+
+/** Sequence length for a scene: the next scene fades in on top, so every scene but the last stays up that long under it. Timing is unchanged. */
+export const sequenceFrames = (duration: number, isLast: boolean, frames = TRANSITION_FRAMES): number => (isLast ? duration : duration + frames);
+
+/** Fade + short slide-up for a scene's first `frames` frames (the first scene has none). */
+export function transitionIn(frame: number, frames = TRANSITION_FRAMES, rise = 48): { opacity: number; dy: number } {
+  const t = Math.min(1, Math.max(0, frame / Math.max(1, frames)));
+  return { opacity: t, dy: (1 - t) * rise };
+}

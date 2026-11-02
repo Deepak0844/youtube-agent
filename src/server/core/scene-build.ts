@@ -30,6 +30,23 @@ export function planPictureBeat(ids: readonly string[]): { kind: "story_kenburns
   return a.length === 1 ? { kind: "story_kenburns", assets: a } : { kind: "collage", assets: a };
 }
 
+/**
+ * Keeps one picture from carrying many scenes: per beat (in order), drops ids that both of the previous 2 scenes already show, so no id
+ * fills more than 2 scenes in a row. With only one distinct picture in the whole video it is used once (the first beat that has it).
+ */
+export function limitRepeats(lists: readonly (readonly string[])[]): string[][] {
+  const distinct = new Set(lists.flat()).size;
+  const used = new Set<string>();
+  const out: string[][] = [];
+  for (const list of lists) {
+    const [p2, p1] = out.slice(-2);
+    const keep = list.filter((id) => !(p1?.includes(id) && p2?.includes(id)) && (distinct > 1 || !used.has(id)));
+    keep.forEach((id) => used.add(id));
+    out.push(keep);
+  }
+  return out;
+}
+
 /** Errors when the scene does not use exactly these asset ids (collage: in this order). */
 export function checkPictureIds(scene: Record<string, unknown>, ids: readonly string[]): string[] {
   const used = scene.kind === "collage" ? ((scene.tiles as Array<{ asset?: unknown }> | undefined) ?? []).map((t) => t.asset) : [scene.image];
@@ -138,7 +155,9 @@ export async function withRetries<T>(ask: AskScene, messages: Message[], check: 
 export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, opts: { assets?: readonly string[]; pictures?: Readonly<Record<string, readonly string[]>>; language?: string } = {}): Promise<SceneDoc> {
   // With `pictures` (beat id -> linked asset ids) beats that have pictures are planned by the app and the rest never see image kinds.
   const perBeat = opts.pictures !== undefined;
-  const assets = perBeat ? [...new Set(Object.values(opts.pictures!).flatMap((v) => v.slice(0, MAX_PICTURES)))] : (opts.assets ?? []);
+  const limited = perBeat ? limitRepeats(beats.map((b) => (opts.pictures![b.id] ?? []).slice(0, MAX_PICTURES))) : [];
+  const pictureOf = (i: number): string[] => limited[i] ?? [];
+  const assets = perBeat ? [...new Set(limited.flat())] : (opts.assets ?? []);
   const kinds = usableKinds(!perBeat && assets.length > 0);
   // Everything that can be checked for free is checked BEFORE the first paid call.
   if (beats.length > LIMITS.maxScenes) throw new KnownFailure(`The script has ${beats.length} beats; the scene format allows at most ${LIMITS.maxScenes}. Shorten the script and draft again.`);
@@ -149,7 +168,7 @@ export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, 
   let startMs = 0;
   for (const [i, beat] of beats.entries()) {
     const fail = (errors: string[]) => new KnownFailure(`scenes_invalid: beat '${beat.id}' could not get a valid scene. Last problems: ${errors.slice(0, 5).join("; ")}`.slice(0, 600));
-    const plan = perBeat ? planPictureBeat(opts.pictures![beat.id] ?? []) : null;
+    const plan = perBeat ? planPictureBeat(pictureOf(i)) : null;
     const beatAssets = perBeat ? (plan?.assets ?? []) : assets;
     let kind: string;
     if (plan) kind = plan.kind;
