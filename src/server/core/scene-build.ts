@@ -1,6 +1,7 @@
 import type { Message } from "@/server/core/agent-loop";
 import { KnownFailure } from "@/server/core/paid-call";
 import { describeSceneFormat, kindBlurbs, LIMITS, usableKinds, validateScenes, type SceneDoc } from "@/shared/scene";
+import { styleGuidance } from "../../../remotion/kit/presets";
 import { checkSceneRules, validateAndCheck } from "@/shared/scene/rules";
 
 // Build, scene kit: one model answer per script beat, each checked against the scene format, then assembled into one
@@ -69,9 +70,10 @@ export function beatBlock(beat: SceneBeat, shownForReal?: string): string {
   return `Beat ${beat.id}:\n${beat.text}${brief}${real}${search}`;
 }
 
-export function pickMessages(beat: SceneBeat, kinds: readonly string[], shownForReal?: string): Message[] {
+export function pickMessages(beat: SceneBeat, kinds: readonly string[], shownForReal?: string, style?: string | null): Message[] {
+  const guide = styleGuidance(style); // "" for the default look, so the default prompt is unchanged
   return [
-    { role: "system", content: `Pick the scene kind that best shows one beat of a short portrait video script. The visual brief is an on-screen action: choose the scene kind whose motion matches it (algo_cells for search or sort, orbit for planets and moons, network for packets and servers, chart for numbers). When the brief describes motion, prefer a drawn or animated kind over a text kind. If no available kind can show it truthfully, choose the most abstract honest kind that fits the content (chart, math, chat, terminal, pause_card...). NEVER use drawn_objects unless the brief literally names one of its eight objects (jug, measuring_cup, ruler, laptop, server_rack, container, cloud, padlock).\nKinds:\n${kindBlurbs(kinds)}\nReply with only JSON: {"kind": "<one of the kinds>"}.` },
+    { role: "system", content: `Pick the scene kind that best shows one beat of a short portrait video script. The visual brief is an on-screen action: choose the scene kind whose motion matches it (algo_cells for search or sort, orbit for planets and moons, network for packets and servers, chart for numbers). When the brief describes motion, prefer a drawn or animated kind over a text kind. If no available kind can show it truthfully, choose the most abstract honest kind that fits the content (chart, math, chat, terminal, pause_card...). NEVER use drawn_objects unless the brief literally names one of its eight objects (jug, measuring_cup, ruler, laptop, server_rack, container, cloud, padlock).\nKinds:\n${kindBlurbs(kinds)}\nReply with only JSON: {"kind": "<one of the kinds>"}.${guide ? `\n${guide}` : ""}` },
     { role: "user", content: beatBlock(beat, shownForReal) },
   ];
 }
@@ -155,7 +157,7 @@ export async function withRetries<T>(ask: AskScene, messages: Message[], check: 
   }
 }
 
-export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, opts: { assets?: readonly string[]; pictures?: Readonly<Record<string, readonly string[]>>; clips?: ReadonlySet<string>; language?: string; shownForReal?: string } = {}): Promise<SceneDoc> {
+export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, opts: { assets?: readonly string[]; pictures?: Readonly<Record<string, readonly string[]>>; clips?: ReadonlySet<string>; language?: string; shownForReal?: string; style?: string | null } = {}): Promise<SceneDoc> {
   // With `pictures` (beat id -> linked asset ids) beats that have pictures are planned by the app and the rest never see image kinds.
   const perBeat = opts.pictures !== undefined;
   const limited = perBeat ? limitRepeats(beats.map((b) => (opts.pictures![b.id] ?? []).slice(0, MAX_PICTURES))) : [];
@@ -176,7 +178,7 @@ export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, 
     let kind: string;
     if (plan) kind = plan.kind;
     else {
-      const pick = await withRetries(ask, pickMessages(beat, kinds, opts.shownForReal), (t) => checkPick(t, kinds));
+      const pick = await withRetries(ask, pickMessages(beat, kinds, opts.shownForReal, opts.style), (t) => checkPick(t, kinds));
       if ("errors" in pick) throw fail(pick.errors);
       kind = pick.value;
     }

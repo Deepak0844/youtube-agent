@@ -1,9 +1,10 @@
 // Props for the kit-video composition, shared by `npm run kit:video` and the render stage. Pure: no IO.
 import type { CaptionWord } from "../../../remotion/kit/timeline";
+import { isCaptionStyleId, isStyleId, type CaptionStyleId, type StyleId } from "../../../remotion/kit/presets";
 import { validateScenes } from "./validate";
 import type { SceneDoc } from "./schema";
 
-export type VideoProps = { doc: SceneDoc; fps: number; audioSrc?: string; captions?: CaptionWord[]; assets?: Record<string, string>; seed?: string; title?: string };
+export type VideoProps = { doc: SceneDoc; fps: number; audioSrc?: string; captions?: CaptionWord[]; assets?: Record<string, string>; seed?: string; title?: string; style?: StyleId; captionStyle?: CaptionStyleId };
 
 const MAX_CAPTION_WORDS = 10_000; // a 15-minute long video is about 2-3k words
 const MAX_WORD_CHARS = 100;
@@ -31,7 +32,7 @@ function parseCaptions(text: string): { ok: true; words: CaptionWord[] } | { ok:
 /** Validate the scene file (and optional captions); on success, the props for the kit-video composition. */
 export function buildVideoProps(
   sceneText: string,
-  opts: { captionsText?: string; audioSrc?: string; fps: number; assets?: Record<string, string>; seed?: string; title?: string },
+  opts: { captionsText?: string; audioSrc?: string; fps: number; assets?: Record<string, string>; seed?: string; title?: string; style?: string | null; captionStyle?: string | null },
 ): { ok: true; props: VideoProps } | { ok: false; errors: string[] } {
   let json: unknown;
   try {
@@ -45,6 +46,8 @@ export function buildVideoProps(
   if (opts.audioSrc) props.audioSrc = opts.audioSrc;
   if (opts.assets) props.assets = opts.assets;
   if (opts.seed) props.seed = opts.seed.slice(0, 64);
+  if (isStyleId(opts.style)) props.style = opts.style;
+  if (isCaptionStyleId(opts.captionStyle)) props.captionStyle = opts.captionStyle;
   if (opts.title) props.title = opts.title.slice(0, 200);
   if (opts.captionsText !== undefined) {
     const c = parseCaptions(opts.captionsText);

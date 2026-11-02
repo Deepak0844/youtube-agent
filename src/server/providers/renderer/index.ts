@@ -13,6 +13,9 @@ export interface RenderArgs {
   /** The video id (picks the palette) and a title for the opening card. Optional: old callers still render. */
   videoId?: string;
   title?: string;
+  /** Chosen look and caption layer; null or absent = the default look. */
+  style?: string | null;
+  captionStyle?: string | null;
   /** A plain file name, never a path. */
   outFile: string;
   size: { width: number; height: number };

@@ -14,6 +14,7 @@ import { loadQueue } from "@/server/db/queue-data";
 import { loadVideoPage, type VideoPage } from "@/server/db/video-page";
 import { loadPreview } from "@/server/db/video-preview";
 import type { PreviewData } from "@/shared/preview";
+import { presetOf } from "../../../../../remotion/kit/presets";
 import { LazyPreviewStage } from "@/ui/kit/kit-lazy";
 import { Button } from "@/ui/primitives/button";
 import { ageLabel, GateCard } from "../../queue/gate-card";
@@ -66,6 +67,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
           <Pill tone={status.tone}>{status.label}</Pill>
           <span>{LANGUAGE_WORDS[p.head.language]}</span>
           <span>{KIND_WORDS[p.head.kind]} {FORMAT_WORDS[p.head.format].toLowerCase()}</span>
+          <span data-testid="video-style">Style: {presetOf(p.head.style).label}{p.head.captionStyle ? ", punchy captions" : ""}</span>
           <span data-testid="total-spend" className="tabular-nums">{usd(p.spend.totalMicroUsd)} spent</span>
           <span>Started {dt.format(new Date(p.head.createdAt))} UTC</span>
         </p>
@@ -182,7 +184,7 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
       return !preview ? <Empty>No scenes yet. The preview appears once the build step has made them.</Empty> : (
         <>
           <p data-testid="preview-note" className="m-0 max-w-[68ch] text-body text-muted">Preview only. The final video is made by Render.</p>
-          <LazyPreviewStage data={preview} videoId={p.head.id} title={p.head.topic} />
+          <LazyPreviewStage data={preview} videoId={p.head.id} title={p.head.topic} style={p.head.style} captionStyle={p.head.captionStyle} />
           <div><Button asChild variant="secondary"><a href="#stage-render">Go to the Render step</a></Button></div>
         </>
       );

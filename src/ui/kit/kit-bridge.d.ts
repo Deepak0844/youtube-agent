@@ -10,6 +10,8 @@ export type KitVideoProps = {
   captions?: Array<{ word: string; startS: number; endS: number; estimated?: boolean }>;
   fps?: number;
   title?: string;
+  style?: string;
+  captionStyle?: string;
 };
 export const KitVideo: FC<KitVideoProps>;
 export const KitScene: FC<{ scene: Scene; resolveAsset?: (id: string) => string; fps?: number }>;

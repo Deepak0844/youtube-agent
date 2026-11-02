@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CAPTION_STYLE_IDS, STYLE_IDS } from "../../../remotion/kit/presets";
 import { LANGS } from "@/server/core/lang";
 
 // Pure: the Library's filters and words, and the New form's input. No IO.
@@ -67,11 +68,14 @@ export const newVideoSchema = z.object({
   kind: z.literal("scene_kit", "Only the scene kit is available for now."),
   format: z.literal("short", "Only Shorts are available for now."),
   notes: z.string().trim().max(2000, "Keep the notes to 2000 characters or fewer.").optional(),
+  // Empty or missing = the default look (stored as null).
+  style: z.enum(STYLE_IDS, "Pick one of the listed styles.").optional(),
+  captionStyle: z.enum(CAPTION_STYLE_IDS, "Pick a listed caption style.").optional(),
 });
 export type NewVideoInput = z.infer<typeof newVideoSchema>;
 
 export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
   const g = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
-  const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "scene_kit", format: g("format") ?? "short", notes: g("notes") || undefined });
+  const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "scene_kit", format: g("format") ?? "short", notes: g("notes") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined });
   return r.success ? { ok: true, value: r.data } : { ok: false, message: r.error.issues[0]?.message ?? "Check the form and try again." };
 }

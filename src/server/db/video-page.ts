@@ -22,6 +22,9 @@ export interface VideoHead {
   format: VideoRow["format"];
   status: VideoRow["status"];
   createdAt: string;
+  /** null = default look */
+  style: string | null;
+  captionStyle: string | null;
 }
 export interface LogRow { time: string; level: "info" | "warn" | "error"; text: string }
 export interface AuditItem { id: string; at: string; event: string; detail: Record<string, unknown> }
@@ -80,10 +83,10 @@ const EVENT_TEXT: Record<string, string> = {
 };
 
 export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<VideoPage | null> {
-  const vr = await db.query("select id, topic, language, kind, format, status, created_at from videos where id = $1", [videoId]);
+  const vr = await db.query("select id, topic, language, kind, format, status, created_at, style, caption_style from videos where id = $1", [videoId]);
   const v = vr.rows[0];
   if (!v) return null;
-  const head: VideoHead = { id: v.id, topic: v.topic, language: v.language, kind: v.kind, format: v.format, status: v.status, createdAt: (v.created_at as Date).toISOString() };
+  const head: VideoHead = { id: v.id, topic: v.topic, language: v.language, kind: v.kind, format: v.format, status: v.status, createdAt: (v.created_at as Date).toISOString(), style: v.style ?? null, captionStyle: v.caption_style ?? null };
   const live = head.status === "active" || head.status === "waiting";
   const sign = await mediaSigner(db);
 

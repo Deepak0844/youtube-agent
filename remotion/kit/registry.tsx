@@ -1,10 +1,13 @@
 import React, { useMemo } from "react";
-import { AbsoluteFill, Audio, Composition, Sequence, staticFile, useCurrentFrame } from "remotion";
+import { AbsoluteFill, Audio, Composition, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 
-// Fades and slides a scene in over the one before it (the first scene has no transition).
-const SceneIn: React.FC<{ on: boolean; children: React.ReactNode }> = ({ on, children }) => {
-  const t = transitionIn(useCurrentFrame());
-  return on ? <AbsoluteFill style={{ opacity: t.opacity, transform: `translateY(${t.dy}px)` }}>{children}</AbsoluteFill> : <>{children}</>;
+// Fades and slides a scene in over the one before it (the first scene has no transition). A spring style bounces the slide.
+const SceneIn: React.FC<{ on: boolean; motion: StylePreset["motion"]; children: React.ReactNode }> = ({ on, motion, children }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const t = transitionIn(frame, motion.transitionFrames, motion.rise);
+  const dy = motion.kind === "spring" ? (1 - spring({ frame, fps, config: { stiffness: motion.stiffness, damping: motion.damping } })) * motion.rise : t.dy;
+  return on ? <AbsoluteFill style={{ opacity: t.opacity, transform: `translateY(${dy}px)` }}>{children}</AbsoluteFill> : <>{children}</>;
 };
 import { Browser, type BrowserProps } from "./Browser";
 import { ChatThread, type ChatThreadProps } from "./ChatThread";
@@ -27,6 +30,8 @@ import { Piano, type PianoProps } from "./Piano";
 import { MapPiece, type MapProps } from "./MapPiece";
 import { Orbit, type OrbitProps } from "./Orbit";
 import { Captions } from "./Captions";
+import { captionStyleOf, presetOf, type StylePreset } from "./presets";
+import { StyleFontCtx } from "./ScriptText";
 import { LookProvider } from "./LookParts";
 import { HookCard } from "./HookCard";
 import { firstPictureId, HOOK_FRAMES, hashString, lookBackground, pickLook, sceneCaptionAllowed } from "./look";
@@ -289,14 +294,15 @@ export const KitScene: React.FC<KitSceneProps> = ({ scene, resolveAsset = placeh
 };
 
 // `assets` (JSON-safe, from the render job): asset id -> file path in the public dir. Ids not in it get the placeholder.
-export type KitVideoProps = { doc: SceneDoc; seed?: string; resolveAsset?: ResolveAsset; assets?: Record<string, string>; audioSrc?: string; captions?: CaptionWord[]; fps?: number; title?: string };
+export type KitVideoProps = { doc: SceneDoc; seed?: string; resolveAsset?: ResolveAsset; assets?: Record<string, string>; audioSrc?: string; captions?: CaptionWord[]; fps?: number; title?: string; style?: string; captionStyle?: string };
 
 const fromStaged = (assets: Record<string, string>): ResolveAsset => (id) => (Object.hasOwn(assets, id) ? staticFile(assets[id]!) : placeholder(id));
 
 // Whole video: scenes on a timeline, optional narration, optional karaoke captions on top.
 // The palette comes from `seed` (the video id, when the job passes one), else from the scene file itself, so old data works.
-export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAsset = assets ? fromStaged(assets) : placeholder, audioSrc, captions, fps = theme.fps, title }) => {
-  const look = useMemo(() => pickLook(seed ?? String(hashString(JSON.stringify(doc)))), [seed, doc]);
+export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAsset = assets ? fromStaged(assets) : placeholder, audioSrc, captions, fps = theme.fps, title, style, captionStyle }) => {
+  const preset = presetOf(style);
+  const look = useMemo(() => preset.look ?? pickLook(seed ?? String(hashString(JSON.stringify(doc)))), [preset, seed, doc]);
   // Global frame here (above the Sequences): hide scenes' own captions while the word captions are on screen.
   const frame = useCurrentFrame();
   const sceneCaptions = sceneCaptionAllowed(captions, frame / fps);
@@ -306,6 +312,7 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
     return id ? resolveAsset(id) : undefined;
   }, [doc, assets, resolveAsset]);
   return (
+  <StyleFontCtx.Provider value={preset.fonts.body}>
   <LookProvider value={{ look, sceneCaptions }}>
   <AbsoluteFill style={{ background: lookBackground(look), "--look-bg": lookBackground(look) } as React.CSSProperties}>
     {doc.scenes.map((scene, i) => {
@@ -314,19 +321,20 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
       const skip = i === 0 && r.from === 0 ? introSkipFrames(r.duration) : 0;
       const body = <KitScene scene={scene} resolveAsset={resolveAsset} fps={fps} />;
       return (
-        <Sequence key={scene.id} from={r.from} durationInFrames={sequenceFrames(r.duration, i === doc.scenes.length - 1)}>
-          <SceneIn on={i > 0}>{skip ? <Sequence from={-skip} durationInFrames={r.duration + skip}>{body}</Sequence> : body}</SceneIn>
+        <Sequence key={scene.id} from={r.from} durationInFrames={sequenceFrames(r.duration, i === doc.scenes.length - 1, preset.motion.transitionFrames)}>
+          <SceneIn on={i > 0} motion={preset.motion}>{skip ? <Sequence from={-skip} durationInFrames={r.duration + skip}>{body}</Sequence> : body}</SceneIn>
         </Sequence>
       );
     })}
     {audioSrc ? <Audio src={/^(https?:|data:|blob:)/.test(audioSrc) ? audioSrc : staticFile(audioSrc)} /> : null}
-    {captions?.length ? <Captions words={captions} /> : null}
+    {captions?.length ? <Captions words={captions} style={captionStyleOf(preset, captionStyle)} /> : null}
     {/* Title card on top of scene 1 (no time inserted, so narration sync is unchanged). Frame 0 of the video is this card. */}
     <Sequence from={0} durationInFrames={HOOK_FRAMES}>
       <HookCard title={title} src={heroSrc} />
     </Sequence>
   </AbsoluteFill>
   </LookProvider>
+  </StyleFontCtx.Provider>
   );
 };
 

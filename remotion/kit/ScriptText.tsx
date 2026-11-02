@@ -28,7 +28,12 @@ function loadFonts() {
 }
 
 /** Text with the right Noto font per run (hi/ta/te/kn/ml), theme UI font for Latin. */
-export const ScriptText: React.FC<{ text: string; font?: string }> = ({ text, font = theme.fonts.ui }) => {
+/** The style's Latin font for ScriptText; KitVideo provides it. Outside KitVideo it is the theme UI font. */
+export const StyleFontCtx = React.createContext<string>(theme.fonts.ui);
+
+export const ScriptText: React.FC<{ text: string; font?: string }> = ({ text, font: given }) => {
+  const ctxFont = React.useContext(StyleFontCtx);
+  const font = given ?? ctxFont;
   loadFonts();
   return (
     <>
