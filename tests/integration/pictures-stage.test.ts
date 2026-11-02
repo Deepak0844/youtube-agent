@@ -82,7 +82,7 @@ function mk(over: { api?: (q: string) => Response; file?: () => Response; throws
       if (over.throws) throw new Error("offline");
       const u = new URL(url);
       if (u.hostname === "commons.wikimedia.org") return api(u.searchParams.get("gsrsearch") ?? "");
-      if (u.hostname === "pixabay.com") return over.pixabay ? over.pixabay() : json([]);
+      if (u.hostname === "pixabay.com" && u.pathname.startsWith("/api/")) return over.pixabay ? over.pixabay() : json([]);
       over.onFile?.();
       return over.file ? over.file() : new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "content-type": "image/jpeg" } });
     },
