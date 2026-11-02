@@ -59,6 +59,8 @@ test("script gate: shows the text, word count, evidence and the review reference
   await expect(c).toHaveCount(0); // approved: the video moved on, the card goes
 
   // The worker finishes the build stage; the page learns about it through the live feed and shows the cost gate.
+  expect(await workerFinishes(videoId, "pictures")).toBe(true);
+  await advance(videoId);
   expect(await workerFinishes(videoId, "build")).toBe(true);
   await advance(videoId);
   const cost = card(page, topic);

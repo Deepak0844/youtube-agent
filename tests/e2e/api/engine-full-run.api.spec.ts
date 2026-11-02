@@ -41,6 +41,8 @@ test("the owner advances one new short through every gate and publish approval o
   const token = await mintSession();
 
   expect(await ok(await postAction(request, "approveGateAction", await liveFields(videoId, "script"), token))).toBe(true);
+  expect(await workerFinishes(videoId, "pictures")).toBe(true);
+  await advance(videoId);
   expect(await workerFinishes(videoId, "build")).toBe(true);
   await advance(videoId);
   expect(await ok(await postAction(request, "approveGateAction", await liveFields(videoId, "cost"), token))).toBe(true);

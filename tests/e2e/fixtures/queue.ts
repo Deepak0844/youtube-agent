@@ -96,7 +96,7 @@ export async function seedPublishGate(topic: string, visibility: "private" | "un
     if (!r.ok) throw new Error(`seed ${g}: ${r.reason}`);
   }
   // Every earlier stage is done; the pipeline now waits at the publish gate.
-  for (const stage of ["draft", "build", "tts", "render", "voice", "sfx", "qa"]) {
+  for (const stage of ["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]) {
     await advance(v.id);
     await workerFinishes(v.id, stage);
     if (stage === "draft") {

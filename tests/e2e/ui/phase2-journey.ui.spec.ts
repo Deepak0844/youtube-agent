@@ -17,6 +17,8 @@ test("the queue carries one short from script review to generation without a pag
   await card.getByRole("button", { name: /^Approve script/ }).click();
   await expect(card).toHaveCount(0);
 
+  expect(await workerFinishes(videoId, "pictures")).toBe(true);
+  await advance(videoId);
   expect(await workerFinishes(videoId, "build")).toBe(true);
   await advance(videoId);
   const cost = page.getByRole("article", { name: new RegExp(topic) });
