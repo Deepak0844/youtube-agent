@@ -28,7 +28,7 @@ describe("settings registry", () => {
         "network.local_services", "policy.allow_public", "policy.require_evidence",
         "assets.max_image_bytes", "assets.max_audio_bytes", "assets.max_pixels", "assets.max_batch_files", "assets.total_bytes_cap",
         "assets.retention_days", "assets.unused_days", "assets.trash_days", "voice.local_url", "voice.voicestudio_url",
-        "claude_code.enabled", "claude_code.daily_cap", "ai.previous_routes",
+        "llm.call_gap_ms", "claude_code.enabled", "claude_code.daily_cap", "ai.previous_routes",
         ...ENGINE_KEYS,
       ].sort(),
     );
@@ -56,6 +56,7 @@ describe("settings registry", () => {
       "voice.azure_region": "",
       "voice.local_url": "",
       "voice.voicestudio_url": "",
+      "llm.call_gap_ms": 6000,
       "claude_code.enabled": false,
       "claude_code.daily_cap": 200,
       "ai.previous_routes": null,

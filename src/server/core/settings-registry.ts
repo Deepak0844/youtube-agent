@@ -93,6 +93,7 @@ export const SETTINGS = {
   "voice.local_url": { schema: z.string().max(300), default: "", safety: true, label: "Local voice server address" },
   "voice.voicestudio_url": { schema: z.string().max(300), default: "", safety: true, label: "VoiceStudio address" },
   // Claude Code text provider (ADR 0014). Safety: turning it on starts a program on this machine; the cap bounds subscription use.
+  "llm.call_gap_ms": { schema: nonNegInt.max(60_000), default: 6000, safety: true, label: "Minimum gap between calls to the same hosted model, ms (free-tier rate limits, default 6 s)" },
   "claude_code.enabled": { schema: z.boolean(), default: false, safety: true, label: "Claude Code on this machine for text stages" },
   "claude_code.daily_cap": { schema: posInt.max(10_000), default: 200, safety: true, label: "Claude Code calls per UTC day" },
   // The routes the "AI source" switch replaced (stage -> model id, or null for none); null = the switch is off. Safety:

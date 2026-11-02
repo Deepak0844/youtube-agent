@@ -13,6 +13,7 @@ import {
   type StepResult,
 } from "@/server/core/agent-loop";
 import { STAGES, checkModelUsable, eligibleForStage, microToUsd, priceCardFor, type ModelRow } from "@/server/core/llm-catalog";
+import { sharedPacer, type Pacer } from "./pacer";
 import { KnownFailure, type ClaimLike } from "@/server/core/paid-call";
 import { worstCaseMicroUsd, type PriceCard } from "@/server/core/spend";
 import { getModel, listRoutes, localServices } from "@/server/db/llm-models";
@@ -87,6 +88,10 @@ export interface LlmClientDeps {
   /** Budget scopes this stage's calls are reserved against (the video's `video:<kind>`, `day`, `month`, `draft_run` for Draft). */
   budgetScopes(ctx: LlmStageContext): string[];
   catalog?: LlmCatalog;
+  /** Minimum gap between calls to one hosted model, ms (`llm.call_gap_ms`). Unset = no pacing (tests). */
+  callGapMs?(): Promise<number>;
+  /** Tests only. */
+  pacer?: Pacer;
   /** Tests only. */
   makeStep?(model: LanguageModel, decls: ToolDecl[], maxOutputTokens: number): ModelStep;
 }
@@ -128,6 +133,20 @@ export function createLlmClient(deps: LlmClientDeps): LlmClient {
   const catalog = deps.catalog ?? pgCatalog(deps.db);
   const makeStep = deps.makeStep ?? createAiSdkStep;
 
+  /**
+   * `ctx.paid` that first waits its turn for this hosted model. The wait comes BEFORE the reservation, so no money sits
+   * reserved while we idle. Local models and Claude Code are not paced.
+   */
+  function pacedPaid(ctx: LlmStageContext, row: ModelRow): PayStep {
+    if (!deps.callGapMs || row.endpointKind === "local" || row.provider === "claude_code") return ctx.paid;
+    const gap = deps.callGapMs;
+    const pacer = deps.pacer ?? sharedPacer;
+    return async (step, call) => {
+      await pacer.wait(`${row.provider}:${row.modelId}`, await gap(), ctx.signal);
+      return ctx.paid(step, call);
+    };
+  }
+
   async function resolve(stage: string, needTools: boolean): Promise<{ row: ModelRow; model: LanguageModel; price: PriceCard }> {
     if (!STAGES.some((s) => s.id === stage)) throw new LlmRefusal("Unknown stage.");
     const row = await catalog.route(stage);
@@ -154,6 +173,7 @@ export function createLlmClient(deps: LlmClientDeps): LlmClient {
       const retries = Math.min(2, Math.max(0, Math.trunc(a.invalidRetries ?? 2))) as 0 | 1 | 2;
       const { row, model, price } = await resolve(a.stage, false);
       const step = makeStep(model, [], a.maxOutputTokens);
+      const paid = pacedPaid(ctx, row);
       const scopes = deps.budgetScopes(ctx);
       const messages = [...a.messages];
       let spent = 0;
@@ -163,7 +183,7 @@ export function createLlmClient(deps: LlmClientDeps): LlmClient {
         const snapshot = [...messages];
         // Throws UnpricedCallError if the price card cannot cover the usage: nothing reserved, nothing sent.
         const reserveMicroUsd = worstCaseMicroUsd(price, { inputTokens: estimateInputTokens(snapshot), maxOutputTokens: a.maxOutputTokens });
-        const res = await ctx.paid<StepResult>({ reserveMicroUsd, budgetScopes: scopes, kind: "paid" }, async (key, signal) => {
+        const res = await paid<StepResult>({ reserveMicroUsd, budgetScopes: scopes, kind: "paid" }, async (key, signal) => {
           const result = await step(snapshot, key, signal);
           const actualMicroUsd = worstCaseMicroUsd(price, { inputTokens: result.usage.inputTokens, maxOutputTokens: result.usage.outputTokens });
           return { result, actualMicroUsd };
@@ -185,10 +205,10 @@ export function createLlmClient(deps: LlmClientDeps): LlmClient {
     },
 
     async agent(ctx, a) {
-      const { model, price } = await resolve(a.stage, a.tools.length > 0); // a tool-free run (scene build) needs no tool use
+      const { row, model, price } = await resolve(a.stage, a.tools.length > 0); // a tool-free run (scene build) needs no tool use
       const decls: ToolDecl[] = a.tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
       return runAgent({
-        paid: ctx.paid,
+        paid: pacedPaid(ctx, row),
         price,
         budgetScopes: deps.budgetScopes(ctx),
         maxOutputTokens: a.maxOutputTokens,

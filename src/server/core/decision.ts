@@ -65,7 +65,7 @@ export function describeDecision(
         `A paid call in the "${stage.name}" step may have been charged and nobody knows for sure. The most it could have cost is ${usd(maxCostMicroUsd)}. ` +
         (canCheck ? "You can ask the provider about this job: nothing is paid or released by asking. Or check" : "Check") +
         ` the provider's billing page, then say whether it was charged. Nothing will run again until you choose.` +
-        (rerunSafe ? "" : " Earlier calls in this step were already paid for, so this step will NOT be run again for you: your choice only settles the money and closes the step."),
+        (rerunSafe ? "" : " Some earlier calls in this step already finished and were paid for, and running the step again would pay for them twice. So the two money choices below only settle the money and close the step; they do NOT run it again. Start the step again yourself later if you want to."),
       choices: canCheck ? ["check_the_job", "release_and_rerun", "keep_spent_and_rerun", "cancel_video"] : ["release_and_rerun", "keep_spent_and_rerun", "cancel_video"],
       rerunSafe,
     };

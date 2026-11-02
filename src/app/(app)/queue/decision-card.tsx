@@ -14,6 +14,13 @@ const CHOICE: Record<string, { label: string; hint: string; variant: "primary" |
   cancel_video: { label: "Cancel this video", hint: "Stops the video. Money that may have been charged stays counted until you release it.", variant: "destructive", check: false },
 };
 
+// When an earlier call in the step already finished (rerunSafe false) the two money choices only settle the money and close
+// the step (src/server/db/decision.ts), so their wording must not promise a re-run.
+const CLOSE_ONLY: Record<string, { label: string; hint: string }> = {
+  release_and_rerun: { label: "Nothing was charged: release the money", hint: "Choose this only after you checked the provider's billing page and saw no charge. The held money is released and the step is closed. It is not run again." },
+  keep_spent_and_rerun: { label: "It was charged: count it", hint: "The held amount is counted as spent and the step is closed. It is not run again." },
+};
+
 export function DecisionCard({ item }: { item: DecisionItem }) {
   const d = item.decision;
   const fields = { stageRunId: d.stageRunId, seenMaxMicroUsd: String(d.maxCostMicroUsd), seenReason: d.reason };
@@ -38,7 +45,7 @@ export function DecisionCard({ item }: { item: DecisionItem }) {
       ) : null}
       <div className="flex min-w-0 flex-col gap-3">
         {shown.map((c) => (
-          <DecisionForm key={c} fields={fields} choice={c} label={CHOICE[c]!.label} hint={CHOICE[c]!.hint} variant={CHOICE[c]!.variant} needsCheck={CHOICE[c]!.check} />
+          <DecisionForm key={c} fields={fields} choice={c} label={(!d.rerunSafe && CLOSE_ONLY[c]?.label) || CHOICE[c]!.label} hint={(!d.rerunSafe && CLOSE_ONLY[c]?.hint) || CHOICE[c]!.hint} variant={CHOICE[c]!.variant} needsCheck={CHOICE[c]!.check} />
         ))}
       </div>
     </article>
