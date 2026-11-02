@@ -217,11 +217,16 @@ describe("forcing narration (tts) only for a free voice", () => {
   const f = { requireEvidence: false, paidGeneration: false };
   it("free_set_and_refusal_text", () => {
     expect([...FREE_VOICE_PROVIDERS].sort()).toEqual(["edge", "local_openai", "voicestudio"]);
-    for (const p of FREE_VOICE_PROVIDERS) expect(ttsRerunProblem(p)).toBeNull();
+    for (const p of ["voicestudio", "edge"]) expect(ttsRerunProblem(p)).toBeNull();
     expect(ttsRerunProblem("elevenlabs")).toBe("This voice is paid (elevenlabs). Re-running narration would be charged. Switch to a free voice, or ask for a paid re-run later.");
     for (const p of ["google_tts", "azure_tts", "custom_http"]) expect(ttsRerunProblem(p)).toMatch(/paid/);
     expect(ttsRerunProblem(null)).toMatch(/No narration voice/);
     expect(ttsRerunProblem(undefined)).toMatch(/No narration voice/);
+  });
+  it("local_openai_is_free_only_on_a_loopback_address", () => {
+    for (const u of ["http://127.0.0.1:8880", "http://localhost:8880", "http://[::1]:8880", "https://localhost"]) expect(ttsRerunProblem("local_openai", u)).toBeNull();
+    for (const u of ["https://api.example.com", "http://192.168.1.5:8880", "http://127.0.0.1.evil.com", "", "not a url", null, undefined]) expect(ttsRerunProblem("local_openai", u)).toMatch(/paid \(local_openai\)/);
+    expect(ttsRerunProblem("local_openai")).toMatch(/paid/);
   });
   it("tts_is_forceable_but_paid_steps_still_are_not", () => {
     expect(FORCE_RERUN_STAGES).toContain("tts");

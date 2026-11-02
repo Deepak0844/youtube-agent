@@ -123,8 +123,8 @@ export const rerunOffered = (runStatus: RunStatus | undefined, videoStatus: stri
   (runStatus === "failed" || runStatus === "cancelled") && (videoStatus === "active" || videoStatus === "waiting");
 
 /** "Re-run this step" is offered for a finished free step (render, voice, sfx, qa; tts only while the current voice route is free) of a live video with nothing running and no upload. */
-export const forceRerunOffered = (stage: StageName, runStatus: RunStatus | undefined, videoStatus: string, anyActive = false, hasUpload = false, voiceProvider?: string | null): boolean =>
-  FORCE_RERUN_STAGES.includes(stage) && (stage !== "tts" || ttsRerunProblem(voiceProvider) === null) && runStatus === "succeeded" && (videoStatus === "active" || videoStatus === "waiting") && !anyActive && !hasUpload;
+export const forceRerunOffered = (stage: StageName, runStatus: RunStatus | undefined, videoStatus: string, anyActive = false, hasUpload = false, voiceProvider?: string | null, localUrl?: string | null): boolean =>
+  FORCE_RERUN_STAGES.includes(stage) && (stage !== "tts" || ttsRerunProblem(voiceProvider, localUrl) === null) && runStatus === "succeeded" && (videoStatus === "active" || videoStatus === "waiting") && !anyActive && !hasUpload;
 
 export interface VoiceId { provider: string; voice: string }
 /** The narration voice setting no longer matches the voice that made the narration. Unknown stored voice (old rows) is never "changed". */

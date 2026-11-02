@@ -108,9 +108,9 @@ function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
     <section aria-label="Steps" className="flex min-w-0 flex-col gap-3 rounded-card bg-surface p-pad">
       <ol data-testid="stage-strip" className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2">
         {p.stages.map((s: StageView) => {
-          const force = forceRerunOffered(s.stage as StageName, p.runStatus[s.stage as StageName], p.head.status, anyActive, p.hasUpload, p.voice.current?.provider ?? null);
+          const force = forceRerunOffered(s.stage as StageName, p.runStatus[s.stage as StageName], p.head.status, anyActive, p.hasUpload, p.voice.current?.provider ?? null, p.voice.localUrl);
           const isTts = s.stage === "tts";
-          const paidVoice = isTts && p.runStatus.tts === "succeeded" && !anyActive && !p.hasUpload ? ttsRerunProblem(p.voice.current?.provider) : null;
+          const paidVoice = isTts && p.runStatus.tts === "succeeded" && !anyActive && !p.hasUpload ? ttsRerunProblem(p.voice.current?.provider, p.voice.localUrl) : null;
           const again = rerunOffered(p.runStatus[s.stage as StageName], p.head.status);
           return (
             <li key={s.stage} data-stage={s.stage} data-state={s.state} className="flex min-w-0 flex-col gap-2">

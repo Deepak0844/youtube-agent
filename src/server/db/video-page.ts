@@ -7,6 +7,7 @@ import { approvalReaders } from "@/server/db/approval-readers";
 import { approvalState } from "@/server/db/approvals";
 import { getEngineConfig } from "@/server/db/engine-config";
 import { resolveRoute } from "@/server/db/media-registry";
+import { getSetting } from "@/server/db/settings";
 import { readNextAction } from "@/server/db/pipeline";
 import { mediaSigner } from "@/server/db/queue-data";
 import { latestContent, type ContentKind, type VideoRow } from "@/server/db/videos";
@@ -34,7 +35,7 @@ export interface VideoPage {
   /** an upload row exists that is not a failed one: the file is spoken for */
   hasUpload: boolean;
   /** Voice that made the narration (null on old rows) and the voice route now (null when none). */
-  voice: { stored: VoiceId | null; current: VoiceId | null };
+  voice: { stored: VoiceId | null; current: VoiceId | null; localUrl: string | null };
   /** Median past duration per stage (ms), or null when fewer than 3 past runs exist. */
   estimates: Partial<Record<StageName, number | null>>;
   openGate: GateId | null;
@@ -110,7 +111,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   const narr = asObj((await latestContent(db, videoId, "narration"))?.body);
   const stored = typeof narr.voice_provider === "string" && typeof narr.voice_name === "string" ? { provider: narr.voice_provider, voice: narr.voice_name } : null;
   const route = await resolveRoute(db, "voice", { format: head.format, videoKind: head.kind });
-  const voice = { stored, current: route ? { provider: route.provider, voice: route.voice ?? "" } : null };
+  const voice = { stored, current: route ? { provider: route.provider, voice: route.voice ?? "" } : null, localUrl: route?.provider === "local_openai" ? String(await getSetting(db, "voice.local_url")) : null };
   const cost = await latestContent(db, videoId, "cost_plan");
   const costBody = asObj(cost?.body);
   const items = Array.isArray(costBody.items) ? costBody.items : [];

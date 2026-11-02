@@ -55,7 +55,7 @@ export async function forceRerunStageById(db: pg.Pool, queue: EnqueueOnly, actor
     if (m.startsWith("voice_problem:")) return refuse(m.slice("voice_problem:".length));
     return refuse(FORCE_REFUSALS[m] ?? "That step could not be run again.");
   }
-  await recordAudit(db, "stage.force_rerun_requested", { videoId, stage, sessionId: actor.sessionId });
+  await recordAudit(db, "stage.force_rerun_requested", { videoId, stage, sessionId: actor.sessionId, ...(r.routed && { voiceProvider: r.routed.provider, voiceName: r.routed.voice }) });
   if (r.held) return { ok: true, message: "This step is paused after repeated failures, so it will start when the pause ends." };
   return { ok: true, message: "Queued. The step and the steps after it will run again." };
 }

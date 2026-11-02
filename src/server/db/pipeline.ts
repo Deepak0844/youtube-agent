@@ -59,6 +59,8 @@ export interface AdvanceResult {
   action: Action | null;
   /** set when the breaker for the next stage is open ("paused: breaker open until <time>") */
   held?: BreakerHold;
+  /** forced narration only: the voice route it was allowed under */
+  routed?: { provider: string; voice: string };
 }
 
 interface VideoLocked {
@@ -246,6 +248,7 @@ export async function rerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: strin
  */
 export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: string, stage: StageName, readers: PipelineReaders = NO_DECISIONS): Promise<AdvanceResult> {
   if (!FORCE_RERUN_STAGES.includes(stage)) throw new Error("force_rerun_not_allowed");
+  let routed: { provider: string; voice: string } | undefined;
   const decided = await inTx(db, async (c) => {
     const v = await lockVideo(c, videoId);
     if (!LIVE_VIDEO.includes(v.status)) throw new Error(`video is ${v.status}`);
@@ -266,8 +269,11 @@ export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: 
     const prior = view.runs[chainPrev(plan, idx)!.stage]!; // render/voice/sfx/qa always have an earlier step
     if ((await c.query("select 1 from uploads where video_id = $1 and status <> 'upload_failed' limit 1", [videoId])).rowCount) throw new Error("force_rerun_uploaded");
     if (stage === "tts") {
-      const problem = ttsRerunProblem((await resolveRoute(c, "voice", { format: v.format, videoKind: v.kind }))?.provider);
+      const route = await resolveRoute(c, "voice", { format: v.format, videoKind: v.kind });
+      const localUrl = route?.provider === "local_openai" ? String(await getSetting(c, "voice.local_url")) : null;
+      const problem = ttsRerunProblem(route?.provider, localUrl);
       if (problem) throw new Error(`voice_problem:${problem}`);
+      routed = { provider: route!.provider, voice: route!.voice ?? "" };
     }
     const nonce = uuidv7();
     await c.query("update videos set stage_nonces = stage_nonces || jsonb_build_object($2::text, $3::text) where id = $1", [videoId, stage, nonce]);
@@ -279,7 +285,7 @@ export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: 
     await c.query("update videos set status = 'active', updated_at = now() where id = $1", [videoId]);
     return { created: [{ id, inputHash: want }], held: undefined as BreakerHold | undefined };
   });
-  return { ...(await deliver(queue, decided.created)), action: null, ...(decided.held ? { held: decided.held } : {}) };
+  return { ...(await deliver(queue, decided.created)), ...(routed && { routed }), action: null, ...(decided.held ? { held: decided.held } : {}) };
 }
 
 /**

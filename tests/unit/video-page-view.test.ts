@@ -74,6 +74,8 @@ describe("rerun", () => {
     expect(forceRerunOffered("tts", "succeeded", "active", false, false, "elevenlabs")).toBe(false);
     expect(forceRerunOffered("tts", "succeeded", "active", false, false, null)).toBe(false);
     expect(forceRerunOffered("tts", "succeeded", "active", true, false, "edge")).toBe(false);
+    expect(forceRerunOffered("tts", "succeeded", "active", false, false, "local_openai", "http://127.0.0.1:8880")).toBe(true);
+    expect(forceRerunOffered("tts", "succeeded", "active", false, false, "local_openai", "https://api.example.com")).toBe(false);
     expect(forceRerunOffered("render", "succeeded", "active", false, false, "elevenlabs")).toBe(true); // route only matters for tts
     expect(forceRerunOffered("draft", "succeeded", "active")).toBe(false);
     expect(forceRerunOffered("render", "failed", "active")).toBe(false);

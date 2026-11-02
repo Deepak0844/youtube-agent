@@ -137,10 +137,10 @@ describe("forceRerunStageById", () => {
     expect(again.ok).toBe(false);
     expect(await count(v.id, "render")).toBe(2);
   });
-  it("refuses paid or model steps (tts has no voice route here, so it is refused too), and steps that have not finished", async () => {
+  it("refuses paid or model steps, and steps that have not finished", async () => {
     const v = await mk();
     await seed(v);
-    for (const st of ["tts", "draft", "build", "generate", "repair_scenes", "voice"]) expect((await forceRerunStageById(db.pool, queue, actor, v.id, st)).ok).toBe(false);
+    for (const st of ["draft", "build", "generate", "repair_scenes", "voice"]) expect((await forceRerunStageById(db.pool, queue, actor, v.id, st)).ok).toBe(false);
     expect(await count(v.id, "tts")).toBe(1);
     expect(await count(v.id, "voice")).toBe(0);
     expect(await nonces(v.id)).toEqual({});
@@ -214,6 +214,20 @@ describe("forceRerunStageById", () => {
       expect(r.message).toMatch(/paid \(elevenlabs\)/);
       expect(await count(v.id, "tts")).toBe(1);
       expect(await nonces(v.id)).toEqual({});
+    });
+    it("local_openai: allowed on a loopback address, refused on a remote one", async () => {
+      await route("local_openai");
+      await db.ownerPool.query("update settings set value = to_jsonb($1::text) where key = 'voice.local_url'", ["https://api.example.com"]);
+      const v = await mk();
+      await seed(v);
+      const r = await forceRerunStageById(db.pool, queue, actor, v.id, "tts");
+      expect(r.ok).toBe(false);
+      expect(r.message).toMatch(/paid \(local_openai\)/);
+      expect(await nonces(v.id)).toEqual({});
+      await db.ownerPool.query("update settings set value = to_jsonb($1::text) where key = 'voice.local_url'", ["http://127.0.0.1:8880"]);
+      expect((await forceRerunStageById(db.pool, queue, actor, v.id, "tts")).ok).toBe(true);
+      const a = (await db.pool.query("select detail from audit_log where event='stage.force_rerun_requested'")).rows[0].detail;
+      expect(a).toMatchObject({ voiceProvider: "local_openai", voiceName: "v1" });
     });
     it("refuses when no voice route exists", async () => {
       const v = await mk();
