@@ -56,7 +56,7 @@ describe("settings registry", () => {
       "voice.azure_region": "",
       "voice.local_url": "",
       "voice.voicestudio_url": "",
-      "llm.call_gap_ms": 4000,
+      "llm.call_gap_ms": 6000,
       "claude_code.enabled": false,
       "claude_code.daily_cap": 200,
       "ai.previous_routes": null,
