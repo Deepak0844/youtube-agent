@@ -15,7 +15,8 @@ export function fakeDraft(lang: Lang): object {
   return {
     title: TITLE[lang],
     narration,
-    beats: [{ id: "b1", text: narration }],
+    // hook / reveal / loop: the beat roles a scene_kit short must have
+    beats: [{ id: "hook", text: Array.from({ length: 1 }, () => WORD[lang]).join(" ") }, { id: "reveal", text: Array.from({ length: n - 2 }, () => WORD[lang]).join(" ") }, { id: "loop", text: WORD[lang] }],
     evidence: [{ text: "2 + 2 = 4", kind: "computed", method: "add the two numbers" }],
   };
 }
