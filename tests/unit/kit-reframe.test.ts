@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reframeGeometry, shouldReframe } from "../../remotion/kit/reframe";
+import { reframeGeometry, shouldReframe } from "../../remotion/kit/reframeMath";
 
 describe("reframeGeometry", () => {
   it("16:9 fits by height and fills by width, centred", () => {

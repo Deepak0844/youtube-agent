@@ -1,4 +1,4 @@
-import { REFRAME_RATIOS, shouldReframe } from "../../../remotion/kit/reframe";
+import { REFRAME_RATIOS, shouldReframe } from "../../../remotion/kit/reframeMath";
 
 // Pure: the "Make 16:9 / 1:1 version" pass. One ffmpeg filter on the finished final.mp4: the picture is scaled to fit,
 // the sides are filled with a blurred, dimmed copy of itself (scaled to cover, then cropped). Sound is copied as is.

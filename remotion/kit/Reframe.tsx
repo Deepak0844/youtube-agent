@@ -1,6 +1,6 @@
 import React from "react";
 import { AbsoluteFill, useVideoConfig } from "remotion";
-import { reframeGeometry, SRC_H, SRC_W } from "./reframe";
+import { reframeGeometry, SRC_H, SRC_W } from "./reframeMath";
 
 // Render option, not a scene kind: shows a finished 1080x1920 composition inside a 16:9 or 1:1 frame.
 // Sharp copy scaled to fit; sides filled by a blurred, dimmed copy. Renders `children` twice.

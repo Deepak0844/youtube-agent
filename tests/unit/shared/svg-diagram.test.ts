@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { validateAndCheck } from "@/shared/scene/rules";
 import { sampleDoc } from "@/shared/scene/samples";
 import { validateScenes } from "@/shared/scene";
-import { animAt, drawFrames, parseAnim, sanitizeSvg, stepAt, SVG_EXAMPLE, svgLayoutProblems, SVG_TAGS } from "../../../remotion/kit/svgDiagram";
+import { animAt, drawFrames, parseAnim, sanitizeSvg, stepAt, SVG_EXAMPLE, svgLayoutProblems, SVG_TAGS } from "../../../remotion/kit/svgLogic";
 
 const wrap = (inner: string) => `<svg viewBox="0 0 1000 1000">${inner}</svg>`;
 const bad = (svg: string) => {

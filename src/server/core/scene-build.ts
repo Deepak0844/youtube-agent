@@ -1,7 +1,7 @@
 import type { Message } from "@/server/core/agent-loop";
 import { KnownFailure } from "@/server/core/paid-call";
 import { describeSceneFormat, kindBlurbs, LIMITS, usableKinds, validateScenes, type SceneDoc } from "@/shared/scene";
-import { SVG_EXAMPLE } from "../../../remotion/kit/svgDiagram";
+import { SVG_EXAMPLE } from "../../../remotion/kit/svgLogic";
 import { styleGuidance } from "../../../remotion/kit/presets";
 import { checkSceneRules, validateAndCheck } from "@/shared/scene/rules";
 

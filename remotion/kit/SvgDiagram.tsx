@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { AbsoluteFill, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { hashString, lookBg } from "./look";
 import { Headline, useLook } from "./LookParts";
-import { animAt, diagOf, drawFrames, parseAnim, sanitizeSvg, stepAt, type SvgNode } from "./svgDiagram";
+import { animAt, diagOf, drawFrames, parseAnim, sanitizeSvg, stepAt, type SvgNode } from "./svgLogic";
 import { theme } from "./theme";
 
 export type SvgDiagramProps = {
