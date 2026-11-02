@@ -19,6 +19,7 @@ const PAGES = [
   ["/dev/ui", "../../src/app/(app)/dev/ui/page"],
   ["/dev/ui/home", "../../src/app/(app)/dev/ui/home/page"],
   ["/dev/ui/video", "../../src/app/(app)/dev/ui/video/page"],
+  ["/dev/kit", "../../src/app/(app)/dev/kit/page"],
 ] as const;
 
 // The default export is a sync shell around <Suspense><Owned/></Suspense>; Owned is the async part that holds the guards.

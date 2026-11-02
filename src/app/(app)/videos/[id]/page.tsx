@@ -12,6 +12,10 @@ import { getPool } from "@/server/db/pool";
 import { jobCheckers } from "../../queue/job-checkers";
 import { loadQueue } from "@/server/db/queue-data";
 import { loadVideoPage, type VideoPage } from "@/server/db/video-page";
+import { loadPreview } from "@/server/db/video-preview";
+import type { PreviewData } from "@/shared/preview";
+import { LazyPreviewStage } from "@/ui/domain/kit-lazy";
+import { Button } from "@/ui/primitives/button";
 import { ageLabel, GateCard } from "../../queue/gate-card";
 import { DecisionCard } from "../../queue/decision-card";
 import { CancelForm } from "../../queue/forms";
@@ -51,6 +55,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
   const q = live && (p.openGate || p.stages.some((s) => s.state === "needs_you")) ? await loadQueue(db, new Set(Object.keys(jobCheckers())), { videoId: id.data }) : null;
   const card = q?.items[0];
   const status = STATUS_WORDS[p.head.status];
+  const preview = tab === "preview" ? await loadPreview(db, id.data) : null; // read only; only this tab pays for it
 
   return (
     <div className="flex min-w-0 flex-col gap-layout">
@@ -87,7 +92,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
         ))}
       </nav>
       <section aria-label={TABS.find((t) => t.id === tab)!.label} data-testid="tab-panel" data-tab={tab} className="flex min-w-0 flex-col gap-4">
-        <Panel tab={tab} p={p} />
+        <Panel tab={tab} p={p} preview={preview} />
       </section>
     </div>
   );
@@ -115,7 +120,7 @@ function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
           const paidVoice = isTts && p.runStatus.tts === "succeeded" && !anyActive && !p.hasUpload ? ttsRerunProblem(p.voice.current?.provider, p.voice.localUrl) : null;
           const again = rerunOffered(p.runStatus[s.stage as StageName], p.head.status);
           return (
-            <li key={s.stage} data-stage={s.stage} data-state={s.state} className="flex min-w-0 flex-col gap-2">
+            <li key={s.stage} id={`stage-${s.stage}`} data-stage={s.stage} data-state={s.state} className="flex min-w-0 flex-col gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-body font-medium">{s.label}</span>
                 <Pill tone={STATE_TONE[s.state]}>{STATE_WORDS[s.state]}</Pill>
@@ -137,7 +142,7 @@ function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
 const Empty = ({ children }: { children: React.ReactNode }) => <p data-testid="empty" className="m-0 max-w-[60ch] rounded-card bg-surface p-pad text-body text-muted">{children}</p>;
 const H = ({ children }: { children: React.ReactNode }) => <h2 className="m-0 text-title font-semibold">{children}</h2>;
 
-function Panel({ tab, p }: { tab: TabId; p: VideoPage }) {
+function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: PreviewData | null }) {
   const lang = p.head.language;
   switch (tab) {
     case "script": {
@@ -173,6 +178,14 @@ function Panel({ tab, p }: { tab: TabId; p: VideoPage }) {
         </>
       );
     }
+    case "preview":
+      return !preview ? <Empty>No scenes yet. The preview appears once the build step has made them.</Empty> : (
+        <>
+          <p data-testid="preview-note" className="m-0 max-w-[68ch] text-body text-muted">Preview only. The final video is made by Render.</p>
+          <LazyPreviewStage data={preview} videoId={p.head.id} title={p.head.topic} />
+          <div><Button asChild variant="secondary"><a href="#stage-render">Go to the Render step</a></Button></div>
+        </>
+      );
     case "evidence": {
       const s = scriptSchema.safeParse(p.script?.body);
       const claims = s.success ? s.data.evidence : [];
