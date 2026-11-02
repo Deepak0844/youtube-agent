@@ -10,6 +10,9 @@ export interface RenderArgs {
   audioFile?: string;
   /** Stored caption words ({word, startS, endS, ...}) from the `captions` content. */
   captions?: unknown[];
+  /** The video id (picks the palette) and a title for the opening card. Optional: old callers still render. */
+  videoId?: string;
+  title?: string;
   /** A plain file name, never a path. */
   outFile: string;
   size: { width: number; height: number };

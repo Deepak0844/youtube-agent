@@ -22,7 +22,8 @@ import { MapPiece, type MapProps } from "./MapPiece";
 import { Orbit, type OrbitProps } from "./Orbit";
 import { Captions } from "./Captions";
 import { LookProvider } from "./LookParts";
-import { hashString, lookBackground, pickLook, sceneCaptionAllowed } from "./look";
+import { HookCard } from "./HookCard";
+import { firstPictureId, HOOK_FRAMES, hashString, lookBackground, pickLook, sceneCaptionAllowed } from "./look";
 import { collageStarts, docFrames, introSkipFrames, mediaOf, msToFrame, sceneRange, type CaptionWord } from "./timeline";
 import type { Scene, SceneDoc } from "../../src/shared/scene";
 
@@ -282,17 +283,22 @@ export const KitScene: React.FC<KitSceneProps> = ({ scene, resolveAsset = placeh
 };
 
 // `assets` (JSON-safe, from the render job): asset id -> file path in the public dir. Ids not in it get the placeholder.
-export type KitVideoProps = { doc: SceneDoc; seed?: string; resolveAsset?: ResolveAsset; assets?: Record<string, string>; audioSrc?: string; captions?: CaptionWord[]; fps?: number };
+export type KitVideoProps = { doc: SceneDoc; seed?: string; resolveAsset?: ResolveAsset; assets?: Record<string, string>; audioSrc?: string; captions?: CaptionWord[]; fps?: number; title?: string };
 
 const fromStaged = (assets: Record<string, string>): ResolveAsset => (id) => (Object.hasOwn(assets, id) ? staticFile(assets[id]!) : placeholder(id));
 
 // Whole video: scenes on a timeline, optional narration, optional karaoke captions on top.
 // The palette comes from `seed` (the video id, when the job passes one), else from the scene file itself, so old data works.
-export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAsset = assets ? fromStaged(assets) : placeholder, audioSrc, captions, fps = theme.fps }) => {
+export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAsset = assets ? fromStaged(assets) : placeholder, audioSrc, captions, fps = theme.fps, title }) => {
   const look = useMemo(() => pickLook(seed ?? String(hashString(JSON.stringify(doc)))), [seed, doc]);
   // Global frame here (above the Sequences): hide scenes' own captions while the word captions are on screen.
   const frame = useCurrentFrame();
   const sceneCaptions = sceneCaptionAllowed(captions, frame / fps);
+  // Best picture: the first linked image that is really staged (or any, in previews with no staged list).
+  const heroSrc = useMemo(() => {
+    const id = firstPictureId(doc, (a) => (assets ? Object.hasOwn(assets, a) : true) && mediaOf(resolveAsset(a)) === "image");
+    return id ? resolveAsset(id) : undefined;
+  }, [doc, assets, resolveAsset]);
   return (
   <LookProvider value={{ look, sceneCaptions }}>
   <AbsoluteFill style={{ background: lookBackground(look), "--look-bg": lookBackground(look) } as React.CSSProperties}>
@@ -309,6 +315,10 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
     })}
     {audioSrc ? <Audio src={/^(https?:|data:|blob:)/.test(audioSrc) ? audioSrc : staticFile(audioSrc)} /> : null}
     {captions?.length ? <Captions words={captions} /> : null}
+    {/* Title card on top of scene 1 (no time inserted, so narration sync is unchanged). Frame 0 of the video is this card. */}
+    <Sequence from={0} durationInFrames={HOOK_FRAMES}>
+      <HookCard title={title} src={heroSrc} />
+    </Sequence>
   </AbsoluteFill>
   </LookProvider>
   );

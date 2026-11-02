@@ -202,7 +202,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
           audioSrc = `narration${ext}`;
           await copyRegular(a.audioFile, path.join(inDir, audioSrc));
         }
-        const props = buildVideoProps(JSON.stringify(a.doc), { fps: FPS, audioSrc, assets, captionsText: a.captions ? JSON.stringify(a.captions) : undefined });
+        const props = buildVideoProps(JSON.stringify(a.doc), { fps: FPS, audioSrc, assets, captionsText: a.captions ? JSON.stringify(a.captions) : undefined, seed: a.videoId, title: a.title });
         if (!props.ok) throw new KnownFailure(`The scenes or captions are not valid: ${props.errors.slice(0, 3).join("; ")}`.slice(0, 600));
         await writeFile(path.join(inDir, "props.json"), JSON.stringify(props.props), { mode: 0o644, flag: "wx" });
         await realDir(inDir, "input");
