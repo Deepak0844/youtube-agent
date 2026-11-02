@@ -21,7 +21,7 @@ import { Piano, type PianoProps } from "./Piano";
 import { MapPiece, type MapProps } from "./MapPiece";
 import { Orbit, type OrbitProps } from "./Orbit";
 import { Captions } from "./Captions";
-import { collageStarts, docFrames, mediaOf, msToFrame, sceneRange, type CaptionWord } from "./timeline";
+import { collageStarts, docFrames, introSkipFrames, mediaOf, msToFrame, sceneRange, type CaptionWord } from "./timeline";
 import type { Scene, SceneDoc } from "../../src/shared/scene";
 
 const terminal: TerminalProps = {
@@ -287,11 +287,14 @@ const fromStaged = (assets: Record<string, string>): ResolveAsset => (id) => (Ob
 // Whole video: scenes on a timeline, optional narration, optional karaoke captions on top.
 export const KitVideo: React.FC<KitVideoProps> = ({ doc, assets, resolveAsset = assets ? fromStaged(assets) : placeholder, audioSrc, captions, fps = theme.fps }) => (
   <AbsoluteFill style={{ background: theme.palette.bg }}>
-    {doc.scenes.map((scene) => {
+    {doc.scenes.map((scene, i) => {
       const r = sceneRange(scene, fps);
+      // First scene: its clock starts `skip` frames in (negative-from nested Sequence), so frame 0 is already composed.
+      const skip = i === 0 && r.from === 0 ? introSkipFrames(r.duration) : 0;
+      const body = <KitScene scene={scene} resolveAsset={resolveAsset} fps={fps} />;
       return (
         <Sequence key={scene.id} from={r.from} durationInFrames={r.duration}>
-          <KitScene scene={scene} resolveAsset={resolveAsset} fps={fps} />
+          {skip ? <Sequence from={-skip} durationInFrames={r.duration + skip}>{body}</Sequence> : body}
         </Sequence>
       );
     })}

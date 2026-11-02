@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { breakLines, collageStarts, currentWord, docFrames, mediaOf, msToFrame, paginate, sceneRange } from "../../remotion/kit/timeline";
+import { breakLines, collageStarts, currentWord, docFrames, introSkipFrames, mediaOf, msToFrame, paginate, sceneRange } from "../../remotion/kit/timeline";
 
 const m = (t: string) => t.length * 10;
 
@@ -48,5 +48,13 @@ describe("line breaking", () => {
   });
   it("handles no words", () => {
     expect(paginate([], 75, m, 2)).toEqual([]);
+  });
+});
+
+describe("introSkipFrames", () => {
+  it("skips 24 frames, capped at half the first scene, never negative", () => {
+    expect(introSkipFrames(300)).toBe(24);
+    expect(introSkipFrames(30)).toBe(15);
+    expect(introSkipFrames(1)).toBe(0);
   });
 });
