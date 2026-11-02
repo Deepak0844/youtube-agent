@@ -1,3 +1,4 @@
+import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, Img, interpolate, useCurrentFrame } from "remotion";
 import { fitFont, safeSize } from "./layout";
@@ -41,7 +42,7 @@ export const Browser: React.FC<BrowserProps> = ({
   return (
     <AbsoluteFill
       style={{
-        background: theme.palette.bg,
+        background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.ui,
         color: theme.palette.text,

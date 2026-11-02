@@ -1,6 +1,8 @@
+import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame } from "remotion";
 import { niceMax, pieSlices } from "./helpers";
+import { Headline } from "./LookParts";
 import { theme } from "./theme";
 
 export type ChartProps = {
@@ -106,14 +108,14 @@ export const Chart: React.FC<ChartProps> = ({ chart, title, labels, series, draw
   return (
     <AbsoluteFill
       style={{
-        background: theme.palette.bg,
+        background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.ui,
         color: theme.palette.text,
         justifyContent: "center",
       }}
     >
-      {title ? <div style={{ fontSize: 56, fontWeight: 700, marginBottom: 32 }}>{title}</div> : null}
+      {title ? <Headline text={title} size={64} style={{ marginBottom: 32 }} /> : null}
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         {body}
       </svg>

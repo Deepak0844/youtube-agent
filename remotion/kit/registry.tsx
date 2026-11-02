@@ -1,5 +1,5 @@
-import React from "react";
-import { AbsoluteFill, Audio, Composition, Sequence, staticFile } from "remotion";
+import React, { useMemo } from "react";
+import { AbsoluteFill, Audio, Composition, Sequence, staticFile, useCurrentFrame } from "remotion";
 import { Browser, type BrowserProps } from "./Browser";
 import { ChatThread, type ChatThreadProps } from "./ChatThread";
 import { PauseCard, type PauseCardProps } from "./PauseCard";
@@ -21,6 +21,8 @@ import { Piano, type PianoProps } from "./Piano";
 import { MapPiece, type MapProps } from "./MapPiece";
 import { Orbit, type OrbitProps } from "./Orbit";
 import { Captions } from "./Captions";
+import { LookProvider } from "./LookParts";
+import { hashString, lookBackground, pickLook, sceneCaptionAllowed } from "./look";
 import { collageStarts, docFrames, introSkipFrames, mediaOf, msToFrame, sceneRange, type CaptionWord } from "./timeline";
 import type { Scene, SceneDoc } from "../../src/shared/scene";
 
@@ -280,13 +282,20 @@ export const KitScene: React.FC<KitSceneProps> = ({ scene, resolveAsset = placeh
 };
 
 // `assets` (JSON-safe, from the render job): asset id -> file path in the public dir. Ids not in it get the placeholder.
-export type KitVideoProps = { doc: SceneDoc; resolveAsset?: ResolveAsset; assets?: Record<string, string>; audioSrc?: string; captions?: CaptionWord[]; fps?: number };
+export type KitVideoProps = { doc: SceneDoc; seed?: string; resolveAsset?: ResolveAsset; assets?: Record<string, string>; audioSrc?: string; captions?: CaptionWord[]; fps?: number };
 
 const fromStaged = (assets: Record<string, string>): ResolveAsset => (id) => (Object.hasOwn(assets, id) ? staticFile(assets[id]!) : placeholder(id));
 
 // Whole video: scenes on a timeline, optional narration, optional karaoke captions on top.
-export const KitVideo: React.FC<KitVideoProps> = ({ doc, assets, resolveAsset = assets ? fromStaged(assets) : placeholder, audioSrc, captions, fps = theme.fps }) => (
-  <AbsoluteFill style={{ background: theme.palette.bg }}>
+// The palette comes from `seed` (the video id, when the job passes one), else from the scene file itself, so old data works.
+export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAsset = assets ? fromStaged(assets) : placeholder, audioSrc, captions, fps = theme.fps }) => {
+  const look = useMemo(() => pickLook(seed ?? String(hashString(JSON.stringify(doc)))), [seed, doc]);
+  // Global frame here (above the Sequences): hide scenes' own captions while the word captions are on screen.
+  const frame = useCurrentFrame();
+  const sceneCaptions = sceneCaptionAllowed(captions, frame / fps);
+  return (
+  <LookProvider value={{ look, sceneCaptions }}>
+  <AbsoluteFill style={{ background: lookBackground(look), "--look-bg": lookBackground(look) } as React.CSSProperties}>
     {doc.scenes.map((scene, i) => {
       const r = sceneRange(scene, fps);
       // First scene: its clock starts `skip` frames in (negative-from nested Sequence), so frame 0 is already composed.
@@ -301,7 +310,9 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, assets, resolveAsset = 
     {audioSrc ? <Audio src={/^(https?:|data:|blob:)/.test(audioSrc) ? audioSrc : staticFile(audioSrc)} /> : null}
     {captions?.length ? <Captions words={captions} /> : null}
   </AbsoluteFill>
-);
+  </LookProvider>
+  );
+};
 
 export const KitRoot: React.FC = () => (
   <>

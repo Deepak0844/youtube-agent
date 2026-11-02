@@ -1,3 +1,4 @@
+import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { cellRange, visibleCount } from "./helpers";
@@ -28,7 +29,7 @@ export const Spreadsheet: React.FC<SpreadsheetProps> = ({ rows, formula, highlig
   return (
     <AbsoluteFill
       style={{
-        background: theme.palette.bg,
+        background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.ui,
         color: theme.palette.text,

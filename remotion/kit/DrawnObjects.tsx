@@ -1,3 +1,4 @@
+import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import type { OBJECT_EMPHASIS, OBJECT_ENTERS, OBJECT_IDS, OBJECT_SLOTS } from "../../src/shared/scene/kinds/drawn_objects";
@@ -129,7 +130,7 @@ export const DrawnObjects: React.FC<DrawnObjectsProps> = ({ objects }) => {
   const frame = useCurrentFrame();
   const aligned = (slot: "left" | "center" | "right") => objectRows(objects.length, slot);
   return (
-    <AbsoluteFill style={{ background: theme.palette.bg }}>
+    <AbsoluteFill style={{ background: lookBg }}>
       {objects.map((o, i) => {
         const d = DRAWINGS[o.object];
         const { x, ys, rowH } = aligned(o.slot ?? "center");

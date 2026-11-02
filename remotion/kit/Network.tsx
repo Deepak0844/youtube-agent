@@ -1,3 +1,4 @@
+import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import type { NODE_KINDS } from "../../src/shared/scene/kinds/network";
@@ -59,7 +60,7 @@ export const Network: React.FC<NetworkProps> = ({ nodes, links }) => {
   const pos = networkLayout(nodes.length);
   const at = (id: string) => pos[Math.max(0, nodes.findIndex((n) => n.id === id))];
   return (
-    <AbsoluteFill style={{ background: theme.palette.bg }}>
+    <AbsoluteFill style={{ background: lookBg }}>
       <svg width={theme.width} height={theme.height} style={{ position: "absolute", left: 0, top: 0 }}>
         {links.map((l, i) => {
           const a = at(l.from);

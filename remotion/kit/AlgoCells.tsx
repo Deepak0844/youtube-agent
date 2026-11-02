@@ -1,3 +1,4 @@
+import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { cellsAt, type AlgoStep } from "./helpers";
@@ -20,7 +21,7 @@ export const AlgoCells: React.FC<AlgoCellsProps> = ({ title, cells, steps }) => 
   return (
     <AbsoluteFill
       style={{
-        background: theme.palette.bg,
+        background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.mono,
         color: theme.palette.text,
