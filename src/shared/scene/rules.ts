@@ -1,5 +1,6 @@
 // House rules checked after the schema passes. One table: add a rule = add one entry.
 // Pure; src/shared must not import from remotion/kit at runtime, so the banned list is copied here (a test pins it to the theme).
+import { sanitizeSvg, svgLabels, svgLayoutProblems } from "../../../remotion/kit/svgDiagram";
 import { LIMITS } from "./kinds/common";
 import type { Scene, SceneDoc } from "./schema";
 import { validateScenes } from "./validate";
@@ -27,7 +28,7 @@ export interface Rule {
 }
 
 type Any = Record<string, unknown>;
-const NOT_TEXT = new Set(["id", "kind", "beat", "asset", "image", "type", "from", "to", "enter", "media", "layout", "captionZone", "position", "url", "prompt", "notes", "ranges"]);
+const NOT_TEXT = new Set(["id", "kind", "beat", "asset", "image", "type", "from", "to", "enter", "media", "layout", "captionZone", "position", "url", "prompt", "notes", "ranges", "svg"]);
 
 /** Every on-screen string in a scene (ids, enums and asset refs are not text). */
 function texts(v: unknown, key = ""): string[] {
@@ -167,6 +168,18 @@ export const RULES: Rule[] = [
               return [{ scene: i, text: `Label "${label}" does not describe a ${id.replace("_", " ")} icon: pick a scene kind that can really show it, or label it as what it is.` }];
             }),
       ),
+  },
+  {
+    code: "svg-diagram",
+    fix: "Fix the listed SVG problems and keep to the SVG rules of the format.",
+    run: (sc) =>
+      sc.flatMap((s, i) => {
+        if (s.kind !== "svg_diagram") return [];
+        const r = sanitizeSvg(s.svg);
+        if (!r.ok) return r.problems.map((text) => ({ scene: i, text }));
+        const banned = BANNED_PHRASES.filter((p) => svgLabels(r.root).join("\n").toLowerCase().includes(p)).map((p) => `diagram text has banned phrase "${p}"`);
+        return [...svgLayoutProblems(r.root), ...banned].slice(0, 8).map((text) => ({ scene: i, text }));
+      }),
   },
   {
     code: "has-asset",

@@ -18,6 +18,7 @@ export const KIT_RENDERED_KINDS = [
   "spreadsheet",
   "stock_clip",
   "story_kenburns",
+  "svg_diagram",
   "terminal",
 ] as const;
 export type RenderedKind = (typeof KIT_RENDERED_KINDS)[number];

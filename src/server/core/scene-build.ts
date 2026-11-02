@@ -1,6 +1,7 @@
 import type { Message } from "@/server/core/agent-loop";
 import { KnownFailure } from "@/server/core/paid-call";
 import { describeSceneFormat, kindBlurbs, LIMITS, usableKinds, validateScenes, type SceneDoc } from "@/shared/scene";
+import { SVG_EXAMPLE } from "../../../remotion/kit/svgDiagram";
 import { styleGuidance } from "../../../remotion/kit/presets";
 import { checkSceneRules, validateAndCheck } from "@/shared/scene/rules";
 
@@ -73,7 +74,7 @@ export function beatBlock(beat: SceneBeat, shownForReal?: string): string {
 export function pickMessages(beat: SceneBeat, kinds: readonly string[], shownForReal?: string, style?: string | null): Message[] {
   const guide = styleGuidance(style); // "" for the default look, so the default prompt is unchanged
   return [
-    { role: "system", content: `Pick the scene kind that best shows one beat of a short portrait video script. The visual brief is an on-screen action: choose the scene kind whose motion matches it (algo_cells for search or sort, orbit for planets and moons, network for packets and servers, chart for numbers). When the brief describes motion, prefer a drawn or animated kind over a text kind. If no available kind can show it truthfully, choose the most abstract honest kind that fits the content (chart, math, chat, terminal, pause_card...). NEVER use drawn_objects unless the brief literally names one of its eight objects (jug, measuring_cup, ruler, laptop, server_rack, container, cloud, padlock).\nKinds:\n${kindBlurbs(kinds)}\nReply with only JSON: {"kind": "<one of the kinds>"}.${guide ? `\n${guide}` : ""}` },
+    { role: "system", content: `Pick the scene kind that best shows one beat of a short portrait video script. The visual brief is an on-screen action: choose the scene kind whose motion matches it (algo_cells for search or sort, orbit for planets and moons, network for packets and servers, chart for numbers, svg_diagram for any other mechanism, process or flow whose action is a motion and no picture or clip is linked: it draws a labelled animated diagram). When the brief describes motion, prefer a drawn or animated kind over a text kind. If no available kind can show it truthfully, choose the most abstract honest kind that fits the content (chart, math, chat, terminal, pause_card...). NEVER use drawn_objects unless the brief literally names one of its eight objects (jug, measuring_cup, ruler, laptop, server_rack, container, cloud, padlock).\nKinds:\n${kindBlurbs(kinds)}\nReply with only JSON: {"kind": "<one of the kinds>"}.${guide ? `\n${guide}` : ""}` },
     { role: "user", content: beatBlock(beat, shownForReal) },
   ];
 }
@@ -85,6 +86,7 @@ export function fillMessages(beat: SceneBeat, kind: string, assets: readonly str
     opts.exact
       ? `The pictures for this beat are fixed. Use exactly these asset ids${assets.length > 1 ? ", in this order" : ""}: ${assets.join(", ")}. Write only a short caption${opts.language ? ` in the narration language (${opts.language})` : " in the narration language"}, based on the visual brief, and ${kind === "stock_clip" ? "leave dim at its default" : "choose a gentle pan/zoom or tile layout"}.`
       : assets.length > 0 ? `Allowed asset ids (use only these): ${assets.join(", ")}.` : "No images or clips exist for this video: do not use asset ids.",
+    ...(kind === "svg_diagram" ? [`Example svg value (valid; copy its style, not its content). Inside the JSON string use single quotes for attributes and no line breaks, like this:\n${SVG_EXAMPLE.replace(/"/g, "'").replace(/\n/g, "")}`] : []),
     `Reply with only JSON: {"version": 1, "scenes": [ONE scene of kind "${kind}"]}. The app sets id, beat, startMs and durationMs: use id "s1", beat "${beat.id}", startMs 0, durationMs 3000.`,
   ].join("\n\n");
   return [
@@ -170,6 +172,7 @@ export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, 
     if (!BEAT_ID.test(beat.id)) throw new KnownFailure(`Beat '${beat.id.slice(0, 40)}' has an id the scene format cannot use (1-32 chars of a-z, 0-9, _ or -). Fix the script and draft again.`);
   }
   const scenes: Record<string, unknown>[] = [];
+  const noRepeat = (k: string[]): string[] => (scenes.length >= 2 && scenes.slice(-2).every((s) => s.kind === "svg_diagram") ? k.filter((x) => x !== "svg_diagram") : k); // never 3 diagrams in a row
   let startMs = 0;
   for (const [i, beat] of beats.entries()) {
     const fail = (errors: string[]) => new KnownFailure(`scenes_invalid: beat '${beat.id}' could not get a valid scene. Last problems: ${errors.slice(0, 5).join("; ")}`.slice(0, 600));
@@ -178,7 +181,8 @@ export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, 
     let kind: string;
     if (plan) kind = plan.kind;
     else {
-      const pick = await withRetries(ask, pickMessages(beat, kinds, opts.shownForReal, opts.style), (t) => checkPick(t, kinds));
+      const allowed = noRepeat(kinds);
+      const pick = await withRetries(ask, pickMessages(beat, allowed, opts.shownForReal, opts.style), (t) => checkPick(t, allowed));
       if ("errors" in pick) throw fail(pick.errors);
       kind = pick.value;
     }

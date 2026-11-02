@@ -64,6 +64,8 @@ export const LIMITS = {
   orbitPeriodMax: 60,
   mapMarkers: 6,
   mapLabel: 16,
+  svgSteps: 4,
+  svgCaption: 40,
 } as const;
 
 // Asset refs are opaque ids from the asset library, never URLs or paths.

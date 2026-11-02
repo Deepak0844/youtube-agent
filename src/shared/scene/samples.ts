@@ -1,4 +1,5 @@
 // One small valid sample scene per kind, for the /dev/kit page. Picture ids point at nothing, so the kit shows its stand-in picture.
+import { SVG_EXAMPLE } from "../../../remotion/kit/svgDiagram";
 import type { SceneDoc } from "./schema";
 
 const b = (kind: string) => ({ id: `s-${kind}`.slice(0, 32).replace(/_/g, "-"), beat: "b1", startMs: 0, durationMs: 4000, kind });
@@ -21,6 +22,7 @@ export const SAMPLE_SCENES: Record<string, Record<string, unknown>> = {
   spreadsheet: { ...b("spreadsheet"), rows: [["Item", "Cost"], ["Tea", "3"], ["Cake", "5"]], formula: "=SUM(B2:B3)", highlight: ["B2:B3"] },
   stock_clip: { ...b("stock_clip"), asset: "img-demo", caption: "Stock footage" },
   story_kenburns: { ...b("story_kenburns"), image: "img-demo", caption: "A slow zoom" },
+  svg_diagram: { ...b("svg_diagram"), title: "Load balancer", svg: SVG_EXAMPLE, steps: [{ at: 0, caption: "One request arrives" }, { at: 0.6, caption: "It goes to a server" }] },
   terminal: { ...b("terminal"), lines: [{ text: "npm run build" }, { text: "build ok", prompt: ">", output: true }] },
 };
 
