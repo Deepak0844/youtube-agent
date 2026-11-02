@@ -25,6 +25,13 @@ describe("icon-label-honest", () => {
   it("passes allowed words, digits, units, no label", () => {
     expect(run(objs({ object: "container", label: "Tank" }, { object: "jug", label: "Bottle" }, { object: "ruler", label: "12 cm" }, { object: "cloud" }))).toEqual([]);
   });
+  it("judges an assembled doc with each beat's own brief (same exception the beat got when built)", () => {
+    const doc = objs({ object: "server_rack", label: "Health Check" });
+    const only = (visualByBeat?: Record<string, string>) => checkSceneRules(doc, { only: "icon-label-honest", visualByBeat });
+    expect(only()[0]).toContain('Label "Health Check" does not describe a server rack icon');
+    expect(only({ hook: "a server rack with a health check light" })).toEqual([]);
+    expect(only({ other: "a server rack" })[0]).toContain("Health Check"); // another beat's brief does not excuse this scene
+  });
   it("skips non-Latin script labels", () => {
     expect(run(objs({ object: "container", label: "சிலிண்டர்" }))).toEqual([]);
   });
