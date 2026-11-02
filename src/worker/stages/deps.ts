@@ -58,6 +58,8 @@ export interface StageDeps {
   makeLlm?: (budgetScopes: string[]) => LlmClient;
   /** Build only: asset ids that exist for this video. Scenes may use only these; none = image kinds are not offered. */
   sceneAssets?: (videoId: string) => Promise<string[]>;
+  /** Build only: pictures linked to beats (video_assets). When given, those beats get story_kenburns/collage from the app and sceneAssets is not used by Build. */
+  scenePictures?: (videoId: string) => Promise<Array<{ assetId: string; beatId: string }>>;
   /** Real sound pass (ffmpeg). Absent = dry run: Voice and Sfx copy the file on. */
   mix?: MixDeps;
 }

@@ -64,7 +64,9 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
       const llm = deps.makeLlm(await videoMoneyScopes(deps.db, video));
       const beats = script.beats.map((b, i) => ({ id: beatIds[i]!, text: typeof (b as { text?: unknown })?.text === "string" ? (b as { text: string }).text : "", ...briefOf(b) }));
       const ask = sceneAsk(llm, ctx);
-      const doc = await buildSceneDoc(beats, ask, { assets: (await deps.sceneAssets?.(video.id)) ?? [] });
+      const links = await deps.scenePictures?.(video.id);
+      const pictures = links ? links.reduce<Record<string, string[]>>((m, l) => ((m[l.beatId] ??= []).push(l.assetId), m), {}) : undefined;
+      const doc = await buildSceneDoc(beats, ask, pictures ? { pictures, language: video.language } : { assets: (await deps.sceneAssets?.(video.id)) ?? [] });
       await writeFile(path.join(ctx.attemptDir, "scenes.json"), JSON.stringify(doc));
       files.push("scenes.json");
       content.push({ kind: "scenes", body: doc });
