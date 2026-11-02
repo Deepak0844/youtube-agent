@@ -27,6 +27,7 @@ import { Pill } from "@/ui/primitives/pill";
 import { Skeleton } from "@/ui/primitives/skeleton";
 import { ForceRerunForm, ReframeButtons, RerunForm, SceneButtons } from "./controls";
 import { SoundTabPanel } from "./sound-tab";
+import { TitlesTabPanel } from "./titles-tab";
 
 // The video page (Doc 4 /videos/[id]): where it is now, what it cost, and the content of each step, one tab at a time
 // (?tab=). Read only except the buttons: Run again, Cancel, the gate card (all owner-only server actions) and the free scene checks.
@@ -206,19 +207,8 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
         </>
       );
     }
-    case "titles": {
-      const t = asObj(p.titles);
-      const list = (Array.isArray(p.titles) ? p.titles : Array.isArray(t.titles) ? t.titles : []).filter((x): x is string => typeof x === "string");
-      const m = asObj(p.metadata);
-      if (list.length === 0 && !p.metadata) return <Empty>No titles yet. Titles and the description appear after the video is checked.</Empty>;
-      return (
-        <>
-          {list.length > 0 ? <ol className="m-0 flex flex-col gap-1 pl-5 text-body">{list.map((x, i) => <li key={i} lang={lang} className="[overflow-wrap:anywhere]">{x}</li>)}</ol> : null}
-          {typeof m.title === "string" ? <p lang={lang} className="m-0 text-section font-medium [overflow-wrap:anywhere]">{m.title}</p> : null}
-          {typeof m.description === "string" ? <p className="m-0 max-w-[68ch] text-body text-muted [overflow-wrap:anywhere]">{m.description}</p> : null}
-        </>
-      );
-    }
+    case "titles":
+      return <TitlesTabPanel p={p} />;
     case "cost": {
       const items = Array.isArray(asObj(p.costPlan).items) ? (asObj(p.costPlan).items as Array<Record<string, unknown>>) : [];
       return (
