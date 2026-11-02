@@ -59,8 +59,9 @@ export function estimateBeatTimes(texts: readonly string[]): Array<{ est_start: 
 }
 
 /** Beats with est_start/est_end added when every beat carries text; other fields untouched. */
-export function withTimeEstimates<T extends { text?: unknown }>(beats: readonly T[]): T[] {
-  if (beats.length === 0 || !beats.every((b) => typeof b.text === "string")) return [...beats];
-  const t = estimateBeatTimes(beats.map((b) => b.text as string));
+export function withTimeEstimates<T extends object>(beats: readonly T[]): T[] {
+  const text = (b: T): unknown => (b as { text?: unknown }).text;
+  if (beats.length === 0 || !beats.every((b) => typeof text(b) === "string")) return [...beats];
+  const t = estimateBeatTimes(beats.map((b) => text(b) as string));
   return beats.map((b, i) => ({ ...b, ...t[i]! }));
 }
