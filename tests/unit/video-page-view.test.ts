@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateLabel, fmtDuration, headline, median, parseFindings, parseTab, rerunCostNote, rerunOffered, stageViews, TABS, type RunFact } from "@/server/core/video-page-view";
+import { estimateLabel, forceRerunOffered, fmtDuration, headline, median, parseFindings, parseTab, rerunCostNote, rerunOffered, stageViews, TABS, type RunFact } from "@/server/core/video-page-view";
 
 const run = (o: Partial<RunFact>): RunFact => ({ status: "succeeded", createdAt: 0, updatedAt: 0, retryNumber: 0, error: null, percent: null, ...o });
 const plan = ["draft", "build", "tts", "render"] as const;
@@ -66,6 +66,14 @@ describe("rerun", () => {
     expect(rerunOffered("succeeded", "active")).toBe(false);
     expect(rerunOffered("failed", "cancelled")).toBe(false);
     expect(rerunOffered(undefined, "active")).toBe(false);
+    expect(forceRerunOffered("render", "succeeded", "waiting")).toBe(true);
+    expect(forceRerunOffered("qa", "succeeded", "active")).toBe(true);
+    expect(forceRerunOffered("tts", "succeeded", "active")).toBe(false);
+    expect(forceRerunOffered("draft", "succeeded", "active")).toBe(false);
+    expect(forceRerunOffered("render", "failed", "active")).toBe(false);
+    expect(forceRerunOffered("render", "succeeded", "cancelled")).toBe(false);
+    expect(forceRerunOffered("render", "succeeded", "active", true)).toBe(false);
+    expect(forceRerunOffered("render", "succeeded", "active", false, true)).toBe(false);
   });
   it("states the cost only from the cost plan", () => {
     expect(rerunCostNote("generate", 2_500_000)).toBe("Costs up to $2.50 (the cost plan's paid items).");

@@ -7,6 +7,7 @@ import {
   STAGE_NAMES,
   ACTIVE_STATUSES,
   expectedInputHash,
+  FORCE_RERUN_STAGES,
   nextActions,
   stagePlan,
   type Action,
@@ -64,10 +65,11 @@ interface VideoLocked {
   topic: string;
   notes: string | null;
   status: string;
+  stage_nonces: Partial<Record<StageName, string>>;
 }
 
 async function lockVideo(c: pg.PoolClient, videoId: string): Promise<VideoLocked> {
-  const r = await c.query<VideoLocked>("select id, format, kind, language, topic, notes, status from videos where id = $1 for update", [videoId]);
+  const r = await c.query<VideoLocked>("select id, format, kind, language, topic, notes, status, stage_nonces from videos where id = $1 for update", [videoId]);
   const v = r.rows[0];
   if (!v) throw new Error(`video not found: ${videoId}`);
   return v;
@@ -103,6 +105,7 @@ async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineRead
     content: shas,
     runs,
     approved: await readers.approvedGates(c, v.id),
+    nonces: v.stage_nonces ?? {},
   };
 }
 
@@ -229,6 +232,45 @@ export async function rerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: strin
 }
 
 /**
+ * Owner-forced rerun of a FREE, LOCAL step that already succeeded (render, voice, sfx, qa). Bumps the step's nonce, which
+ * changes its expected hash (and so every later step's); then queues it like rerunStage. Refused while any step of the
+ * video is active, so a double click makes one run. Paid or model steps are never allowed.
+ */
+export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: string, stage: StageName, readers: PipelineReaders = NO_DECISIONS): Promise<AdvanceResult> {
+  if (!FORCE_RERUN_STAGES.includes(stage)) throw new Error("force_rerun_not_allowed");
+  const decided = await inTx(db, async (c) => {
+    const v = await lockVideo(c, videoId);
+    if (!LIVE_VIDEO.includes(v.status)) throw new Error(`video is ${v.status}`);
+    const view = await buildView(c, v, readers);
+    const plan = stagePlan(view.kind, view.format, view.flags);
+    const idx = plan.findIndex((s) => s.stage === stage);
+    if (idx < 0) throw new Error(`stage ${stage} is not on this video's route`);
+    if (Object.values(view.runs).some((r) => ACTIVE_STATUSES.includes(r.status))) throw new Error("cannot_rerun_while_job_active");
+    if (view.runs[stage]?.status !== "succeeded") throw new Error("force_rerun_needs_succeeded");
+    // Settled: every step up to this one succeeded with exactly the hash it should have now, so nothing earlier is stale,
+    // failed or breaker-held (the new run would otherwise sit beside a step that still has to run).
+    let prevHash: string | null = null;
+    for (const step of plan.slice(0, idx + 1)) {
+      const r = view.runs[step.stage];
+      if (r?.status !== "succeeded" || r.inputHash !== expectedInputHash(view, step.stage, prevHash)) throw new Error("pipeline_not_settled");
+      prevHash = r.inputHash;
+    }
+    const prior = idx > 0 ? view.runs[plan[idx - 1]!.stage]! : undefined; // render/voice/sfx/qa always have an earlier step
+    if ((await c.query("select 1 from uploads where video_id = $1 and status <> 'upload_failed' limit 1", [videoId])).rowCount) throw new Error("force_rerun_uploaded");
+    const nonce = uuidv7();
+    await c.query("update videos set stage_nonces = stage_nonces || jsonb_build_object($2::text, $3::text) where id = $1", [videoId, stage, nonce]);
+    const want = expectedInputHash({ ...view, nonces: { ...view.nonces, [stage]: nonce } }, stage, prior!.inputHash);
+    const gate = await admitStage(c, stage);
+    if (!gate.allowed) return { created: [] as Array<{ id: string; inputHash: string }>, held: { stage, until: gate.until } as BreakerHold | undefined };
+    const id = await insertRun(c, videoId, stage, want);
+    if (!id) throw new Error("cannot_rerun_while_job_active");
+    await c.query("update videos set status = 'active', updated_at = now() where id = $1", [videoId]);
+    return { created: [{ id, inputHash: want }], held: undefined as BreakerHold | undefined };
+  });
+  return { ...(await deliver(queue, decided.created)), action: null, ...(decided.held ? { held: decided.held } : {}) };
+}
+
+/**
  * The input hash `stage` must have right now for this video, or null when the video is not live, the stage is not on its
  * route, or the stage before it has not succeeded. Locks the video row (the caller supplies the transaction). Retries use
  * it to refuse a run whose input changed since it failed.
@@ -255,7 +297,7 @@ export { inTx };
 export async function readNextAction(db: pg.Pool, videoId: string, readers: PipelineReaders = NO_DECISIONS): Promise<Action | null> {
   const c = await db.connect();
   try {
-    const r = await c.query<VideoLocked>("select id, format, kind, language, topic, notes, status from videos where id = $1", [videoId]);
+    const r = await c.query<VideoLocked>("select id, format, kind, language, topic, notes, status, stage_nonces from videos where id = $1", [videoId]);
     const v = r.rows[0];
     if (!v || !LIVE_VIDEO.includes(v.status)) return null;
     return nextActions(await buildView(c, v, readers))[0] ?? null;

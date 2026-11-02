@@ -148,3 +148,30 @@ describe("nextActions", () => {
     expect(nextActions(bad)).toEqual([{ kind: "enqueue", stage: "draft" as StageName, inputHash: expectedInputHash(bad, "draft", null) }]);
   });
 });
+
+describe("stage nonce (owner forced rerun)", () => {
+  const f = { requireEvidence: false, paidGeneration: false };
+  const done = () => walk(base({ flags: f })).v;
+  it("no_nonce_leaves_every_hash_byte_identical", () => {
+    const v = base({ flags: f, content: { beats: "b", narration: "n", scenes: "s" } });
+    const old = stageInputHash("render", { prev: "t", beats: "b", narration: "n", scenes: "s" }, {});
+    expect(expectedInputHash(v, "render", "t")).toBe(old);
+    expect(expectedInputHash({ ...v, nonces: {} }, "render", "t")).toBe(old);
+    expect(expectedInputHash({ ...v, nonces: { render: "" } }, "render", "t")).toBe(old);
+  });
+  it("a_nonce_changes_only_that_stage_hash", () => {
+    const v = base({ flags: f });
+    const n = { ...v, nonces: { render: "x" } };
+    expect(expectedInputHash(n, "render", "t")).not.toBe(expectedInputHash(v, "render", "t"));
+    expect(expectedInputHash(n, "voice", "t")).toBe(expectedInputHash(v, "voice", "t"));
+  });
+  it("forcing_render_makes_render_then_the_later_steps_stale", () => {
+    const v = done();
+    expect(nextActions(v)[0]?.kind).toBe("done");
+    const forced = { ...v, nonces: { render: "x" } as const };
+    const [a] = nextActions(forced);
+    expect(a).toMatchObject({ kind: "enqueue", stage: "render" });
+    const after = { ...forced, runs: { ...forced.runs, render: { status: "succeeded" as RunStatus, inputHash: (a as { inputHash: string }).inputHash } } };
+    expect(nextActions(after)[0]).toMatchObject({ kind: "enqueue", stage: "voice" });
+  });
+});

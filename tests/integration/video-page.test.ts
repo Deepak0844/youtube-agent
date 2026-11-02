@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sha256Hex } from "@/server/core/content-hash";
-import { rerunStageById } from "@/server/db/video-page-actions";
+import { uuidv7 } from "@/server/core/ids";
+import type { StageName } from "@/server/core/pipeline-plan";
+import { approvalReaders } from "@/server/db/approval-readers";
+import { wantedHashLocked } from "@/server/db/pipeline";
+import { forceRerunStageById, rerunStageById } from "@/server/db/video-page-actions";
 import { cancelVideoById } from "@/server/db/queue-actions";
 import { loadVideoPage, stageEstimates } from "@/server/db/video-page";
 import { addContent, createVideoRow } from "@/server/db/videos";
@@ -97,5 +101,91 @@ describe("rerunStageById / cancel", () => {
     const v = await mk();
     expect((await cancelVideoById(db.pool, actor, v.id)).ok).toBe(true);
     expect((await db.pool.query("select status from videos where id=$1", [v.id])).rows[0].status).toBe("cancelled");
+  });
+});
+
+describe("forceRerunStageById", () => {
+  // Seeds runs with the real expected hashes (so the pipeline counts them as settled). `over` sets a different status per step.
+  const seed = async (v: { id: string }, names = ["draft", "build", "tts", "render"], over: Record<string, string> = {}) => {
+    for (const name of names) {
+      const c = await db.pool.connect();
+      let hash: string | null;
+      try {
+        hash = await wantedHashLocked(c, v.id, name as StageName, approvalReaders);
+      } finally {
+        c.release();
+      }
+      expect(hash).not.toBeNull();
+      await db.pool.query("insert into stage_runs (id, video_id, name, status, input_hash) values ($1,$2,$3,'succeeded',$4)", [uuidv7(), v.id, name, hash]);
+    }
+    for (const [name, status] of Object.entries(over)) await db.pool.query("update stage_runs set status = $3 where video_id = $1 and name = $2", [v.id, name, status]);
+  };
+  const count = async (id: string, name: string) => (await db.pool.query("select count(*)::int as n from stage_runs where video_id=$1 and name=$2", [id, name])).rows[0].n as number;
+  const nonces = async (id: string) => (await db.pool.query("select stage_nonces from videos where id=$1", [id])).rows[0].stage_nonces;
+
+  it("re-runs a finished render with a new hash, audits it, and refuses a double click", async () => {
+    const v = await mk();
+    await seed(v);
+    const before = (await db.pool.query("select input_hash from stage_runs where video_id=$1 and name='render'", [v.id])).rows[0].input_hash;
+    const r = await forceRerunStageById(db.pool, queue, actor, v.id, "render");
+    expect(r.ok).toBe(true);
+    const rows = (await db.pool.query("select input_hash, status from stage_runs where video_id=$1 and name='render' order by created_at, id", [v.id])).rows;
+    expect(rows.map((x) => x.status)).toEqual(["succeeded", "queued"]);
+    expect(rows[1].input_hash).not.toBe(before);
+    expect((await db.pool.query("select count(*)::int as n from audit_log where event='stage.force_rerun_requested'")).rows[0].n).toBe(1);
+    const again = await forceRerunStageById(db.pool, queue, actor, v.id, "render");
+    expect(again.ok).toBe(false);
+    expect(await count(v.id, "render")).toBe(2);
+  });
+  it("refuses paid or model steps, and steps that have not finished", async () => {
+    const v = await mk();
+    await seed(v);
+    for (const st of ["tts", "draft", "build", "generate", "repair_scenes", "voice"]) expect((await forceRerunStageById(db.pool, queue, actor, v.id, st)).ok).toBe(false);
+    expect(await count(v.id, "tts")).toBe(1);
+    expect(await count(v.id, "voice")).toBe(0);
+    expect(await nonces(v.id)).toEqual({});
+  });
+  it("refuses while any step is active", async () => {
+    const v = await mk();
+    await seed(v, ["draft", "build", "tts", "render", "voice"], { voice: "running" });
+    expect((await forceRerunStageById(db.pool, queue, actor, v.id, "render")).ok).toBe(false);
+    expect(await count(v.id, "render")).toBe(1);
+    expect(await nonces(v.id)).toEqual({});
+  });
+  it("refuses a later step while an earlier one is failed or out of date", async () => {
+    const v = await mk();
+    await seed(v, ["draft", "build", "tts", "render", "voice", "sfx"], { tts: "failed" });
+    const f = await forceRerunStageById(db.pool, queue, actor, v.id, "sfx");
+    expect(f.ok).toBe(false);
+    expect(f.message).toMatch(/settle/);
+    const w = await mk("other");
+    await seed(w, ["draft", "build", "tts", "render", "voice"]);
+    await addContent(db.pool, w.id, "narration", { body: { n: 1 }, sha256: sha256Hex("new") }); // render's input changed: render is stale
+    expect((await forceRerunStageById(db.pool, queue, actor, w.id, "voice")).ok).toBe(false);
+    expect(await nonces(v.id)).toEqual({});
+    expect(await nonces(w.id)).toEqual({});
+  });
+  it("refuses once an upload exists, but not after a failed one", async () => {
+    const v = await mk();
+    await seed(v);
+    await db.pool.query("insert into uploads (id, video_id, status, approval_hash, file_sha) values ($1,$2,'upload_failed','a','b')", [uuidv7(), v.id]);
+    const ok = await forceRerunStageById(db.pool, queue, actor, v.id, "render");
+    expect(ok.ok).toBe(true);
+    const w = await mk("up");
+    await seed(w);
+    await db.pool.query("insert into uploads (id, video_id, status, approval_hash, file_sha) values ($1,$2,'publish_approved','a','b')", [uuidv7(), w.id]);
+    const r = await forceRerunStageById(db.pool, queue, actor, w.id, "render");
+    expect(r.ok).toBe(false);
+    expect(r.message).toMatch(/uploaded/);
+    expect(await nonces(w.id)).toEqual({});
+  });
+  it("refuses a video that is no longer live, and a non-session actor", async () => {
+    const v = await mk();
+    await seed(v);
+    expect((await forceRerunStageById(db.pool, queue, { kind: "system" } as never, v.id, "render")).ok).toBe(false);
+    await db.pool.query("update videos set status='cancelled' where id=$1", [v.id]);
+    expect((await forceRerunStageById(db.pool, queue, actor, v.id, "render")).ok).toBe(false);
+    expect(await count(v.id, "render")).toBe(1);
+    expect(await nonces(v.id)).toEqual({});
   });
 });

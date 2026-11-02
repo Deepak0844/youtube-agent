@@ -3,7 +3,7 @@
 import { useActionState, useState, useTransition } from "react";
 import { Button } from "@/ui/primitives/button";
 import { recheckScenesAction, requestSceneRepairAction, undoScenesAction, type SceneActionState } from "../../queue/scenes-actions";
-import { rerunStageAction, type RerunState } from "./actions";
+import { forceRerunStageAction, rerunStageAction, type RerunState } from "./actions";
 
 /** "Run again" for one failed or cancelled step, with the time and cost stated before the click. */
 export function RerunForm({ videoId, stage, label, estimate, costNote }: { videoId: string; stage: string; label: string; estimate: string; costNote: string }) {
@@ -15,6 +15,24 @@ export function RerunForm({ videoId, stage, label, estimate, costNote }: { video
       <p className="m-0 text-small text-muted">Takes {estimate}. {costNote}</p>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" variant="secondary" disabled={pending} aria-label={`Run ${label} again`}>Run {label} again</Button>
+        {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
+      </div>
+    </form>
+  );
+}
+
+/** "Re-run this step" for a finished free step. A tick is needed so a stray click cannot start it. */
+export function ForceRerunForm({ videoId, stage, label }: { videoId: string; stage: string; label: string }) {
+  const [state, run, pending] = useActionState<RerunState, FormData>(forceRerunStageAction, {});
+  const [sure, setSure] = useState(false);
+  return (
+    <form action={run} className="flex min-w-0 flex-col gap-2">
+      <input type="hidden" name="videoId" value={videoId} />
+      <input type="hidden" name="stage" value={stage} />
+      <p className="m-0 text-small text-muted">Runs it again from the same inputs (free, local). Later steps run again too.</p>
+      <label className="flex items-center gap-2 text-small"><input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} /> Yes, run {label} again</label>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" variant="secondary" disabled={pending || !sure} aria-label={`Re-run ${label}`}>Re-run this step</Button>
         {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
       </div>
     </form>
