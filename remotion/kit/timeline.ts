@@ -56,3 +56,9 @@ export function paginate(words: readonly string[], maxWidth: number, measure: (t
   for (let i = 0; i < lines.length; i += maxLines) pages.push(lines.slice(i, i + maxLines));
   return pages;
 }
+
+/** The first scene's own clock starts this far in, so frame 0 shows entered objects, not an empty picture. */
+export const INTRO_SKIP_FRAMES = 24;
+
+/** Head start for the first scene: INTRO_SKIP_FRAMES, at most half that scene. */
+export const introSkipFrames = (firstSceneFrames: number): number => Math.max(0, Math.min(INTRO_SKIP_FRAMES, Math.floor(firstSceneFrames / 2)));
