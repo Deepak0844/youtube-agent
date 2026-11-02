@@ -1,7 +1,7 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { kenBurns, type KenBurns } from "./helpers";
-import { gentleMotion, lookBg } from "./look";
+import { gentleMotion, keepMoving, lookBg } from "./look";
 import { PhotoFit, useSceneCaptions } from "./LookParts";
 import { ScriptText } from "./ScriptText";
 import { theme } from "./theme";
@@ -19,7 +19,7 @@ export const Story: React.FC<StoryProps> = ({ image, motion, caption, captionZon
   const frame = useCurrentFrame();
   const { durationInFrames, width, height } = useVideoConfig();
   const showCaption = useSceneCaptions();
-  const { scale, x, y } = kenBurns(frame, durationInFrames, gentleMotion(motion));
+  const { scale, x, y } = kenBurns(frame, durationInFrames, gentleMotion(keepMoving(motion, durationInFrames)));
   const { top, bottom, side } = theme.safe;
   return (
     <AbsoluteFill style={{ background: lookBg, overflow: "hidden" }}>

@@ -1,5 +1,11 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, Audio, Composition, Sequence, staticFile, useCurrentFrame } from "remotion";
+
+// Fades and slides a scene in over the one before it (the first scene has no transition).
+const SceneIn: React.FC<{ on: boolean; children: React.ReactNode }> = ({ on, children }) => {
+  const t = transitionIn(useCurrentFrame());
+  return on ? <AbsoluteFill style={{ opacity: t.opacity, transform: `translateY(${t.dy}px)` }}>{children}</AbsoluteFill> : <>{children}</>;
+};
 import { Browser, type BrowserProps } from "./Browser";
 import { ChatThread, type ChatThreadProps } from "./ChatThread";
 import { PauseCard, type PauseCardProps } from "./PauseCard";
@@ -24,7 +30,7 @@ import { Captions } from "./Captions";
 import { LookProvider } from "./LookParts";
 import { HookCard } from "./HookCard";
 import { firstPictureId, HOOK_FRAMES, hashString, lookBackground, pickLook, sceneCaptionAllowed } from "./look";
-import { collageStarts, docFrames, introSkipFrames, mediaOf, msToFrame, sceneRange, type CaptionWord } from "./timeline";
+import { collageStarts, docFrames, introSkipFrames, mediaOf, msToFrame, sceneRange, sequenceFrames, transitionIn, type CaptionWord } from "./timeline";
 import type { Scene, SceneDoc } from "../../src/shared/scene";
 
 const terminal: TerminalProps = {
@@ -308,8 +314,8 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
       const skip = i === 0 && r.from === 0 ? introSkipFrames(r.duration) : 0;
       const body = <KitScene scene={scene} resolveAsset={resolveAsset} fps={fps} />;
       return (
-        <Sequence key={scene.id} from={r.from} durationInFrames={r.duration}>
-          {skip ? <Sequence from={-skip} durationInFrames={r.duration + skip}>{body}</Sequence> : body}
+        <Sequence key={scene.id} from={r.from} durationInFrames={sequenceFrames(r.duration, i === doc.scenes.length - 1)}>
+          <SceneIn on={i > 0}>{skip ? <Sequence from={-skip} durationInFrames={r.duration + skip}>{body}</Sequence> : body}</SceneIn>
         </Sequence>
       );
     })}

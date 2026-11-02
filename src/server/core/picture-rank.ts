@@ -21,6 +21,11 @@ export interface PictureCandidate {
 export interface PictureBrief { search: readonly string[]; visual: string }
 
 export const MIN_LONG_SIDE = 1000;
+/** Too thin a picture looks soft once fitted into the frame. */
+export const MIN_SHORT_SIDE = 640;
+/** Below this long side the picture is upscaled on screen and looks soft: it ranks lower (no pixel analysis, size only). */
+export const SHARP_LONG_SIDE = 1400;
+export const SOFT_PENALTY = 0.12;
 export const MIN_ASPECT = 0.4;
 export const MAX_ASPECT = 2.5;
 export const MIN_SCORE = 0.35;
@@ -45,7 +50,7 @@ function namesPerson(brief: PictureBrief): boolean {
 export function scoreCandidate(brief: PictureBrief, c: PictureCandidate): number | null {
   const long = Math.max(c.width, c.height);
   const aspect = c.height > 0 ? c.width / c.height : 0;
-  if (!(long >= MIN_LONG_SIDE) || aspect < MIN_ASPECT || aspect > MAX_ASPECT) return null;
+  if (!(long >= MIN_LONG_SIDE) || Math.min(c.width, c.height) < MIN_SHORT_SIDE || aspect < MIN_ASPECT || aspect > MAX_ASPECT) return null;
   if (!ALLOWED_MIME.has(c.mime.toLowerCase())) return null;
   if ((PORTRAITISH.test(c.title) || (c.source === "pixabay" && PERSON_TAGS.test(c.text))) && !namesPerson(brief)) return null;
 
@@ -58,6 +63,7 @@ export function scoreCandidate(brief: PictureBrief, c: PictureCandidate): number
   let score = sum / (2 * want.length);
   if (score === 0) return 0;
   if (DIAGRAMISH.test(brief.visual) && DIAGRAMISH.test(`${c.title} ${c.text}`)) score += 0.15;
+  if (long < SHARP_LONG_SIDE) score -= SOFT_PENALTY;
   if (c.height >= c.width) score += 0.05;
   else if (c.width >= 1600) score += 0.05;
   return score;

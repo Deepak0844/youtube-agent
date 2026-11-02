@@ -1,4 +1,4 @@
-import { lookBg } from "./look";
+import { lookBg, popScale } from "./look";
 import React from "react";
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame } from "remotion";
 import { niceMax, pieSlices } from "./helpers";
@@ -15,8 +15,8 @@ export type ChartProps = {
 };
 
 const W = theme.width - theme.safe.side * 2; // 936
-const H = 800;
-const PAD = { l: 20, r: 20, t: 20, b: 70 };
+const H = 960;
+const PAD = { l: 20, r: 20, t: 20, b: 80 };
 const color = (i: number) => theme.palette.chart[i % theme.palette.chart.length]!;
 
 export const Chart: React.FC<ChartProps> = ({ chart, title, labels, series, drawFrames }) => {
@@ -36,7 +36,7 @@ export const Chart: React.FC<ChartProps> = ({ chart, title, labels, series, draw
       <line x1={PAD.l} x2={W - PAD.r} y1={y(0)} y2={y(0)} stroke={theme.palette.muted} strokeWidth={3} />
       {labels.map((l, i) =>
         showLabelsAt(i) ? (
-          <text key={i} x={xc(i)} y={H - 20} textAnchor="middle" fill={theme.palette.muted} fontSize={30} fontFamily={theme.fonts.ui}>
+          <text key={i} x={xc(i)} y={H - 20} textAnchor="middle" fill={theme.palette.text} fontSize={44} fontFamily={theme.fonts.ui}>
             {l}
           </text>
         ) : null,
@@ -116,13 +116,13 @@ export const Chart: React.FC<ChartProps> = ({ chart, title, labels, series, draw
       }}
     >
       {title ? <Headline text={title} size={64} style={{ marginBottom: 32 }} /> : null}
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ transform: `scale(${popScale(frame)})` }}>
         {body}
       </svg>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "12px 32px", marginTop: 24, fontSize: 32, color: theme.palette.muted }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "12px 32px", marginTop: 24, fontSize: 44, color: theme.palette.text }}>
         {legend.map((l, i) => (
           <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
-            <span style={{ width: 24, height: 24, borderRadius: 6, background: color(i) }} />
+            <span style={{ width: 32, height: 32, borderRadius: 6, background: color(i) }} />
             {l}
           </span>
         ))}
