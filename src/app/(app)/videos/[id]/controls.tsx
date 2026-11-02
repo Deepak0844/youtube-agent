@@ -41,7 +41,7 @@ export function ForceRerunForm({ videoId, stage, label, hint, changed }: { video
 }
 
 /** "Make 16:9 / 1:1 version" of the finished video (free, local; the approved video is not changed). */
-export function ReframeButtons({ videoId }: { videoId: string }) {
+export function ReframeButtons({ videoId, links = {} }: { videoId: string; links?: Partial<Record<"16x9" | "1x1", string>> }) {
   const [state, run, pending] = useActionState<RerunState, FormData>(reframeAction, {});
   return (
     <form action={run} className="flex min-w-0 flex-col gap-2">
@@ -49,6 +49,8 @@ export function ReframeButtons({ videoId }: { videoId: string }) {
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" name="format" value="16x9" variant="secondary" disabled={pending}>Make 16:9 version</Button>
         <Button type="submit" name="format" value="1x1" variant="secondary" disabled={pending}>Make 1:1 version</Button>
+        {links["16x9"] ? <a href={links["16x9"]} download="final-16x9.mp4" className="text-small underline">Open 16:9 file</a> : null}
+        {links["1x1"] ? <a href={links["1x1"]} download="final-1x1.mp4" className="text-small underline">Open 1:1 file</a> : null}
         {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
       </div>
     </form>

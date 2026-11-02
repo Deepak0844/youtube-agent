@@ -84,7 +84,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
           <video controls preload="metadata" src={p.videoSrc} poster={p.posterSrc ?? undefined} aria-label="Final video" className="size-full object-contain" />
         </VideoBox>
       ) : null}
-      {p.videoSrc && p.head.status !== "cancelled" ? <ReframeButtons videoId={p.head.id} /> : null}
+      {p.videoSrc && p.head.status !== "cancelled" ? <ReframeButtons videoId={p.head.id} links={p.reframed} /> : null}
 
       <nav aria-label="Video sections" className="flex min-w-0 gap-5 overflow-x-auto border-b border-rule">
         {TABS.map((t) => (

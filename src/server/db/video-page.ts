@@ -1,7 +1,8 @@
 import type pg from "pg";
 import { redactLine } from "@/server/core/log-redact";
 import { STAGE_NAMES, stagePlan, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
-import { median, parseFindings, stageViews, type QaFinding, type RunFact, type StageGate, type StageView, type VoiceId } from "@/server/core/video-page-view";
+import { reframeFileName, type ReframeFormat } from "@/server/core/reframe";
+import { median, parseFindings, reframedFormats, stageViews, type QaFinding, type RunFact, type StageGate, type StageView, type VoiceId } from "@/server/core/video-page-view";
 import type { GateId } from "@/server/core/gates";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { approvalState } from "@/server/db/approvals";
@@ -51,6 +52,8 @@ export interface VideoPage {
   spend: { totalMicroUsd: number; heldMicroUsd: number; rows: SpendRow[] };
   qa: { findings: QaFinding[]; stills: string[] } | null;
   videoSrc: string | null;
+  /** Signed links to finished re-framed files (only those that exist). */
+  reframed: Partial<Record<ReframeFormat, string>>;
   posterSrc: string | null;
   audit: AuditItem[];
   log: LogRow[];
@@ -192,6 +195,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
     costPlanTotalMicroUsd: Number.isFinite(costTotal) ? costTotal : null,
     spend: { totalMicroUsd: rows.reduce((a, r) => a + r.spentMicroUsd, 0), heldMicroUsd: rows.reduce((a, r) => a + r.heldMicroUsd, 0), rows },
     qa,
+    reframed: Object.fromEntries(reframedFormats(runsR.rows).flatMap((f) => { const u = sign?.(`videos/${videoId}/${reframeFileName(f)}`); return u ? [[f, u]] : []; })),
     videoSrc: video?.filePath ? (sign?.(video.filePath) ?? null) : null,
     posterSrc: qa?.stills[0] ?? null,
     audit: auditR.rows.map((r): AuditItem => ({ id: r.id, at: (r.at as Date).toISOString(), event: r.event, detail: asObj(r.detail) })),
