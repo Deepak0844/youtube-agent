@@ -18,7 +18,7 @@ describe("describeDecision", () => {
   it("a_done_call_next_to_an_open_one_means_no_fresh_rerun_and_the_text_says_so", () => {
     const mixed = describeDecision(stage(), [i("done", 100_000), i("unknown", 400_000)]);
     expect(mixed.rerunSafe).toBe(false);
-    expect(mixed.summary).toMatch(/will NOT be run again/);
+    expect(mixed.summary).toMatch(/do NOT run it again/);
     expect(describeDecision(stage(), [i("unknown", 400_000)]).rerunSafe).toBe(true);
     expect(describeDecision(stage(), [i("done", 1), i("failed_known", 1)]).rerunSafe).toBe(false);
   });

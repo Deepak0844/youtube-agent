@@ -2,6 +2,7 @@ import type pg from "pg";
 import { VaultError, type Keyring } from "@/server/core/vault-crypto";
 import { secretName } from "@/server/core/provider-keys";
 import { localServices } from "@/server/db/llm-models";
+import { getSetting } from "@/server/db/settings";
 import { getSecret } from "@/server/db/vault";
 import { claudeCodeGate } from "@/server/db/claude-code";
 import { buildModel, type BuildOptions } from "./model-factory";
@@ -19,10 +20,12 @@ export async function defaultModelDeps(
   extra: Pick<BuildOptions, "fetch" | "lookup" | "env" | "ownPorts"> = {},
 ): Promise<{
   getKey(provider: string): Promise<string | null>;
+  callGapMs(): Promise<number>;
   buildModel: (row: Parameters<typeof buildModel>[0], getKey: () => Promise<string | null>) => ReturnType<typeof buildModel>;
 }> {
   const local = await localServices(db);
   return {
+    callGapMs: async () => (await getSetting(db, "llm.call_gap_ms")) as number,
     async getKey(provider) {
       const slot = keySlotFor(provider as ProviderId);
       if (slot === null) return null;
