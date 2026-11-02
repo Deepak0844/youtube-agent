@@ -25,6 +25,15 @@ describe("preset shape", () => {
     expect(p.motion.transitionFrames).toBeGreaterThan(0);
     expect(p.label && p.mood).toBeTruthy();
   });
+  it("blueprint whiteboard: dark paper, one accent, slow even holds, 12-frame fade", () => {
+    const p = PRESETS.blueprint_whiteboard;
+    expect(p.look?.from).toBe("#0c2340");
+    expect(p.look?.accent2).toBe(p.look?.accent);
+    expect(p.motion).toMatchObject({ kind: "smooth", transitionFrames: 12 });
+    expect(p.pacing).toMatchObject({ minHoldFrames: 90, maxHoldFrames: 450 });
+    expect(p.preferKinds).toContain("svg_diagram");
+    expect(styleGuidance("blueprint_whiteboard")).toMatch(/Prefer these kinds.*svg_diagram.*Pace: scenes usually hold 3\.0 to 15\.0 seconds/s);
+  });
   it("punchy captions: 1-3 words, yellow, outlined, about 65% down", () => {
     const c = CAPTION_STYLES.punchy_captions;
     expect(c.wordsPerPage).toBeLessThanOrEqual(3);
