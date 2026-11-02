@@ -1,6 +1,7 @@
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { buildMixGraph, audibilityCheck } from "@/server/core/mix-graph";
+import { buildMixGraph } from "@/server/core/mix-graph";
+import { bedAudibility, cueAudibility, type Verdict } from "@/server/core/sound-view";
 import { KnownFailure } from "@/server/core/paid-call";
 import { cueSheet, SfxPlan } from "@/server/core/sfx-plan";
 import type { StageContext } from "@/server/core/stage-handler";
@@ -51,7 +52,7 @@ export async function muxNarration(mix: MixDeps, ctx: StageContext, qa: { meanDb
 }
 
 /** Mixes the sound plan onto the voiced video. Required inaudible cues fail with their ids; optional ones are dropped. Writes cue-sheet.txt beside the video. */
-export async function mixPlan(mix: MixDeps, db: pg.Pool, ctx: StageContext, qa: { meanDbMin: number; peakDbMax: number }, f: { voiced: string; planFile: string; out: string }): Promise<{ droppedCues: string[]; usedItems: string[] }> {
+export async function mixPlan(mix: MixDeps, db: pg.Pool, ctx: StageContext, qa: { meanDbMin: number; peakDbMax: number }, f: { voiced: string; planFile: string; out: string }): Promise<{ droppedCues: string[]; usedItems: string[]; verdicts: Verdict[] }> {
   const raw = await readFile(f.planFile, "utf8").catch((e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return '{"version":1,"cues":[]}';
     throw e;
@@ -75,20 +76,25 @@ export async function mixPlan(mix: MixDeps, db: pg.Pool, ctx: StageContext, qa: 
 
   const inaudible: string[] = [];
   const dropped: string[] = [];
+  const verdicts: Verdict[] = [];
   const itemDb = new Map<string, number>();
   for (const c of plan.cues.filter((x) => x.atS < videoS)) {
     if (!itemDb.has(c.itemId)) itemDb.set(c.itemId, await meanDb(mix, ctx, items[c.itemId]!));
     const cueRmsDb = itemDb.get(c.itemId)! + c.gainDb;
     const voiceRmsDbAtCue = await meanDb(mix, ctx, f.voiced, { from: c.atS, len: 1 });
-    if (audibilityCheck(c, { cueRmsDb, voiceRmsDbAtCue }).audible) continue;
+    const v = cueAudibility(c.id, cueRmsDb, voiceRmsDbAtCue);
+    verdicts.push(v);
+    if (v.audible) continue;
     (c.optional ? dropped : inaudible).push(c.id);
   }
   if (inaudible.length) throw new KnownFailure(`These sound cues would not be heard and are required: ${inaudible.join(", ")}. Change their level or timing, or mark them optional.`);
   plan = { ...plan, cues: plan.cues.filter((c) => !dropped.includes(c.id)) };
+  // Shown on the Sound tab; never blocks the mix.
+  if (plan.bed) verdicts.push(bedAudibility((await meanDb(mix, ctx, items[plan.bed.item]!)) + plan.bed.gainDb, await meanDb(mix, ctx, f.voiced)));
 
   const g = buildMixGraph(plan, { videoS, voiceFile: f.voiced, videoFile: f.voiced, outFile: f.out, items, qa });
   await run(mix, ctx, "ffmpeg", g.args);
   await writeFile(path.join(path.dirname(f.out), "cue-sheet.txt"), cueSheet(plan));
   const usedCues = new Set(plan.cues.filter((c) => !g.droppedCues.includes(c.id)).map((c) => c.itemId));
-  return { droppedCues: [...dropped, ...g.droppedCues], usedItems: [...new Set([...usedCues, ...(plan.bed ? [plan.bed.item] : [])])] };
+  return { droppedCues: [...dropped, ...g.droppedCues], usedItems: [...new Set([...usedCues, ...(plan.bed ? [plan.bed.item] : [])])], verdicts };
 }

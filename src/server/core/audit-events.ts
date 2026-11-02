@@ -61,6 +61,9 @@ export const AUDIT_EVENTS = {
   "scenes.undone": "The previous scenes version was made current again",
   "scenes.repair_requested": "A repair of the failing scenes was requested",
   "video.reframe_requested": "The owner asked for a 16:9 or 1:1 version of a finished video (detail: video id, format, stage run id, session id)",
+  // Phase 4 sound tab (detail: video id, session id, library item id or stage run id; never a file path)
+  "sound.bed_chosen": "The owner picked the music bed for a video (or removed it)",
+  "sound.ear_ok": "The owner listened and ticked that the sound is OK",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",

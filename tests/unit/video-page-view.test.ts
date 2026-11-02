@@ -11,7 +11,7 @@ describe("parseTab", () => {
     expect(parseTab("nope")).toBe("script");
     expect(parseTab(["cost", "log"])).toBe("cost");
     expect(parseTab("qa")).toBe("qa");
-    expect(TABS.map((t) => t.id)).toEqual(["script", "beats", "evidence", "titles", "cost", "qa", "audit", "log"]);
+    expect(TABS.map((t) => t.id)).toEqual(["script", "beats", "evidence", "titles", "cost", "qa", "sound", "audit", "log"]);
   });
 });
 
