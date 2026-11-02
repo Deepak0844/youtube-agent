@@ -96,7 +96,12 @@ export interface PipelineView {
   runs: Partial<Record<StageName, { status: RunStatus; inputHash: string }>>;
   /** gates whose newest approval is valid for the live content right now */
   approved: ReadonlySet<GateId>;
+  /** owner "run again" nonces per stage; absent or empty means never forced, and then no hash changes */
+  nonces?: Partial<Record<StageName, string>>;
 }
+
+/** Free, local steps the owner may force to run again. Never a paid or model step. */
+export const FORCE_RERUN_STAGES: readonly StageName[] = ["render", "voice", "sfx", "qa"];
 
 export type Action =
   | { kind: "enqueue"; stage: StageName; inputHash: string }
@@ -114,6 +119,8 @@ export function expectedInputHash(view: PipelineView, stage: StageName, prevHash
     upstream.prev = prevHash ?? "";
   }
   for (const k of STAGE_CONTENT_INPUTS[stage]) upstream[k] = view.content[k] ?? "none";
+  const nonce = view.nonces?.[stage];
+  if (nonce) upstream.nonce = nonce; // only when set: every hash made before forced reruns existed stays identical
   return stageInputHash(stage, upstream, {});
 }
 

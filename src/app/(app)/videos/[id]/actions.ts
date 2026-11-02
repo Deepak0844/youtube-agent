@@ -7,7 +7,7 @@ import { requireOwner } from "@/lib/auth/require-owner";
 import { BAD_FORM, parseIdForm } from "@/server/core/queue-input";
 import { getPool } from "@/server/db/pool";
 import type { ActionResult } from "@/server/db/queue-actions";
-import { rerunStageById } from "@/server/db/video-page-actions";
+import { forceRerunStageById, rerunStageById } from "@/server/db/video-page-actions";
 import { webStageQueue } from "@/server/queue/web-queues";
 
 // Run a failed or cancelled step again. Same guard order as /queue: requireOwner first (the session comes from it), then
@@ -22,6 +22,19 @@ export async function rerunStageAction(_prev: RerunState, form: FormData): Promi
   const stage = z.string().max(20).safeParse(form.get("stage"));
   if (!id.ok || !stage.success) return { ok: false, message: BAD_FORM };
   const r = await rerunStageById(getPool(), webStageQueue(), { kind: "session", sessionId: owner.sessionId }, id.value, stage.data);
+  refresh();
+  return r;
+}
+
+// Owner "Re-run this step" for a finished free step (render, voice, sound effects, check). Same guard order.
+export async function forceRerunStageAction(_prev: RerunState, form: FormData): Promise<RerunState> {
+  const owner = await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { ok: false, message: origin };
+  const id = parseIdForm(form, "videoId");
+  const stage = z.string().max(20).safeParse(form.get("stage"));
+  if (!id.ok || !stage.success) return { ok: false, message: BAD_FORM };
+  const r = await forceRerunStageById(getPool(), webStageQueue(), { kind: "session", sessionId: owner.sessionId }, id.value, stage.data);
   refresh();
   return r;
 }

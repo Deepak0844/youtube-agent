@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sha256Hex } from "@/server/core/content-hash";
-import { rerunStageById } from "@/server/db/video-page-actions";
+import { forceRerunStageById, rerunStageById } from "@/server/db/video-page-actions";
 import { cancelVideoById } from "@/server/db/queue-actions";
 import { loadVideoPage, stageEstimates } from "@/server/db/video-page";
 import { addContent, createVideoRow } from "@/server/db/videos";
@@ -97,5 +97,49 @@ describe("rerunStageById / cancel", () => {
     const v = await mk();
     expect((await cancelVideoById(db.pool, actor, v.id)).ok).toBe(true);
     expect((await db.pool.query("select status from videos where id=$1", [v.id])).rows[0].status).toBe("cancelled");
+  });
+});
+
+describe("forceRerunStageById", () => {
+  const seed = async (v: { id: string }, names = ["draft", "build", "tts", "render"]) => {
+    for (const [i, name] of names.entries()) await run(v.id, name, "succeeded", 100 - i);
+  };
+  const count = async (id: string, name: string) => (await db.pool.query("select count(*)::int as n from stage_runs where video_id=$1 and name=$2", [id, name])).rows[0].n as number;
+
+  it("re-runs a finished render with a new hash, audits it, and refuses a double click", async () => {
+    const v = await mk();
+    await seed(v);
+    const before = (await db.pool.query("select input_hash from stage_runs where video_id=$1 and name='render'", [v.id])).rows[0].input_hash;
+    const r = await forceRerunStageById(db.pool, queue, actor, v.id, "render");
+    expect(r.ok).toBe(true);
+    const rows = (await db.pool.query("select input_hash, status from stage_runs where video_id=$1 and name='render' order by created_at, id", [v.id])).rows;
+    expect(rows.map((x) => x.status)).toEqual(["succeeded", "queued"]);
+    expect(rows[1].input_hash).not.toBe(before);
+    expect((await db.pool.query("select count(*)::int as n from audit_log where event='stage.force_rerun_requested'")).rows[0].n).toBe(1);
+    const again = await forceRerunStageById(db.pool, queue, actor, v.id, "render");
+    expect(again.ok).toBe(false);
+    expect(await count(v.id, "render")).toBe(2);
+  });
+  it("refuses paid or model steps, and steps that have not finished", async () => {
+    const v = await mk();
+    await seed(v);
+    for (const st of ["tts", "draft", "build", "generate", "repair_scenes", "voice"]) expect((await forceRerunStageById(db.pool, queue, actor, v.id, st)).ok).toBe(false);
+    expect(await count(v.id, "tts")).toBe(1);
+    expect(await count(v.id, "voice")).toBe(0);
+  });
+  it("refuses while any step is active", async () => {
+    const v = await mk();
+    await seed(v);
+    await run(v.id, "voice", "running");
+    expect((await forceRerunStageById(db.pool, queue, actor, v.id, "render")).ok).toBe(false);
+    expect(await count(v.id, "render")).toBe(1);
+  });
+  it("refuses a video that is no longer live, and a non-session actor", async () => {
+    const v = await mk();
+    await seed(v);
+    expect((await forceRerunStageById(db.pool, queue, { kind: "system" } as never, v.id, "render")).ok).toBe(false);
+    await db.pool.query("update videos set status='cancelled' where id=$1", [v.id]);
+    expect((await forceRerunStageById(db.pool, queue, actor, v.id, "render")).ok).toBe(false);
+    expect(await count(v.id, "render")).toBe(1);
   });
 });
