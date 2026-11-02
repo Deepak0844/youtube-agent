@@ -5,7 +5,7 @@ import { LIMITS } from "../../src/shared/scene/kinds/common";
 
 describe("kit layout", () => {
   it("safeSize is the frame minus the safe margins", () => {
-    expect(safeSize(theme)).toEqual({ w: 936, h: 1320 });
+    expect(safeSize(theme)).toEqual({ w: 936, h: 1276 });
   });
 
   it("fitFont keeps the max size when everything fits", () => {
