@@ -3,7 +3,7 @@
 // so no other page ships this code.
 import { Player, type PlayerRef } from "@remotion/player";
 import { useMemo, useRef, useState } from "react";
-import { KitScene, KitVideo } from "../../../remotion/kit/registry";
+import { KitScene, KitVideo } from "./kit-bridge";
 import { LOOKS } from "../../../remotion/kit/look";
 import { theme } from "../../../remotion/kit/theme";
 import { docFrames } from "../../../remotion/kit/timeline";

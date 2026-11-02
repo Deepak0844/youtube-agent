@@ -47,6 +47,8 @@ const nextConfig: NextConfig = {
         loaders: ["@tailwindcss/turbopack"],
         as: "*.css",
       },
+      // The scene kit (Preview tab) imports its script fonts by URL.
+      "*.ttf": { type: "asset" },
     },
   },
 };
