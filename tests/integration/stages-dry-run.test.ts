@@ -168,6 +168,7 @@ describe("dry-run stage handlers", () => {
     expect(bytes.equals(readFileSync(path.join(FIXTURES, "good.mp4")))).toBe(true);
     const narration = (await latestContent(db.pool, v.id, "narration"))!.body as { file: string; word_timings: string; audio_sha256: string };
     expect(narration.word_timings).toBe("estimated");
+    expect((narration as { voice_provider?: string }).voice_provider).toBeTruthy();
     expect(createHash("sha256").update(readFileSync(path.join(root, "videos", v.id, narration.file))).digest("hex")).toBe(narration.audio_sha256);
     for (const f of ["scene.json", "render.mp4", "voiced.mp4", "review-first.png", "review-last.png"]) expect(existsSync(path.join(root, "videos", v.id, f))).toBe(true);
     // Attempt folders were emptied by promotion (only the marker may remain).

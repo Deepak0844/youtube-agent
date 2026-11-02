@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { GateId } from "@/server/core/gates";
 import {
   expectedInputHash,
+  FORCE_RERUN_STAGES,
+  FREE_VOICE_PROVIDERS,
+  ttsRerunProblem,
   nextActions,
   stageInputHash,
   stagePlan,
@@ -207,5 +210,40 @@ describe("stage nonce (owner forced rerun)", () => {
     expect(a).toMatchObject({ kind: "enqueue", stage: "render" });
     const after = { ...forced, runs: { ...forced.runs, render: { status: "succeeded" as RunStatus, inputHash: (a as { inputHash: string }).inputHash } } };
     expect(nextActions(after)[0]).toMatchObject({ kind: "enqueue", stage: "voice" });
+  });
+});
+
+describe("forcing narration (tts) only for a free voice", () => {
+  const f = { requireEvidence: false, paidGeneration: false };
+  it("free_set_and_refusal_text", () => {
+    expect([...FREE_VOICE_PROVIDERS].sort()).toEqual(["edge", "local_openai", "voicestudio"]);
+    for (const p of ["voicestudio", "edge"]) expect(ttsRerunProblem(p)).toBeNull();
+    expect(ttsRerunProblem("elevenlabs")).toBe("This voice is paid (elevenlabs). Re-running narration would be charged. Switch to a free voice, or ask for a paid re-run later.");
+    for (const p of ["google_tts", "azure_tts", "custom_http"]) expect(ttsRerunProblem(p)).toMatch(/paid/);
+    expect(ttsRerunProblem(null)).toMatch(/No narration voice/);
+    expect(ttsRerunProblem(undefined)).toMatch(/No narration voice/);
+  });
+  it("local_openai_is_free_only_on_a_loopback_address", () => {
+    for (const u of ["http://127.0.0.1:8880", "http://localhost:8880", "http://[::1]:8880", "https://localhost"]) expect(ttsRerunProblem("local_openai", u)).toBeNull();
+    for (const u of ["https://api.example.com", "http://192.168.1.5:8880", "http://127.0.0.1.evil.com", "", "not a url", null, undefined]) expect(ttsRerunProblem("local_openai", u)).toMatch(/paid \(local_openai\)/);
+    expect(ttsRerunProblem("local_openai")).toMatch(/paid/);
+  });
+  it("tts_is_forceable_but_paid_steps_still_are_not", () => {
+    expect(FORCE_RERUN_STAGES).toContain("tts");
+    for (const s of ["draft", "build", "generate", "repair_scenes", "pictures"] as const) expect(FORCE_RERUN_STAGES).not.toContain(s);
+  });
+  it("forcing_tts_reruns_tts_then_render_voice_sfx_qa_once_each", () => {
+    let v = walk(base({ flags: f })).v;
+    expect(nextActions(v)[0]?.kind).toBe("done");
+    v = { ...v, nonces: { tts: "x" } };
+    const order: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const [a] = nextActions(v);
+      if (a?.kind !== "enqueue") break;
+      order.push(a.stage);
+      v = { ...v, runs: { ...v.runs, [a.stage]: { status: "succeeded" as RunStatus, inputHash: a.inputHash } } };
+    }
+    expect(order).toEqual(["tts", "render", "voice", "sfx", "qa"]);
+    expect(nextActions(v)[0]?.kind).toBe("done");
   });
 });

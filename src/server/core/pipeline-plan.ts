@@ -120,8 +120,29 @@ export interface PipelineView {
   nonces?: Partial<Record<StageName, string>>;
 }
 
-/** Free, local steps the owner may force to run again. Never a paid or model step. */
-export const FORCE_RERUN_STAGES: readonly StageName[] = ["render", "voice", "sfx", "qa"];
+/** Steps the owner may force to run again. tts is paid for some voices, so it is only allowed while the voice route is free (ttsRerunProblem). Never a model step. */
+export const FORCE_RERUN_STAGES: readonly StageName[] = ["tts", "render", "voice", "sfx", "qa"];
+
+/** Voice providers that run on the owner's own machine or free service. custom_http is not here: it can bill. */
+export const FREE_VOICE_PROVIDERS: readonly string[] = ["voicestudio", "local_openai", "edge"]; // local_openai also needs a loopback address (ttsRerunProblem)
+
+/** True only for an http(s) address whose host is 127.0.0.1, localhost or ::1. Anything unparsable is not loopback. */
+export function isLoopbackUrl(value: string | null | undefined): boolean {
+  try {
+    const u = new URL(value ?? "");
+    return (u.protocol === "http:" || u.protocol === "https:") && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/** Why narration may not be forced to run again with this voice route, or null when it may (free voice). */
+export function ttsRerunProblem(routeProviderId: string | null | undefined, localUrl?: string | null): string | null {
+  if (!routeProviderId) return "No narration voice is chosen. Pick one in Settings > Providers first.";
+  // local_openai is free only when its server is on this computer: a remote address may bill, and the adapter records $0.
+  if (routeProviderId === "local_openai" ? isLoopbackUrl(localUrl) : FREE_VOICE_PROVIDERS.includes(routeProviderId)) return null;
+  return `This voice is paid (${routeProviderId}). Re-running narration would be charged. Switch to a free voice, or ask for a paid re-run later.`;
+}
 
 export type Action =
   | { kind: "enqueue"; stage: StageName; inputHash: string }

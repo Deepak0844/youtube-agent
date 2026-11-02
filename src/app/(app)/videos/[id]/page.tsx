@@ -4,9 +4,9 @@ import { z } from "zod";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { describeDetail } from "@/server/core/audit-view";
 import { microToUsd } from "@/server/core/llm-catalog";
-import type { StageName } from "@/server/core/pipeline-plan";
+import { ttsRerunProblem, type StageName } from "@/server/core/pipeline-plan";
 import { scriptSchema } from "@/server/core/script-contract";
-import { estimateLabel, parseTab, forceRerunOffered, rerunCostNote, rerunOffered, SEVERITY_WORDS, STAGE_LABELS, STATE_WORDS, TABS, type StageView, type TabId, type UiState } from "@/server/core/video-page-view";
+import { estimateLabel, parseTab, forceRerunOffered, voiceChanged, rerunCostNote, rerunOffered, SEVERITY_WORDS, STAGE_LABELS, STATE_WORDS, TABS, type StageView, type TabId, type UiState } from "@/server/core/video-page-view";
 import { FORMAT_WORDS, KIND_WORDS, LANGUAGE_WORDS, STATUS_WORDS } from "@/server/core/videos-view";
 import { getPool } from "@/server/db/pool";
 import { jobCheckers } from "../../queue/job-checkers";
@@ -108,7 +108,9 @@ function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
     <section aria-label="Steps" className="flex min-w-0 flex-col gap-3 rounded-card bg-surface p-pad">
       <ol data-testid="stage-strip" className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2">
         {p.stages.map((s: StageView) => {
-          const force = forceRerunOffered(s.stage as StageName, p.runStatus[s.stage as StageName], p.head.status, anyActive, p.hasUpload);
+          const force = forceRerunOffered(s.stage as StageName, p.runStatus[s.stage as StageName], p.head.status, anyActive, p.hasUpload, p.voice.current?.provider ?? null, p.voice.localUrl);
+          const isTts = s.stage === "tts";
+          const paidVoice = isTts && p.runStatus.tts === "succeeded" && !anyActive && !p.hasUpload ? ttsRerunProblem(p.voice.current?.provider, p.voice.localUrl) : null;
           const again = rerunOffered(p.runStatus[s.stage as StageName], p.head.status);
           return (
             <li key={s.stage} data-stage={s.stage} data-state={s.state} className="flex min-w-0 flex-col gap-2">
@@ -117,9 +119,11 @@ function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
                 <Pill tone={STATE_TONE[s.state]}>{STATE_WORDS[s.state]}</Pill>
               </div>
               <p className="m-0 text-small text-muted [overflow-wrap:anywhere]">{s.detail}{s.timeLeft ? ` · ${s.timeLeft}` : ""}</p>
+              {isTts && p.voice.stored ? <p data-testid="narration-voice" className="m-0 text-small text-muted [overflow-wrap:anywhere]">Voice: {p.voice.stored.provider} / {p.voice.stored.voice}</p> : null}
               {s.state === "running" && s.percent !== null ? <progress value={s.percent} max={100} aria-label={`${s.label} progress`} className="h-1 w-full" /> : null}
               {live && again ? <RerunForm videoId={p.head.id} stage={s.stage} label={STAGE_LABELS[s.stage as StageName]} estimate={estimateLabel(p.estimates[s.stage as StageName] ?? null)} costNote={rerunCostNote(s.stage as StageName, p.costPlanTotalMicroUsd)} /> : null}
-              {live && force ? <ForceRerunForm videoId={p.head.id} stage={s.stage} label={STAGE_LABELS[s.stage as StageName]} /> : null}
+              {live && paidVoice ? <p data-testid="paid-voice" className="m-0 text-small text-muted">{paidVoice}</p> : null}
+              {live && force ? <ForceRerunForm videoId={p.head.id} stage={s.stage} label={STAGE_LABELS[s.stage as StageName]} {...(isTts && { hint: "Narration, picture render, mix and check run again.", changed: voiceChanged(p.voice.stored, p.voice.current) })} /> : null}
             </li>
           );
         })}

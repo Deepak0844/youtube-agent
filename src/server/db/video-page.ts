@@ -1,12 +1,13 @@
 import type pg from "pg";
 import { redactLine } from "@/server/core/log-redact";
 import { STAGE_NAMES, stagePlan, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
-import { median, parseFindings, stageViews, type QaFinding, type RunFact, type StageGate, type StageView } from "@/server/core/video-page-view";
+import { median, parseFindings, stageViews, type QaFinding, type RunFact, type StageGate, type StageView, type VoiceId } from "@/server/core/video-page-view";
 import type { GateId } from "@/server/core/gates";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { approvalState } from "@/server/db/approvals";
 import { getEngineConfig } from "@/server/db/engine-config";
-import { readNextAction } from "@/server/db/pipeline";
+import { resolveRoute } from "@/server/db/media-registry";
+import { localVoiceUrl, readNextAction } from "@/server/db/pipeline";
 import { mediaSigner } from "@/server/db/queue-data";
 import { latestContent, type ContentKind, type VideoRow } from "@/server/db/videos";
 
@@ -32,6 +33,8 @@ export interface VideoPage {
   runStatus: Partial<Record<StageName, RunStatus>>;
   /** an upload row exists that is not a failed one: the file is spoken for */
   hasUpload: boolean;
+  /** Voice that made the narration (null on old rows) and the voice route now (null when none). */
+  voice: { stored: VoiceId | null; current: VoiceId | null; localUrl: string | null };
   /** Median past duration per stage (ms), or null when fewer than 3 past runs exist. */
   estimates: Partial<Record<StageName, number | null>>;
   openGate: GateId | null;
@@ -104,6 +107,10 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   const hasUpload = ((await db.query("select 1 from uploads where video_id = $1 and status <> 'upload_failed' limit 1", [videoId])).rowCount ?? 0) > 0;
+  const narr = asObj((await latestContent(db, videoId, "narration"))?.body);
+  const stored = typeof narr.voice_provider === "string" && typeof narr.voice_name === "string" ? { provider: narr.voice_provider, voice: narr.voice_name } : null;
+  const route = await resolveRoute(db, "voice", { format: head.format, videoKind: head.kind });
+  const voice = { stored, current: route ? { provider: route.provider, voice: route.voice ?? "" } : null, localUrl: route?.provider === "local_openai" ? await localVoiceUrl(db) : null };
   const cost = await latestContent(db, videoId, "cost_plan");
   const costBody = asObj(cost?.body);
   const items = Array.isArray(costBody.items) ? costBody.items : [];
@@ -173,7 +180,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   return {
-    head, stages, runStatus, hasUpload, estimates, openGate, script,
+    head, stages, runStatus, hasUpload, voice, estimates, openGate, script,
     beats: beats?.body ?? null,
     evidence: evidence ? { body: evidence.body, fileSrc: sign?.(evidence.filePath) ?? null } : null,
     titles: titles?.body ?? null,

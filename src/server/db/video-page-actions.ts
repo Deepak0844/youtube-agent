@@ -35,7 +35,7 @@ export async function rerunStageById(db: pg.Pool, queue: EnqueueOnly, actor: Gat
 
 const FORCE_REFUSALS: Record<string, string> = {
   ...REFUSALS,
-  force_rerun_not_allowed: "Only the render, voice, sound effects and check steps can be run again this way.",
+  force_rerun_not_allowed: "Only the narration, render, voice, sound effects and check steps can be run again this way.",
   pipeline_not_settled: "An earlier step is out of date or not finished. Let the video settle first.",
   force_rerun_uploaded: "This video is already being or has been uploaded: its file can no longer be re-rendered.",
   force_rerun_needs_succeeded: "This step has not finished yet, so there is nothing to run again.",
@@ -52,9 +52,10 @@ export async function forceRerunStageById(db: pg.Pool, queue: EnqueueOnly, actor
   } catch (e) {
     const m = e instanceof Error ? e.message : "";
     if (/^video is /.test(m)) return refuse("This video is no longer in production.");
+    if (m.startsWith("voice_problem:")) return refuse(m.slice("voice_problem:".length));
     return refuse(FORCE_REFUSALS[m] ?? "That step could not be run again.");
   }
-  await recordAudit(db, "stage.force_rerun_requested", { videoId, stage, sessionId: actor.sessionId });
+  await recordAudit(db, "stage.force_rerun_requested", { videoId, stage, sessionId: actor.sessionId, ...(r.routed && { voiceProvider: r.routed.provider, voiceName: r.routed.voice }) });
   if (r.held) return { ok: true, message: "This step is paused after repeated failures, so it will start when the pause ends." };
   return { ok: true, message: "Queued. The step and the steps after it will run again." };
 }
