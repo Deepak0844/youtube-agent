@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { langName } from "@/server/core/lang";
 import { buildCostPlan, costPlanBody, type CostItem } from "@/server/core/cost-plan";
 import { KnownFailure } from "@/server/core/paid-call";
 import { buildSceneDoc, type AskScene } from "@/server/core/scene-build";
@@ -66,7 +67,7 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
       const ask = sceneAsk(llm, ctx);
       const links = await deps.scenePictures?.(video.id);
       const pictures = links ? links.reduce<Record<string, string[]>>((m, l) => ((m[l.beatId] ??= []).push(l.assetId), m), {}) : undefined;
-      const doc = await buildSceneDoc(beats, ask, pictures ? { pictures, language: video.language } : { assets: (await deps.sceneAssets?.(video.id)) ?? [] });
+      const doc = await buildSceneDoc(beats, ask, pictures ? { pictures, language: langName(video.language) } : { assets: (await deps.sceneAssets?.(video.id)) ?? [] });
       await writeFile(path.join(ctx.attemptDir, "scenes.json"), JSON.stringify(doc));
       files.push("scenes.json");
       content.push({ kind: "scenes", body: doc });

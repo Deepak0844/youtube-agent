@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { langName } from "@/server/core/lang";
 import { buildSceneDoc, checkPictureIds, planPictureBeat } from "@/server/core/scene-build";
 
 const A = "11111111-1111-4111-8111-111111111111";
@@ -28,9 +29,11 @@ describe("buildSceneDoc with pictures", () => {
   it("skips the pick call for a picture beat and tells the model the ids", async () => {
     const prompts: string[] = [];
     const ask = async (m: Array<{ content: string }>) => (prompts.push(m[0]!.content), JSON.stringify({ version: 1, scenes: [kb] }));
-    const doc = await buildSceneDoc([{ id: "b1", text: "Cats are small.", visual: "a cat" }], ask as never, { pictures: { b1: [A] }, language: "en" });
+    const doc = await buildSceneDoc([{ id: "b1", text: "Cats are small.", visual: "a cat" }], ask as never, { pictures: { b1: [A] }, language: langName("hi") });
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain(A);
+    expect(prompts[0]).toContain("(Hindi)");
+    expect(langName("kn")).toBe("Kannada");
     expect(doc.scenes[0]).toMatchObject({ kind: "story_kenburns", image: A, beat: "b1" });
   });
   it("retries when the model uses another id", async () => {

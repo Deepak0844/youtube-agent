@@ -1,6 +1,6 @@
 import type { Db } from "./stages";
 
-// Links existing local image assets to a video's beats (migration 0043). No network, no spend.
+// Links existing local image assets to a video's beats (migration 0044). No network, no spend.
 // Asset ids in scene docs are the assets.id uuid itself (lowercase, passes the scene assetId rule; the Render stage looks the file up by it).
 
 export const MAX_PER_BEAT = 6;
