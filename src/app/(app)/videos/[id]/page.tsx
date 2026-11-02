@@ -20,7 +20,7 @@ import { LogTail } from "@/ui/domain/log-tail";
 import { VideoBox } from "@/ui/domain/video-box";
 import { Pill } from "@/ui/primitives/pill";
 import { Skeleton } from "@/ui/primitives/skeleton";
-import { ForceRerunForm, RerunForm, SceneButtons } from "./controls";
+import { ForceRerunForm, ReframeButtons, RerunForm, SceneButtons } from "./controls";
 
 // The video page (Doc 4 /videos/[id]): where it is now, what it cost, and the content of each step, one tab at a time
 // (?tab=). Read only except the buttons: Run again, Cancel, the gate card (all owner-only server actions) and the free scene checks.
@@ -76,6 +76,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
           <video controls preload="metadata" src={p.videoSrc} poster={p.posterSrc ?? undefined} aria-label="Final video" className="size-full object-contain" />
         </VideoBox>
       ) : null}
+      {p.videoSrc && p.head.status !== "cancelled" ? <ReframeButtons videoId={p.head.id} /> : null}
 
       <nav aria-label="Video sections" className="flex min-w-0 gap-5 overflow-x-auto border-b border-rule">
         {TABS.map((t) => (

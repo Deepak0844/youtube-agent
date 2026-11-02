@@ -60,6 +60,7 @@ export const AUDIT_EVENTS = {
   "scenes.repaired": "Failing scenes were repaired into a new version",
   "scenes.undone": "The previous scenes version was made current again",
   "scenes.repair_requested": "A repair of the failing scenes was requested",
+  "video.reframe_requested": "The owner asked for a 16:9 or 1:1 version of a finished video (detail: video id, format, stage run id, session id)",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",

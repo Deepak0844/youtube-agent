@@ -7,6 +7,7 @@ import { requireOwner } from "@/lib/auth/require-owner";
 import { BAD_FORM, parseIdForm } from "@/server/core/queue-input";
 import { getPool } from "@/server/db/pool";
 import type { ActionResult } from "@/server/db/queue-actions";
+import { requestReframe } from "@/server/db/reframe";
 import { forceRerunStageById, rerunStageById } from "@/server/db/video-page-actions";
 import { webStageQueue } from "@/server/queue/web-queues";
 
@@ -37,4 +38,17 @@ export async function forceRerunStageAction(_prev: RerunState, form: FormData): 
   const r = await forceRerunStageById(getPool(), webStageQueue(), { kind: "session", sessionId: owner.sessionId }, id.value, stage.data);
   refresh();
   return r;
+}
+
+// Owner "Make 16:9 / 1:1 version" of a finished video. Free and local; final.mp4 is never changed. Same guard order.
+export async function reframeAction(_prev: RerunState, form: FormData): Promise<RerunState> {
+  const owner = await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { ok: false, message: origin };
+  const id = parseIdForm(form, "videoId");
+  const format = z.string().max(10).safeParse(form.get("format"));
+  if (!id.ok || !format.success) return { ok: false, message: BAD_FORM };
+  const r = await requestReframe(getPool(), webStageQueue(), id.value, format.data, owner.sessionId);
+  refresh();
+  return r.ok ? { ok: true, message: "Queued. The new version appears in a minute or two." } : { ok: false, message: r.message };
 }

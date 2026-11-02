@@ -35,6 +35,7 @@ import { createVoiceFor, whisperAligner } from "./stages/voice-for";
 import { withAttempt } from "./stages/attempt";
 import { buildAttempt } from "./stages/build";
 import { repairScenesAttempt } from "./stages/repair-scenes";
+import { reframeAttempt } from "./stages/reframe";
 import type { StageDeps } from "./stages/deps";
 import { dryRunDraftHandler } from "./stages/draft";
 import { generateAttempt } from "./stages/generate";
@@ -87,6 +88,7 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     sfx: sfxHandler(fin, deps),
     qa: withAttempt(fin, qaAttempt(deps)),
     repair_scenes: repairScenesAttempt(deps),
+    reframe: withAttempt(fin, reframeAttempt(deps)),
   };
 }
 
@@ -180,6 +182,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
       },
     })),
     repair_scenes: refuseDryRunVideos(pool, repair),
+    reframe: refuseDryRunVideos(pool, withAttempt(fin, reframeAttempt(deps))),
     build: refuseDryRunVideos(pool, build),
     tts: refuseDryRunVideos(pool, withAttempt(fin, ttsAttempt(deps))),
     render: refuseDryRunVideos(pool, withAttempt(fin, renderAttempt(deps))),
