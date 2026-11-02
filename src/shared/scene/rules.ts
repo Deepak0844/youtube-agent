@@ -14,6 +14,8 @@ export interface RuleOpts {
   assetIds?: string[];
   /** The current beat's visual brief (Build, one beat at a time); an object it names may carry any label. */
   visual?: string;
+  /** Visual briefs by beat id, for judging a whole assembled doc with the same exception each beat got when it was built. */
+  visualByBeat?: Record<string, string>;
   /** Run one rule only (tests). */
   only?: string;
 }
@@ -161,7 +163,7 @@ export const RULES: Rule[] = [
               const low = label.toLowerCase();
               const words = ICON_WORDS[id];
               if (!label || !words || /\d/.test(label) || !LATIN.test(label)) return []; // empty, has digits/units, or non-Latin script: skipped
-              if (words.some((w) => low.includes(w)) || (o.visual ?? "").toLowerCase().includes(id.replace("_", " "))) return [];
+              if (words.some((w) => low.includes(w)) || (o.visualByBeat?.[String(s.beat)] ?? o.visual ?? "").toLowerCase().includes(id.replace("_", " "))) return [];
               return [{ scene: i, text: `Label "${label}" does not describe a ${id.replace("_", " ")} icon: pick a scene kind that can really show it, or label it as what it is.` }];
             }),
       ),

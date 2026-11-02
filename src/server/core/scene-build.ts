@@ -167,7 +167,9 @@ export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, 
     scenes.push({ ...fill.value, id: `s${i + 1}`, beat: beat.id, startMs, durationMs });
     startMs += durationMs;
   }
-  const doc = validateAndCheck({ version: 1, scenes }, { beats: beats.map((b) => b.id), assetIds: [...assets] });
+  // Judge the assembled doc with the same per-beat visual briefs each scene was checked with, or the final check is stricter than the loop.
+  const visualByBeat = Object.fromEntries(beats.flatMap((b) => (b.visual ? [[b.id, b.visual] as const] : [])));
+  const doc = validateAndCheck({ version: 1, scenes }, { beats: beats.map((b) => b.id), assetIds: [...assets], visualByBeat });
   if (!doc.ok) throw new KnownFailure(`scenes_invalid: the assembled scenes do not fit. ${doc.errors.slice(0, 3).join("; ")}`.slice(0, 600));
   return doc.doc;
 }
