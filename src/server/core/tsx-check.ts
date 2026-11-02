@@ -15,6 +15,9 @@ const MAX_PROBLEMS = 20;
 const MAX_ECHO = 30;
 const MAX_DEPTH = 200;
 const MAX_LOOP_BOUND = 10_000;
+const MAX_LOOP_NEST = 2;
+const MAX_LOOP_PRODUCT = 100_000;
+const MAX_PLUS_TERMS = 1000;
 
 /** Every named value import the file may use, per module. Type-only imports from these modules are always fine. */
 export const TSX_IMPORTS: Readonly<Record<string, readonly string[]>> = {
@@ -40,26 +43,34 @@ const FORBIDDEN_GLOBALS = new Set([
   "decodeURI", "decodeURIComponent", "Image", "Audio", "Request", "Response", "Headers", "URL", "Blob", "FileReader",
   "alert", "open", "close", "__dirname", "__filename", "__webpack_require__", "__non_webpack_require__", "arguments",
   "delayRender", "continueRender", "cancelRender", "RTCPeerConnection", "webkitRTCPeerConnection", "WebTransport",
-  "fetchLater", "Notification",
+  "fetchLater", "Notification", "Symbol", "Intl", "RegExp",
 ]);
-// Member names that may not be read or written on anything (prototype walking, DOM escape hatches, the clock).
-const FORBIDDEN_MEMBERS = new Set([
+// Refused in every position, even as a local name or a member name: no shadowing story makes these useful.
+const HARD_GLOBALS = new Set([
+  "eval", "arguments", "Function", "globalThis", "window", "self", "Reflect", "Proxy", "Symbol", "Intl", "RegExp", "require",
+  "process", "document", "fetch", "XMLHttpRequest", "WebSocket", "importScripts", "__webpack_require__",
+  "__non_webpack_require__", "WebAssembly", "SharedArrayBuffer", "Atomics",
+]);
+// Member names that may not be read or written on anything (prototype walking, DOM escape hatches, the clock, React
+// element forgery, unbounded string growth). Matched case-insensitively.
+const FORBIDDEN_MEMBERS = lower([
   "constructor", "prototype", "__proto__", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
   "getPrototypeOf", "setPrototypeOf", "defineProperty", "defineProperties", "getOwnPropertyDescriptor",
   "getOwnPropertyDescriptors", "fromCharCode", "fromCodePoint", "raw", "innerHTML", "outerHTML", "insertAdjacentHTML",
   "srcdoc", "contentWindow", "contentDocument", "ownerDocument", "defaultView", "getRootNode", "sendBeacon", "cookie",
   "createElement", "cloneElement", "createPortal", "dangerouslySetInnerHTML", "now",
-  "eval", "Function", "fetch", "require", "process", "window", "document", "globalThis", "importScripts",
+  "eval", "Function", "fetch", "require", "process", "window", "document", "globalThis", "importScripts", "self", "$$typeof",
+  "repeat", "callee", "caller",
 ]);
-// Exact string values refused anywhere: names only useful to rebuild a forbidden lookup. Ordinary words ("process",
-// "window", "Date") stay usable as caption text; they are refused only as computed keys (checkElementAccess).
-const STRING_BANNED = new Set([
+// Whole string values refused anywhere (case-insensitive): names only useful to rebuild a forbidden lookup. Ordinary
+// words ("process", "window", "Date") stay usable as caption text; computed keys must be numbers anyway (checkKey).
+const STRING_BANNED = lower([
   "constructor", "prototype", "__proto__", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
   "globalThis", "eval", "XMLHttpRequest", "WebSocket", "EventSource", "importScripts", "sendBeacon", "innerHTML", "outerHTML",
   "insertAdjacentHTML", "srcdoc", "contentWindow", "contentDocument", "ownerDocument", "defaultView", "createElement",
   "dangerouslySetInnerHTML", "getPrototypeOf", "setPrototypeOf", "defineProperty", "getOwnPropertyDescriptor", "fromCharCode",
   "setTimeout", "setInterval", "requestAnimationFrame", "localStorage", "sessionStorage", "indexedDB", "WebAssembly",
-  "SharedArrayBuffer", "__webpack_require__", "__non_webpack_require__",
+  "SharedArrayBuffer", "__webpack_require__", "__non_webpack_require__", "$$typeof",
 ]);
 // Lower-case JSX tags never allowed (script/network/embedding, CSS injection, time-based animation, <img> instead of <Img>).
 const FORBIDDEN_TAGS = new Set([
@@ -68,15 +79,34 @@ const FORBIDDEN_TAGS = new Set([
   "set", "a", "noscript", "template", "slot", "dialog", "marquee", "canvas",
 ]);
 const URL_ATTRS = new Set(["src", "href", "xlinkhref", "srcset", "poster", "action", "formaction", "data", "background", "ping", "manifest", "codebase"]);
-// Objects whose members may not be looked up with a computed (non-literal) key.
-const GLOBAL_OBJECTS = new Set(["Math", "Object", "Array", "String", "Number", "Boolean", "JSON", "Symbol", "Intl", "Promise", "RegExp", "Error", "Map", "Set", "WeakMap", "WeakSet"]);
+// Built-in objects that may only be used as X.name, X(...), new X(...) or `instanceof X`: never aliased, passed around,
+// destructured or shadowed (so `Math.floor` really is Math.floor).
+const GLOBAL_OBJECTS = new Set(["Math", "Object", "Array", "String", "Number", "Boolean", "JSON", "Promise", "Error", "Map", "Set", "WeakMap", "WeakSet"]);
+const AS_ARGUMENT_OK = new Set(["Boolean", "Number", "String"]); // .filter(Boolean), .map(String)
+const NEW_OK = new Set(["Map", "Set", "Array"]);
+const NO_SHADOW = new Set([...GLOBAL_OBJECTS, "undefined", "NaN", "Infinity"]);
+// Math functions that always return a number: Math.floor(x) is a safe computed key.
+const MATH_NUMERIC = new Set(["floor", "ceil", "round", "trunc", "abs", "min", "max", "sign"]);
+const ARITH = new Set([
+  ts.SyntaxKind.MinusToken, ts.SyntaxKind.AsteriskToken, ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken,
+  ts.SyntaxKind.AsteriskAsteriskToken, ts.SyntaxKind.AmpersandToken, ts.SyntaxKind.BarToken, ts.SyntaxKind.CaretToken,
+  ts.SyntaxKind.LessThanLessThanToken, ts.SyntaxKind.GreaterThanGreaterThanToken, ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken,
+]);
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 const JSX_IDENT = /^[A-Za-z_$][A-Za-z0-9_$-]*$/;
 const STATIC_PATH = /^[A-Za-z0-9_-][A-Za-z0-9_./-]{0,127}$/;
-const STATIC_PART = /^[A-Za-z0-9_./-]{0,128}$/;
 const COMMENT_DIRECTIVES = ["@ts-", "@jsx", "<reference", "<amd-", "sourcemappingurl", "sourceurl", "webpack", "eslint-disable"];
 const TIMERS = new Set(["setTimeout", "setInterval", "requestAnimationFrame", "requestIdleCallback", "setImmediate", "queueMicrotask"]);
 const NETWORK = new Set(["fetch", "XMLHttpRequest", "WebSocket", "EventSource"]);
+
+function lower(names: string[]): Set<string> {
+  return new Set(names.map((n) => n.toLowerCase()));
+}
+
+/** True for a staticFile() name: plain relative path of [A-Za-z0-9._/-], no '.'/'..' segment, no leading '/' or '.'. */
+export function isStaticName(name: string): boolean {
+  return STATIC_PATH.test(name) && !name.split("/").some((s) => s === ".." || s === ".");
+}
 
 export interface TsxCheckResult {
   ok: boolean;
@@ -97,6 +127,27 @@ export function checkTsx(source: unknown): TsxCheckResult {
     problems.push("The file could not be checked.");
   }
   return problems.length === 0 ? { ok: true, problems } : fail(problems);
+}
+
+/** meta.durationInFrames of a file that passed checkTsx (undefined when there is none). Never throws. */
+export function tsxDuration(source: string): number | undefined {
+  try {
+    const sf = ts.createSourceFile("scene.tsx", source, ts.ScriptTarget.Latest, false, ts.ScriptKind.TSX);
+    for (const st of sf.statements) {
+      if (!ts.isVariableStatement(st)) continue;
+      for (const d of st.declarationList.declarations) {
+        let init = d.initializer;
+        while (init && (ts.isAsExpression(init) || ts.isSatisfiesExpression(init) || ts.isParenthesizedExpression(init))) init = init.expression;
+        if (!ts.isIdentifier(d.name) || d.name.text !== "meta" || !init || !ts.isObjectLiteralExpression(init)) continue;
+        for (const p of init.properties) {
+          if (ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === "durationInFrames" && ts.isNumericLiteral(p.initializer)) return Number(p.initializer.text);
+        }
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+  return undefined;
 }
 
 function fail(problems: string[]): TsxCheckResult {
@@ -156,28 +207,69 @@ function walk(source: string, problems: string[]): void {
     if (ts.isImportDeclaration(st)) checkImport(st);
     else if (ts.isImportEqualsDeclaration(st)) add(st, "'import x = require()' is not allowed.");
   }
-  // Names a JSX tag may use: functions, classes and const arrow/function components declared in this file.
+  // Pre-pass. Names a JSX tag may use (functions and const arrow/function components declared in this file); every local
+  // binding by the scope that holds it (so `top` can be a local while the global `top` stays refused); numeric for-loop
+  // counters; function names (for the recursion check).
+  const scopes = new Map<ts.Node, Set<string>>();
+  const counterScopes = new Set<ts.Node>(); // for statements whose only binding is a numeric counter
+  const fnNames = new Set<string>();
+  const calls = new Map<string, Set<string>>();
+  const declare = (scope: ts.Node, name: ts.BindingName) => {
+    for (const id of bindingIds(name)) {
+      let set = scopes.get(scope);
+      if (!set) scopes.set(scope, (set = new Set()));
+      set.add(id.text);
+    }
+  };
   forEachNode(sf, (n) => {
-    if ((ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n)) && n.name) components.add(n.name.text);
-    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && ts.isVariableDeclarationList(n.parent) && n.parent.flags & ts.NodeFlags.Const) {
+    if ((ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n)) && n.name) { components.add(n.name.text); declare(n.parent, n.name); }
+    if (ts.isFunctionExpression(n) && n.name) declare(n, n.name);
+    if (ts.isParameter(n)) declare(n.parent, n.name);
+    const name = fnNameOf(n);
+    if (name) fnNames.add(name);
+    if (!ts.isVariableDeclaration(n)) return;
+    declare(varScope(n), n.name);
+    if (isCounterDecl(n)) counterScopes.add(n.parent.parent);
+    if (ts.isIdentifier(n.name) && n.initializer && ts.isVariableDeclarationList(n.parent) && n.parent.flags & ts.NodeFlags.Const) {
       let init: ts.Expression = n.initializer;
       while (ts.isParenthesizedExpression(init)) init = init.expression;
       if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) components.add(n.name.text);
     }
   });
+  /** The scope node of the nearest local binding of this name, or undefined when it names a global. */
+  const scopeOf = (id: ts.Identifier): ts.Node | undefined => {
+    for (let a: ts.Node | undefined = id.parent; a; a = a.parent) if (scopes.get(a)?.has(id.text)) return a;
+    return undefined;
+  };
+  const resolvesLocally = (id: ts.Identifier) => scopeOf(id) !== undefined;
+  let fn: string | undefined; // the named function the walk is in
+  const edge = (to: string) => {
+    if (!fn || !fnNames.has(to)) return;
+    let set = calls.get(fn);
+    if (!set) calls.set(fn, (set = new Set()));
+    set.add(to);
+  };
 
-  // Iterative walk: deep nesting cannot overflow the stack. Type-only parts are skipped (erased at compile time).
-  const stack: { n: ts.Node; d: number }[] = [{ n: sf, d: 0 }];
+  // Iterative walk: deep nesting cannot overflow the stack. Type-only parts are skipped (erased at compile time). The
+  // left spine of an `a + b + c ...` chain does not count as nesting (the parser reads it in a loop, not recursively).
+  const stack: { n: ts.Node; d: number; fn?: string }[] = [{ n: sf, d: 0 }];
   while (stack.length > 0 && problems.length < MAX_PROBLEMS * 2) {
-    const { n, d } = stack.pop()!;
+    const top = stack.pop()!;
+    const { n, d } = top;
+    fn = top.fn;
     if (d > MAX_DEPTH) { add(n, "the code is nested too deeply."); return; }
     comments(n);
     if (isTypeOnlyNode(n)) continue;
     visit(n);
+    const inner = fnNameOf(n) ?? fn;
     const kids: ts.Node[] = [];
     ts.forEachChild(n, (k) => { kids.push(k); });
-    for (let i = kids.length - 1; i >= 0; i--) stack.push({ n: kids[i]!, d: d + 1 });
+    for (let i = kids.length - 1; i >= 0; i--) {
+      const k = kids[i]!;
+      stack.push({ n: k, d: isPlus(n) && isPlus(k) && (n as ts.BinaryExpression).left === k ? d : d + 1, fn: inner });
+    }
   }
+  checkRecursion();
   if (!hasDefault) problems.push("The file must 'export default' the scene component.");
   if (!hasMeta) problems.push(`The file must 'export const meta = { durationInFrames, fps: ${TSX_META.fps}, width: ${TSX_META.width}, height: ${TSX_META.height} }'.`);
 
@@ -231,11 +323,34 @@ function walk(source: string, problems: string[]): void {
       case ts.SyntaxKind.DoStatement: return add(n, "while/do loops are not allowed; use a for loop with a number bound, or .map().");
       case ts.SyntaxKind.ForInStatement: return add(n, "for...in is not allowed; use Object.keys().");
       case ts.SyntaxKind.ForStatement: return checkFor(n as ts.ForStatement);
+      case ts.SyntaxKind.ForOfStatement: return checkForOf(n as ts.ForOfStatement);
       case ts.SyntaxKind.AwaitExpression: return add(n, "await is not allowed: a frame must render synchronously.");
       case ts.SyntaxKind.AsyncKeyword: return add(n, "async functions are not allowed: a frame must render synchronously.");
+      case ts.SyntaxKind.YieldExpression: return add(n, "generators are not allowed.");
+      case ts.SyntaxKind.FunctionExpression:
+      case ts.SyntaxKind.MethodDeclaration: {
+        if ((n as ts.FunctionExpression).asteriskToken) add(n, "generators are not allowed.");
+        return;
+      }
+      case ts.SyntaxKind.ThisKeyword:
+      case ts.SyntaxKind.SuperKeyword: return add(n, `'${snip(n)}' is not allowed; pass values as props or arguments.`);
+      case ts.SyntaxKind.ClassDeclaration:
+      case ts.SyntaxKind.ClassExpression: return add(n, "classes are not allowed; write function components.");
+      case ts.SyntaxKind.GetAccessor:
+      case ts.SyntaxKind.SetAccessor: return add(n, "getters and setters are not allowed.");
+      case ts.SyntaxKind.RegularExpressionLiteral: return add(n, "regular expressions are not allowed.");
       case ts.SyntaxKind.TaggedTemplateExpression: return add(n, "tagged templates are not allowed.");
-      case ts.SyntaxKind.ElementAccessExpression: return checkElementAccess(n as ts.ElementAccessExpression);
-      case ts.SyntaxKind.ComputedPropertyName: { checkComputedKey(n, (n as ts.ComputedPropertyName).expression); return; }
+      case ts.SyntaxKind.ElementAccessExpression: {
+        const ea = n as ts.ElementAccessExpression;
+        return checkKey(ea, ea.argumentExpression, ea.expression);
+      }
+      case ts.SyntaxKind.ComputedPropertyName: return checkKey(n, (n as ts.ComputedPropertyName).expression);
+      case ts.SyntaxKind.ShorthandPropertyAssignment: {
+        // ({ constructor } = fn) reads fn.constructor
+        const s = n as ts.ShorthandPropertyAssignment;
+        if (isWriteTarget(s.parent)) memberName(s.name);
+        return;
+      }
       case ts.SyntaxKind.PropertyAccessExpression: return checkPropertyAccess(n as ts.PropertyAccessExpression);
       case ts.SyntaxKind.PropertyAssignment: return checkStyleKey(n as ts.PropertyAssignment);
       case ts.SyntaxKind.VariableDeclaration: {
@@ -246,8 +361,9 @@ function walk(source: string, problems: string[]): void {
       }
       case ts.SyntaxKind.CallExpression: return checkCall(n as ts.CallExpression);
       case ts.SyntaxKind.NewExpression: {
-        const e = (n as ts.NewExpression).expression;
-        if (!ts.isIdentifier(e)) add(n, `'new ${snip(e)}' is not allowed.`);
+        const ne = n as ts.NewExpression;
+        if (!ts.isIdentifier(ne.expression) || !NEW_OK.has(ne.expression.text)) return add(n, `'new ${snip(ne.expression)}' is not allowed (only new Map, new Set, new Array).`);
+        if (ne.expression.text === "Array" && !arrayArgsOk(ne.arguments)) add(n, `new Array(n) needs a number n up to ${MAX_LOOP_BOUND}.`);
         return;
       }
       case ts.SyntaxKind.StringLiteral:
@@ -270,8 +386,9 @@ function walk(source: string, problems: string[]): void {
         return;
       }
       case ts.SyntaxKind.FunctionDeclaration:
-      case ts.SyntaxKind.ClassDeclaration:
-      case ts.SyntaxKind.VariableStatement: return checkExported(n as ts.FunctionDeclaration | ts.ClassDeclaration | ts.VariableStatement);
+        if ((n as ts.FunctionDeclaration).asteriskToken) add(n, "generators are not allowed.");
+        return checkExported(n as ts.FunctionDeclaration);
+      case ts.SyntaxKind.VariableStatement: return checkExported(n as ts.VariableStatement);
       case ts.SyntaxKind.ModuleDeclaration: return add(n, "namespaces/modules are not allowed.");
     }
   }
@@ -310,43 +427,106 @@ function walk(source: string, problems: string[]): void {
     }
   }
 
+  function isProtected(name: string): boolean {
+    return GLOBAL_OBJECTS.has(name) || imported.has(name) || (reactDefault && name === REACT_DEFAULT);
+  }
+
+  function memberName(id: ts.Identifier): void {
+    if (FORBIDDEN_MEMBERS.has(id.text.toLowerCase())) add(id, `'${echo(id.text)}' is not allowed.`);
+  }
+
+  // Forbidden names are judged by position: a member name (x.now) against FORBIDDEN_MEMBERS, a reference to a global
+  // against FORBIDDEN_GLOBALS (unless a local of that name is in scope), and HARD_GLOBALS everywhere.
   function checkIdentifier(id: ts.Identifier): void {
     const p = id.parent;
-    const jsxName = ts.isJsxAttribute(p) || ts.isJsxNamespacedName(p) || ((ts.isJsxOpeningElement(p) || ts.isJsxSelfClosingElement(p) || ts.isJsxClosingElement(p)) && p.tagName === id);
-    if (!(jsxName ? JSX_IDENT : IDENT).test(id.text) || id.getText(sf) !== id.text) return add(id, "identifiers must be plain ASCII letters, digits, _ or $ (no escapes).");
-    const isMemberName = (ts.isPropertyAccessExpression(p) && p.name === id) || (ts.isQualifiedName(p) && p.right === id) ||
+    const jsxAttr = ts.isJsxAttribute(p) || ts.isJsxNamespacedName(p);
+    const jsxTag = (ts.isJsxOpeningElement(p) || ts.isJsxSelfClosingElement(p) || ts.isJsxClosingElement(p)) && p.tagName === id;
+    if (!(jsxAttr || jsxTag ? JSX_IDENT : IDENT).test(id.text) || id.getText(sf) !== id.text) return add(id, "identifiers must be plain ASCII letters, digits, _ or $ (no escapes).");
+    if (HARD_GLOBALS.has(id.text) && !jsxAttr) return add(id, `'${echo(id.text)}' is not allowed${hint(id.text)}.`);
+    if (jsxTag) { if (!ts.isJsxClosingElement(p)) edge(id.text); return; }
+    const isMember = (ts.isPropertyAccessExpression(p) && p.name === id) || (ts.isQualifiedName(p) && p.right === id) ||
       ((ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p) || ts.isPropertyDeclaration(p) || ts.isGetAccessorDeclaration(p) || ts.isSetAccessorDeclaration(p)) && p.name === id) ||
-      jsxName || ts.isImportSpecifier(p) || ts.isImportClause(p) || ts.isNamespaceImport(p);
-    if (isMemberName) {
-      if (FORBIDDEN_MEMBERS.has(id.text)) add(id, `'${echo(id.text)}' is not allowed.`);
+      (ts.isBindingElement(p) && p.propertyName === id) || jsxAttr || ts.isImportSpecifier(p) || ts.isImportClause(p) || ts.isNamespaceImport(p);
+    if (isMember) return memberName(id);
+    if (ts.isLabeledStatement(p) || ts.isBreakOrContinueStatement(p)) return;
+    const isDecl = (ts.isVariableDeclaration(p) || ts.isParameter(p) || ts.isFunctionDeclaration(p) || ts.isFunctionExpression(p) ||
+      ts.isClassDeclaration(p) || ts.isClassExpression(p) || ts.isBindingElement(p) || ts.isEnumDeclaration(p)) && p.name === id;
+    if (isDecl) {
+      if (ts.isBindingElement(p) && !p.propertyName && ts.isObjectBindingPattern(p.parent)) memberName(id); // const { constructor } = f
+      if (NO_SHADOW.has(id.text) || isProtected(id.text)) add(id, `'${echo(id.text)}' may not be declared again (it would hide the real one).`);
       return;
     }
-    if (FORBIDDEN_GLOBALS.has(id.text)) add(id, `'${echo(id.text)}' is not allowed${hint(id.text)}.`);
-    else if (FORBIDDEN_MEMBERS.has(id.text)) add(id, `'${echo(id.text)}' is not allowed.`);
+    edge(id.text);
+    if (FORBIDDEN_GLOBALS.has(id.text) && !resolvesLocally(id)) return add(id, `'${echo(id.text)}' is not allowed${hint(id.text)}.`);
+    if (isProtected(id.text) && !directUse(id)) add(id, `'${echo(id.text)}' may only be used as ${echo(id.text)}.name or ${echo(id.text)}(...): not stored, passed, destructured or changed.`);
+  }
+
+  /** X.name, X[...], X(...), new X(...), `instanceof X`, and Boolean/Number/String as a call argument. */
+  function directUse(id: ts.Identifier): boolean {
+    const p = id.parent;
+    if ((ts.isPropertyAccessExpression(p) || ts.isElementAccessExpression(p) || ts.isCallExpression(p) || ts.isNewExpression(p)) && p.expression === id) return true;
+    if (ts.isBinaryExpression(p) && p.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword && p.right === id) return true;
+    return ts.isCallExpression(p) && p.arguments.includes(id) && AS_ARGUMENT_OK.has(id.text);
   }
 
   function checkPropertyAccess(pa: ts.PropertyAccessExpression): void {
     const obj = pa.expression;
     const name = pa.name.text;
-    if (ts.isIdentifier(obj) && obj.text === "Math" && name === "random") add(pa, "Math.random is not allowed; use random('seed') from remotion.");
-    if (ts.isIdentifier(obj) && obj.text === REACT_DEFAULT && reactDefault && !TSX_IMPORTS.react!.includes(name)) add(pa, `'React.${echo(name)}' is not allowed (only ${TSX_IMPORTS.react!.join(", ")}).`);
+    const root = ts.isIdentifier(obj) ? obj.text : undefined;
+    if (root === "Math" && name === "random") add(pa, "Math.random is not allowed; use random('seed') from remotion.");
+    if (root === REACT_DEFAULT && reactDefault && !TSX_IMPORTS.react!.includes(name)) add(pa, `'React.${echo(name)}' is not allowed (only ${TSX_IMPORTS.react!.join(", ")}).`);
+    if (root === "Array" && name === "from") add(pa, "Array.from is not allowed; use an array literal, Array(n) or a bounded for loop.");
+    if (root && isProtected(root) && isWriteTarget(pa)) add(pa, `changing '${echo(root)}.${echo(name)}' is not allowed.`);
+    if (name === "length" && isWriteTarget(pa)) add(pa, "changing .length is not allowed.");
+    if (name === "fill" && !boundedArray(obj)) add(pa, `.fill() is only allowed on an array literal or Array(n) with a number n up to ${MAX_LOOP_BOUND}.`);
   }
 
-  function checkComputedKey(n: ts.Node, key: ts.Expression): boolean {
+  // Computed keys (x[k], { [k]: v }, const { [k]: v } = x) must be numbers: no text key can then spell a forbidden name.
+  function checkKey(n: ts.Node, key: ts.Expression, obj?: ts.Expression): void {
     const lit = literalString(key);
-    if (lit === undefined) return false;
-    if (FORBIDDEN_MEMBERS.has(lit) || FORBIDDEN_GLOBALS.has(lit) || STRING_BANNED.has(lit) || lit === "random") add(n, `the key '${echo(lit)}' is not allowed.`);
-    return true;
+    const root = obj && ts.isIdentifier(obj) ? obj.text : undefined;
+    if (lit !== undefined) {
+      if (root === REACT_DEFAULT && reactDefault && !TSX_IMPORTS.react!.includes(lit)) add(n, `'React.${echo(lit)}' is not allowed (only ${TSX_IMPORTS.react!.join(", ")}).`);
+      const low = lit.toLowerCase();
+      if (FORBIDDEN_MEMBERS.has(low) || FORBIDDEN_GLOBALS.has(lit) || STRING_BANNED.has(low) || lit === "random") return add(n, `the key '${echo(lit)}' is not allowed.`);
+      return add(n, "text keys in [...] are not allowed; write x.name, or use a number key.");
+    }
+    if (isNumericKey(key, 0)) return;
+    if (root && isProtected(root)) return add(n, `computed lookup on '${echo(root)}' is not allowed.`);
+    add(n, "computed keys must be numbers (a number, arithmetic like i % 3, Math.floor(x) or a for-loop counter); keys built from text are not allowed.");
   }
 
-  function checkElementAccess(ea: ts.ElementAccessExpression): void {
-    const key = ea.argumentExpression;
-    const obj = ea.expression;
-    const lit = literalString(key);
-    if (lit !== undefined && ts.isIdentifier(obj) && obj.text === REACT_DEFAULT && reactDefault && !TSX_IMPORTS.react!.includes(lit)) add(ea, `'React.${echo(lit)}' is not allowed (only ${TSX_IMPORTS.react!.join(", ")}).`);
-    if (checkComputedKey(ea, key) || ts.isNumericLiteral(key)) return;
-    if (ts.isIdentifier(obj) && (GLOBAL_OBJECTS.has(obj.text) || imported.has(obj.text) || obj.text === REACT_DEFAULT)) add(ea, `computed lookup on '${echo(obj.text)}' is not allowed.`);
-    else if (containsString(key)) add(ea, "computed keys built from text are not allowed.");
+  /** True when the expression can only produce a number. Unknown shapes are false (refused). */
+  function isNumericKey(e: ts.Expression, depth: number): boolean {
+    if (depth > 50) return false;
+    const u = unwrap(e) as ts.Expression;
+    if (ts.isNumericLiteral(u) || ts.isBigIntLiteral(u)) return true;
+    if (ts.isIdentifier(u)) { const s = scopeOf(u); return !!s && counterScopes.has(s); }
+    if (ts.isPrefixUnaryExpression(u)) return u.operator === ts.SyntaxKind.MinusToken || u.operator === ts.SyntaxKind.PlusToken || u.operator === ts.SyntaxKind.TildeToken;
+    if (ts.isBinaryExpression(u)) {
+      if (ARITH.has(u.operatorToken.kind)) return true;
+      return u.operatorToken.kind === ts.SyntaxKind.PlusToken && isNumericKey(u.left, depth + 1) && isNumericKey(u.right, depth + 1);
+    }
+    if (ts.isConditionalExpression(u)) return isNumericKey(u.whenTrue, depth + 1) && isNumericKey(u.whenFalse, depth + 1);
+    const c = ts.isCallExpression(u) ? u.expression : undefined;
+    return !!c && ts.isPropertyAccessExpression(c) && ts.isIdentifier(c.expression) && c.expression.text === "Math" && MATH_NUMERIC.has(c.name.text);
+  }
+
+  function checkRecursion(): void {
+    const state = new Map<string, 1 | 2>(); // 1: on the current path, 2: done
+    for (const start of calls.keys()) {
+      if (state.has(start)) continue;
+      state.set(start, 1);
+      const path: [string, Iterator<string>][] = [[start, (calls.get(start) ?? new Set<string>()).values()]];
+      while (path.length > 0) {
+        const [name, it] = path[path.length - 1]!;
+        const next = it.next();
+        if (next.done) { state.set(name, 2); path.pop(); continue; }
+        const s = state.get(next.value);
+        if (s === 1) { problems.push(`'${echo(next.value)}' calls itself (directly or through another function): recursion is not allowed.`); return; }
+        if (s === undefined) { state.set(next.value, 1); path.push([next.value, (calls.get(next.value) ?? new Set<string>()).values()]); }
+      }
+    }
   }
 
   function checkStyleKey(p: ts.PropertyAssignment): void {
@@ -364,21 +544,18 @@ function walk(source: string, problems: string[]): void {
       if (!fixed) add(c, "random() needs a fixed seed, e.g. random('dot-1').");
     }
     if (c.expression.text === "staticFile") checkStaticFile(c);
+    if (c.expression.text === "Array" && !arrayArgsOk(c.arguments)) add(c, `Array(n) needs a number n up to ${MAX_LOOP_BOUND}.`);
   }
 
+  // Only a plain literal name: no template, no variable, so the files a scene can reach are known before it runs.
   function checkStaticFile(c: ts.CallExpression): void {
     const a = c.arguments.length === 1 ? c.arguments[0]! : undefined;
-    let ok = false;
-    if (a && (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a))) ok = STATIC_PATH.test(a.text) && !a.text.split("/").some((s) => s === ".." || s === ".");
-    else if (a && ts.isTemplateExpression(a)) {
-      const parts = [a.head.text, ...a.templateSpans.map((s) => s.literal.text)];
-      ok = STATIC_PATH.test(a.head.text) && parts.every((t) => STATIC_PART.test(t) && !t.includes(".."));
-    }
-    if (!ok) add(c, "staticFile() needs one plain relative file name, e.g. staticFile('assets/a.png').");
+    const ok = !!a && (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a)) && isStaticName(a.text);
+    if (!ok) add(c, "staticFile() needs one plain relative file name as a literal, e.g. staticFile('assets/a.png').");
   }
 
   function checkString(n: ts.Node, text: string): void {
-    if (STRING_BANNED.has(text)) add(n, `the text '${echo(text)}' is not allowed as a value.`);
+    if (STRING_BANNED.has(text.toLowerCase())) add(n, `the text '${echo(text)}' is not allowed as a value.`);
     if (text.includes("\\")) add(n, "backslashes in text are not allowed.");
     const low = text.toLowerCase();
     if (low.includes("image-set(") || low.includes("src(")) add(n, "CSS image-set()/src() are not allowed.");
@@ -407,7 +584,9 @@ function walk(source: string, problems: string[]): void {
   function checkConcat(b: ts.BinaryExpression): void {
     if (b.operatorToken.kind !== ts.SyntaxKind.PlusToken) return;
     if (ts.isBinaryExpression(b.parent) && b.parent.operatorToken.kind === ts.SyntaxKind.PlusToken) return; // the whole chain once
-    for (const run of literalRuns(b)) checkString(b, run);
+    const runs = literalRuns(b);
+    if ((runs.terms ?? 0) > MAX_PLUS_TERMS) add(b, `a '+' chain may have at most ${MAX_PLUS_TERMS} parts.`);
+    for (const run of runs) checkString(b, run);
   }
 
   function checkJsxTag(el: ts.JsxOpeningElement | ts.JsxSelfClosingElement): void {
@@ -458,7 +637,105 @@ function walk(source: string, problems: string[]): void {
       (ts.isBinaryExpression(inc) && inc.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken && ts.isIdentifier(inc.left) && inc.left.text === v && ts.isNumericLiteral(inc.right) && Number(inc.right.text) >= 1));
     if (!boundOk || !stepOk) return add(f, `for loops need the shape 'for (let i = 0; i < 100; i++)' with a number bound up to ${MAX_LOOP_BOUND}.`);
     if (assigns(f.statement, v!)) add(f, `the loop variable '${echo(v!)}' may not be changed inside the loop.`);
+    checkNesting(f);
   }
+
+  function checkForOf(f: ts.ForOfStatement): void {
+    if (f.awaitModifier) return add(f, "for await is not allowed.");
+    const e = unwrap(f.expression);
+    if (!ts.isArrayLiteralExpression(e) || e.elements.some(ts.isSpreadElement)) return add(f, "for...of only over an array literal, e.g. for (const c of ['a', 'b']); use .map() on other arrays.");
+    checkNesting(f);
+  }
+
+  /** At most MAX_LOOP_NEST loops inside each other (functions do not reset the count), and a bounded total run count. */
+  function checkNesting(loop: ts.Node): void {
+    let depth = 0;
+    let product = 1;
+    for (let a: ts.Node | undefined = loop; a; a = a.parent) {
+      if (ts.isForStatement(a) || ts.isForOfStatement(a)) { depth++; product *= loopCount(a); }
+    }
+    if (depth > MAX_LOOP_NEST) add(loop, `loops may be nested at most ${MAX_LOOP_NEST} deep.`);
+    else if (product > MAX_LOOP_PRODUCT) add(loop, `nested loops may run at most ${MAX_LOOP_PRODUCT} times in total.`);
+  }
+}
+
+/** Upper bound on a checked loop's runs (shapes that fail their own check count as 1; they are refused anyway). */
+function loopCount(n: ts.ForStatement | ts.ForOfStatement): number {
+  if (ts.isForOfStatement(n)) {
+    const e = unwrap(n.expression);
+    return ts.isArrayLiteralExpression(e) ? Math.max(1, e.elements.length) : 1;
+  }
+  const c = n.condition;
+  return c && ts.isBinaryExpression(c) && ts.isNumericLiteral(c.right) ? Math.max(1, Number(c.right.text)) : 1;
+}
+
+/** `for (let i = <number>; ...)`: a numeric loop counter (the loop's own check enforces the rest of the shape). */
+function isCounterDecl(d: ts.VariableDeclaration): boolean {
+  const list = d.parent;
+  return ts.isIdentifier(d.name) && !!d.initializer && ts.isNumericLiteral(d.initializer) && ts.isVariableDeclarationList(list) &&
+    !!(list.flags & ts.NodeFlags.Let) && list.declarations.length === 1 && ts.isForStatement(list.parent) && list.parent.initializer === list;
+}
+
+/** The node whose subtree a variable declaration is visible in (block for let/const, function for var). */
+function varScope(d: ts.VariableDeclaration): ts.Node {
+  const list = d.parent;
+  if (!ts.isVariableDeclarationList(list)) return list; // catch (e)
+  if (list.flags & ts.NodeFlags.BlockScoped) return ts.isVariableStatement(list.parent) ? list.parent.parent : list.parent;
+  let a: ts.Node = list;
+  while (a.parent && !ts.isFunctionLike(a) && !ts.isSourceFile(a)) a = a.parent;
+  return a;
+}
+
+function bindingIds(name: ts.BindingName): ts.Identifier[] {
+  const out: ts.Identifier[] = [];
+  const todo: ts.BindingName[] = [name];
+  while (todo.length > 0) {
+    const n = todo.pop()!;
+    if (ts.isIdentifier(n)) out.push(n);
+    else for (const el of n.elements) if (ts.isBindingElement(el)) todo.push(el.name);
+  }
+  return out;
+}
+
+/** The name a function node is known by: its own name, or the variable it initialises. */
+function fnNameOf(n: ts.Node): string | undefined {
+  if ((ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n)) && n.name) return n.name.text;
+  if ((ts.isArrowFunction(n) || ts.isFunctionExpression(n)) && ts.isVariableDeclaration(n.parent) && ts.isIdentifier(n.parent.name)) return n.parent.name.text;
+  return undefined;
+}
+
+function isPlus(n: ts.Node): boolean {
+  return ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken;
+}
+
+/** Array(n)/new Array(n): no argument, two or more elements, or one number literal up to MAX_LOOP_BOUND. */
+function arrayArgsOk(args: ts.NodeArray<ts.Expression> | undefined): boolean {
+  if (!args || args.length === 0) return true;
+  if (args.some(ts.isSpreadElement)) return false;
+  if (args.length > 1) return true;
+  const a = unwrap(args[0]!);
+  return ts.isNumericLiteral(a) && Number(a.text) <= MAX_LOOP_BOUND;
+}
+
+function boundedArray(e: ts.Expression): boolean {
+  const u = unwrap(e);
+  if (ts.isArrayLiteralExpression(u)) return true;
+  return (ts.isCallExpression(u) || ts.isNewExpression(u)) && ts.isIdentifier(u.expression) && u.expression.text === "Array" && arrayArgsOk(u.arguments);
+}
+
+/** True when the node is (part of) the left side of an assignment, ++/--, or a for...of/in target. */
+function isWriteTarget(n: ts.Node): boolean {
+  let c = n;
+  for (let p = n.parent; p; c = p, p = p.parent) {
+    if (ts.isParenthesizedExpression(p) || ts.isArrayLiteralExpression(p) || ts.isSpreadElement(p) || ts.isObjectLiteralExpression(p) ||
+      ts.isShorthandPropertyAssignment(p) || ts.isSpreadAssignment(p) || ts.isNonNullExpression(p) || ts.isAsExpression(p) ||
+      ts.isSatisfiesExpression(p) || (ts.isPropertyAssignment(p) && p.initializer === c)) continue;
+    if (ts.isBinaryExpression(p)) return p.left === c && p.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && p.operatorToken.kind <= ts.SyntaxKind.LastAssignment;
+    if (ts.isForOfStatement(p) || ts.isForInStatement(p)) return p.initializer === c;
+    if (ts.isPrefixUnaryExpression(p) || ts.isPostfixUnaryExpression(p)) return p.operator === ts.SyntaxKind.PlusPlusToken || p.operator === ts.SyntaxKind.MinusMinusToken;
+    return false;
+  }
+  return false;
 }
 
 const hint = (name: string): string =>
@@ -501,7 +778,7 @@ function literalString(e: ts.Node): string | undefined {
 }
 
 /** The literal runs of a `+` chain: "a" + "b" + x + "c" gives ["ab", "c"]; complete when every operand was constant. */
-function literalRuns(b: ts.BinaryExpression): string[] & { complete?: boolean } {
+function literalRuns(b: ts.BinaryExpression): string[] & { complete?: boolean; terms?: number } {
   const operands: ts.Node[] = [];
   const todo: ts.Node[] = [b];
   while (todo.length > 0) {
@@ -509,7 +786,8 @@ function literalRuns(b: ts.BinaryExpression): string[] & { complete?: boolean } 
     if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken) { todo.push(n.right, n.left); continue; }
     operands.push(n);
   }
-  const runs: string[] & { complete?: boolean } = [];
+  const runs: string[] & { complete?: boolean; terms?: number } = [];
+  runs.terms = operands.length;
   let cur: string | undefined;
   let complete = true;
   for (const o of operands) {
@@ -530,12 +808,6 @@ function foldTemplate(t: ts.TemplateExpression): string | undefined {
     out += v + s.literal.text;
   }
   return out;
-}
-
-function containsString(e: ts.Node): boolean {
-  let hit = false;
-  forEachNode(e, (n) => { if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) || ts.isTemplateExpression(n)) hit = true; });
-  return hit;
 }
 
 function assigns(body: ts.Node, v: string): boolean {
