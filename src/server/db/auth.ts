@@ -338,13 +338,16 @@ async function changePasswordAdmitted(db: Db, sessionId: string, current: string
 }
 
 // Retention: dead sessions (past absolute/idle expiry, or revoked > 30 d), login_attempts > 30 d, audit_log > 90 d.
+// A dead session that any approval names is KEPT: it is that approval's proof a real session made it (approvals are a
+// permanent audit trail; the row is tiny and can never sign anyone in again, since every auth check tests expiry/revocation).
 // Takes NO owner/login lock (plain deletes), so it never blocks a login.
 export async function purgeExpired(db: Db, opts: { audit?: boolean } = {}): Promise<{ sessions: number; attempts: number; audit: number }> {
   const s = await db.query(
     `delete from sessions
-      where absolute_expires_at <= clock_timestamp()
-         or last_seen_at <= clock_timestamp() - interval '8 hours'
-         or revoked_at <= clock_timestamp() - interval '30 days'`,
+      where (absolute_expires_at <= clock_timestamp()
+             or last_seen_at <= clock_timestamp() - interval '8 hours'
+             or revoked_at <= clock_timestamp() - interval '30 days')
+        and not exists (select 1 from approvals a where a.session_id = sessions.id)`,
   );
   const a = await db.query("delete from login_attempts where at <= clock_timestamp() - interval '30 days'");
   // The app role may not delete audit_log (insert-only); audit retention runs only from the owner-role `auth:purge` CLI.

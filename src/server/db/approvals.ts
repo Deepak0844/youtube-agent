@@ -22,6 +22,13 @@ const HASH_RE = /^[0-9a-f]{64}$/;
 export const CAPTIONS_REASON = "tick \"I checked the captions\" first: the captions are approximate";
 const STALE_REASON = "this changed while you were looking; review again";
 
+/**
+ * SQL test on approvals row `a`: a real session made it (that session row exists and was unexpired and unrevoked at
+ * decided_at). The ONE copy: the pipeline readers, the re-approval check and the publish job all use it.
+ */
+export const APPROVAL_SESSION_VALID_SQL = `exists (select 1 from sessions s where s.id = a.session_id and a.decided_at < s.expires_at and a.decided_at < s.absolute_expires_at
+                     and (s.revoked_at is null or s.revoked_at > a.decided_at))`;
+
 const refuse = (reason: string): { ok: false; reason: string } => ({ ok: false, reason });
 
 export interface Snapshot {
@@ -29,7 +36,8 @@ export interface Snapshot {
   versions: ContentVersions;
   /** The same rows the hash was computed from (and the video's channel), read in the same statement. */
   inputs: LiveInputs;
-  last: { decision: string; hash: string; versions: ContentVersions } | null;
+  /** sessionValid: APPROVAL_SESSION_VALID_SQL for that newest decision. */
+  last: { decision: string; hash: string; versions: ContentVersions; sessionValid: boolean } | null;
 }
 
 /**
@@ -42,13 +50,13 @@ export async function readSnapshot(db: Db, videoId: string, gate: ImplementedGat
   const r = await db.query<{
     channel_id: string | null;
     content: Array<{ id: string; kind: GateContentKind; version: number; sha256: string; body: unknown; file_path: string | null }>;
-    last: { decision: string; content_hash: string; versions: ContentVersions } | null;
+    last: { decision: string; content_hash: string; versions: ContentVersions; session_valid: boolean } | null;
   }>(
     `select v.channel_id,
             coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'kind', c.kind, 'version', c.version, 'sha256', c.sha256, 'body', c.body, 'file_path', c.file_path))
                         from (select distinct on (kind) id, kind, version, sha256, body, file_path
                                 from video_content where video_id = v.id and kind = any($2) order by kind, version desc) c), '[]'::jsonb) as content,
-            (select jsonb_build_object('decision', a.decision, 'content_hash', a.content_hash, 'versions', a.content_versions)
+            (select jsonb_build_object('decision', a.decision, 'content_hash', a.content_hash, 'versions', a.content_versions, 'session_valid', ${APPROVAL_SESSION_VALID_SQL})
                from approvals a where a.video_id = v.id and a.gate = $3 order by a.seq desc limit 1) as last
        from videos v where v.id = $1`,
     [videoId, [...kinds], gate],
@@ -61,7 +69,7 @@ export async function readSnapshot(db: Db, videoId: string, gate: ImplementedGat
     inputs.content[c.kind] = { sha256: c.sha256, body: c.body, filePath: c.file_path };
     versions[c.kind] = { id: c.id, version: c.version };
   }
-  return { live: liveHash(gate, inputs), versions, inputs, last: row.last ? { decision: row.last.decision, hash: row.last.content_hash, versions: row.last.versions } : null };
+  return { live: liveHash(gate, inputs), versions, inputs, last: row.last ? { decision: row.last.decision, hash: row.last.content_hash, versions: row.last.versions, sessionValid: row.last.session_valid } : null };
 }
 
 /** The hash the owner would be approving right now with the exact content versions it covers, or null when it cannot be approved yet. */
@@ -120,7 +128,19 @@ async function decide<T = undefined>(db: pg.Pool, d: Decision, decision: "approv
     const live = snap.live;
     if (live.hash !== d.seenHash) return await abort(client, STALE_REASON);
     // Inside the lock, so two concurrent clicks on the same page record exactly one approval.
-    if (decision === "approved" && snap.last?.decision === "approved" && snap.last.hash === live.hash) return await abort(client, "this is already approved");
+    const sameApproved = decision === "approved" && snap.last?.decision === "approved" && snap.last.hash === live.hash;
+    // A matching approval whose session proof is gone (row purged, or made after it expired) no longer counts for the
+    // pipeline, so "already approved" would strand the gate. A LIVE session may record it again (a new row; append-only).
+    // Publish stays strict: its approval carries the upload row and is never re-recorded here.
+    const reapproval = sameApproved && !snap.last!.sessionValid && d.gate !== "publish";
+    if (sameApproved && !reapproval) return await abort(client, "this is already approved");
+    if (reapproval) {
+      const liveSession = await client.query(
+        "select 1 from sessions where id = $1 and revoked_at is null and expires_at > clock_timestamp() and absolute_expires_at > clock_timestamp()",
+        [d.actor.sessionId],
+      );
+      if (liveSession.rows.length === 0) return await abort(client, ACTOR_REASON);
+    }
     if (decision === "approved" && snap.last?.decision === "sent_back" && snap.last.hash === live.hash) return await abort(client, "you sent this back; wait for the new version before approving");
     const okSnap = snap as OkSnapshot;
     // Approximate captions cannot be approved past, whichever door is used.
@@ -133,7 +153,7 @@ async function decide<T = undefined>(db: pg.Pool, d: Decision, decision: "approv
       "insert into approvals (video_id, gate, content_hash, content_versions, decision, note, decided_by, session_id) values ($1, $2, $3, $4::jsonb, $5, $6, 'session', $7) returning id",
       [d.videoId, d.gate, live.hash, JSON.stringify(snap.versions), decision, decision === "sent_back" ? d.note!.trim() : null, d.actor.sessionId],
     );
-    await recordAudit(client, decision === "approved" ? "gate.approved" : "gate.sent_back", { videoId: d.videoId, gate: d.gate, hashPrefix: live.hash.slice(0, 8), sessionId: d.actor.sessionId });
+    await recordAudit(client, decision === "approved" ? "gate.approved" : "gate.sent_back", { videoId: d.videoId, gate: d.gate, hashPrefix: live.hash.slice(0, 8), sessionId: d.actor.sessionId, ...(reapproval ? { reapproved: true } : {}) });
     const extra = hooks.after ? await hooks.after(client, { approvalId: ins.rows[0]!.id, snap: okSnap }) : (undefined as T);
     await client.query("commit");
     return { ok: true, approvalId: ins.rows[0]!.id, extra };

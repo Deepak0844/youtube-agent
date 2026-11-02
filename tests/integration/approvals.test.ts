@@ -1,6 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { ACTOR_REASON } from "@/server/core/approvals";
 import { sha256Hex } from "@/server/core/content-hash";
 import { approvalState, approveGate, approveGateWith, isApproved, liveGateHash, sendBack } from "@/server/db/approvals";
+import { approvalReaders } from "@/server/db/approval-readers";
+import { purgeExpired } from "@/server/db/auth";
 import { addContent } from "@/server/db/videos";
 import { withTestDb, type TestDb } from "../support/db";
 import { SESSION_ID, STALE, bumpContent, seedVideo } from "../support/gate-fixture";
@@ -299,5 +303,91 @@ describe("approvals", () => {
     await addContent(db.pool, v, "cost_plan", { body: { providers_models: null, path: null, library_scene_versions: null, quote: null }, sha256: sha256Hex("null-plan") });
     expect(await liveGateHash(db.pool, v, "cost")).toBeNull();
     expect(await approve(v, STALE, "cost")).toMatchObject({ ok: false });
+  });
+});
+
+// Live bug: an approval stopped counting once its session row was purged (idle > 8 h), and "already approved" blocked the fix.
+describe("approvals survive the session purge", () => {
+  const gates = async (v: string) => {
+    const c = await db.pool.connect();
+    try {
+      return await approvalReaders.approvedGates(c, v);
+    } finally {
+      c.release();
+    }
+  };
+  const newSession = async (): Promise<string> => {
+    const id = randomUUID();
+    await db.ownerPool.query(
+      "insert into sessions (id, token_hash, expires_at, absolute_expires_at) values ($1, $2, clock_timestamp() + interval '8 hours', clock_timestamp() + interval '7 days')",
+      [id, `t-${id}`],
+    );
+    return id;
+  };
+  // Away for 9 h: idle long enough for purge. expires_at stays after decided_at, as it was when the decision was made.
+  const idle9h = (id: string) => db.ownerPool.query("update sessions set created_at = created_at - interval '9 hours', last_seen_at = clock_timestamp() - interval '9 hours' where id = $1", [id]);
+  const sessionExists = async (id: string) => (await db.ownerPool.query("select 1 from sessions where id = $1", [id])).rows.length === 1;
+  const approveAs = (v: string, h: string, sessionId: string) => approveGate(db.pool, { videoId: v, gate: "script", seenHash: h, actor: { kind: "session", sessionId } });
+
+  it("purge_keeps_a_session_an_approval_names_and_the_gate_still_counts_9h_later", async () => {
+    const v = await seedVideo(db.pool);
+    const s = await newSession();
+    const unrelated = await newSession();
+    expect(await approveAs(v, await live(v), s)).toMatchObject({ ok: true });
+    await idle9h(s);
+    await idle9h(unrelated);
+    await purgeExpired(db.pool, { audit: false });
+    expect(await sessionExists(s)).toBe(true);
+    expect(await sessionExists(unrelated)).toBe(false); // unreferenced dead sessions still go
+    expect((await gates(v)).has("script")).toBe(true);
+  });
+
+  it("an_approval_whose_session_is_gone_does_not_count_but_a_live_session_can_re_approve", async () => {
+    const v = await seedVideo(db.pool);
+    const h = await live(v);
+    const gone = await newSession();
+    expect(await approveAs(v, h, gone)).toMatchObject({ ok: true });
+    await db.ownerPool.query("delete from sessions where id = $1", [gone]); // purged before this fix
+    expect((await gates(v)).has("script")).toBe(false);
+    // A caller whose own session is not live cannot re-record it.
+    expect(await approveAs(v, h, randomUUID())).toEqual({ ok: false, reason: ACTOR_REASON });
+    const now = await newSession();
+    expect(await approveAs(v, h, now)).toMatchObject({ ok: true });
+    const rows = (await db.pool.query("select seq, content_hash, decision, session_id from approvals where video_id = $1 order by seq", [v])).rows;
+    expect(rows.map((r) => [r.content_hash, r.decision, r.session_id])).toEqual([[h, "approved", gone], [h, "approved", now]]);
+    expect((await gates(v)).has("script")).toBe(true);
+    const audit = (await db.ownerPool.query("select detail from audit_log where event = 'gate.approved' order by at, id")).rows.map((r) => r.detail);
+    expect(audit.at(-1)).toMatchObject({ videoId: v, gate: "script", sessionId: now, reapproved: true });
+    // Now reader-valid again: a second click is "already approved".
+    expect(await approveAs(v, h, now)).toEqual({ ok: false, reason: "this is already approved" });
+  });
+
+  it("re_approving_a_reader_valid_approval_is_still_already_approved", async () => {
+    const v = await seedVideo(db.pool);
+    const h = await live(v);
+    const s = await newSession();
+    await approveAs(v, h, s);
+    expect(await approveAs(v, h, await newSession())).toEqual({ ok: false, reason: "this is already approved" });
+    expect((await db.pool.query("select count(*)::int n from approvals where video_id = $1", [v])).rows[0].n).toBe(1);
+  });
+
+  it("a_forged_approval_with_a_random_session_id_never_counts", async () => {
+    const v = await seedVideo(db.pool);
+    await db.pool.query(
+      "insert into approvals (video_id, gate, content_hash, content_versions, decision, decided_by, session_id) values ($1, 'script', $2, '{}'::jsonb, 'approved', 'session', $3)",
+      [v, await live(v), randomUUID()],
+    );
+    expect(await isApproved(db.pool, v, "script")).toBe(true); // pure hash logic
+    expect((await gates(v)).has("script")).toBe(false); // but the pipeline never moves on it
+  });
+
+  it("publish_is_never_re_recorded_through_the_generic_path", async () => {
+    const v = await seedVideo(db.pool);
+    const h = await live(v, "publish");
+    const gone = await newSession();
+    const hooks = { guard: async () => null, after: async () => undefined };
+    expect(await approveGateWith(db.pool, { videoId: v, gate: "publish", seenHash: h, actor: { kind: "session", sessionId: gone } }, hooks)).toMatchObject({ ok: true });
+    await db.ownerPool.query("delete from sessions where id = $1", [gone]);
+    expect(await approveGateWith(db.pool, { videoId: v, gate: "publish", seenHash: h, actor: { kind: "session", sessionId: await newSession() } }, hooks)).toEqual({ ok: false, reason: "this is already approved" });
   });
 });

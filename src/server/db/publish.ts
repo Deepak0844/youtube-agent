@@ -2,7 +2,7 @@ import type pg from "pg";
 import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { metadataProblem, publishPolicyProblem, visibilityProblem, type Visibility } from "@/server/core/publish-rules";
 import { uuidv7 } from "@/server/core/ids";
-import { approvalState, approveGateWith, readSnapshot, type ContentVersions } from "@/server/db/approvals";
+import { APPROVAL_SESSION_VALID_SQL, approvalState, approveGateWith, readSnapshot, type ContentVersions } from "@/server/db/approvals";
 import { recordAudit } from "@/server/db/audit";
 import { getSetting } from "@/server/db/settings";
 import type { UploadTarget } from "@/server/providers/uploader";
@@ -203,8 +203,7 @@ export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { ro
     if (!meta || !video || video.filePath == null || metadataProblem(meta.body) || s.inputs.channelId !== up.channel_id) return { ok: false, reason: "approval_changed" };
     const ap = (await client.query<{ id: string; content_hash: string; valid: boolean }>(
       `select a.id, a.content_hash,
-              exists (select 1 from sessions s where s.id = a.session_id and a.decided_at < s.expires_at and a.decided_at < s.absolute_expires_at
-                                  and (s.revoked_at is null or s.revoked_at > a.decided_at)) as valid
+              ${APPROVAL_SESSION_VALID_SQL} as valid
          from approvals a where a.video_id = $1 and a.gate = 'publish' and a.decision = 'approved' order by a.seq desc limit 1`,
       [up.video_id],
     )).rows[0];

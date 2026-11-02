@@ -1,7 +1,7 @@
 import type pg from "pg";
 import type { GateId } from "@/server/core/gates";
 import { IMPLEMENTED_GATES } from "@/server/core/approvals";
-import { approvalState } from "@/server/db/approvals";
+import { APPROVAL_SESSION_VALID_SQL, approvalState } from "@/server/db/approvals";
 import type { PipelineReaders } from "@/server/db/pipeline";
 
 // The real answer to "what has the owner decided?" for the pipeline. Approvals are derived on every read (db/approvals.ts):
@@ -16,8 +16,7 @@ export const approvalReaders: PipelineReaders = {
       // revoked when the decision was recorded (the same test the publish job applies). approvalState itself stays pure
       // content-hash logic so the gate fixtures need no session rows; this is the check that gates what the engine does.
       const ok = await db.query<{ valid: boolean }>(
-        `select exists (select 1 from sessions s where s.id = a.session_id and a.decided_at < s.expires_at and a.decided_at < s.absolute_expires_at
-                          and (s.revoked_at is null or s.revoked_at > a.decided_at)) as valid
+        `select ${APPROVAL_SESSION_VALID_SQL} as valid
            from approvals a where a.video_id = $1 and a.gate = $2 order by a.seq desc limit 1`,
         [videoId, g],
       );
