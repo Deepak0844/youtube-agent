@@ -63,6 +63,48 @@ export function popScale(frame: number, start = 0, frames = 9): number {
   return 0.82 + 0.18 * e;
 }
 
+/** Hook title card: shown over the first scene for HOOK_FRAMES, fully opaque, then fading out over HOOK_FADE_FRAMES. */
+export const HOOK_FRAMES = 45;
+export const HOOK_FADE_FRAMES = 12;
+export const HOOK_BADGE = "Explained";
+
+/** Card opacity at a frame of the card's own clock: 1 until the fade starts, 0 at the end (and after). */
+export function hookOpacity(frame: number, total = HOOK_FRAMES, fade = HOOK_FADE_FRAMES): number {
+  const start = total - fade;
+  if (frame <= start) return 1;
+  return Math.max(0, Math.min(1, 1 - (frame - start) / fade));
+}
+
+const LEADING_FILLER = new Set(["how", "why", "what", "when", "the", "a", "an", "is", "are", "does", "do", "did", "can", "this", "that", "of"]);
+
+/** 3-5 word card title from a video title or topic: no AI. Drops leading filler words only when the text is too long. */
+export function shortTitle(text: string | undefined, maxWords = 5): string {
+  let words = (text ?? "").replace(/[^\p{L}\p{N}\s'-]/gu, " ").split(/\s+/).filter(Boolean);
+  while (words.length > maxWords && LEADING_FILLER.has(words[0]!.toLowerCase())) words = words.slice(1);
+  const out = words.slice(0, maxWords).map((w) => w.slice(0, 16)).join(" ");
+  return out || "Watch this";
+}
+
+/** First picture the doc links (keys "asset" / "image", in scene order) that `usable` accepts; undefined when none. */
+export function firstPictureId(v: unknown, usable: (id: string) => boolean): string | undefined {
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      const r = firstPictureId(x, usable);
+      if (r) return r;
+    }
+  } else if (v && typeof v === "object") {
+    for (const [k, x] of Object.entries(v)) {
+      if ((k === "asset" || k === "image") && typeof x === "string") {
+        if (usable(x)) return x;
+      } else {
+        const r = firstPictureId(x, usable);
+        if (r) return r;
+      }
+    }
+  }
+  return undefined;
+}
+
 export const contrast = (a: string, b: string): number => {
   const lum = (hex: string) => {
     const [r, g, bl] = [1, 3, 5].map((i) => {

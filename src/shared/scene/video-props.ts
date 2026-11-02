@@ -3,7 +3,7 @@ import type { CaptionWord } from "../../../remotion/kit/timeline";
 import { validateScenes } from "./validate";
 import type { SceneDoc } from "./schema";
 
-export type VideoProps = { doc: SceneDoc; fps: number; audioSrc?: string; captions?: CaptionWord[]; assets?: Record<string, string> };
+export type VideoProps = { doc: SceneDoc; fps: number; audioSrc?: string; captions?: CaptionWord[]; assets?: Record<string, string>; seed?: string; title?: string };
 
 const MAX_CAPTION_WORDS = 10_000; // a 15-minute long video is about 2-3k words
 const MAX_WORD_CHARS = 100;
@@ -31,7 +31,7 @@ function parseCaptions(text: string): { ok: true; words: CaptionWord[] } | { ok:
 /** Validate the scene file (and optional captions); on success, the props for the kit-video composition. */
 export function buildVideoProps(
   sceneText: string,
-  opts: { captionsText?: string; audioSrc?: string; fps: number; assets?: Record<string, string> },
+  opts: { captionsText?: string; audioSrc?: string; fps: number; assets?: Record<string, string>; seed?: string; title?: string },
 ): { ok: true; props: VideoProps } | { ok: false; errors: string[] } {
   let json: unknown;
   try {
@@ -44,6 +44,8 @@ export function buildVideoProps(
   const props: VideoProps = { doc: r.doc, fps: opts.fps };
   if (opts.audioSrc) props.audioSrc = opts.audioSrc;
   if (opts.assets) props.assets = opts.assets;
+  if (opts.seed) props.seed = opts.seed.slice(0, 64);
+  if (opts.title) props.title = opts.title.slice(0, 200);
   if (opts.captionsText !== undefined) {
     const c = parseCaptions(opts.captionsText);
     if (!c.ok) return { ok: false, errors: [c.error] };

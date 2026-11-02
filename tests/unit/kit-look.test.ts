@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contrast, fitContain, gentleMotion, keyWordIndex, LOOKS, lookBackground, pickLook, popScale, sceneCaptionAllowed } from "../../remotion/kit/look";
+import { contrast, firstPictureId, HOOK_FADE_FRAMES, HOOK_FRAMES, hookOpacity, shortTitle, fitContain, gentleMotion, keyWordIndex, LOOKS, lookBackground, pickLook, popScale, sceneCaptionAllowed } from "../../remotion/kit/look";
 import { defaultTheme } from "../../remotion/kit/theme";
 
 describe("pickLook", () => {
@@ -58,5 +58,25 @@ describe("one caption layer", () => {
 describe("safe area", () => {
   it("reserves the bottom 22% for captions", () => {
     expect(defaultTheme.safe.bottom / defaultTheme.height).toBeGreaterThanOrEqual(0.22);
+  });
+});
+
+describe("hook card", () => {
+  it("is fully opaque at frame 0 and gone by the end, fading over 12 frames", () => {
+    expect(hookOpacity(0)).toBe(1);
+    expect(hookOpacity(HOOK_FRAMES - HOOK_FADE_FRAMES)).toBe(1);
+    expect(hookOpacity(HOOK_FRAMES - 6)).toBeCloseTo(0.5);
+    expect(hookOpacity(HOOK_FRAMES)).toBe(0);
+  });
+  it("shortens titles to at most 5 words, dropping leading filler only when too long", () => {
+    expect(shortTitle("Why do planes stay up in the sky?")).toBe("planes stay up in the");
+    expect(shortTitle("Why planes stay up")).toBe("Why planes stay up");
+    expect(shortTitle("")).toBe("Watch this");
+    expect(shortTitle(undefined)).toBe("Watch this");
+  });
+  it("picks the first usable linked picture in scene order", () => {
+    const doc = { scenes: [{ kind: "terminal" }, { asset: "clip" }, { items: [{ image: "pic1" }, { image: "pic2" }] }] };
+    expect(firstPictureId(doc, (id) => id !== "clip")).toBe("pic1");
+    expect(firstPictureId(doc, () => false)).toBeUndefined();
   });
 });
