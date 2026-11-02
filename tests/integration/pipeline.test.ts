@@ -66,6 +66,7 @@ async function draftDone(videoId: string, q: FakeQueue) {
   const [d] = await stages(videoId);
   await succeed(d!.id);
   await addContent(db.pool, videoId, "script", { body: { n: 1 }, sha256: h("a") });
+  await addContent(db.pool, videoId, "beats", { body: {}, sha256: h("b") }); // Draft saves the beats with the script; Pictures reads both
 }
 
 describe("advanceVideo", () => {
@@ -86,7 +87,7 @@ describe("advanceVideo", () => {
     expect((await db.pool.query("select status from videos where id = $1", [v.id])).rows[0].status).toBe("waiting");
     const r = await advanceVideo(db.pool, q, v.id, readers(["script"]));
     expect(r.enqueued).toHaveLength(1);
-    expect((await stages(v.id)).map((s) => s.name)).toEqual(["draft", "build"]);
+    expect((await stages(v.id)).map((s) => s.name)).toEqual(["draft", "pictures"]);
   });
   it("gate_waiting_is_emitted_once_when_the_video_parks_at_a_gate", async () => {
     const v = await createVideoRow(db.pool, input);
@@ -121,7 +122,7 @@ describe("advanceVideo", () => {
     const [a, b] = await Promise.all([advanceAll(db.pool, q, gates), advanceAll(db.pool, q, gates)]);
     expect([...a.enqueued, ...b.enqueued]).toHaveLength(1);
     await advanceAll(db.pool, q, gates);
-    expect((await stages(v.id)).map((s) => s.name)).toEqual(["draft", "build"]);
+    expect((await stages(v.id)).map((s) => s.name)).toEqual(["draft", "pictures"]);
   });
   it("enqueue_failure_after_commit_leaves_a_queued_row_the_reconciler_recovers", async () => {
     const v = await createVideoRow(db.pool, input);
@@ -150,14 +151,16 @@ describe("advanceVideo", () => {
       if (r.enqueued.length === 0) break;
       await succeed(r.enqueued[0]!);
       const done = (await stages(v.id)).map((s) => s.name);
-      if (done.at(-1) === "draft") await addContent(db.pool, v.id, "script", { body: {}, sha256: h("a") });
-      if (done.at(-1) === "build") {
+      if (done.at(-1) === "draft") {
+        await addContent(db.pool, v.id, "script", { body: {}, sha256: h("a") });
         await addContent(db.pool, v.id, "beats", { body: {}, sha256: h("b") });
+      }
+      if (done.at(-1) === "build") {
         await addContent(db.pool, v.id, "cost_plan", { body: { items: [] }, sha256: h("c") });
       }
     }
     const before = await stages(v.id);
-    expect(before.map((s) => s.name)).toEqual(["draft", "build", "tts", "render", "voice", "sfx", "qa"]);
+    expect(before.map((s) => s.name)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
     expect((await advanceAll(db.pool, q, readers(all))).enqueued).toEqual([]);
     expect(await stages(v.id)).toEqual(before);
   });

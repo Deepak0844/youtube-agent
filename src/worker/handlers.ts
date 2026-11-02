@@ -16,6 +16,9 @@ import { loadKeyring } from "@/server/db/master-key";
 import { createLlmClient } from "@/server/llm/client";
 import { defaultModelDeps } from "@/server/llm/default-deps";
 import { createWebTools } from "@/server/llm/web-tools";
+import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { secretName } from "@/server/core/provider-keys";
+import { getSecret, hasSecret } from "@/server/db/vault";
 import { createImageFor } from "@/server/providers/image/wire";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
@@ -35,6 +38,7 @@ import { repairScenesAttempt } from "./stages/repair-scenes";
 import type { StageDeps } from "./stages/deps";
 import { dryRunDraftHandler } from "./stages/draft";
 import { generateAttempt } from "./stages/generate";
+import { dryRunPicturesHandler, picturesHandler } from "./stages/pictures";
 import { qaAttempt } from "./stages/qa";
 import { renderAttempt } from "./stages/render";
 import { sfxHandler } from "./stages/sfx";
@@ -74,6 +78,7 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
   const fin = { db: deps.db, root: deps.root };
   return {
     draft: dryRunDraftHandler(deps.db),
+    pictures: dryRunPicturesHandler,
     build: withAttempt(fin, buildAttempt(deps)),
     generate: withAttempt(fin, generateAttempt(deps)),
     tts: withAttempt(fin, ttsAttempt(deps)),
@@ -161,6 +166,19 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
   };
   return {
     draft: refuseDryRunVideos(pool, draft),
+    pictures: refuseDryRunVideos(pool, picturesHandler({
+      db: pool, root: deps.root, ingest: { runChild: (spec) => runChild(spec, { registry: env.childRegistry }) },
+      // indirect = public addresses only; redirects are refused (the picture fetch checks any it is shown against the host list)
+      fetcher: (url, init) => safeFetch(url, init, { mode: "indirect", maxRedirects: 0, timeoutMs: 30_000 }),
+      pixabayKey: async () => {
+        try {
+          const name = secretName("pixabay");
+          return (await hasSecret(pool, name)) ? await getSecret(pool, loadKeyring(), name) : null;
+        } catch {
+          return null; // no master key or unreadable: Pixabay is simply skipped
+        }
+      },
+    })),
     repair_scenes: refuseDryRunVideos(pool, repair),
     build: refuseDryRunVideos(pool, build),
     tts: refuseDryRunVideos(pool, withAttempt(fin, ttsAttempt(deps))),

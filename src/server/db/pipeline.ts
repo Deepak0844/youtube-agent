@@ -9,7 +9,9 @@ import {
   expectedInputHash,
   FORCE_RERUN_STAGES,
   nextActions,
-  stagePlan,
+  routeFor,
+  chainPrev,
+  OFF_CHAIN_STAGES,
   type Action,
   type ContentKindName,
   type PipelineView,
@@ -208,14 +210,15 @@ export async function rerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: strin
     const v = await lockVideo(c, videoId);
     if (!LIVE_VIDEO.includes(v.status)) throw new Error(`video is ${v.status}`);
     const view = await buildView(c, v, readers);
-    const plan = stagePlan(view.kind, view.format, view.flags);
+    const plan = routeFor(view);
     const idx = plan.findIndex((s) => s.stage === stage);
     if (idx < 0) throw new Error(`stage ${stage} is not on this video's route`);
     const run = view.runs[stage];
     if (run && ACTIVE_STATUSES.includes(run.status)) throw new Error("cannot_rerun_while_job_active");
     let prevHash: string | null = null;
-    if (idx > 0) {
-      const before = view.runs[plan[idx - 1]!.stage];
+    const prevStep = chainPrev(plan, idx);
+    if (prevStep) {
+      const before = view.runs[prevStep.stage];
       if (before?.status !== "succeeded") throw new Error("run the earlier stage first");
       prevHash = before.inputHash;
     }
@@ -242,7 +245,7 @@ export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: 
     const v = await lockVideo(c, videoId);
     if (!LIVE_VIDEO.includes(v.status)) throw new Error(`video is ${v.status}`);
     const view = await buildView(c, v, readers);
-    const plan = stagePlan(view.kind, view.format, view.flags);
+    const plan = routeFor(view);
     const idx = plan.findIndex((s) => s.stage === stage);
     if (idx < 0) throw new Error(`stage ${stage} is not on this video's route`);
     if (Object.values(view.runs).some((r) => ACTIVE_STATUSES.includes(r.status))) throw new Error("cannot_rerun_while_job_active");
@@ -253,13 +256,13 @@ export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: 
     for (const step of plan.slice(0, idx + 1)) {
       const r = view.runs[step.stage];
       if (r?.status !== "succeeded" || r.inputHash !== expectedInputHash(view, step.stage, prevHash)) throw new Error("pipeline_not_settled");
-      prevHash = r.inputHash;
+      if (!OFF_CHAIN_STAGES.includes(step.stage)) prevHash = r.inputHash;
     }
-    const prior = idx > 0 ? view.runs[plan[idx - 1]!.stage]! : undefined; // render/voice/sfx/qa always have an earlier step
+    const prior = view.runs[chainPrev(plan, idx)!.stage]!; // render/voice/sfx/qa always have an earlier step
     if ((await c.query("select 1 from uploads where video_id = $1 and status <> 'upload_failed' limit 1", [videoId])).rowCount) throw new Error("force_rerun_uploaded");
     const nonce = uuidv7();
     await c.query("update videos set stage_nonces = stage_nonces || jsonb_build_object($2::text, $3::text) where id = $1", [videoId, stage, nonce]);
-    const want = expectedInputHash({ ...view, nonces: { ...view.nonces, [stage]: nonce } }, stage, prior!.inputHash);
+    const want = expectedInputHash({ ...view, nonces: { ...view.nonces, [stage]: nonce } }, stage, prior.inputHash);
     const gate = await admitStage(c, stage);
     if (!gate.allowed) return { created: [] as Array<{ id: string; inputHash: string }>, held: { stage, until: gate.until } as BreakerHold | undefined };
     const id = await insertRun(c, videoId, stage, want);
@@ -279,12 +282,13 @@ export async function wantedHashLocked(c: pg.PoolClient, videoId: string, stage:
   const v = await lockVideo(c, videoId);
   if (!LIVE_VIDEO.includes(v.status)) return null;
   const view = await buildView(c, v, readers);
-  const plan = stagePlan(view.kind, view.format, view.flags);
+  const plan = routeFor(view);
   const idx = plan.findIndex((s) => s.stage === stage);
   if (idx < 0) return null;
   let prevHash: string | null = null;
-  if (idx > 0) {
-    const before = view.runs[plan[idx - 1]!.stage];
+  const prevStep = chainPrev(plan, idx);
+  if (prevStep) {
+    const before = view.runs[prevStep.stage];
     if (before?.status !== "succeeded") return null;
     prevHash = before.inputHash;
   }
