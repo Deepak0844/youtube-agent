@@ -58,3 +58,14 @@ export function rankClips(brief: PictureBrief, cands: readonly ClipCandidate[]):
   }
   return out.sort((a, b) => b.score - a.score);
 }
+
+/** Largest clip download still allowed in this run, or 0 when less than a whole clip's worth of budget is left. */
+export function clipBudget(bytesSoFar: number): number {
+  const room = Math.min(CLIP_MAX_BYTES, CLIPS_TOTAL_MAX_BYTES - bytesSoFar);
+  return room >= CLIP_MAX_BYTES ? room : 0;
+}
+
+/** Clip links already on the video's live beats (every beat, whatever its brief), so the per-video limit holds. */
+export function countClipLinks(links: ReadonlyArray<{ beatId: string; kind?: string }>, liveBeats: ReadonlySet<string>): number {
+  return links.filter((l) => l.kind === "video" && liveBeats.has(l.beatId)).length;
+}

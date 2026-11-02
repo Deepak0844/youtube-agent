@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CLIP_MAX_BYTES, rankClips, scoreClip, wantsMotion, type ClipCandidate } from "@/server/core/clip-rank";
+import { CLIPS_TOTAL_MAX_BYTES, CLIP_MAX_BYTES, clipBudget, countClipLinks, rankClips, scoreClip, wantsMotion, type ClipCandidate } from "@/server/core/clip-rank";
 import { checkPictureIds, limitRepeats, planPictureBeat } from "@/server/core/scene-build";
 import { chooseRendition, parsePixabayVideos, pixabayVideoSearchUrl } from "@/server/providers/stock/pixabay-videos";
 import { clipProbeOk } from "@/server/render/ingest";
@@ -79,5 +79,19 @@ describe("build planning with clips", () => {
     expect(checkPictureIds({ kind: "stock_clip", asset: B }, [B])).toEqual([]);
     expect(checkPictureIds({ kind: "stock_clip", asset: A }, [B])).toHaveLength(1);
     expect(limitRepeats([[B], [B], [B], [A]])).toEqual([[B], [B], [], [A]]);
+  });
+});
+
+describe("clip budgets", () => {
+  it("caps each download by what is left of the run budget and stops below one clip", () => {
+    expect(clipBudget(0)).toBe(CLIP_MAX_BYTES);
+    expect(clipBudget(CLIPS_TOTAL_MAX_BYTES - CLIP_MAX_BYTES)).toBe(CLIP_MAX_BYTES);
+    expect(clipBudget(CLIPS_TOTAL_MAX_BYTES - CLIP_MAX_BYTES + 1)).toBe(0);
+    expect(clipBudget(CLIPS_TOTAL_MAX_BYTES)).toBe(0);
+  });
+  it("counts clip links on every live beat, not only kept ones", () => {
+    const links = [{ beatId: "a", kind: "video" }, { beatId: "b", kind: "video" }, { beatId: "b", kind: "image" }, { beatId: "gone", kind: "video" }];
+    expect(countClipLinks(links, new Set(["a", "b"]))).toBe(2);
+    expect(countClipLinks([], new Set(["a"]))).toBe(0);
   });
 });

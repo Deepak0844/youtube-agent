@@ -4,7 +4,7 @@ import path from "node:path";
 import type pg from "pg";
 import { systemRightsText } from "@/server/core/asset-rules";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
-import { CLIPS_TOTAL_MAX_BYTES, CLIP_MAX_BYTES, type ClipCandidate, MAX_CLIPS_PER_VIDEO, rankClips, wantsMotion } from "@/server/core/clip-rank";
+import { clipBudget, countClipLinks, MAX_CLIPS_PER_VIDEO, type ClipCandidate, rankClips, wantsMotion } from "@/server/core/clip-rank";
 import { rankCandidates, type PictureBrief, type PictureCandidate } from "@/server/core/picture-rank";
 import type { StageHandler } from "@/server/core/stage-handler";
 import { registerAsset } from "@/server/db/assets";
@@ -93,6 +93,8 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
     const linksOf = (beatId: string) => existing.filter((l) => l.beatId === beatId);
 
     const outcomes: BeatOutcome[] = [];
+    let clips = countClipLinks(existing, live); // clip links on every live beat before the loop; a beat that is re-picked gives its clips back
+    let clipBytes = 0; // real bytes of every clip download this run, kept or not
     let linked = 0;
 
     const getJson = async (url: string, hosts: readonly string[]): Promise<unknown> => {
@@ -114,8 +116,12 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
         let r;
         try {
           await pace(new URL(c.url).hostname, signal);
-          const got = await fetchBounded(deps.fetcher, c.url, { hosts: c.hosts, maxBytes: c.maxBytes, accept: c.accept, acceptHeader: c.acceptHeader, signal });
-          if (!got.ok) return { ok: false, reason: `download refused (${got.reason})` };
+          const got = await fetchBounded(deps.fetcher, c.url, { hosts: c.hosts, maxBytes: c.clip ? clipBudget(clipBytes) : c.maxBytes, accept: c.accept, acceptHeader: c.acceptHeader, signal });
+          if (!got.ok) {
+            if (c.clip && got.reason === "too_big") clipBytes += c.maxBytes; // streamed up to the cap before refusing: count it all
+            return { ok: false, reason: `download refused (${got.reason})` };
+          }
+          if (c.clip) clipBytes += got.bytes.length; // counted before ingest, so a refused or duplicate clip still uses the budget
           await mkdir(tmpDir, { recursive: true });
           await mkdir(dest, { recursive: true });
           await writeFile(src, got.bytes, { flag: "wx" });
@@ -173,8 +179,6 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
     };
 
     let considered = 0;
-    let clips = 0; // clips in this video so far (kept links count)
-    let clipBytes = 0; // bytes of clips downloaded in this run
     for (const beat of beats) {
       if (beat.queries.length === 0 && !beat.visual) continue;
       if (considered++ >= MAX_BEATS) break;
@@ -182,9 +186,9 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
         outcomes.push({ beatId: beat.id, found, source: c?.source ?? (c ? "pixabay" : null), licence: c?.licence ?? null, reason });
       };
       const mine = linksOf(beat.id);
-      if (mine.some((l) => l.briefHash === null) || (mine.length > 0 && mine.every((l) => l.briefHash === beat.hash))) { if (mine.some((l) => l.kind === "video")) clips++; out(true, "already linked"); continue; }
+      if (mine.some((l) => l.briefHash === null) || (mine.length > 0 && mine.every((l) => l.briefHash === beat.hash))) { out(true, "already linked"); continue; }
       if (deadline.aborted) { out(false, "deadline"); continue; }
-      if (mine.length > 0) await unlinkStageBeats(deps.db, videoId, [beat.id]); // the brief changed: pick again
+      if (mine.length > 0) { clips -= countClipLinks(mine, new Set([beat.id])); await unlinkStageBeats(deps.db, videoId, [beat.id]); } // the brief changed: pick again
       ctx.progress?.(Math.round((outcomes.length / Math.min(MAX_BEATS, beats.length)) * 100));
 
       const brief: PictureBrief = { search: beat.queries, visual: beat.visual };
@@ -204,17 +208,17 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
         ];
         // A beat whose visual describes motion tries a free Pixabay clip first (needs the saved key; at most MAX_CLIPS_PER_VIDEO per
         // video and CLIPS_TOTAL_MAX_BYTES per run). Nothing acceptable = the normal picture search below.
-        if (wantsMotion(beat.visual) && clips < MAX_CLIPS_PER_VIDEO && clipBytes < CLIPS_TOTAL_MAX_BYTES) {
+        if (wantsMotion(beat.visual) && clips < MAX_CLIPS_PER_VIDEO && clipBudget(clipBytes) > 0) {
           const key = deps.pixabayKey ? await deps.pixabayKey() : null;
           if (key) {
             const found: ClipCandidate[] = [];
             for (const q of beat.queries) found.push(...parsePixabayVideos(await getJson(pixabayVideoSearchUrl(q, key, SEARCH_LIMIT), PIXABAY_API_HOSTS)));
             let ctries = 0;
             for (const { cand } of rankClips(brief, found)) {
-              if (ctries++ >= 2 || clipBytes + cand.bytes > CLIPS_TOTAL_MAX_BYTES) break;
-              const a = await attempt(beat, { ...cand, hosts: PIXABAY_FILE_HOSTS, maxBytes: CLIP_MAX_BYTES, accept: VIDEO_TYPE, acceptHeader: "video/mp4", clip: true, source: "pixabay" });
+              if (ctries++ >= 2 || clipBudget(clipBytes) === 0) break;
+              const a = await attempt(beat, { ...cand, hosts: PIXABAY_FILE_HOSTS, maxBytes: clipBudget(clipBytes), accept: VIDEO_TYPE, acceptHeader: "video/mp4", clip: true, source: "pixabay" });
               if (a.ok) {
-                linked++; clips++; clipBytes += a.bytes;
+                linked++; clips++;
                 out(true, a.duplicate ? "linked clip (already in library)" : "linked clip", cand);
                 done = true;
                 break;
