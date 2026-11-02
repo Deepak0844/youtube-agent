@@ -36,6 +36,8 @@ export async function rerunStageById(db: pg.Pool, queue: EnqueueOnly, actor: Gat
 const FORCE_REFUSALS: Record<string, string> = {
   ...REFUSALS,
   force_rerun_not_allowed: "Only the render, voice, sound effects and check steps can be run again this way.",
+  pipeline_not_settled: "An earlier step is out of date or not finished. Let the video settle first.",
+  force_rerun_uploaded: "This video is already being or has been uploaded: its file can no longer be re-rendered.",
   force_rerun_needs_succeeded: "This step has not finished yet, so there is nothing to run again.",
   cannot_rerun_while_job_active: "Another step of this video is still running or waiting to run.",
 };

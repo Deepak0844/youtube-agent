@@ -247,11 +247,19 @@ export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: 
     if (idx < 0) throw new Error(`stage ${stage} is not on this video's route`);
     if (Object.values(view.runs).some((r) => ACTIVE_STATUSES.includes(r.status))) throw new Error("cannot_rerun_while_job_active");
     if (view.runs[stage]?.status !== "succeeded") throw new Error("force_rerun_needs_succeeded");
-    const before = view.runs[plan[idx - 1]!.stage]; // render/voice/sfx/qa always have an earlier step
-    if (before?.status !== "succeeded") throw new Error("run the earlier stage first");
+    // Settled: every step up to this one succeeded with exactly the hash it should have now, so nothing earlier is stale,
+    // failed or breaker-held (the new run would otherwise sit beside a step that still has to run).
+    let prevHash: string | null = null;
+    for (const step of plan.slice(0, idx + 1)) {
+      const r = view.runs[step.stage];
+      if (r?.status !== "succeeded" || r.inputHash !== expectedInputHash(view, step.stage, prevHash)) throw new Error("pipeline_not_settled");
+      prevHash = r.inputHash;
+    }
+    const prior = idx > 0 ? view.runs[plan[idx - 1]!.stage]! : undefined; // render/voice/sfx/qa always have an earlier step
+    if ((await c.query("select 1 from uploads where video_id = $1 and status <> 'upload_failed' limit 1", [videoId])).rowCount) throw new Error("force_rerun_uploaded");
     const nonce = uuidv7();
     await c.query("update videos set stage_nonces = stage_nonces || jsonb_build_object($2::text, $3::text) where id = $1", [videoId, stage, nonce]);
-    const want = expectedInputHash({ ...view, nonces: { ...view.nonces, [stage]: nonce } }, stage, before.inputHash);
+    const want = expectedInputHash({ ...view, nonces: { ...view.nonces, [stage]: nonce } }, stage, prior!.inputHash);
     const gate = await admitStage(c, stage);
     if (!gate.allowed) return { created: [] as Array<{ id: string; inputHash: string }>, held: { stage, until: gate.until } as BreakerHold | undefined };
     const id = await insertRun(c, videoId, stage, want);

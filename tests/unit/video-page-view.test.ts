@@ -72,6 +72,8 @@ describe("rerun", () => {
     expect(forceRerunOffered("draft", "succeeded", "active")).toBe(false);
     expect(forceRerunOffered("render", "failed", "active")).toBe(false);
     expect(forceRerunOffered("render", "succeeded", "cancelled")).toBe(false);
+    expect(forceRerunOffered("render", "succeeded", "active", true)).toBe(false);
+    expect(forceRerunOffered("render", "succeeded", "active", false, true)).toBe(false);
   });
   it("states the cost only from the cost plan", () => {
     expect(rerunCostNote("generate", 2_500_000)).toBe("Costs up to $2.50 (the cost plan's paid items).");

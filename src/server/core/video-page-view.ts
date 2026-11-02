@@ -122,9 +122,9 @@ export function headline(views: readonly StageView[], status: string): string {
 export const rerunOffered = (runStatus: RunStatus | undefined, videoStatus: string): boolean =>
   (runStatus === "failed" || runStatus === "cancelled") && (videoStatus === "active" || videoStatus === "waiting");
 
-/** "Re-run this step" is offered for a finished free step (render, voice, sfx, qa) of a video that is still live. */
-export const forceRerunOffered = (stage: StageName, runStatus: RunStatus | undefined, videoStatus: string): boolean =>
-  FORCE_RERUN_STAGES.includes(stage) && runStatus === "succeeded" && (videoStatus === "active" || videoStatus === "waiting");
+/** "Re-run this step" is offered for a finished free step (render, voice, sfx, qa) of a live video with nothing running and no upload. */
+export const forceRerunOffered = (stage: StageName, runStatus: RunStatus | undefined, videoStatus: string, anyActive = false, hasUpload = false): boolean =>
+  FORCE_RERUN_STAGES.includes(stage) && runStatus === "succeeded" && (videoStatus === "active" || videoStatus === "waiting") && !anyActive && !hasUpload;
 
 /** What a re-run costs: only the cost plan knows; the generate step is the one paid step it lists. */
 export function rerunCostNote(stage: StageName, planTotalMicroUsd: number | null): string {

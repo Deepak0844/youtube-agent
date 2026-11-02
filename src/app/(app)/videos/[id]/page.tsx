@@ -103,11 +103,12 @@ function Missing() {
 }
 
 function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
+  const anyActive = Object.values(p.runStatus).some((r) => r === "queued" || r === "running" || r === "needs_decision");
   return (
     <section aria-label="Steps" className="flex min-w-0 flex-col gap-3 rounded-card bg-surface p-pad">
       <ol data-testid="stage-strip" className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2">
         {p.stages.map((s: StageView) => {
-          const force = forceRerunOffered(s.stage as StageName, p.runStatus[s.stage as StageName], p.head.status);
+          const force = forceRerunOffered(s.stage as StageName, p.runStatus[s.stage as StageName], p.head.status, anyActive, p.hasUpload);
           const again = rerunOffered(p.runStatus[s.stage as StageName], p.head.status);
           return (
             <li key={s.stage} data-stage={s.stage} data-state={s.state} className="flex min-w-0 flex-col gap-2">
