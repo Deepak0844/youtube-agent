@@ -3,7 +3,7 @@
 import { useActionState, useState, useTransition } from "react";
 import { Button } from "@/ui/primitives/button";
 import { recheckScenesAction, requestSceneRepairAction, undoScenesAction, type SceneActionState } from "../../queue/scenes-actions";
-import { forceRerunStageAction, rerunStageAction, type RerunState } from "./actions";
+import { forceRerunStageAction, reframeAction, rerunStageAction, type RerunState } from "./actions";
 
 /** "Run again" for one failed or cancelled step, with the time and cost stated before the click. */
 export function RerunForm({ videoId, stage, label, estimate, costNote }: { videoId: string; stage: string; label: string; estimate: string; costNote: string }) {
@@ -34,6 +34,21 @@ export function ForceRerunForm({ videoId, stage, label, hint, changed }: { video
       <label className="flex items-center gap-2 text-small"><input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} /> Yes, run {label} again</label>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" variant="secondary" disabled={pending || !sure} aria-label={`Re-run ${label}`}>Re-run this step</Button>
+        {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
+      </div>
+    </form>
+  );
+}
+
+/** "Make 16:9 / 1:1 version" of the finished video (free, local; the approved video is not changed). */
+export function ReframeButtons({ videoId }: { videoId: string }) {
+  const [state, run, pending] = useActionState<RerunState, FormData>(reframeAction, {});
+  return (
+    <form action={run} className="flex min-w-0 flex-col gap-2">
+      <input type="hidden" name="videoId" value={videoId} />
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" name="format" value="16x9" variant="secondary" disabled={pending}>Make 16:9 version</Button>
+        <Button type="submit" name="format" value="1x1" variant="secondary" disabled={pending}>Make 1:1 version</Button>
         {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
       </div>
     </form>
