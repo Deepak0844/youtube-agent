@@ -4,6 +4,7 @@ import path from "node:path";
 import type pg from "pg";
 import { systemRightsText } from "@/server/core/asset-rules";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
+import { presetOf } from "../../../remotion/kit/presets";
 import { clipBudget, countClipLinks, MAX_CLIPS_PER_VIDEO, type ClipCandidate, rankClips, wantsMotion } from "@/server/core/clip-rank";
 import { rankCandidates, type PictureBrief, type PictureCandidate } from "@/server/core/picture-rank";
 import type { StageHandler } from "@/server/core/stage-handler";
@@ -91,6 +92,10 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
     const live = new Set(beats.map((b) => b.id));
     await unlinkStageBeats(deps.db, videoId, [...new Set(existing.filter((l) => !live.has(l.beatId)).map((l) => l.beatId))]);
     const linksOf = (beatId: string) => existing.filter((l) => l.beatId === beatId);
+
+    // A style may ask for clips on every beat and a higher clip cap (documentary_montage); everyone else keeps today's rules.
+    const styleRow = await deps.db.query<{ style: string | null }>("select style from videos where id = $1", [videoId]);
+    const clipRule = presetOf(styleRow.rows[0]?.style).clips ?? { wantAll: false, max: MAX_CLIPS_PER_VIDEO };
 
     const outcomes: BeatOutcome[] = [];
     let clips = countClipLinks(existing, live); // clip links on every live beat before the loop; a beat that is re-picked gives its clips back
@@ -208,7 +213,7 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
         ];
         // A beat whose visual describes motion tries a free Pixabay clip first (needs the saved key; at most MAX_CLIPS_PER_VIDEO per
         // video and CLIPS_TOTAL_MAX_BYTES per run). Nothing acceptable = the normal picture search below.
-        if (wantsMotion(beat.visual) && clips < MAX_CLIPS_PER_VIDEO && clipBudget(clipBytes) > 0) {
+        if ((clipRule.wantAll || wantsMotion(beat.visual)) && clips < clipRule.max && clipBudget(clipBytes) > 0) {
           const key = deps.pixabayKey ? await deps.pixabayKey() : null;
           if (key) {
             const found: ClipCandidate[] = [];
