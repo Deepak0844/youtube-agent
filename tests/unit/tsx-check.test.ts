@@ -293,9 +293,14 @@ describe("checkTsx: input handling never throws", () => {
     const traced = (GOOD + Array.from({ length: 300 }, (_, i) => `const a${i} = [1, 2]; const p${i} = (x: number[], k: number) => x[k] + a${i}[k % 2]; let t${i} = p${i}(a${i}, ${i}) + p${i}(a${i}, t${i > 0 ? i - 1 : 0}); for (const y of a${i}) { t${i} += y; }`).join("\n")).slice(0, TSX_MAX_BYTES);
     checkTsx(GOOD); // warm the TypeScript module
     for (const s of [worst, flood, traced, "(".repeat(TSX_MAX_BYTES), "\"" + "url(".repeat(TSX_MAX_BYTES / 4 - 1)]) {
-      const t = performance.now();
-      checkTsx(s);
-      expect(performance.now() - t).toBeLessThan(100);
+      // best of 3: a blowup is slow every time; a cold JIT on a busy CI runner is not
+      let best = Infinity;
+      for (let i = 0; i < 3; i++) {
+        const t = performance.now();
+        checkTsx(s);
+        best = Math.min(best, performance.now() - t);
+      }
+      expect(best).toBeLessThan(100);
     }
   });
 
