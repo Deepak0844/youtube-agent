@@ -5,7 +5,7 @@ import { ensureScopeCopies, periodScopes, videoTemplate } from "@/server/db/budg
 import { getBudget } from "@/server/db/spend";
 import { latestContent, type ContentKind, type VideoFormat, type VideoKind, type VideoLanguage } from "@/server/db/videos";
 import type { ImageProvider } from "@/server/providers/media";
-import type { Renderer } from "@/server/providers/renderer";
+import type { Renderer, TsxRenderer } from "@/server/providers/renderer";
 import type { CaptionsBody } from "@/server/core/alignment";
 import type { Lang } from "@/server/core/lang";
 import type { VoiceProvider } from "@/server/providers/voice";
@@ -40,6 +40,8 @@ export interface StageDeps {
   /** The routed hosted image provider by registry id (production). Refuses before any money is reserved when it is off, unpriced or has no key. */
   imageFor?: (providerId: string) => Promise<ImageProvider>;
   renderer: Renderer;
+  /** The sandboxed code-scene renderer (tsx_author only). Absent = that stage refuses with a plain sentence. */
+  tsx?: TsxRenderer;
   /** Defaults to the real ffprobe-based probe. */
   probe?: typeof probeVideo;
   /** Full ffmpeg QA scan (black/frozen frames, loudness, codecs, stills). Absent = dry run: only the basic probe runs. */

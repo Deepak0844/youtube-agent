@@ -32,6 +32,8 @@ export interface AuditItem { id: string; at: string; event: string; detail: Reco
 export interface SpendRow { stage: string; spentMicroUsd: number; heldMicroUsd: number }
 export interface VideoPage {
   head: VideoHead;
+  /** Plain note when a code-scene video was switched to the scene kit; null otherwise. */
+  kindNote: string | null;
   stages: StageView[];
   /** The newest run status per stage, for the re-run buttons. */
   runStatus: Partial<Record<StageName, RunStatus>>;
@@ -59,6 +61,7 @@ export interface VideoPage {
   log: LogRow[];
 }
 
+export const KIND_NOTE_TSX_FALLBACK = "This video was set up as a code-scene video, but the code scene could not be made reliably, so it is being built with the standard scene kit instead. Your approved script is unchanged.";
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const asObj = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const clip = (s: string, n = 240) => (s.length > n ? s.slice(0, n) + "..." : s);
@@ -86,7 +89,7 @@ const EVENT_TEXT: Record<string, string> = {
 };
 
 export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<VideoPage | null> {
-  const vr = await db.query("select id, topic, language, kind, format, status, created_at, style, caption_style from videos where id = $1", [videoId]);
+  const vr = await db.query("select id, topic, language, kind, kind_origin, format, status, created_at, style, caption_style from videos where id = $1", [videoId]);
   const v = vr.rows[0];
   if (!v) return null;
   const head: VideoHead = { id: v.id, topic: v.topic, language: v.language, kind: v.kind, format: v.format, status: v.status, createdAt: (v.created_at as Date).toISOString(), style: v.style ?? null, captionStyle: v.caption_style ?? null };
@@ -186,7 +189,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   return {
-    head, stages, runStatus, hasUpload, voice, estimates, openGate, script,
+    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
     beats: beats?.body ?? null,
     evidence: evidence ? { body: evidence.body, fileSrc: sign?.(evidence.filePath) ?? null } : null,
     titles: titles?.body ?? null,

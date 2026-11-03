@@ -8,10 +8,10 @@ import type { GateId } from "@/server/core/gates";
 
 export type VideoFormat = "short" | "long";
 export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai";
-export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes";
+export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
-export const STAGE_NAMES = ["draft", "pictures", "build", "generate", "tts", "render", "voice", "sfx", "qa", "repair_scenes", "reframe", "seo"] as const; // seo = titles, description, tags: on demand, off the hash chain
+export const STAGE_NAMES = ["draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "voice", "sfx", "qa", "repair_scenes", "reframe", "seo"] as const; // seo = titles, description, tags: on demand, off the hash chain
 export type StageName = (typeof STAGE_NAMES)[number];
 
 export interface PlanStep {
@@ -34,7 +34,19 @@ export interface PlanFlags {
 
 export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags): PlanStep[] {
   if (format === "long") throw new Error("long format is not built yet (Phase 6b)");
-  void kind; // every kind shares the route in Phase 2
+  // tsx: the model writes one Remotion file after narration exists (word times), then it is checked, previewed and rendered
+  // in one stage that replaces build + render. Every other kind keeps the route below exactly as it was.
+  if (kind === "tsx") {
+    const head: PlanStep[] = flags.imported ? [] : [{ stage: "draft", gateAfter: "script", resource: "net" }, { stage: "pictures", resource: "net" }];
+    return [
+      ...head,
+      { stage: "tts", resource: "net" },
+      { stage: "tsx_author", resource: "render" },
+      { stage: "voice", resource: "cpu" },
+      { stage: "sfx", resource: "cpu" },
+      { stage: "qa", gateAfter: "video", resource: "cpu" },
+    ];
+  }
   const steps: PlanStep[] = flags.imported
     ? []
     : [
@@ -72,6 +84,7 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   generate: ["cost_plan"],
   tts: ["script"],
   render: ["beats", "narration", "scenes"],
+  tsx_author: ["script", "beats", "narration"],
   voice: [],
   sfx: [],
   qa: [],

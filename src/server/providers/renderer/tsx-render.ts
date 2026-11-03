@@ -76,7 +76,7 @@ export interface TsxRenderer {
   renderTsx(ctx: StageContext, input: TsxRenderInput): Promise<TsxRenderResult>;
 }
 
-/** Wired for slice 3; no stage calls it yet. */
+/** The tsx_author stage calls this (worker/handlers.ts wires it with the same child registry, image and kit as the scene-kit renderer). */
 export function createTsxRenderer(deps: TsxRendererDeps): TsxRenderer {
   return { renderTsx: (ctx, input) => renderTsx(deps, ctx, input) };
 }
