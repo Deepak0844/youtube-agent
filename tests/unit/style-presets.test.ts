@@ -1,6 +1,7 @@
+import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { contrast } from "../../remotion/kit/look";
-import { captionStyleOf, CAPTION_STYLES, DEFAULT_STYLE, PRESETS, STYLE_IDS, pageWords, presetOf, styleGuidance, styleHashParts } from "../../remotion/kit/presets";
+import { captionStyleOf, CAPTION_STYLES, DEFAULT_STYLE, LEGACY_STYLE_IDS, PRESETS, STYLE_IDS, pageWords, presetOf, styleGuidance, styleHashParts } from "../../remotion/kit/presets";
 import { defaultTheme } from "../../remotion/kit/theme";
 import { TRANSITION_FRAMES, type CaptionWord } from "../../remotion/kit/timeline";
 import { expectedInputHash, type PipelineView } from "@/server/core/pipeline-plan";
@@ -10,11 +11,19 @@ import { buildVideoProps } from "@/shared/scene/video-props";
 const HEX = /^#[0-9a-f]{6}$/i;
 const w = (word: string, startS: number, endS = startS + 0.3): CaptionWord => ({ word, startS, endS });
 
+// Families the render image carries: the file names in infra/render/fonts, first word(s) up to "-". Static files add their family name.
+const FONT_FILES = readdirSync("infra/render/fonts").filter((f) => f.endsWith(".ttf")).map((f) => f.split("-")[0]!.toLowerCase());
+const hasFont = (family: string) => FONT_FILES.includes(family.replace(/\s+/g, "").toLowerCase());
+
 describe("preset shape", () => {
-  it.each(STYLE_IDS)("%s has valid colours, readable text and sane numbers", (id) => {
+  it("offers exactly the ten styles, and the picker never lists a legacy one", () => {
+    expect([...STYLE_IDS]).toEqual(["clean_professional", "flat_motion", "minimal_diagram", "premium_editorial", "storybook_calm", "paper_cutout", "kinetic_type", "retention_shorts", "wrapped_stats", "ai_studio"]);
+    for (const id of LEGACY_STYLE_IDS) expect(STYLE_IDS as readonly string[]).not.toContain(id);
+  });
+  it.each([...STYLE_IDS, ...LEGACY_STYLE_IDS])("%s has valid colours, readable text, sane numbers and fonts that ship", (id) => {
     const p = PRESETS[id];
-    expect(p.id).toBe(id);
-    for (const c of [p.palette.bg, p.palette.surface, p.palette.text, p.palette.muted, p.palette.accent, ...p.palette.chart]) expect(c).toMatch(HEX);
+    expect(p.id).toBe(id === "clean_pro" ? "legacy_default" : id);
+    for (const c of [p.palette.bg, p.palette.surface, p.palette.text, p.palette.muted, p.palette.accent, ...(p.palette.accent2 ? [p.palette.accent2] : []), ...p.palette.chart, ...(p.sheet ?? [])]) expect(c).toMatch(HEX);
     expect(contrast(p.palette.text, p.palette.bg)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(p.palette.text, p.palette.surface)).toBeGreaterThanOrEqual(4.5);
     if (p.look) {
@@ -24,6 +33,29 @@ describe("preset shape", () => {
     expect(p.pacing.minHoldFrames).toBeLessThan(p.pacing.maxHoldFrames);
     expect(p.motion.transitionFrames).toBeGreaterThan(0);
     expect(p.label && p.mood).toBeTruthy();
+    for (const f of [p.fonts.heading, p.fonts.body, p.fonts.mono, p.captions.font].filter((x): x is string => !!x)) expect(hasFont(f), f).toBe(true);
+  });
+  it("every new style has picker copy, the approved palette and a caption colour that reads", () => {
+    for (const id of STYLE_IDS) {
+      const p = PRESETS[id];
+      expect(p.bestFor && p.sheet?.length).toBeTruthy();
+      expect(p.antiPatterns.length).toBeGreaterThan(0);
+      expect(styleGuidance(id)).toMatch(/Never:[\s\S]*Pace:/);
+    }
+    expect(contrast(PRESETS.clean_professional.captions.textColor!, "#f3f4f6")).toBeGreaterThanOrEqual(4.5);
+  });
+  it("paper cutout: grain, boil, tags, hard cuts; kinetic type: kinetic captions; retention: spring 260/9", () => {
+    expect(PRESETS.paper_cutout.fx).toMatchObject({ grain: true, boilBanner: true });
+    expect(PRESETS.paper_cutout.captions.layout).toBe("tags");
+    expect(PRESETS.paper_cutout.motion.transitionFrames).toBeLessThanOrEqual(5);
+    expect(PRESETS.kinetic_type.captions.layout).toBe("kinetic");
+    expect(PRESETS.retention_shorts.motion).toMatchObject({ kind: "spring", stiffness: 260, damping: 9 });
+    expect(PRESETS.storybook_calm.fx).toMatchObject({ vignette: expect.any(Number), glowDots: true });
+  });
+  it("old ids still resolve to their old data", () => {
+    expect(presetOf("clean_pro")).toBe(PRESETS.legacy_default);
+    for (const id of ["neon_flat", "blueprint_whiteboard", "documentary_montage"] as const) expect(presetOf(id).id).toBe(id);
+    expect(presetOf("neon_flat").label).toBe("Neon flat");
   });
   it("documentary montage: slow push-in of 4-6%, clip-first, clips 1.2-4 s, text-light prompt", () => {
     const p = PRESETS.documentary_montage;
@@ -33,7 +65,7 @@ describe("preset shape", () => {
     expect(p.pacing).toMatchObject({ minHoldFrames: 36, maxHoldFrames: 120 });
     expect(p.preferKinds).toEqual(["stock_clip", "story_kenburns"]);
     expect(styleGuidance("documentary_montage")).toMatch(/25% of scenes as text cards.*Pace: scenes usually hold 1\.2 to 4\.0 seconds/s);
-    expect(PRESETS.clean_pro.grade ?? PRESETS.clean_pro.clips).toBeUndefined();
+    expect(PRESETS.legacy_default.grade ?? PRESETS.legacy_default.clips).toBeUndefined();
   });
   it("blueprint whiteboard: dark paper, one accent, slow even holds, 12-frame fade", () => {
     const p = PRESETS.blueprint_whiteboard;
@@ -56,7 +88,7 @@ describe("preset shape", () => {
 describe("default reproduces today", () => {
   const d = PRESETS[DEFAULT_STYLE];
   it("uses the old theme, the seed-picked look, 8-frame fade-up and the pill captions", () => {
-    expect(DEFAULT_STYLE).toBe("clean_pro");
+    expect(DEFAULT_STYLE).toBe("legacy_default");
     expect(d.palette.bg).toBe(defaultTheme.palette.bg);
     expect(d.palette.text).toBe(defaultTheme.palette.text);
     expect(d.palette.chart).toEqual(defaultTheme.palette.chart);
@@ -69,6 +101,7 @@ describe("default reproduces today", () => {
     for (const id of [null, undefined, "", "nope"]) expect(presetOf(id)).toBe(d);
     expect(styleGuidance(null)).toBe("");
     expect(styleGuidance("clean_pro")).toBe("");
+    expect(styleGuidance("legacy_default")).toBe("");
     expect(styleGuidance("neon_flat")).toMatch(/Never:/);
   });
   it("the caption layer overrides any preset", () => {

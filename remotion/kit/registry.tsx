@@ -6,8 +6,11 @@ const SceneIn: React.FC<{ on: boolean; motion: StylePreset["motion"]; children: 
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = transitionIn(frame, motion.transitionFrames, motion.rise);
-  const dy = motion.kind === "spring" ? (1 - spring({ frame, fps, config: { stiffness: motion.stiffness, damping: motion.damping } })) * motion.rise : t.dy;
-  return on ? <AbsoluteFill style={{ opacity: t.opacity, transform: `translateY(${dy}px)` }}>{children}</AbsoluteFill> : <>{children}</>;
+  const sp = motion.kind === "spring" ? spring({ frame, fps, config: { stiffness: motion.stiffness, damping: motion.damping } }) : t.opacity;
+  const dy = motion.kind === "spring" ? (1 - sp) * motion.rise : t.dy;
+  // scaleFrom (a pop, a punch-in, a tiny grow): starts at that size and settles to 1 on the same curve as the move.
+  const scale = motion.scaleFrom ? ` scale(${motion.scaleFrom + (1 - motion.scaleFrom) * sp})` : "";
+  return on ? <AbsoluteFill style={{ opacity: t.opacity, transform: `translateY(${dy}px)${scale}` }}>{children}</AbsoluteFill> : <>{children}</>;
 };
 // Documentary grade: slow push-in on clips (stock_clip only; photos already drift in Story) and a dark vignette on picture scenes.
 const Grade: React.FC<{ grade: NonNullable<StylePreset["grade"]>; clip: boolean; children: React.ReactNode }> = ({ grade, clip, children }) => {
@@ -44,7 +47,8 @@ import { Orbit, type OrbitProps } from "./Orbit";
 import { SvgDiagram, type SvgDiagramProps } from "./SvgDiagram";
 import { SVG_EXAMPLE } from "./svgLogic";
 import { Captions } from "./Captions";
-import { captionStyleOf, presetOf, type StylePreset } from "./presets";
+import { captionStyleOf, presetOf, STYLE_IDS, type StylePreset } from "./presets";
+import { StyleFx } from "./StyleFx";
 import { StyleFontCtx } from "./ScriptText";
 import { LookProvider } from "./LookParts";
 import { HookCard } from "./HookCard";
@@ -334,6 +338,8 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
     return id ? resolveAsset(id) : undefined;
   }, [doc, assets, resolveAsset]);
   const loop = loopOverlay(doc.scenes, fps);
+  // The new styles set their own headline type; the old ones keep today's.
+  const banner = (STYLE_IDS as readonly string[]).includes(preset.id) ? { font: preset.fonts.heading, weight: preset.fonts.headingWeight, paper: !!preset.fx?.boilBanner } : undefined;
   const firstBody = (() => {
     const s = doc.scenes[0]!;
     const inner = <KitScene scene={s} resolveAsset={resolveAsset} fps={fps} />;
@@ -341,7 +347,7 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
   })();
   return (
   <StyleFontCtx.Provider value={preset.fonts.body}>
-  <LookProvider value={{ look, sceneCaptions }}>
+  <LookProvider value={{ look, sceneCaptions, banner }}>
   <AbsoluteFill style={{ background: lookBackground(look), "--look-bg": lookBackground(look) } as React.CSSProperties}>
     {doc.scenes.map((scene, i) => {
       const r = sceneRange(scene, fps);
@@ -365,6 +371,7 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
         </LoopIn>
       </Sequence>
     ) : null}
+    {preset.fx ? <StyleFx fx={preset.fx} accent={look.accent} /> : null}
     {audioSrc ? <Audio src={/^(https?:|data:|blob:)/.test(audioSrc) ? audioSrc : staticFile(audioSrc)} /> : null}
     {captions?.length ? <Captions words={captions} style={captionStyleOf(preset, captionStyle)} /> : null}
     {/* Title card on top of scene 1 (no time inserted, so narration sync is unchanged). Frame 0 of the video is this card. */}

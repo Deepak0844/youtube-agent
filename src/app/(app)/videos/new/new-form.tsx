@@ -2,12 +2,13 @@
 
 import { useActionState, useState } from "react";
 import { LOOKS } from "../../../../../remotion/kit/look";
-import { DEFAULT_STYLE, PRESETS, STYLE_IDS } from "../../../../../remotion/kit/presets";
+import { PRESETS, STYLE_IDS } from "../../../../../remotion/kit/presets";
 import { LANGUAGE_ORDER, LANGUAGE_WORDS } from "@/server/core/videos-view";
 import { cn, control, fade, focusRing } from "@/ui/lib/cn";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
 import { Label } from "@/ui/primitives/label";
+import { StyleMock } from "./style-mock";
 import { createVideoAction, type NewVideoState } from "./actions";
 
 const selectClass = cn("w-full rounded-control border border-control bg-surface px-4 text-body text-text disabled:opacity-50", control, fade, focusRing);
@@ -62,23 +63,22 @@ export function NewForm() {
       <fieldset disabled={custom} className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0 disabled:opacity-50">
         <legend className="mb-1 text-body font-medium">Style</legend>
         {custom ? <p className="m-0 text-small text-muted">Not used for custom animation: Claude designs the look itself.</p> : null}
-        <div className="grid gap-3 sm:grid-cols-2">
-          {STYLE_IDS.map((id) => {
-            const s = PRESETS[id];
-            const sw = s.look ? [s.look.from, s.look.to, s.look.accent] : LOOKS.slice(0, 3).map((l) => l.to);
-            return (
-              <label key={id} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-rule bg-surface p-3 has-checked:outline-2 has-checked:outline">
-                <input type="radio" name="style" value={id === DEFAULT_STYLE ? "" : id} defaultChecked={id === DEFAULT_STYLE} className="mt-1" />
-                <span className="flex min-w-0 flex-col gap-1">
-                  <span className="flex items-center gap-2 text-body font-medium">
-                    <span aria-hidden className="flex">{sw.map((c) => <span key={c} className="size-4 first:rounded-l-full last:rounded-r-full" style={{ background: c }} />)}</span>
-                    {s.label}
-                  </span>
-                  <span className="text-small text-muted">{s.mood}</span>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {([["", null], ...STYLE_IDS.map((id) => [id, PRESETS[id]] as const)] as const).map(([id, s]) => (
+            <label key={id || "classic"} className="relative flex min-w-0 cursor-pointer flex-col gap-2 rounded-card border border-rule bg-surface p-2 has-checked:outline-2 has-checked:outline has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline">
+              <input type="radio" name="style" value={id} defaultChecked={id === ""} className="sr-only" />
+              <StyleMock id={id} />
+              <span className="flex min-w-0 flex-col gap-1">
+                <span className="text-body font-medium">{s ? s.label : "Classic (default)"}</span>
+                <span aria-hidden className="flex h-3 overflow-hidden rounded-full border border-rule">
+                  {(s?.sheet ?? LOOKS.slice(0, 4).map((l) => l.to)).map((c) => <span key={c} className="flex-1" style={{ background: c }} />)}
                 </span>
-              </label>
-            );
-          })}
+                <span aria-hidden className="truncate text-body" style={{ fontFamily: `"${s?.fonts.heading ?? "Inter"}", system-ui, sans-serif`, fontWeight: s?.fonts.headingWeight ?? 800 }}>Aa {s?.fonts.heading ?? "Inter"}</span>
+                <span className="text-small text-muted">{s ? s.mood : "The original look, with a new colour mix for every video."}</span>
+                {s?.bestFor ? <span className="text-small text-faint">Best for: {s.bestFor}</span> : null}
+              </span>
+            </label>
+          ))}
         </div>
       </fieldset>
       <label className="flex items-start gap-3 text-body">

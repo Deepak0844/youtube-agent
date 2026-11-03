@@ -45,10 +45,10 @@ describe("parseNewVideoForm", () => {
     }
   });
   it("custom animation (tsx) is accepted; style and caption style are dropped for it, and kept for the scene kit", () => {
-    const tsx = parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", style: "neon_flat", captionStyle: "punchy_captions" }));
+    const tsx = parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", style: "flat_motion", captionStyle: "punchy_captions" }));
     expect(tsx).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "tsx", format: "short", notes: undefined } });
-    const kit = parseNewVideoForm(form({ topic: "x", language: "en", style: "neon_flat" }));
-    expect(kit.ok && kit.value.style).toBe("neon_flat");
+    const kit = parseNewVideoForm(form({ topic: "x", language: "en", style: "flat_motion" }));
+    expect(kit.ok && kit.value.style).toBe("flat_motion");
     expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", format: "long" })).ok).toBe(false);
   });
   it("refuses empty or too long topics and unknown language/kind/format", () => {

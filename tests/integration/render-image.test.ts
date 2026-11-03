@@ -35,6 +35,12 @@ describe("render image", () => {
       "JetBrains Mono",
       "Spectral",
       "Source Serif 4",
+      "Archivo Black",
+      "Fraunces",
+      "IBM Plex Sans",
+      "IBM Plex Mono",
+      "Noto Serif",
+      "Poppins",
     ]) {
       expect(r.stdout, family).toContain(family);
     }
@@ -64,7 +70,7 @@ describe("render image", () => {
     expect(r.status, r.stderr).toBe(0);
     const files = r.stdout.split("\n").filter(Boolean).sort();
     const families = [
-      "Inter", "JetBrainsMono", "NotoSansDevanagari", "NotoSansKannada", "NotoSansMalayalam",
+      "ArchivoBlack", "Fraunces", "IBMPlexMono", "IBMPlexSans", "Inter", "JetBrainsMono", "NotoSerif", "Poppins", "NotoSansDevanagari", "NotoSansKannada", "NotoSansMalayalam",
       "NotoSansTamil", "NotoSansTelugu", "SourceSerif4", "SpaceGrotesk", "Spectral",
     ];
     expect(files).toEqual([...families.map((f) => `OFL-${f}.txt`), "README.md"].sort());

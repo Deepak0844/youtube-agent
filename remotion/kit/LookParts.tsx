@@ -4,24 +4,30 @@ import { fitContain, keyWordIndex, LOOKS, popScale, type Look } from "./look";
 import { ScriptText } from "./ScriptText";
 import { theme } from "./theme";
 
-type Ctx = { look: Look; sceneCaptions: boolean };
+/** The style's banner type: heading font and weight, and (paper cutout) the tilted, shadowed, boiling banner. Absent = today's headline. */
+export type Banner = { font: string; weight: number; paper?: boolean };
+type Ctx = { look: Look; sceneCaptions: boolean; banner?: Banner };
 const LookCtx = createContext<Ctx>({ look: LOOKS[0]!, sceneCaptions: true });
 export const LookProvider = LookCtx.Provider;
 export const useLook = (): Look => useContext(LookCtx).look;
 /** False while the word captions are on screen. */
 export const useSceneCaptions = (): boolean => useContext(LookCtx).sceneCaptions;
+const useBanner = (): Banner | undefined => useContext(LookCtx).banner;
 
 /** Headline in thick type with its key word in the accent colour; pops in. */
 export const Headline: React.FC<{ text: string; size?: number; style?: React.CSSProperties }> = ({ text, size = 64, style }) => {
   const look = useLook();
+  const banner = useBanner();
   const frame = useCurrentFrame();
   const words = text.split(" ");
   const k = keyWordIndex(words);
+  // Paper cutout: 2-frame boil (a tiny tilt flip every 2 frames) and a soft paper shadow.
+  const boil = banner?.paper ? { transform: `scale(${popScale(frame)}) rotate(${Math.floor(frame / 2) % 2 ? -0.6 : 0.6}deg)`, textShadow: "0 4px 8px rgba(0,0,0,0.4)" } : {};
   return (
-    <div style={{ fontSize: size, fontWeight: 900, lineHeight: 1.1, transform: `scale(${popScale(frame)})`, transformOrigin: "left center", ...style }}>
+    <div style={{ fontSize: size, fontWeight: banner?.weight ?? 900, lineHeight: 1.1, transform: `scale(${popScale(frame)})`, transformOrigin: "left center", ...boil, ...style }}>
       {words.map((w, i) => (
         <span key={i} style={{ color: i === k ? look.accent : theme.palette.text }}>
-          <ScriptText text={w} />
+          <ScriptText text={w} font={banner?.font} />
           {i < words.length - 1 ? " " : ""}
         </span>
       ))}
