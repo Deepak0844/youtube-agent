@@ -31,7 +31,7 @@ describe("youtube oauth helpers", () => {
     expect(parseChannels(null)).toEqual([]);
   });
   it("vault name is valid for the vault", () => {
-    expect(channelSecretName("UCabc_-1")).toMatch(/^[a-z0-9][a-z0-9._-]{0,127}$/);
+    expect(channelSecretName("3f2b8c1e-0000-4000-8000-000000000001")).toMatch(/^[a-z0-9][a-z0-9._-]{0,127}$/);
   });
   it("quota day follows Pacific time", () => {
     expect(quotaDay(new Date("2026-11-04T07:30:00Z"))).toBe("2026-11-03"); // 23:30 PST
