@@ -12,6 +12,7 @@ export const AUDIT_EVENTS = {
   "model.removed": "A model was removed from the catalog",
   "route.changed": "A model route changed",
   "model.tested": "A model was tested with one small call",
+  "model.vision_tested": "A model was tested with one tiny picture",
   // Claude Code on this machine (ADR 0014; detail: source, stage -> model id before/after; result class only)
   "ai_source.changed": "The AI source for text stages was switched",
   "claude_code.tested": "Claude Code was tested with one tiny call",

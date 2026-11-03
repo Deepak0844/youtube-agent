@@ -78,7 +78,7 @@ async function dayScope(db: pg.Pool): Promise<string> {
 }
 
 /** Claims the per-model cooldown slot. The placeholder is overwritten when the test ends; if the process dies it stays and says so. */
-async function claimCooldown(db: pg.Pool, id: string, cooldownMs: number): Promise<void> {
+export async function claimCooldown(db: pg.Pool, id: string, cooldownMs: number): Promise<void> {
   const placeholder = { ok: false, latencyMs: 0, structuredOutput: false, costMicroUsd: 0, message: "A test was started but never reported back." };
   const r = await db.query(
     `update llm_models

@@ -21,7 +21,7 @@ import { getEvalBadges } from "@/server/db/llm-eval";
 import type { Badge } from "@/server/core/eval-rules";
 import { EvalBadge } from "./eval-badge";
 import { AiSourceForm, TestClaudeCodeButton } from "./ai-source";
-import { EMPTY_MODEL, IdButton, ModelForm, RouteForm, TestModelButton, type ModelFormValues } from "./model-form";
+import { EMPTY_MODEL, IdButton, ModelForm, RouteForm, TestModelButton, TestVisionButton, type ModelFormValues } from "./model-form";
 
 // The model catalog is the owner's: ids and prices are data. Page and actions are session-only (requireOwner first).
 // The Test button is a paid call for hosted models: it goes through the spend reservation, a daily cap and a cooldown (db/llm-test.ts).
@@ -241,6 +241,7 @@ function Models({ models, routes, defaults, local, tests, badges, cc }: { models
                     <Caps m={m} />
                     {routed.length > 0 ? <p className="text-small text-muted">Used by: {routed.join(", ")}</p> : null}
                     {m.isFree || m.prices ? <TestModelButton id={m.id} label={m.label} free={m.isFree} /> : <p className="text-small text-faint">Add a price to test this model.</p>}
+                    {m.provider !== "claude_code" && (m.isFree || m.prices) ? <TestVisionButton id={m.id} label={m.label} free={m.isFree} /> : null}
                     <LastTestLine test={tests.get(m.id)} />
                     <EvalBadge badge={badges.get(m.id)} />
                   </div>

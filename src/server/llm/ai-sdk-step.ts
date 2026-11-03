@@ -72,3 +72,24 @@ export function createAiSdkStep(model: LanguageModel, decls: ToolDecl[], maxOutp
     };
   };
 }
+
+/** One image + one question, no tools (the "Test image reading" probe). Same error scrubbing and no-retry rule as above. */
+export function createVisionStep(model: LanguageModel, maxOutputTokens: number, png: Uint8Array, question: string): ModelStep {
+  return async (_messages, _key, signal): Promise<StepResult> => {
+    let r;
+    try {
+      r = await generateText({
+        model,
+        messages: [{ role: "user", content: [{ type: "text", text: question }, { type: "image", image: png, mediaType: "image/png" }] }],
+        maxOutputTokens,
+        abortSignal: signal,
+        maxRetries: 0,
+      });
+    } catch (err) {
+      throw toSafeModelError(err);
+    }
+    const { inputTokens, outputTokens } = r.usage;
+    if (inputTokens === undefined || outputTokens === undefined) throw new Error("provider returned no token usage");
+    return { text: r.text, toolCalls: [], usage: { inputTokens, outputTokens } };
+  };
+}

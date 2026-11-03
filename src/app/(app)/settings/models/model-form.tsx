@@ -4,7 +4,7 @@ import { useActionState, type ReactNode } from "react";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
 import { cn, control, focusRing } from "@/ui/lib/cn";
-import { copyDefaultAction, deleteModelAction, saveModelAction, setRouteAction, testModelAction, type FormState } from "./actions";
+import { copyDefaultAction, deleteModelAction, saveModelAction, setRouteAction, testModelAction, testVisionAction, type FormState } from "./actions";
 
 // Plain forms on purpose: they work before hydration and on a phone keyboard. Values are never echoed back from the server
 // beyond what the owner typed; there are no secrets on this page.
@@ -224,6 +224,23 @@ export function IdButton({ kind, id, label, variant = "secondary" }: { kind: "co
       </Button>
       <p role="status" aria-live="polite" className={cn("text-small", state.error ? "text-negative" : "text-positive")}>
         {state.error ?? (state.ok ? "Done." : "")}
+      </p>
+    </form>
+  );
+}
+
+/** Test image reading: one tiny built-in picture, same cost rules as Test. Not shown for Claude Code (text only). */
+export function TestVisionButton({ id, label, free }: { id: string; label: string; free: boolean }) {
+  const [state, action, pending] = useActionState(testVisionAction, idle);
+  return (
+    <form action={action} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+      <input type="hidden" name="rowId" value={id} />
+      <Button type="submit" variant="secondary" disabled={pending} aria-label={`Test image reading for ${label}`}>
+        {pending ? "Testing" : "Test image reading"}
+      </Button>
+      <span className="text-small text-faint">{free ? "Sends one tiny picture. Free." : "Sends one tiny picture. Costs a fraction of a cent, capped per day."}</span>
+      <p role="status" aria-live="polite" className={cn("text-small", state.error ? "text-negative" : "text-positive")}>
+        {state.error ?? state.note ?? ""}
       </p>
     </form>
   );
