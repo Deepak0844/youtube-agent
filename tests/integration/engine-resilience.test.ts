@@ -1,3 +1,5 @@
+import { POLICY_DEFAULTS } from "@/server/core/policy";
+import { UPLOAD_CAPS } from "@/server/core/publish-rules";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -44,6 +46,8 @@ afterAll(async () => {
   await db?.stop();
 });
 
+// A connected channel counts its quota against the policy budget (8000), so 5 uploads fit in a day, not the 6 of UPLOAD_CAPS.
+const DAILY_UPLOADS = Math.min(UPLOAD_CAPS.maxPerDay, Math.floor(POLICY_DEFAULTS.quotaBudget / UPLOAD_CAPS.costUnits));
 const N_LOAD = Number(process.env.ENGINE_LOAD_N ?? 30);
 const STAGES = ["draft", "pictures", "build", "generate", "tts", "render", "voice", "sfx", "qa"];
 const GATES = ["script", "cost", "video", "evidence", "publish"];
@@ -450,12 +454,12 @@ describe("load", () => {
       if (process.env.ENGINE_DEBUG) for (const st of steps) if (st.kind === "gate" && !st.ok) console.error("owner", JSON.stringify(st));
       await new Promise((r) => setTimeout(r, 250));
     }
-    await waitUntil(async () => (await q("select count(*)::int n from uploads where status = 'uploaded'")).rows[0].n === Math.min(N_LOAD, 6), "daily upload cap reached", 30_000);
+    await waitUntil(async () => (await q("select count(*)::int n from uploads where status = 'uploaded'")).rows[0].n === Math.min(N_LOAD, DAILY_UPLOADS), "daily upload cap reached", 30_000);
     await Promise.all([a.stop(), b.stop()]);
     expect((await q("select count(*)::int n from stage_runs where status <> 'succeeded'")).rows[0].n).toBe(0);
     expect((await q("select count(*)::int n from stage_runs")).rows[0].n).toBe(N_LOAD * STAGES.length);
-    // The uploader's own daily cap (6 uploads a day, publish-rules UPLOAD_CAPS) holds the rest at publish_approved by design.
-    expect((await q("select count(*)::int n from uploads where status = 'publish_approved'")).rows[0].n).toBe(Math.max(0, N_LOAD - 6));
+    // The daily quota budget (policy 8000 units at 1600 per upload = 5 a day; UPLOAD_CAPS alone would allow 6) holds the rest at publish_approved by design.
+    expect((await q("select count(*)::int n from uploads where status = 'publish_approved'")).rows[0].n).toBe(Math.max(0, N_LOAD - DAILY_UPLOADS));
     const day = (await q("select spent_micro_usd s, cap_micro_usd c from budgets where scope like 'day:%'")).rows[0];
     expect(Number(day.s)).toBeLessThanOrEqual(Number(day.c));
     expect(await violations(db.pool)).toEqual([]);
