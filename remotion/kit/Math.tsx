@@ -3,7 +3,7 @@ import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { mathReveal } from "./helpers";
 import { fitFont, safeSize } from "./layout";
-import { Headline } from "./LookParts";
+import { Headline, useInk } from "./LookParts";
 import { theme } from "./theme";
 
 export type MathProps = {
@@ -14,12 +14,13 @@ export type MathProps = {
 
 // Plain text only: React escapes everything, nothing is parsed as markup.
 const Line: React.FC<{ text: string; highlight?: string }> = ({ text, highlight }) => {
+  const ink = useInk();
   const at = highlight ? text.indexOf(highlight) : -1;
   if (!highlight || at < 0) return <>{text}</>;
   return (
     <>
       {text.slice(0, at)}
-      <span style={{ color: theme.palette.accent }}>{highlight}</span>
+      <span style={{ color: ink.accent }}>{highlight}</span>
       {text.slice(at + highlight.length)}
     </>
   );
@@ -27,6 +28,7 @@ const Line: React.FC<{ text: string; highlight?: string }> = ({ text, highlight 
 
 export const MathSteps: React.FC<MathProps> = ({ title, steps, framesPerStep }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const n = mathReveal(frame, framesPerStep, steps.length);
   const safe = safeSize(theme);
   // Pad (56) and gap (28) per step; leave room for the title.
@@ -48,7 +50,7 @@ export const MathSteps: React.FC<MathProps> = ({ title, steps, framesPerStep }) 
         background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.mono,
-        color: theme.palette.text,
+        color: ink.text,
         justifyContent: "center",
       }}
     >
@@ -61,7 +63,7 @@ export const MathSteps: React.FC<MathProps> = ({ title, steps, framesPerStep }) 
             marginBottom: 28,
             padding: "20px 28px",
             borderRadius: 24,
-            background: theme.palette.surface,
+            background: ink.surface,
             opacity: i === n - 1 ? 1 : 0.88,
             wordBreak: "break-word",
           }}

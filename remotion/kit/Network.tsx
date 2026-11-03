@@ -3,6 +3,7 @@ import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import type { NODE_KINDS } from "../../src/shared/scene/kinds/network";
 import { enterProgress, networkLayout, packetT } from "./drawnHelpers";
+import { useInk } from "./LookParts";
 import { theme } from "./theme";
 
 export type NetworkProps = {
@@ -56,6 +57,7 @@ const Glyph: React.FC<{ type: NetworkProps["nodes"][number]["type"] }> = ({ type
 
 export const Network: React.FC<NetworkProps> = ({ nodes, links }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const { durationInFrames } = useVideoConfig();
   const pos = networkLayout(nodes.length);
   const at = (id: string) => pos[Math.max(0, nodes.findIndex((n) => n.id === id))];
@@ -68,7 +70,7 @@ export const Network: React.FC<NetworkProps> = ({ nodes, links }) => {
           const t = packetT(frame, i, links.length, durationInFrames);
           return (
             <g key={i}>
-              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={t > 0 ? theme.palette.accent : theme.palette.muted} strokeOpacity={t > 0 ? 0.95 : 0.75} strokeWidth={4} strokeDasharray="3 16" strokeLinecap="round" />
+              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={t > 0 ? ink.accent : ink.muted} strokeOpacity={t > 0 ? 0.95 : 0.75} strokeWidth={4} strokeDasharray="3 16" strokeLinecap="round" />
               {t > 0 ? <circle cx={a.x + (b.x - a.x) * t} cy={a.y + (b.y - a.y) * t} r={13} fill={A.warn} /> : null}
             </g>
           );
@@ -90,8 +92,8 @@ export const Network: React.FC<NetworkProps> = ({ nodes, links }) => {
               fontFamily: theme.fonts.mono,
               fontWeight: 700,
               fontSize: 28,
-              color: A.warn,
-              background: theme.palette.surface,
+              color: ink.warn,
+              background: ink.surface,
               padding: "4px 12px",
               borderRadius: 8,
               whiteSpace: "nowrap",
@@ -116,7 +118,7 @@ export const Network: React.FC<NetworkProps> = ({ nodes, links }) => {
           <div style={{ display: "flex", justifyContent: "center", zoom: 1.5 }}>
             <Glyph type={n.type} />
           </div>
-          <div style={{ marginTop: 10, fontFamily: theme.fonts.mono, fontWeight: 700, fontSize: 48, color: theme.palette.text, whiteSpace: "nowrap" }}>{n.label}</div>
+          <div style={{ marginTop: 10, fontFamily: theme.fonts.mono, fontWeight: 700, fontSize: 48, color: ink.text, whiteSpace: "nowrap" }}>{n.label}</div>
         </div>
       ))}
     </AbsoluteFill>

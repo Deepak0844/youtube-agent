@@ -3,6 +3,7 @@ import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { cellRange, visibleCount } from "./helpers";
 import { safeSize } from "./layout";
+import { useInk } from "./LookParts";
 import { theme } from "./theme";
 
 export type SpreadsheetProps = {
@@ -15,6 +16,7 @@ export type SpreadsheetProps = {
 
 export const Spreadsheet: React.FC<SpreadsheetProps> = ({ rows, formula, highlight, reveal, framesPerStep }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const cols = rows[0]?.length ?? 1;
   const total = reveal === "cell" ? rows.length * cols : rows.length;
   const shown = reveal === "all" ? total : visibleCount(frame, framesPerStep, total);
@@ -25,14 +27,14 @@ export const Spreadsheet: React.FC<SpreadsheetProps> = ({ rows, formula, highlig
   const longest = Math.max(1, ...rows.flat().map((t) => [...t].length));
   const size = Math.round(Math.min(theme.type.big, Math.max(theme.type.min, (safeSize(theme).w / cols - 32) / (longest * 0.6))));
   const rowH = Math.round(size * 2.4);
-  const border = `2px solid ${theme.palette.gridLine}`;
+  const border = `2px solid ${ink.grid}`;
   return (
     <AbsoluteFill
       style={{
         background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.ui,
-        color: theme.palette.text,
+        color: ink.text,
         justifyContent: "center",
       }}
     >
@@ -42,7 +44,7 @@ export const Spreadsheet: React.FC<SpreadsheetProps> = ({ rows, formula, highlig
           alignItems: "center",
           height: rowH,
           marginBottom: 16,
-          background: theme.palette.surface,
+          background: ink.surface,
           border,
           fontFamily: theme.fonts.mono,
           fontSize: Math.min(size, Math.floor((safeSize(theme).w - 120) / (Math.max(1, [...(formula ?? "")].length) * 0.6))),
@@ -51,7 +53,7 @@ export const Spreadsheet: React.FC<SpreadsheetProps> = ({ rows, formula, highlig
         <span
           style={{
             padding: "0 20px",
-            color: theme.palette.accent,
+            color: ink.accent,
             fontStyle: "italic",
           }}
         >
@@ -67,7 +69,7 @@ export const Spreadsheet: React.FC<SpreadsheetProps> = ({ rows, formula, highlig
               display: "flex",
               minHeight: rowH,
               borderTop: r ? border : "none",
-              background: r === 0 ? theme.palette.surface : "transparent",
+              background: r === 0 ? ink.surface : "transparent",
             }}
           >
             {row.map((text, c) => {

@@ -3,6 +3,7 @@ import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import type { OBJECT_EMPHASIS, OBJECT_ENTERS, OBJECT_IDS, OBJECT_SLOTS } from "../../src/shared/scene/kinds/drawn_objects";
 import { emphasisStyle, enterProgress, enterStyle, objectRows } from "./drawnHelpers";
+import { useInk } from "./LookParts";
 import { theme } from "./theme";
 
 export type DrawnObjectsProps = {
@@ -128,6 +129,7 @@ const DRAWINGS: Record<DrawnObjectsProps["objects"][number]["object"], { w: numb
 
 export const DrawnObjects: React.FC<DrawnObjectsProps> = ({ objects }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const aligned = (slot: "left" | "center" | "right") => objectRows(objects.length, slot);
   return (
     <AbsoluteFill style={{ background: lookBg }}>
@@ -155,7 +157,7 @@ export const DrawnObjects: React.FC<DrawnObjectsProps> = ({ objects }) => {
               {d.body(frame)}
             </svg>
             {o.label ? (
-              <div style={{ marginTop: 14, fontFamily: theme.fonts.mono, fontSize: 44, fontWeight: 700, color: theme.palette.text, whiteSpace: "nowrap" }}>{o.label}</div>
+              <div style={{ marginTop: 14, fontFamily: theme.fonts.mono, fontSize: 44, fontWeight: 700, color: ink.text, whiteSpace: "nowrap" }}>{o.label}</div>
             ) : null}
           </div>
         );

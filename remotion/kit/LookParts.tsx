@@ -2,21 +2,25 @@ import React, { createContext, useContext } from "react";
 import { Img, continueRender, delayRender, useCurrentFrame } from "remotion";
 import { fitContain, keyWordIndex, LOOKS, popScale, type Look } from "./look";
 import { ScriptText } from "./ScriptText";
-import { theme } from "./theme";
+import { DARK_INK, type Ink } from "./ink";
 
 /** The style's banner type: heading font and weight, and (paper cutout) the tilted, shadowed, boiling banner. Absent = today's headline. */
 export type Banner = { font: string; weight: number; paper?: boolean };
-type Ctx = { look: Look; sceneCaptions: boolean; banner?: Banner };
+type Ctx = { look: Look; sceneCaptions: boolean; banner?: Banner; ink?: Ink };
 const LookCtx = createContext<Ctx>({ look: LOOKS[0]!, sceneCaptions: true });
 export const LookProvider = LookCtx.Provider;
 export const useLook = (): Look => useContext(LookCtx).look;
 /** False while the word captions are on screen. */
 export const useSceneCaptions = (): boolean => useContext(LookCtx).sceneCaptions;
-const useBanner = (): Banner | undefined => useContext(LookCtx).banner;
+/** Text, card and line colours; today's constants unless the style is light. */
+export const useInk = (): Ink => useContext(LookCtx).ink ?? DARK_INK;
+const useBanner =(): Banner | undefined => useContext(LookCtx).banner;
 
 /** Headline in thick type with its key word in the accent colour; pops in. */
-export const Headline: React.FC<{ text: string; size?: number; style?: React.CSSProperties }> = ({ text, size = 64, style }) => {
+export const Headline: React.FC<{ text: string; size?: number; style?: React.CSSProperties; ink?: Ink }> = ({ text, size = 64, style, ink: over }) => {
   const look = useLook();
+  const ctxInk = useInk();
+  const ink = over ?? ctxInk;
   const banner = useBanner();
   const frame = useCurrentFrame();
   const words = text.split(" ");
@@ -26,7 +30,7 @@ export const Headline: React.FC<{ text: string; size?: number; style?: React.CSS
   return (
     <div style={{ fontSize: size, fontWeight: banner?.weight ?? 900, lineHeight: 1.1, transform: `scale(${popScale(frame)})`, transformOrigin: "left center", ...boil, ...style }}>
       {words.map((w, i) => (
-        <span key={i} style={{ color: i === k ? look.accent : theme.palette.text }}>
+        <span key={i} style={{ color: i === k ? look.accent : ink.text }}>
           <ScriptText text={w} font={banner?.font} />
           {i < words.length - 1 ? " " : ""}
         </span>
@@ -65,12 +69,13 @@ export const PhotoFit: React.FC<{ src: string; box: { x: number; y: number; w: n
   border = 6,
 }) => {
   const look = useLook();
+  const ink = useInk();
   const frame = useCurrentFrame();
   const nat = useNatural(src);
   const r = nat ? fitContain(nat, box) : box;
   return (
     <>
-      <Img src={src} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(40px) brightness(0.45)", transform: "scale(1.2)" }} />
+      <Img src={src} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: ink.photoBlur, transform: "scale(1.2)" }} />
       {nat ? (
         <Img
           src={src}
@@ -83,7 +88,7 @@ export const PhotoFit: React.FC<{ src: string; box: { x: number; y: number; w: n
             boxSizing: "border-box",
             borderRadius: radius,
             border: `${border}px solid ${look.accent}`,
-            boxShadow: "0 18px 48px rgba(0,0,0,0.55)",
+            boxShadow: ink.shadow,
             transform: `translate(${tx}px, ${ty}px) scale(${zoom * popScale(frame)})`,
           }}
         />

@@ -4,6 +4,7 @@ import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { visibleCount, windowOpacity } from "./helpers";
 import { fitFont, safeSize } from "./layout";
 import { ScriptText } from "./ScriptText";
+import { useInk } from "./LookParts";
 import { theme } from "./theme";
 
 export type ChatThreadProps = {
@@ -15,6 +16,7 @@ export type ChatThreadProps = {
 
 export const ChatThread: React.FC<ChatThreadProps> = ({ messages, framesPerMessage, windowSize }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const n = visibleCount(frame, framesPerMessage, messages.length);
   const safe = safeSize(theme);
   // Bubbles take 80% of the width minus side padding; each adds padding and a gap.
@@ -37,7 +39,7 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ messages, framesPerMessa
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.ui,
         fontSize: size,
-        color: theme.palette.text,
+        color: ink.text,
         justifyContent: "center",
       }}
     >
@@ -55,6 +57,7 @@ export const ChatThread: React.FC<ChatThreadProps> = ({ messages, framesPerMessa
               padding: "22px 30px",
               borderRadius: theme.radii.bubble,
               background: m.from === "me" ? theme.palette.bubbleMe : theme.palette.bubbleThem,
+              color: theme.palette.text,
             }}
           >
             <ScriptText text={m.text} />

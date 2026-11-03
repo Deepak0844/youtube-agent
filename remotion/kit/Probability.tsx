@@ -2,6 +2,7 @@ import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { tallyAt } from "./helpers";
+import { useInk } from "./LookParts";
 import { theme } from "./theme";
 
 export type ProbabilityProps = {
@@ -21,6 +22,7 @@ const NAMES = {
 
 export const Probability: React.FC<ProbabilityProps> = ({ experiment, title, trials, outcomes, growFrames }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const shown = outcomes.map((o) => tallyAt(frame, growFrames, o.count));
   const done = shown.reduce((a, c) => a + c, 0);
   return (
@@ -29,15 +31,15 @@ export const Probability: React.FC<ProbabilityProps> = ({ experiment, title, tri
         background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.ui,
-        color: theme.palette.text,
+        color: ink.text,
         justifyContent: "center",
       }}
     >
-      <div style={{ fontSize: theme.type.body, color: theme.palette.muted }}>{title ?? NAMES[experiment]}</div>
+      <div style={{ fontSize: theme.type.body, color: ink.muted }}>{title ?? NAMES[experiment]}</div>
       <div
         style={{
           fontSize: theme.type.code,
-          color: theme.palette.muted,
+          color: ink.muted,
           marginBottom: 40,
         }}
       >
@@ -60,7 +62,7 @@ export const Probability: React.FC<ProbabilityProps> = ({ experiment, title, tri
               {o.p !== undefined && (
                 <span
                   style={{
-                    color: theme.palette.muted,
+                    color: ink.muted,
                     fontSize: theme.type.code - 4,
                   }}
                 >
@@ -74,7 +76,7 @@ export const Probability: React.FC<ProbabilityProps> = ({ experiment, title, tri
             style={{
               height: 48,
               borderRadius: 24,
-              background: theme.palette.surface,
+              background: ink.surface,
               overflow: "hidden",
             }}
           >
@@ -82,7 +84,7 @@ export const Probability: React.FC<ProbabilityProps> = ({ experiment, title, tri
               style={{
                 width: `${(shown[i] / trials) * 100}%`,
                 height: "100%",
-                background: theme.palette.accent,
+                background: ink.accent,
               }}
             />
           </div>

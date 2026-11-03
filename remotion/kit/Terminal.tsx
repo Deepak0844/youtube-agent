@@ -3,6 +3,7 @@ import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { typedChars } from "./helpers";
 import { fitFont, safeSize } from "./layout";
+import { useInk } from "./LookParts";
 import { theme } from "./theme";
 
 export type TerminalProps = {
@@ -14,6 +15,7 @@ export type TerminalProps = {
 
 export const Terminal: React.FC<TerminalProps> = ({ lines, framesPerChar, gapFrames }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const starts = lines.reduce<number[]>((acc, l, i) => {
     acc.push(i === 0 ? 0 : acc[i - 1] + lines[i - 1].text.length * framesPerChar + gapFrames);
     return acc;
@@ -45,7 +47,7 @@ export const Terminal: React.FC<TerminalProps> = ({ lines, framesPerChar, gapFra
         fontFamily: theme.fonts.mono,
         fontSize: size,
         justifyContent: "center",
-        color: theme.palette.text,
+        color: ink.text,
       }}
     >
       {rows.map((r, i) => (
@@ -58,7 +60,7 @@ export const Terminal: React.FC<TerminalProps> = ({ lines, framesPerChar, gapFra
             visibility: r.begun ? "visible" : "hidden",
           }}
         >
-          <span style={{ color: theme.palette.accent }}>{r.prompt} </span>
+          <span style={{ color: ink.accent }}>{r.prompt} </span>
           {r.text}
           <span style={{ visibility: "hidden" }}>{r.rest}</span>
         </div>

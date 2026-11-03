@@ -2,7 +2,7 @@ import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import { orbitPoint, resolveBodies, type OrbitBody, type OrbitPreset } from "./helpers";
-import { Headline } from "./LookParts";
+import { Headline, useInk } from "./LookParts";
 import { theme } from "./theme";
 
 export type OrbitProps = {
@@ -17,12 +17,13 @@ const MAX_R = SIZE / 2 - 60; // orbit fills the safe width; labels sit outward o
 
 export const Orbit: React.FC<OrbitProps> = ({ title, preset, center, bodies }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const { fps } = useVideoConfig();
   const list = resolveBodies(preset, bodies);
   const rMax = Math.max(...list.map((b) => b.radius), 1);
   const centerLabel = center ?? (preset === "solar_system" ? "Sun" : preset === "moon_earth" ? "Earth" : undefined);
   return (
-    <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.ui, color: theme.palette.text }}>
+    <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.ui, color: ink.text }}>
       {title ? (
         <div style={{ position: "absolute", top: theme.safe.top, left: theme.safe.side, right: theme.safe.side, }}><Headline text={title} size={64} /></div>
       ) : null}
@@ -35,9 +36,9 @@ export const Orbit: React.FC<OrbitProps> = ({ title, preset, center, bodies }) =
           const [ux, uy] = [x / d, y / d];
           return (
             <g key={i}>
-              <ellipse rx={rx} ry={ry} fill="none" stroke={theme.palette.muted} strokeOpacity={0.5} strokeWidth={2} strokeDasharray="6 10" />
-              <circle cx={x} cy={y} r={22} fill={theme.palette.accent} />
-              <text x={x + ux * 40} y={y + uy * 40 + 12 + (Math.abs(ux) > 0.35 ? (i % 2 ? 22 : -22) : 0)} textAnchor={ux > 0.35 ? "start" : ux < -0.35 ? "end" : "middle"} fontSize={38} fontWeight={600} fill={theme.palette.text} stroke={theme.palette.bg} strokeWidth={6} paintOrder="stroke">
+              <ellipse rx={rx} ry={ry} fill="none" stroke={ink.muted} strokeOpacity={0.5} strokeWidth={2} strokeDasharray="6 10" />
+              <circle cx={x} cy={y} r={22} fill={ink.accent} />
+              <text x={x + ux * 40} y={y + uy * 40 + 12 + (Math.abs(ux) > 0.35 ? (i % 2 ? 22 : -22) : 0)} textAnchor={ux > 0.35 ? "start" : ux < -0.35 ? "end" : "middle"} fontSize={38} fontWeight={600} fill={ink.text} stroke={ink.bg} strokeWidth={6} paintOrder="stroke">
                 {b.label}
               </text>
             </g>
@@ -45,7 +46,7 @@ export const Orbit: React.FC<OrbitProps> = ({ title, preset, center, bodies }) =
         })}
         <circle r={44} fill={theme.palette.bubbleMe} />
         {centerLabel ? (
-          <text y={92} textAnchor="middle" fontSize={36} fontWeight={600} fill={theme.palette.muted}>
+          <text y={92} textAnchor="middle" fontSize={36} fontWeight={600} fill={ink.muted}>
             {centerLabel}
           </text>
         ) : null}

@@ -2,6 +2,7 @@ import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { cellsAt, type AlgoStep } from "./helpers";
+import { useInk } from "./LookParts";
 import { theme } from "./theme";
 
 export type AlgoCellsProps = {
@@ -12,6 +13,7 @@ export type AlgoCellsProps = {
 
 export const AlgoCells: React.FC<AlgoCellsProps> = ({ title, cells, steps }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const { values, active, pointer, done } = cellsAt(cells, steps, (frame / theme.fps) * 1000);
   const perRow = cells.length > 5 ? Math.ceil(cells.length / 2) : cells.length; // two rows when wide
   const inner = theme.width - 2 * theme.safe.side;
@@ -24,13 +26,13 @@ export const AlgoCells: React.FC<AlgoCellsProps> = ({ title, cells, steps }) => 
         background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.mono,
-        color: theme.palette.text,
+        color: ink.text,
         justifyContent: "center",
         alignItems: "center",
         gap: 56,
       }}
     >
-      {title ? <div style={{ fontFamily: theme.fonts.ui, fontSize: 52, color: theme.palette.muted }}>{title}</div> : null}
+      {title ? <div style={{ fontFamily: theme.fonts.ui, fontSize: 52, color: ink.muted }}>{title}</div> : null}
       {rows.map((row, r) => (
         <div key={r} style={{ display: "flex", gap }}>
           {row.map((v, c) => {
@@ -49,14 +51,14 @@ export const AlgoCells: React.FC<AlgoCellsProps> = ({ title, cells, steps }) => 
                     alignItems: "center",
                     justifyContent: "center",
                     fontSize: size > 110 ? 56 : 44,
-                    background: isDone ? theme.palette.accent : theme.palette.surface,
-                    color: isDone ? theme.palette.bg : theme.palette.text,
-                    border: `4px solid ${isActive ? theme.palette.accent : isPtr ? theme.palette.muted : "transparent"}`,
+                    background: isDone ? ink.accent : ink.surface,
+                    color: isDone ? ink.bg : ink.text,
+                    border: `4px solid ${isActive ? ink.accent : isPtr ? ink.muted : "transparent"}`,
                   }}
                 >
                   {v}
                 </div>
-                <div style={{ height: 40, fontSize: 40, color: theme.palette.accent }}>{isPtr ? "▲" : ""}</div>
+                <div style={{ height: 40, fontSize: 40, color: ink.accent }}>{isPtr ? "▲" : ""}</div>
               </div>
             );
           })}

@@ -51,6 +51,7 @@ import { captionStyleOf, presetOf, STYLE_IDS, type StylePreset } from "./presets
 import { StyleFx } from "./StyleFx";
 import { StyleFontCtx } from "./ScriptText";
 import { LookProvider } from "./LookParts";
+import { inkOf } from "./ink";
 import { HookCard } from "./HookCard";
 import { firstPictureId, HOOK_FRAMES, hashString, lookBackground, pickLook, sceneCaptionAllowed } from "./look";
 import { collageStarts, docFrames, introSkipFrames, loopOpacity, loopOverlay, mediaOf, msToFrame, sceneRange, sequenceFrames, transitionIn, type CaptionWord } from "./timeline";
@@ -347,7 +348,7 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
   })();
   return (
   <StyleFontCtx.Provider value={preset.fonts.body}>
-  <LookProvider value={{ look, sceneCaptions, banner }}>
+  <LookProvider value={{ look, sceneCaptions, banner, ink: inkOf(preset) }}>
   <AbsoluteFill style={{ background: lookBackground(look), "--look-bg": lookBackground(look) } as React.CSSProperties}>
     {doc.scenes.map((scene, i) => {
       const r = sceneRange(scene, fps);
