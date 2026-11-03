@@ -157,6 +157,25 @@ describe("authorTsx frame review", () => {
     expect(out).toMatchObject({ ok: true, attempts: TSX_MAX_ATTEMPTS, review: { status: "done", ok: false } });
   });
 
+  it("review-reject, review-reject, then a check failure: the best rejected file is rendered without a review, not dropped to the scene kit", async () => {
+    const BADFILE = GOOD.replace("useCurrentFrame();", "useCurrentFrame(); const t = Date.now();");
+    const { t } = reviewed([reply(GOOD), reply(GOOD + "\n// b\n"), reply(BADFILE)], [BAD, BAD]);
+    const out = await authorTsx(t.deps, TASK);
+    expect(out).toMatchObject({ ok: true, attempts: 3, review: { status: "done", ok: false } });
+    expect(t.sources).toEqual([GOOD, GOOD + "\n// b\n", GOOD + "\n// b\n"]); // the last render had no review hook
+    expect(t.logs.some((l) => /using attempt 2, reviewer concerns remain/.test(l))).toBe(true);
+  });
+
+  it("if that salvage render also fails, the author falls back as before (with the verdict attached)", async () => {
+    const BADFILE = GOOD.replace("useCurrentFrame();", "useCurrentFrame(); const t = Date.now();");
+    const { t } = reviewed([reply(GOOD), reply(GOOD + "\n// b\n"), reply(BADFILE)], [BAD, BAD]);
+    const base = t.deps.render;
+    let n = 0;
+    t.deps.render = async (s, h) => (++n === 3 ? fail("render", "boom") : base(s, h));
+    const out = await authorTsx(t.deps, TASK);
+    expect(out).toMatchObject({ ok: false, why: "cap", review: { status: "done", ok: false } });
+  });
+
   it("an unavailable review never blocks or retries", async () => {
     const { t } = reviewed([reply(GOOD)], [{ status: "unavailable", reason: "frame review unavailable: the answer was not valid JSON" }]);
     const out = await authorTsx(t.deps, TASK);

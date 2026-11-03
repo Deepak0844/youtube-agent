@@ -41,7 +41,7 @@ export type ReviewShotLike = { frame: number; jpeg: Uint8Array };
 export type { TsxRenderResult };
 export type AuthorOutcome =
   | { ok: true; source: string; durationInFrames: number; outPath: string; image: string; stills: string[]; attempts: number; review: FrameReview | null }
-  | { ok: false; attempts: number; why: "cap" | "repeat"; step: FeedbackStep; problems: string[] };
+  | { ok: false; attempts: number; why: "cap" | "repeat"; step: FeedbackStep; problems: string[]; review?: FrameReview | null };
 
 const STEP_OF: Record<Exclude<TsxFailureKind, "infra">, FeedbackStep> = {
   check: "check", typecheck: "typecheck", render: "render", timeout: "timeout", preflight: "preflight", output: "output", review: "review",
@@ -54,6 +54,20 @@ export async function authorTsx(deps: AuthorDeps, task: TsxTask, maxAttempts: nu
   let lastSig = "";
   let review: FrameReview | null = null; // the verdict of the attempt that was finally rendered
   const cap = Math.max(1, Math.min(TSX_MAX_ATTEMPTS, Math.trunc(maxAttempts)));
+  // The attempt a reviewer rejected (fewest bad frames, else the latest) is a working scene. If a later attempt breaks or the cap
+  // is hit, it is rendered once without the review (no paid call) instead of dropping the whole video to the scene kit.
+  let best: { source: string; frames: number; review: FrameReview; bad: number; attempt: number } | null = null;
+  const stop = async (attempt: number, why: "cap" | "repeat", step: FeedbackStep, problems: string[]): Promise<AuthorOutcome> => {
+    if (best) {
+      const r = await deps.render(best.source);
+      if (r.ok) {
+        deps.log(`tsx: using attempt ${best.attempt}, reviewer concerns remain`);
+        return { ok: true, source: best.source, durationInFrames: best.frames, outPath: r.outPath, image: r.image, stills: r.stills ?? [], attempts: attempt, review: best.review };
+      }
+      if (r.error.kind === "infra") throw new KnownFailure(r.error.message);
+    }
+    return { ok: false, attempts: attempt, why, step, problems, review: best?.review ?? review };
+  };
   for (let attempt = 1; ; attempt++) {
     const reply = await deps.ask(messages);
     let step: FeedbackStep;
@@ -77,12 +91,16 @@ export async function authorTsx(deps: AuthorDeps, task: TsxTask, maxAttempts: nu
         // The review hook runs inside the render, after the stills pass and before the long video render. It asks for a retry only
         // while attempts remain: on the last attempt the verdict is kept and the video is rendered anyway (a warning shows).
         const n = attempt;
+        const src = source;
+        const fr = frames;
         const hook = deps.review
           ? async (shots: ReviewShotLike[]): Promise<string[] | null> => {
               const rv = await deps.review!(shots);
               review = rv;
               deps.log(`tsx: attempt ${n} frame review: ${rv.status === "done" ? (rv.ok ? "ok" : `${reviewProblems(rv).length} frame problem(s) found`) : logSafe(rv.reason)}`);
-              const found = n < cap ? reviewProblems(rv) : [];
+              const all = reviewProblems(rv);
+              if (all.length > 0 && (!best || all.length <= best.bad)) best = { source: src, frames: fr, review: rv, bad: all.length, attempt: n };
+              const found = n < cap ? all : [];
               return found.length > 0 ? found : null;
             }
           : undefined;
@@ -99,8 +117,8 @@ export async function authorTsx(deps: AuthorDeps, task: TsxTask, maxAttempts: nu
     }
     deps.log(`tsx: attempt ${attempt} of ${cap} failed at ${step}: ${echo(problems[0] ?? "").slice(0, MAX_LOG)} (${problems.length} problem${problems.length === 1 ? "" : "s"})`);
     const sig = `${step}\n${problems.join("\n")}`;
-    if (step !== "review" && sig === lastSig) return { ok: false, attempts: attempt, why: "repeat", step, problems };
-    if (attempt >= cap) return { ok: false, attempts: attempt, why: "cap", step, problems };
+    if (step !== "review" && sig === lastSig) return stop(attempt, "repeat", step, problems);
+    if (attempt >= cap) return stop(attempt, "cap", step, problems);
     lastSig = sig;
     messages = retryMessages(first, source, step, problems);
   }

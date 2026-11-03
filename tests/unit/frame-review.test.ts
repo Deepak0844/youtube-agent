@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cleanModelText, logSafe, parseFrameReview, reviewProblems, reviewRecord, reviewUserText } from "@/server/core/frame-review";
+import { reviewSlots } from "@/worker/stages/frame-review";
 import { reviewStillFrames } from "@/server/core/tsx-preflight";
 
 const answer = (o: unknown) => JSON.stringify(o);
@@ -53,5 +54,18 @@ describe("reviewStillFrames", () => {
     expect(many).toHaveLength(8);
     expect(many).toEqual(expect.arrayContaining([0, 449, 899]));
     expect(reviewStillFrames(0, [1])).toEqual([]);
+  });
+});
+
+describe("reviewSlots", () => {
+  it("burns exactly one step per attempt when no review paid, and none when it did", async () => {
+    let step = 0;
+    const ctx = { signal: new AbortController().signal, nextStep: () => step++, paid: async () => { step++; return "x" as never; } };
+    const s = reviewSlots(ctx as never);
+    s.beforeAsk(); step++; // attempt 1 asks (step 0), no review call
+    s.beforeAsk(); step++; // attempt 2: the unused slot was burned, then the ask
+    await s.reviewCtx.paid({} as never, (async () => ({})) as never); // attempt 2 reviews
+    s.beforeAsk(); // slot was used: nothing burned
+    expect(step).toBe(1 + 1 + 1 + 1); // ask, burned slot, ask, review
   });
 });

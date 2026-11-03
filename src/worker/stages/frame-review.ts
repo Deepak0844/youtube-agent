@@ -1,5 +1,6 @@
 import { logSafe, parseFrameReview, reviewMessages, reviewUserText, REVIEW_MAX_OUTPUT_TOKENS, type FrameReview } from "@/server/core/frame-review";
 import { BudgetRefusedError, KnownFailure } from "@/server/core/paid-call";
+import { UnpricedCallError } from "@/server/core/spend";
 import { TSX_META } from "@/server/core/tsx-check";
 import { beatTimings, type PromptBeat, type PromptWord, type TimedBeat } from "@/server/core/tsx-prompt";
 import { LlmRefusal, type LlmClient, type LlmStageContext } from "@/server/llm/client";
@@ -47,8 +48,25 @@ export async function reviewShots(
     return parseFrameReview(r.text, shots.map((s) => s.frame));
   } catch (err) {
     if (err instanceof LlmRefusal) return { status: "skipped", reason: `${SKIP_NO_VISION} (${logSafe(err.message)})` };
+    if (err instanceof UnpricedCallError) return { status: "skipped", reason: "frame review skipped: the vision model has no usable price" };
     if (err instanceof BudgetRefusedError) return { status: "skipped", reason: "frame review skipped: it does not fit in what is left of the budget for this video" };
     if (err instanceof KnownFailure) return { status: "unavailable", reason: `frame review unavailable: the model call failed (${logSafe(err.message)}); nothing was charged` };
     throw err; // an unclear paid outcome, a cancel, a lost lease: never swallowed, never retried
   }
+}
+
+/**
+ * Replay-safe step numbers. Every attempt uses exactly two paid step numbers: the author call, then one slot for the review,
+ * whether or not a review call is made (off, skipped, render failed before the stills). So a route change between a crash and
+ * the retry cannot shift the numbers a resumed run replays by. `reviewCtx` marks the slot used when it pays.
+ */
+export function reviewSlots(ctx: { signal: AbortSignal; nextStep(): number; paid: LlmStageContext["paid"] }): { beforeAsk(): void; reviewCtx: LlmStageContext } {
+  let used = true; // the first attempt has no earlier slot to burn
+  return {
+    beforeAsk() {
+      if (!used) ctx.nextStep();
+      used = false;
+    },
+    reviewCtx: { signal: ctx.signal, paid: (s, call) => { used = true; return ctx.paid(s, call); } },
+  };
 }

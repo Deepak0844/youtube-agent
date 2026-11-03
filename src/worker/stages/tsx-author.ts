@@ -10,7 +10,7 @@ import { fallBackToSceneKit } from "@/server/db/tsx-fallback";
 import type { LlmClient, LlmStageContext } from "@/server/llm/client";
 import { promotedPath, type AttemptHandler } from "./attempt";
 import { contentBody, loadVideo, videoMoneyScopes, type StageDeps } from "./deps";
-import { beatMidFrames, reviewBeats, reviewReady, reviewShots } from "./frame-review";
+import { beatMidFrames, reviewBeats, reviewReady, reviewShots, reviewSlots } from "./frame-review";
 import { audioSeconds } from "./voice-audio";
 
 // The reply is one whole file (24 KB at most is about 7,000 tokens); this is the per-attempt output cap. Three attempts at most.
@@ -75,11 +75,16 @@ export function tsxAuthorAttempt(deps: StageDeps): AttemptHandler {
     const timed = reviewBeats(beats, words, narrationS);
     const skipped = await reviewReady(llm);
     if (skipped?.status === "skipped") ctx.log(skipped.reason);
+    const slots = reviewSlots(ctx);
+    const ask = tsxAsk(llm, ctx);
     const out = await authorTsx(
       {
-        ask: tsxAsk(llm, ctx),
+        ask: (m) => {
+          slots.beforeAsk();
+          return ask(m);
+        },
         render: (source, review) => deps.tsx!.renderTsx(ctx, { source, captions: tsxCaptionWords(words), outFile: "render.mp4", ...(review ? { review, reviewAt: beatMidFrames(timed) } : {}) }),
-        ...(skipped ? {} : { review: (shots: { frame: number; jpeg: Uint8Array }[]) => reviewShots(llm, ctx, timed, shots) }),
+        ...(skipped ? {} : { review: (shots: { frame: number; jpeg: Uint8Array }[]) => reviewShots(llm, slots.reviewCtx, timed, shots) }),
         log: ctx.log,
       },
       { topic, beats, words, narrationS },
@@ -99,6 +104,6 @@ export function tsxAuthorAttempt(deps: StageDeps): AttemptHandler {
     }
     const switched = await fallBackToSceneKit(deps.db, ctx.claim, video.id, { attempts: out.attempts, step: out.step, why: out.why });
     ctx.log(`tsx: the code scene could not be made (${out.step} after ${out.attempts} attempt${out.attempts === 1 ? "" : "s"}); the video was switched to the scene kit`);
-    return { files: [], result: { fellBack: true, switched, attempts: out.attempts, step: out.step, why: out.why } };
+    return { files: [], result: { fellBack: true, switched, attempts: out.attempts, step: out.step, why: out.why, ...(out.review ? { frameReview: reviewRecord(out.review, out.attempts) } : {}) } };
   };
 }
