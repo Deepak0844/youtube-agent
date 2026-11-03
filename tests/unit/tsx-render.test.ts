@@ -58,7 +58,7 @@ const mountOf = (args: string[], dst: string) => args[args.findIndex((a, i) => a
 /** A raw RGB frame: a dark background with a bright block whose position moves with the frame number. */
 const frameBytes = (f: number) => {
   const b = Buffer.alloc(W * H * 3, 20);
-  for (let y = 100; y < 400; y++) for (let x = 100 + f * 5; x < 400 + f * 5; x++) b.fill(230, (y * W + x) * 3, (y * W + x) * 3 + 3);
+  for (let y = 500; y < 1200; y++) for (let x = 100 + f * 5; x < 400 + f * 5; x++) b.fill(230, (y * W + x) * 3, (y * W + x) * 3 + 3);
   return b;
 };
 
