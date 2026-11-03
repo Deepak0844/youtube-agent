@@ -76,7 +76,7 @@ test("AI source switch needs the tick, says which stages stay on their API model
   const box = page.getByRole("region", { name: "AI source" });
   await expect(box.getByText("Not reported by the program")).toBeVisible();
   await expect(box.getByText("$0.00")).toBeVisible();
-  await expect(box.getByText("Build, Remotion TSX stays on its API model")).toBeVisible();
+  await expect(box.getByText("QA, vision review stays on its API model")).toBeVisible();
 
   await box.getByRole("radio", { name: "Claude Code (this machine)" }).check();
   await box.getByRole("button", { name: "Switch" }).click();
