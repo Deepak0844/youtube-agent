@@ -11,6 +11,7 @@ import { CatalogError, copyDefault, createModel, deleteModel, setRoute, updateMo
 import { getPool } from "@/server/db/pool";
 import { loadKeyring } from "@/server/db/master-key";
 import { testModel } from "@/server/db/llm-test";
+import { testVision } from "@/server/db/llm-vision-test";
 import { defaultModelDeps } from "@/server/llm/default-deps";
 
 // Every action: requireOwner() first, zod parse, db function (session actor), one audit row inside it, then refresh().
@@ -139,6 +140,23 @@ export async function testModelAction(_prev: FormState, form: FormData): Promise
     const id = idField.parse(text(form.get("rowId"), 64));
     const db = getPool();
     const r = await testModel(db, id, { kind: "session" }, await defaultModelDeps(db, loadKeyring));
+    refresh();
+    return r.ok ? { ok: true, note: r.message } : { ok: false, error: r.message };
+  } catch (err) {
+    return fail(err, form);
+  }
+}
+
+// Test image reading: one tiny built-in picture. Same limits as Test (cooldown, daily test budget, no retry), plus an
+// Origin check. It may flip the model's image-input flag; the page shows only the clipped result sentence.
+export async function testVisionAction(_prev: FormState, form: FormData): Promise<FormState> {
+  await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { error: origin };
+  try {
+    const id = idField.parse(text(form.get("rowId"), 64));
+    const db = getPool();
+    const r = await testVision(db, id, { kind: "session" }, await defaultModelDeps(db, loadKeyring));
     refresh();
     return r.ok ? { ok: true, note: r.message } : { ok: false, error: r.message };
   } catch (err) {
