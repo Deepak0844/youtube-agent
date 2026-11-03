@@ -1,10 +1,10 @@
 // Props for the kit-video composition, shared by `npm run kit:video` and the render stage. Pure: no IO.
 import type { CaptionWord } from "../../../remotion/kit/timeline";
-import { isCaptionStyleId, isStyleId, type CaptionStyleId, type StyleId } from "../../../remotion/kit/presets";
+import { isCaptionStyleId, isStyleId, type CaptionStyleId, type AnyStyleId } from "../../../remotion/kit/presets";
 import { validateScenes } from "./validate";
 import type { SceneDoc } from "./schema";
 
-export type VideoProps = { doc: SceneDoc; fps: number; audioSrc?: string; captions?: CaptionWord[]; assets?: Record<string, string>; seed?: string; title?: string; style?: StyleId; captionStyle?: CaptionStyleId };
+export type VideoProps = { doc: SceneDoc; fps: number; audioSrc?: string; captions?: CaptionWord[]; assets?: Record<string, string>; seed?: string; title?: string; style?: AnyStyleId; captionStyle?: CaptionStyleId };
 
 const MAX_CAPTION_WORDS = 10_000; // a 15-minute long video is about 2-3k words
 const MAX_WORD_CHARS = 100;
