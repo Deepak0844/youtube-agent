@@ -44,9 +44,11 @@ describe("parseNewVideoForm", () => {
       expect(r).toEqual({ ok: true, value: { topic: "Why the sky is blue", language, kind: "scene_kit", format: "short", notes: undefined } });
     }
   });
-  it("custom animation (tsx) is accepted; style and caption style are dropped for it, and kept for the scene kit", () => {
+  it("custom animation (tsx) is accepted; the caption style is dropped, the style is kept (for tsx and the scene kit)", () => {
     const tsx = parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", style: "flat_motion", captionStyle: "punchy_captions" }));
-    expect(tsx).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "tsx", format: "short", notes: undefined } });
+    expect(tsx).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "tsx", format: "short", notes: undefined, style: "flat_motion" } });
+    const plain = parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx" }));
+    expect(plain).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "tsx", format: "short", notes: undefined } });
     const kit = parseNewVideoForm(form({ topic: "x", language: "en", style: "flat_motion" }));
     expect(kit.ok && kit.value.style).toBe("flat_motion");
     expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", format: "long" })).ok).toBe(false);

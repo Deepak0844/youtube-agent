@@ -37,11 +37,12 @@ export async function reviewShots(
   ctx: LlmStageContext,
   timed: readonly ReviewBeat[],
   shots: readonly { frame: number; jpeg: Uint8Array }[],
+  style?: string | null,
 ): Promise<FrameReview> {
   try {
     const r = await llm.vision(ctx, {
       stage: "review_frames",
-      messages: reviewMessages(reviewUserText(shots, timed)),
+      messages: reviewMessages(reviewUserText(shots, timed, style)),
       images: shots.map((s) => ({ data: s.jpeg, mediaType: "image/jpeg" as const })),
       maxOutputTokens: REVIEW_MAX_OUTPUT_TOKENS,
     });

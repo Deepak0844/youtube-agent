@@ -8,12 +8,13 @@
 // Nothing in yt-kit builds a URL, HTML or a style string from a free-form prop.
 import React from "react";
 import { Easing } from "remotion";
+import { COLOR_KEYS, getActiveStyle } from "./styledata";
 
 export const W = 1080;
 export const H = 1920;
 
-/** Brand palette (brand.md): indigo, violet, teal, yellow, pink, ink, plus the scene extras. */
-export const PALETTE: Readonly<Record<string, string>> = {
+/** Brand colours that never change with the style (kept so older scenes and names keep working). */
+const BRAND = {
   indigo: "#6366F1",
   violet: "#9b7cc4",
   teal: "#4db8a8",
@@ -25,12 +26,26 @@ export const PALETTE: Readonly<Record<string, string>> = {
   blue: "#5b8def",
   red: "#e8586f",
   orange: "#ff9a52",
-};
+} as const;
 export const FONT_DISPLAY = '"Space Grotesk", "Inter", sans-serif';
 export const FONT_BODY = '"Inter", "Space Grotesk", sans-serif';
 export const FONT_MONO = '"JetBrains Mono", monospace';
+
+// PALETTE, FONTS, MOTION and PACE are objects of getters: each read gives the value of the ACTIVE style (styledata.ts), which the
+// host sets once per render. The scene checker only allows reads like PALETTE.accent, so model code cannot hold or change them.
+function live<T extends object>(keys: readonly string[], read: (k: string) => unknown): T {
+  const o = {} as Record<string, unknown>;
+  for (const k of keys) Object.defineProperty(o, k, { enumerable: true, get: () => read(k) });
+  return o as T;
+}
+/** Colour names: the style's bg text muted surface accent accent2 accent3, plus the fixed brand names (indigo violet teal ...). */
+export const PALETTE: Readonly<Record<string, string>> = live([...Object.keys(BRAND), ...COLOR_KEYS], (k) => (k in BRAND ? BRAND[k as keyof typeof BRAND] : getActiveStyle().colors[k as (typeof COLOR_KEYS)[number]]));
 /** Font stacks, as one object (the scene checker allows an imported object only through member access: FONTS.mono). */
-export const FONTS = { display: FONT_DISPLAY, body: FONT_BODY, mono: FONT_MONO } as const;
+export const FONTS = live<{ display: string; body: string; mono: string }>(["display", "body", "mono"], (k) => getActiveStyle().fonts[k as "display"]);
+/** Motion numbers of the style: spring stiffness and damping, transition length and rise in px, start scale. */
+export const MOTION = live<{ stiffness: number; damping: number; frames: number; rise: number; scaleFrom: number }>(["stiffness", "damping", "frames", "rise", "scaleFrom"], (k) => getActiveStyle().motion[k as "frames"]);
+/** Scene hold of the style in frames: min and max. */
+export const PACE = live<{ min: number; max: number }>(["min", "max"], (k) => getActiveStyle().pace[k as "min"]);
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 const RGB = /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*(?:0|1|0?\.\d{1,3})\s*)?\)$/i;

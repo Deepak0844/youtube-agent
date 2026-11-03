@@ -34,7 +34,10 @@ if (tsx) {
   if (!Array.isArray(meta.stills) || meta.stills.length > 8 || !meta.stills.every((f) => Number.isInteger(f) && f >= 0 && f < n)) throw new Error("meta.json: bad stills");
   const caps = meta.captions ?? []; // word times for the caption overlay (tsx-root draws them); written by the host
   if (!Array.isArray(caps) || caps.length > 1500 || !caps.every((w) => w && typeof w.word === "string" && w.word.length <= 60 && Number.isFinite(w.startS) && Number.isFinite(w.endS))) throw new Error("meta.json: bad captions");
-  inputProps = { props: readJson("props.json"), frames: n, captions: caps };
+  // The video's style id for the yt-kit look (tsx-root checks it against the known ids; unknown = ai_studio). Written by the host.
+  const style = meta.style ?? "ai_studio";
+  if (typeof style !== "string" || !/^[a-z_]{1,32}$/.test(style)) throw new Error("meta.json: bad style");
+  inputProps = { props: readJson("props.json"), frames: n, captions: caps, style };
 } else {
   inputProps = readJson("props.json");
 }

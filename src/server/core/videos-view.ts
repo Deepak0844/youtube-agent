@@ -77,10 +77,10 @@ export type NewVideoInput = z.infer<typeof newVideoSchema>;
 export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
   const g = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
   const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "scene_kit", format: g("format") ?? "short", notes: g("notes") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined });
-  // Custom animation (tsx) draws its own picture and burns its own captions: the style and caption pickers do not apply.
+  // Custom animation (tsx) burns its own captions: the caption picker does not apply. The style does (it shapes the TSX look).
   if (r.success && r.data.kind === "tsx") {
-    const { topic, language, kind, format, notes } = r.data;
-    return { ok: true, value: { topic, language, kind, format, notes } };
+    const { topic, language, kind, format, notes, style } = r.data;
+    return { ok: true, value: { topic, language, kind, format, notes, ...(style ? { style } : {}) } };
   }
   return r.success ? { ok: true, value: r.data } : { ok: false, message: r.error.issues[0]?.message ?? "Check the form and try again." };
 }

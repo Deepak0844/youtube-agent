@@ -1,7 +1,8 @@
 import type { Message } from "@/server/core/agent-loop";
-import { TSX_EXAMPLE_ELECTRICITY, TSX_EXAMPLE_SEARCH } from "@/server/core/tsx-examples";
+import { TSX_EXAMPLE_ELECTRICITY, TSX_EXAMPLE_SEARCH, TSX_SNIPPET_MOTION } from "@/server/core/tsx-examples";
 import { kitDocs, YT_KIT_MODULE } from "@/server/core/tsx-kit";
 import { YT_KIT_DTS } from "@/server/core/tsx-kit-dts";
+import { tsxStyleBlock } from "@/server/core/tsx-prompt-style";
 import { TSX_IMPORTS, TSX_MAX_BYTES, TSX_MAX_FRAMES, TSX_META } from "@/server/core/tsx-check";
 
 // The prompt pack for the code-scene (TSX) author. Pure: no IO, no model. The rules mirror what checkTsx refuses and what the
@@ -36,6 +37,8 @@ export interface TsxTask {
   words: readonly PromptWord[];
   /** Length of the narration audio in seconds. */
   narrationS: number;
+  /** The video's style id (null or missing = AI Studio). Picks the STYLE block of the prompt. */
+  style?: string | null;
 }
 
 /** The exact length the video must have: narration plus a short tail, whole frames, capped by the checker's limit. */
@@ -125,7 +128,7 @@ IMPORTS (named imports only, no renaming, no "import * as"; React itself may be 
 ${importLines()}
 Type-only imports from these modules are fine. Nothing else can be imported. No picture or file is provided: build the scene from the "yt-kit" library below and add your own div, span and svg shapes only where it has nothing fitting.
 
-THE LIBRARY: import { ... } from "yt-kit" (named imports only). Colours are #hex, rgb() or a name: indigo violet teal yellow pink ink white cyan blue red orange. Drawn props (Bulb, Gear, Wire, Laptop...) go INSIDE <Stage>, which is one persistent 1080x1920 svg plus the headline; Label and Counter sit beside it. Props are driven by numbers you compute from the frame: opacity from win()/ramp(), rotors from rotorAngle(), pulses from cycle() or (k * f) / (durationInFrames - 1). at/until/start/end are frames. PALETTE, FONTS and ZONES may only be read as PALETTE.teal, FONTS.display, ZONES.objects.y0; never pass them around whole.
+THE LIBRARY: import { ... } from "yt-kit" (named imports only). Colours are names (the style colours bg text muted surface accent accent2 accent3, or indigo violet teal yellow pink ink white cyan blue red orange), #hex or rgb(); prefer the STYLE block names. Drawn props (Bulb, Gear, Wire, Laptop...) go INSIDE <Stage>, which is one persistent 1080x1920 svg plus the headline; Label and Counter sit beside it. Props are driven by numbers you compute from the frame: opacity from win()/ramp(), rotors from rotorAngle(), pulses from cycle() or (k * f) / (durationInFrames - 1). at/until/start/end are frames. PALETTE, FONTS, MOTION, PACE and ZONES may only be read as PALETTE.accent, FONTS.display, MOTION.frames, PACE.min, ZONES.objects.y0; never pass them around whole.
 ${kitDocs(YT_KIT_DTS)}
 
 REMOTION RULES
@@ -142,7 +145,7 @@ STRUCTURE (the owner's rules; the two examples follow them)
   - The headline goes ONLY through <Stage headline="...">, short (it is auto-sized, at most 3 lines). Never BigTitle or Kicker, never other text in the title zone.
   - Objects go ONLY in the objects zone: wrap big ones in <Place x y w h> (children drawn at cx={0} cy={0}) so they cannot cross a zone.
   - Name an object with <Label text ax ay side="top|bottom|left|right"> beside it, never text on top of an object. At most 3 labels, chips or callouts on screen at once.
-- Brand, tasteful not loud: indigo #6366F1, violet #9b7cc4, teal #4db8a8, yellow #f5d76e, pink #e8879f, ink #1a1a2e; Space Grotesk for headlines (FONTS.display), Inter for body (FONTS.body), JetBrains Mono for code (FONTS.mono); soft shadows, calm motion.
+- Look: follow the STYLE block of the task (colours, fonts, motion, pace, structure). Use <Backdrop /> with no props for the page, and PALETTE.* / FONTS.* names instead of hex values, so the scene works in every style.
 - Follow the beat timing in the task: each beat's visual starts on its start frame.
 - Do not draw captions or subtitles (and never use Captions from yt-kit): the studio draws word-synced captions over your scene.
 
@@ -188,11 +191,15 @@ ${dataFence("beats", beatText)}
 
 ${dataFence("word start frames (word@frame)", wordBlock)}
 
-STYLE REFERENCES (trusted, short working files; write your own scene, do not copy them)
+${tsxStyleBlock(task.style)}
+
+CODE REFERENCES (trusted, short working files; write your own scene, do not copy them; they use PALETTE and FONTS names so they work in any style)
 BEGIN_EXAMPLE 1: a machine story built from yt-kit
 ${TSX_EXAMPLE_ELECTRICITY}END_EXAMPLE
 BEGIN_EXAMPLE 2: an algorithm story built from yt-kit
 ${TSX_EXAMPLE_SEARCH}END_EXAMPLE
+BEGIN_EXAMPLE 3: a pop-in in the style's own motion (a snippet, inside your component)
+${TSX_SNIPPET_MOTION}END_EXAMPLE
 
 Reply with ONE fenced tsx block that holds the whole file, and nothing else.`;
 }

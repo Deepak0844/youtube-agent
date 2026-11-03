@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkTsx, TSX_IMPORTS, TSX_MAX_FRAMES, tsxDuration } from "@/server/core/tsx-check";
-import { TSX_EXAMPLE_ELECTRICITY, TSX_EXAMPLE_SEARCH } from "@/server/core/tsx-examples";
+import { TSX_EXAMPLE_ELECTRICITY, TSX_EXAMPLE_SEARCH, TSX_SNIPPET_MOTION } from "@/server/core/tsx-examples";
 import {
   beatTimings, dataFence, tooLongForTsx, extractTsx, retryMessages, sanitizeData, targetFrames, tsxFeedbackPrompt, tsxSystemPrompt, tsxUserPrompt, type TsxTask,
 } from "@/server/core/tsx-prompt";
@@ -27,6 +27,11 @@ describe("examples", () => {
       expect(src).toContain("height: 1920");
     }
   });
+  it("the motion snippet passes the checker and type-checks inside a full file", async () => {
+    const file = `import { spring, useCurrentFrame } from "remotion";\nimport { FONTS, MOTION, PALETTE } from "yt-kit";\nexport default function Scene() {\n  const f = useCurrentFrame();\n  ${TSX_SNIPPET_MOTION.split("\n")[0]}\n  return (\n    ${TSX_SNIPPET_MOTION.split("\n")[1]}\n  );\n}\nexport const meta = { durationInFrames: 90, fps: 30, width: 1080, height: 1920 };\n`;
+    expect(checkTsx(file)).toEqual({ ok: true, problems: [] });
+    expect(await typeCheckInThread(file, 60_000)).toEqual({ ok: true, problems: [] });
+  }, 120_000);
   it("both type-check against the remotion typings and the yt-kit declaration file", async () => {
     for (const src of [TSX_EXAMPLE_ELECTRICITY, TSX_EXAMPLE_SEARCH]) expect(await typeCheckInThread(src, 60_000)).toEqual({ ok: true, problems: [] });
   }, 120_000);
@@ -42,7 +47,7 @@ describe("system prompt", () => {
     for (const must of ["useCurrentFrame", "strictly increasing", "Easing", "1080", "1920", "30 fps", "bottom 22%", "frame 0", "last frame", "ONE fenced code block", "BEGIN_DATA", "Math.random", "durationInFrames"]) expect(sys).toContain(must);
   });
   it("documents the library from the declaration file and carries the owner's structure rules", () => {
-    for (const must of ["Bulb {", "rotorAngle(", "Canvas", "#6366F1", "Space Grotesk", "equals frame 0", "REAL word", "60% of the width", "y 1420-1900", "no scene made only of text", "LAYOUT ZONES", "<Stage headline", "<Place x y w h>", "<Label text ax ay side", "At most 3 labels", "Place {", "Label {", "ZONES:"]) expect(sys.toLowerCase()).toContain(must.toLowerCase());
+    for (const must of ["Bulb {", "rotorAngle(", "Canvas", "PALETTE.accent", "STYLE block", "equals frame 0", "REAL word", "60% of the width", "y 1420-1900", "no scene made only of text", "LAYOUT ZONES", "<Stage headline", "<Place x y w h>", "<Label text ax ay side", "At most 3 labels", "Place {", "Label {", "ZONES:"]) expect(sys.toLowerCase()).toContain(must.toLowerCase());
   });
   it("whole prompt stays within about 30 KB", () => {
     expect(sys.length + tsxUserPrompt(TASK).length).toBeLessThanOrEqual(31_000);

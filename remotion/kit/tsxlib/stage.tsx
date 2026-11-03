@@ -3,7 +3,8 @@
 import React from "react";
 import { AbsoluteFill } from "remotion";
 import { Chip, KitDefs } from "./layout";
-import { FONT_DISPLAY, num, safeColor, txt, W, H } from "./util";
+import { useStyle } from "./style";
+import { num, safeColor, txt, W, H } from "./util";
 
 /** Vertical bands (pixels on the 1080x1920 canvas). Captions are drawn by the studio at about y 1585-1770. */
 export const ZONES = {
@@ -14,9 +15,9 @@ export const ZONES = {
 
 const SIDE = 60; // keep this far from the left and right edges
 
-/** Greedy word wrap with a per-character width estimate for uppercase bold display type. */
-function wrap(text: string, size: number): string[] {
-  const perLine = Math.max(4, Math.floor((W - 2 * SIDE) / (size * 0.64 + 1)));
+/** Greedy word wrap with a per-character width estimate (glyphW x font size) for the style heading font. */
+function wrap(text: string, size: number, glyphW = 0.64): string[] {
+  const perLine = Math.max(4, Math.floor((W - 2 * SIDE) / (size * glyphW + 1)));
   const lines: string[] = [];
   let cur = "";
   for (const w of text.split(" ").filter(Boolean)) {
@@ -32,25 +33,26 @@ function wrap(text: string, size: number): string[] {
 }
 
 /** Headline sized to fit: the largest type (112 down to 56) whose wrapped lines (at most 3) fit the title zone. Text is cut at 60 characters. */
-export const Headline: React.FC<{ text: string; color?: string; accent?: string; opacity?: number }> = ({ text, color = "white", accent, opacity = 1 }) => {
+export const Headline: React.FC<{ text: string; color?: string; accent?: string; opacity?: number }> = ({ text, color, accent, opacity = 1 }) => {
+  const st = useStyle();
   const t = txt(text, 60).trim();
   const zoneH = ZONES.title.y1 - ZONES.title.y0;
   let size = 56;
-  let lines = wrap(t, size).slice(0, 3);
+  let lines = wrap(t, size, st.glyphW).slice(0, 3);
   for (let s = 112; s >= 56; s -= 4) {
-    const l = wrap(t, s);
+    const l = wrap(t, s, st.glyphW);
     if (l.length <= 3 && l.length * s * 1.08 <= zoneH) {
       size = s;
       lines = l;
       break;
     }
   }
-  const c = safeColor(color, "#ffffff");
-  const a = accent ? safeColor(accent, c) : c;
+  const c = color ? safeColor(color, st.colors.text) : st.colors.text;
+  const a = accent ? safeColor(accent, c) : st.colors.accent;
   return (
     <div style={{ position: "absolute", left: SIDE, right: SIDE, top: ZONES.title.y0, height: zoneH, overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "center", textAlign: "center", opacity: num(opacity, 0, 1, 1) }}>
       {lines.map((l, i) => (
-        <div key={i} style={{ fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: size, lineHeight: 1.08, textTransform: "uppercase", letterSpacing: 1, color: i === lines.length - 1 ? a : c, textShadow: "0 4px 30px rgba(0,0,0,0.6)" }}>
+        <div key={i} style={{ fontFamily: st.fonts.display, fontWeight: st.headingWeight, fontSize: size, lineHeight: 1.08, textTransform: st.caps ? "uppercase" : "none", letterSpacing: st.caps ? 1 : 0, color: i === lines.length - 1 ? a : c, textShadow: st.light ? "none" : "0 4px 30px rgba(0,0,0,0.6)" }}>
           {l}
         </div>
       ))}
@@ -96,7 +98,7 @@ export const Place: React.FC<{ x: number; y: number; w: number; h: number; scale
  * Word pill NEXT to a point (ax, ay) on an object: its near edge sits `offset` px away on the given side, centred across it.
  * Clamped inside the objects zone and the side margins, so it never lands on the title or the captions.
  */
-export const Label: React.FC<{ text: string; ax: number; ay: number; side: "top" | "bottom" | "left" | "right"; offset?: number; color?: string; size?: number; at?: number; until?: number }> = ({ text, ax, ay, side, offset = 30, color = "yellow", size = 44, at = 0, until }) => {
+export const Label: React.FC<{ text: string; ax: number; ay: number; side: "top" | "bottom" | "left" | "right"; offset?: number; color?: string; size?: number; at?: number; until?: number }> = ({ text, ax, ay, side, offset = 30, color = "accent", size = 44, at = 0, until }) => {
   const t = txt(text, 28);
   const sz = num(size, 24, 70, 44);
   const w = Math.min(W - 2 * SIDE, t.length * (sz * 0.66 + 1) + 62);

@@ -83,11 +83,11 @@ export function tsxAuthorAttempt(deps: StageDeps): AttemptHandler {
           slots.beforeAsk();
           return ask(m);
         },
-        render: (source, review) => deps.tsx!.renderTsx(ctx, { source, captions: tsxCaptionWords(words), outFile: "render.mp4", ...(review ? { review, reviewAt: beatMidFrames(timed) } : {}) }),
-        ...(skipped ? {} : { review: (shots: { frame: number; jpeg: Uint8Array }[]) => reviewShots(llm, slots.reviewCtx, timed, shots) }),
+        render: (source, review) => deps.tsx!.renderTsx(ctx, { source, captions: tsxCaptionWords(words), style: video.style, outFile: "render.mp4", ...(review ? { review, reviewAt: beatMidFrames(timed) } : {}) }),
+        ...(skipped ? {} : { review: (shots: { frame: number; jpeg: Uint8Array }[]) => reviewShots(llm, slots.reviewCtx, timed, shots, video.style) }),
         log: ctx.log,
       },
-      { topic, beats, words, narrationS },
+      { topic, beats, words, narrationS, style: video.style },
     );
 
     if (out.ok) {

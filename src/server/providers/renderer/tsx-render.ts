@@ -3,6 +3,7 @@ import { chmod, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
+import { isTsxStyleId } from "../../../../remotion/kit/tsxlib/styledata";
 import { redactLine } from "@/server/core/log-redact";
 import type { ProbeResult } from "@/server/core/qa";
 import type { StageContext } from "@/server/core/stage-handler";
@@ -59,6 +60,8 @@ export interface TsxRenderInput {
   assets?: Record<string, string>;
   /** Word times for the caption overlay (cleaned by tsxCaptionWords). Passed in meta.json, never to the scene. */
   captions?: { word: string; startS: number; endS: number }[];
+  /** The video's style id (one of the ten picker ids; null or unknown = ai_studio). Passed in meta.json; picks the yt-kit look. */
+  style?: string | null;
   /** A plain file name inside ctx.attemptDir. */
   outFile: string;
   /**
@@ -193,7 +196,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       await mkdir(stillsDir, { mode: 0o700 });
       await writeFile(path.join(inDir, "video.tsx"), source, { mode: 0o644, flag: "wx" });
       await writeFile(path.join(inDir, "props.json"), propsJson, { mode: 0o644, flag: "wx" });
-      await writeFile(path.join(inDir, "meta.json"), JSON.stringify({ durationInFrames: frames, stills: stillList, captions: (input.captions ?? []).slice(0, 1500) }), { mode: 0o644, flag: "wx" });
+      await writeFile(path.join(inDir, "meta.json"), JSON.stringify({ durationInFrames: frames, stills: stillList, captions: (input.captions ?? []).slice(0, 1500), ...(isTsxStyleId(input.style) ? { style: input.style } : {}) }), { mode: 0o644, flag: "wx" });
     } catch (e) {
       return failure("infra", `The TSX render folders could not be prepared (${e instanceof Error ? e.message : "unknown"}).`);
     }

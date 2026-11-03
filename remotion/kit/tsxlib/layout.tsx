@@ -4,15 +4,20 @@
 // Adapted from the claude-faceless-shorts-creator kit (lib/shorts.tsx, the Short19 chip/backdrop helpers).
 // MIT License, Copyright (c) 2026 Hasan Aboul Hasan. The full notice is in THIRD_PARTY_NOTICES.md.
 import React from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
-import { cycle, EASE_OUT, faint, FONT_BODY, FONT_DISPLAY, FONT_MONO, fmt, H, num, PALETTE, prog, safeColor, txt, W } from "./util";
+import { AbsoluteFill, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { useStyle } from "./style";
+import { mixHex, type TsxStyle } from "./styledata";
+import { cycle, EASE_OUT, faint, FONT_BODY, FONT_DISPLAY, fmt, H, num, prog, safeColor, txt, W } from "./util";
 
-/** Eased fade/slide-in at frame `at`, optional fade-out ending at `until`. 0..1. */
-const appear = (f: number, at: number, until?: number): number => {
+/** Fade/slide-in at frame `at` in the style's own motion (a spring for bouncy styles, an eased fade otherwise), optional fade-out ending at `until`. About 0..1 (a spring may overshoot). */
+const appear = (f: number, at: number, until: number | undefined, st: TsxStyle): number => {
   const a = num(at, 0, 1e5, 0);
-  const inn = EASE_OUT(prog(f, a, a + 10));
+  const m = st.motion;
+  const inn = m.spring ? spring({ frame: Math.max(0, f - a), fps: 30, config: { stiffness: m.stiffness, damping: m.damping } }) : EASE_OUT(prog(f, a, a + m.frames));
   return until === undefined ? inn : inn * (1 - prog(f, num(until, 0, 1e5, 0) - 8, num(until, 0, 1e5, 0)));
 };
+const rgba = (hex: string, al: number): string => `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${al})`;
+const dropShadow = (st: TsxStyle, s: string): string => (st.light ? "none" : s);
 
 export const KitDefs: React.FC = () => (
   <defs>
@@ -74,25 +79,58 @@ export const Canvas: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   </svg>
 );
 
-/** Dark stage with a vignette and slow brand-coloured glows. The glows repeat exactly, so the last frame equals frame 0. */
-export const Backdrop: React.FC<{ base?: string; glow?: string }> = ({ base = "#0b1020", glow = "#1a2650" }) => {
+/**
+ * The page of the chosen style, drawn on every frame: paper (flat page), grid (faint ruled grid), glow (slow brand glows),
+ * night (dark sky with drifting fireflies) or gradient (two-colour wash). It loops exactly, so the last frame equals frame 0.
+ * base and glow are optional colour overrides; leave them out to get the style.
+ */
+export const Backdrop: React.FC<{ base?: string; glow?: string }> = ({ base, glow }) => {
   const f = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
+  const st = useStyle();
+  const c = st.colors;
   const a = cycle(f, durationInFrames - 1);
+  const bg = base ? safeColor(base, c.bg) : c.bg;
   const blob = (cx: number, cy: number, r: number, color: string, k: number, ph: number, amp: number) => (
     <div style={{ position: "absolute", left: cx + Math.sin(a * k + ph) * amp - r, top: cy + Math.cos(a * k + ph) * amp - r, width: r * 2, height: r * 2, borderRadius: "50%", background: `radial-gradient(circle, ${color} 0%, transparent 68%)` }} />
   );
+  let layers: React.ReactNode = null;
+  if (st.backdrop === "glow") {
+    layers = (
+      <>
+        <AbsoluteFill style={{ background: `radial-gradient(ellipse 90% 55% at 50% 42%, ${glow ? safeColor(glow, bg) : "#161a3a"} 0%, transparent 70%)` }} />
+        <AbsoluteFill style={{ pointerEvents: "none" }}>
+          {blob(200, 380, 520, "rgba(99,102,241,0.26)", 2, 0, 90)}
+          {blob(900, 900, 560, "rgba(155,124,196,0.18)", 3, 2, 80)}
+          {blob(300, 1500, 520, "rgba(77,184,168,0.20)", 2, 4, 100)}
+          <AbsoluteFill style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.07) 1.5px, transparent 1.6px)", backgroundSize: "54px 54px", opacity: 0.6 }} />
+        </AbsoluteFill>
+        <AbsoluteFill style={{ background: "radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgba(0,0,0,0.55) 100%)" }} />
+      </>
+    );
+  } else if (st.backdrop === "gradient") {
+    layers = <AbsoluteFill style={{ background: `linear-gradient(165deg, ${bg} 0%, ${glow ? safeColor(glow, bg) : mixHex(bg, c.accent2, 0.26)} 100%)` }} />;
+  } else if (st.backdrop === "grid") {
+    const line = rgba(c.text, 0.07);
+    layers = <AbsoluteFill style={{ backgroundImage: `linear-gradient(${line} 2px, transparent 2px), linear-gradient(90deg, ${line} 2px, transparent 2px)`, backgroundSize: "90px 90px" }} />;
+  } else if (st.backdrop === "night") {
+    layers = (
+      <>
+        <AbsoluteFill style={{ background: `radial-gradient(ellipse 100% 60% at 50% 100%, ${mixHex(bg, c.accent2, 0.5)} 0%, transparent 70%)`, opacity: 0.5 }} />
+        <AbsoluteFill style={{ pointerEvents: "none" }}>
+          {Array.from({ length: 14 }).map((_, i) => {
+            const tw = 0.5 + 0.5 * Math.sin(a * 3 + i * 1.7);
+            return <div key={i} style={{ position: "absolute", left: ((i * 223 + 90) % 1000) + Math.sin(a * 2 + i) * 26, top: ((i * 389 + 140) % 1800) + Math.cos(a * 2 + i * 2) * 34, width: 10, height: 10, borderRadius: "50%", background: c.accent, opacity: 0.15 + 0.6 * tw, boxShadow: `0 0 18px 6px ${rgba(c.accent, 0.45)}` }} />;
+          })}
+        </AbsoluteFill>
+        <AbsoluteFill style={{ background: "radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgba(0,0,0,0.5) 100%)" }} />
+      </>
+    );
+  }
   return (
     <AbsoluteFill>
-      <AbsoluteFill style={{ background: safeColor(base, "#0b1020") }} />
-      <AbsoluteFill style={{ background: `radial-gradient(ellipse 90% 55% at 50% 42%, ${safeColor(glow, "#1a2650")} 0%, transparent 70%)` }} />
-      <AbsoluteFill style={{ pointerEvents: "none" }}>
-        {blob(200, 380, 520, "rgba(99,102,241,0.26)", 2, 0, 90)}
-        {blob(900, 900, 560, "rgba(155,124,196,0.18)", 3, 2, 80)}
-        {blob(300, 1500, 520, "rgba(77,184,168,0.20)", 2, 4, 100)}
-        <AbsoluteFill style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.07) 1.5px, transparent 1.6px)", backgroundSize: "54px 54px", opacity: 0.6 }} />
-      </AbsoluteFill>
-      <AbsoluteFill style={{ background: "radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgba(0,0,0,0.55) 100%)" }} />
+      <AbsoluteFill style={{ background: bg }} />
+      {layers}
     </AbsoluteFill>
   );
 };
@@ -113,14 +151,15 @@ export const BigTitle: React.FC<{ lines: readonly { text: string; color?: string
 };
 
 /** Small label pill at the top; fades in at frame `at` and (optionally) out ending at frame `until`. */
-export const Kicker: React.FC<{ text: string; color?: string; y?: number; at?: number; until?: number }> = ({ text, color = "yellow", y = 185, at = 0, until }) => {
+export const Kicker: React.FC<{ text: string; color?: string; y?: number; at?: number; until?: number }> = ({ text, color = "accent", y = 185, at = 0, until }) => {
   const f = useCurrentFrame();
-  const o = appear(f, at, until);
+  const st = useStyle();
+  const o = Math.min(1, appear(f, at, until, st));
   const c = safeColor(color);
   if (o <= 0.01) return null;
   return (
-    <div style={{ position: "absolute", top: num(y, 0, 1500, 185), left: 0, right: 0, display: "flex", justifyContent: "center", opacity: o, transform: `translateY(${(1 - o) * 12}px)` }}>
-      <div style={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: 30, letterSpacing: 6, textTransform: "uppercase", color: c, border: `2px solid ${faint(c)}`, borderRadius: 999, padding: "12px 30px", background: "rgba(0,0,0,0.35)" }}>{txt(text, 32)}</div>
+    <div style={{ position: "absolute", top: num(y, 0, 1500, 185), left: 0, right: 0, display: "flex", justifyContent: "center", opacity: o, transform: `translateY(${(1 - o) * st.motion.rise}px)` }}>
+      <div style={{ fontFamily: st.fonts.body, fontWeight: 600, fontSize: 30, letterSpacing: 6, textTransform: "uppercase", color: c, border: `2px solid ${faint(c)}`, borderRadius: 999, padding: "12px 30px", background: rgba(st.colors.bg, 0.5) }}>{txt(text, 32)}</div>
     </div>
   );
 };
@@ -176,40 +215,44 @@ export const Captions: React.FC<{ words: readonly CaptionWord[]; y?: number; siz
 };
 
 /** Outlined word pill centred on (x, y); pops in at frame `at`, optionally fades out ending at `until`. */
-export const Chip: React.FC<{ text: string; x: number; y: number; color?: string; size?: number; at?: number; until?: number }> = ({ text, x, y, color = "yellow", size = 44, at = 0, until }) => {
+export const Chip: React.FC<{ text: string; x: number; y: number; color?: string; size?: number; at?: number; until?: number }> = ({ text, x, y, color = "accent", size = 44, at = 0, until }) => {
   const f = useCurrentFrame();
-  const p = appear(f, at, until);
+  const st = useStyle();
+  const p = appear(f, at, until, st);
   const c = safeColor(color);
   if (p <= 0.01) return null;
+  const s0 = st.motion.scaleFrom === 1 ? 0.94 : st.motion.scaleFrom;
   return (
-    <div style={{ position: "absolute", left: num(x, 0, W, 540), top: num(y, 0, H, 300), transform: `translate(-50%, -50%) translateY(${(1 - p) * 14}px) scale(${0.94 + 0.06 * p})`, opacity: p, fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: num(size, 24, 90, 44), textTransform: "uppercase", letterSpacing: 1, whiteSpace: "nowrap", color: c, border: `3px solid ${c}`, borderRadius: 999, padding: "8px 26px", background: "rgba(8,12,28,0.72)" }}>
+    <div style={{ position: "absolute", left: num(x, 0, W, 540), top: num(y, 0, H, 300), transform: `translate(-50%, -50%) translateY(${(1 - p) * st.motion.rise}px) scale(${s0 + (1 - s0) * p})`, opacity: Math.min(1, p), fontFamily: st.fonts.display, fontWeight: st.headingWeight, fontSize: num(size, 24, 90, 44), textTransform: st.caps ? "uppercase" : "none", letterSpacing: st.caps ? 1 : 0, whiteSpace: "nowrap", color: c, border: `3px solid ${c}`, borderRadius: 999, padding: "8px 26px", background: rgba(st.colors.bg, 0.78) }}>
       {txt(text, 28)}
     </div>
   );
 };
 
 /** Card with a coloured edge: a small label over a value (a stat or a one-line note). Top-left corner at (x, y). */
-export const Callout: React.FC<{ label?: string; text: string; x: number; y: number; w?: number; color?: string; at?: number; until?: number }> = ({ label, text, x, y, w = 600, color = "yellow", at = 0, until }) => {
+export const Callout: React.FC<{ label?: string; text: string; x: number; y: number; w?: number; color?: string; at?: number; until?: number }> = ({ label, text, x, y, w = 600, color = "accent", at = 0, until }) => {
   const f = useCurrentFrame();
-  const p = appear(f, at, until);
+  const st = useStyle();
+  const p = appear(f, at, until, st);
   const c = safeColor(color);
   if (p <= 0.01) return null;
   return (
-    <div style={{ position: "absolute", left: num(x, 0, W, 60), top: num(y, 0, H, 300), width: num(w, 200, 1000, 600), opacity: p, transform: `translateY(${(1 - p) * 18}px)`, background: "rgba(12,14,20,0.9)", border: `2px solid ${faint(c, "66")}`, borderLeft: `10px solid ${c}`, borderRadius: 18, padding: "20px 26px", boxShadow: "0 12px 40px rgba(0,0,0,0.35)" }}>
-      {label ? <div style={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: 27, letterSpacing: 3, color: c, textTransform: "uppercase" }}>{txt(label, 40)}</div> : null}
-      <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 38, color: PALETTE.white, marginTop: label ? 8 : 0, lineHeight: 1.25 }}>{txt(text, 90)}</div>
+    <div style={{ position: "absolute", left: num(x, 0, W, 60), top: num(y, 0, H, 300), width: num(w, 200, 1000, 600), opacity: Math.min(1, p), transform: `translateY(${(1 - p) * st.motion.rise}px)`, background: st.light ? st.colors.surface : rgba(st.colors.surface, 0.92), border: `2px solid ${faint(c, "66")}`, borderLeft: `10px solid ${c}`, borderRadius: 18, padding: "20px 26px", boxShadow: dropShadow(st, "0 12px 40px rgba(0,0,0,0.35)") }}>
+      {label ? <div style={{ fontFamily: st.fonts.body, fontWeight: 600, fontSize: 27, letterSpacing: 3, color: c, textTransform: "uppercase" }}>{txt(label, 40)}</div> : null}
+      <div style={{ fontFamily: st.fonts.display, fontWeight: st.headingWeight, fontSize: 38, color: st.colors.text, marginTop: label ? 8 : 0, lineHeight: 1.25 }}>{txt(text, 90)}</div>
     </div>
   );
 };
 
 /** A big number centred on (x, y) that counts from `from` to `to` between frames `start` and `end` (whole numbers, with commas). */
-export const Counter: React.FC<{ from: number; to: number; start: number; end: number; x: number; y: number; size?: number; color?: string; prefix?: string; suffix?: string; mono?: boolean }> = ({ from, to, start, end, x, y, size = 120, color = "white", prefix = "", suffix = "", mono = false }) => {
+export const Counter: React.FC<{ from: number; to: number; start: number; end: number; x: number; y: number; size?: number; color?: string; prefix?: string; suffix?: string; mono?: boolean }> = ({ from, to, start, end, x, y, size = 120, color = "text", prefix = "", suffix = "", mono = false }) => {
   const f = useCurrentFrame();
+  const st = useStyle();
   const a = num(from, -1e12, 1e12, 0);
   const b = num(to, -1e12, 1e12, 0);
   const p = EASE_OUT(prog(f, num(start, 0, 1e5, 0), num(end, 0, 1e5, 30)));
   return (
-    <div style={{ position: "absolute", left: num(x, 0, W, 540), top: num(y, 0, H, 900), transform: "translate(-50%, -50%)", whiteSpace: "nowrap", fontFamily: mono ? FONT_MONO : FONT_DISPLAY, fontWeight: 700, fontSize: num(size, 30, 300, 120), color: safeColor(color, "#ffffff"), textShadow: "0 4px 30px rgba(0,0,0,0.6)" }}>
+    <div style={{ position: "absolute", left: num(x, 0, W, 540), top: num(y, 0, H, 900), transform: "translate(-50%, -50%)", whiteSpace: "nowrap", fontFamily: mono ? st.fonts.mono : st.fonts.display, fontWeight: st.headingWeight, fontSize: num(size, 30, 300, 120), color: safeColor(color, st.colors.text), textShadow: dropShadow(st, "0 4px 30px rgba(0,0,0,0.6)") }}>
       {txt(prefix, 8)}
       {fmt(a + (b - a) * p)}
       {txt(suffix, 8)}
