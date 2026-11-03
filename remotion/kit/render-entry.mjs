@@ -32,7 +32,9 @@ if (tsx) {
   const n = meta.durationInFrames;
   if (!Number.isInteger(n) || n < 1 || n > 2700) throw new Error("meta.json: bad durationInFrames");
   if (!Array.isArray(meta.stills) || meta.stills.length > 3 || !meta.stills.every((f) => Number.isInteger(f) && f >= 0 && f < n)) throw new Error("meta.json: bad stills");
-  inputProps = { props: readJson("props.json"), frames: n };
+  const caps = meta.captions ?? []; // word times for the caption overlay (tsx-root draws them); written by the host
+  if (!Array.isArray(caps) || caps.length > 1500 || !caps.every((w) => w && typeof w.word === "string" && w.word.length <= 60 && Number.isFinite(w.startS) && Number.isFinite(w.endS))) throw new Error("meta.json: bad captions");
+  inputProps = { props: readJson("props.json"), frames: n, captions: caps };
 } else {
   inputProps = readJson("props.json");
 }

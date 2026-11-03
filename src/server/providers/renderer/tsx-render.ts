@@ -56,6 +56,8 @@ export interface TsxRenderInput {
   props?: Record<string, unknown>;
   /** staticFile() name -> absolute host path of the file to stage (copied, never mounted; no symlink followed). */
   assets?: Record<string, string>;
+  /** Word times for the caption overlay (cleaned by tsxCaptionWords). Passed in meta.json, never to the scene. */
+  captions?: { word: string; startS: number; endS: number }[];
   /** A plain file name inside ctx.attemptDir. */
   outFile: string;
 }
@@ -177,7 +179,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       await mkdir(stillsDir, { mode: 0o700 });
       await writeFile(path.join(inDir, "video.tsx"), source, { mode: 0o644, flag: "wx" });
       await writeFile(path.join(inDir, "props.json"), propsJson, { mode: 0o644, flag: "wx" });
-      await writeFile(path.join(inDir, "meta.json"), JSON.stringify({ durationInFrames: frames, stills: preflightFrames(frames) }), { mode: 0o644, flag: "wx" });
+      await writeFile(path.join(inDir, "meta.json"), JSON.stringify({ durationInFrames: frames, stills: preflightFrames(frames), captions: (input.captions ?? []).slice(0, 1500) }), { mode: 0o644, flag: "wx" });
     } catch (e) {
       return failure("infra", `The TSX render folders could not be prepared (${e instanceof Error ? e.message : "unknown"}).`);
     }
