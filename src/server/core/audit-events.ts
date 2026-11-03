@@ -18,6 +18,10 @@ export const AUDIT_EVENTS = {
   "claude_code.tested": "Claude Code was tested with one tiny call",
   "google_app.saved": "The Google app details were saved",
   "google_app.tested": "The Google app details were format-checked",
+  "youtube.channel_connected": "A YouTube channel was connected (detail: channel id, status; never a token or code)",
+  "youtube.channel_confirmed": "The owner confirmed a connected channel is theirs (detail: channel id, session id)",
+  "youtube.channel_disconnected": "A YouTube channel was disconnected and its token deleted (detail: channel id, session id)",
+  "youtube.refresh_failed": "Google refused a saved channel token, so the channel needs reconnecting (detail: channel id, reason)",
   "vault.init": "The vault master key was initialised",
   "vault.unreadable": "A vault entry could not be decrypted",
   // Phase 2 gates (detail: video id, gate, short hash prefix only)

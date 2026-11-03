@@ -27,7 +27,7 @@ export const FLAGS: Record<string, boolean> = {
   "publish.analytics": false,
   "settings.account": false,
   "settings.tokens": false,
-  "settings.channels": false,
+  "settings.channels": true,
   "settings.policies": false,
   "settings.notifications": false,
   "settings.schedule": false, // Phase 6
