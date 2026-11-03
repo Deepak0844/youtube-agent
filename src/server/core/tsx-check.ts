@@ -6,7 +6,8 @@ import ts from "typescript";
 // It is NOT the security boundary: JavaScript is too dynamic for a static check to be complete (a value built at run time
 // can still reach a lookup). The boundary is the render container (tsx-sandbox.ts: no network, read-only, non-root, short
 // timeout); preflight frames (tsx-preflight.ts) catch blank or frozen output. Pure, never throws, linear in input size;
-// the input is capped before parsing.
+// the input is capped before parsing. Every problem reads "rule: what is wrong; what to write instead" in at most 120
+// characters (plus the line prefix): it goes back to the model as retry feedback.
 
 export const TSX_MAX_BYTES = 24 * 1024;
 export const TSX_MAX_FRAMES = 2700; // 90 s at 30 fps
@@ -60,8 +61,34 @@ const FORBIDDEN_MEMBERS = lower([
   "srcdoc", "contentWindow", "contentDocument", "ownerDocument", "defaultView", "getRootNode", "sendBeacon", "cookie",
   "createElement", "cloneElement", "createPortal", "dangerouslySetInnerHTML", "now",
   "eval", "Function", "fetch", "require", "process", "window", "document", "globalThis", "importScripts", "self", "$$typeof",
-  "repeat", "callee", "caller", "padStart", "padEnd", "flatMap",
+  "repeat", "callee", "caller", "padStart", "padEnd", "flatMap", "props", "_owner", "_store",
 ]);
+// What to write instead of a refused member (keyed by lower-case name).
+const MEMBER_HINT: Record<string, string> = {
+  padstart: "use n < 10 ? `0${n}` : `${n}`", padend: "build the text with a template literal",
+  repeat: "use Array(n).fill(s).join('') with n up to 1000", flatmap: "use .map(...).flat()",
+  fromcharcode: "write the text as a literal", now: "time comes from useCurrentFrame()",
+  props: "name the prop you need, e.g. ({ title }) =>", constructor: "use plain values and functions",
+};
+// Member names that may never be written (React element forgery, prototype walking, array growth, swapping an array's
+// iterator so a callback's index parameter could receive text).
+const WRITE_BANNED = lower([
+  "props", "type", "key", "ref", "children", "$$typeof", "_owner", "_store", "__html", "constructor", "prototype", "length",
+  "map", "filter", "forEach", "some", "every", "find", "findIndex", "findLast", "findLastIndex",
+]);
+const SPREAD_BANNED = new Set(["type", "props", "$$typeof", "key", "ref", "children", "_owner"]);
+// Array methods that call their callback with (element, index): the index parameter is a number when the receiver is an array.
+const INDEXED = new Set(["map", "filter", "forEach", "some", "every", "find", "findIndex", "findLast", "findLastIndex"]);
+// Array methods that return an array (of the same length for LENGTH_KEEP).
+const ARRAY_RESULT = new Set(["map", "filter", "slice", "concat", "sort", "toSorted", "reverse", "toReversed", "fill", "flat"]);
+const LENGTH_KEEP = new Set(["map", "fill", "sort", "toSorted", "reverse", "toReversed"]);
+const GROW = new Set(["push", "unshift", "splice"]);
+// Imports that always return a number.
+const NUMERIC_IMPORTS = new Set(["interpolate", "spring", "random", "useCurrentFrame", "getLength"]);
+const MATH_CONSTS = new Set(["PI", "E", "LN2", "LN10", "LOG2E", "LOG10E", "SQRT2", "SQRT1_2"]);
+// Tokens that may not be glued together at run time from a literal piece and a value (url( + https...).
+const GLUE_TOKENS = ["url(", "@import", "javascript:", "expression("];
+const DANGER_TEXT = /url\(|@import|expression\(|javascript:(?!\s)/i;
 // Whole string values refused anywhere (case-insensitive): names only useful to rebuild a forbidden lookup. Ordinary
 // words ("process", "window", "Date") stay usable as caption text; computed keys must be numbers anyway (checkKey).
 const STRING_BANNED = lower([
@@ -89,11 +116,9 @@ const AS_ARGUMENT_OK = new Set(["Boolean", "Number", "String"]); // .filter(Bool
 const NEW_OK = new Set(["Array"]);
 const NO_SHADOW = SAFE_GLOBALS;
 const MAX_ARRAY_LEN = 1000;
-const MAX_CALLBACK_NEST = 2;
+const MAX_CALLBACK_NEST = 3;
 // Array methods whose function argument runs once per element.
 const ITERATORS = new Set(["map", "filter", "reduce", "reduceRight", "forEach", "some", "every", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted"]);
-// Math functions that always return a number: Math.floor(x) is a safe computed key.
-const MATH_NUMERIC = new Set(["floor", "ceil", "round", "trunc", "abs", "min", "max", "sign"]);
 const ARITH = new Set([
   ts.SyntaxKind.MinusToken, ts.SyntaxKind.AsteriskToken, ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken,
   ts.SyntaxKind.AsteriskAsteriskToken, ts.SyntaxKind.AmpersandToken, ts.SyntaxKind.BarToken, ts.SyntaxKind.CaretToken,
@@ -124,14 +149,14 @@ export interface TsxCheckResult {
 export function checkTsx(source: unknown): TsxCheckResult {
   const problems: string[] = [];
   try {
-    if (typeof source !== "string") return fail(["The file must be text."]);
-    if (source.length > TSX_MAX_BYTES || Buffer.byteLength(source, "utf8") > TSX_MAX_BYTES) return fail([`The file is bigger than ${TSX_MAX_BYTES / 1024} KB.`]);
-    if (source.trim() === "") return fail(["The file is empty."]);
+    if (typeof source !== "string") return fail(["file: the file must be text; send the TSX source."]);
+    if (source.length > TSX_MAX_BYTES || Buffer.byteLength(source, "utf8") > TSX_MAX_BYTES) return fail([`size: the file is bigger than ${TSX_MAX_BYTES / 1024} KB; write a shorter scene.`]);
+    if (source.trim() === "") return fail(["file: the file is empty; send the whole scene."]);
     checkChars(source, problems);
     if (problems.length > 0) return fail(problems);
     walk(source, problems);
   } catch {
-    problems.push("The file could not be checked.");
+    problems.push("file: the file could not be checked; write simpler code.");
   }
   return problems.length === 0 ? { ok: true, problems } : fail(problems);
 }
@@ -185,7 +210,7 @@ function checkChars(source: string, problems: string[]): void {
       (c >= 0x200b && c <= 0x200f) || (c >= 0x2028 && c <= 0x202e) || (c >= 0x2060 && c <= 0x206f) || c === 0xfeff ||
       (c >= 0xfff0 && c <= 0xfffb) || (c >= 0xd800 && c <= 0xdfff) || (c >= 0xe0000 && c <= 0xe007f);
     if (bad) {
-      problems.push(`line ${line}: invisible or control character U+${c.toString(16).toUpperCase().padStart(4, "0")} is not allowed.`);
+      problems.push(`line ${line}: chars: invisible or control character U+${c.toString(16).toUpperCase().padStart(4, "0")} is not allowed; retype it as plain text.`);
       if (problems.length >= MAX_PROBLEMS) return;
     }
   }
@@ -199,59 +224,94 @@ function walk(source: string, problems: string[]): void {
 
   const syntax = (sf as unknown as { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics ?? [];
   for (const d of syntax.slice(0, 5)) {
-    problems.push(`line ${d.start === undefined ? "?" : lineOf(d.start)}: syntax error: ${echo(ts.flattenDiagnosticMessageText(d.messageText, " "))}`);
+    problems.push(`line ${d.start === undefined ? "?" : lineOf(d.start)}: syntax error: ${echo(ts.flattenDiagnosticMessageText(d.messageText, " "))}; fix it so the file parses.`);
   }
   if (syntax.length > 0) return;
 
   let reactDefault = false;
   const imported = new Set<string>();
-  const components = new Set<string>();
   let hasDefault = false;
   let hasMeta = false;
   const seenComments = new Set<number>();
 
   for (const st of sf.statements) {
     if (ts.isImportDeclaration(st)) checkImport(st);
-    else if (ts.isImportEqualsDeclaration(st)) add(st, "'import x = require()' is not allowed.");
+    else if (ts.isImportEqualsDeclaration(st)) add(st, "imports: 'import x = require()' is not allowed; use import { x } from 'remotion'.");
   }
-  // Pre-pass. Names a JSX tag may use (functions and const arrow/function components declared in this file); every local
-  // binding by the scope that holds it (so `top` can be a local while the global `top` stays refused); numeric for-loop
-  // counters; function names (for the recursion check).
-  const scopes = new Map<ts.Node, Set<string>>();
-  const counterScopes = new Set<ts.Node>(); // for statements whose only binding is a numeric counter
+  // Pre-pass. Every local binding by the scope that holds it, mapped to its declaration (so `top` can be a local while the
+  // global `top` stays refused, and a name can be traced to what it was declared as; a name declared twice in one scope
+  // maps to `sf`, which is never trusted); every name reference; function names and "owners" (objects and arrays that hold
+  // functions) for the recursion check.
+  const scopes = new Map<ts.Node, Map<string, ts.Node>>();
+  const refs = new Map<string, ts.Identifier[]>();
   const fnNames = new Set<string>();
+  const owners = new Set<string>();
   const calls = new Map<string, Set<string>>();
+  const numMemo = new Map<ts.Node, boolean>(); // isNumeric per declaration
+  const frozenMemo = new Map<ts.Node, boolean>(); // frozen per declaration
   const declare = (scope: ts.Node, name: ts.BindingName) => {
     for (const id of bindingIds(name)) {
-      let set = scopes.get(scope);
-      if (!set) scopes.set(scope, (set = new Set()));
-      set.add(id.text);
+      let m = scopes.get(scope);
+      if (!m) scopes.set(scope, (m = new Map()));
+      m.set(id.text, m.has(id.text) ? sf : id.parent);
     }
   };
   forEachNode(sf, (n) => {
-    if ((ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n)) && n.name) { components.add(n.name.text); declare(n.parent, n.name); }
+    if (ts.isIdentifier(n) && isReference(n)) {
+      let l = refs.get(n.text);
+      if (!l) refs.set(n.text, (l = []));
+      l.push(n);
+    }
+    if ((ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n)) && n.name) declare(n.parent, n.name);
     if (ts.isFunctionExpression(n) && n.name) declare(n, n.name);
     if (ts.isParameter(n)) declare(n.parent, n.name);
+    if (ts.isVariableDeclaration(n)) declare(varScope(n), n.name);
     const name = fnNameOf(n);
     if (name) fnNames.add(name);
-    if (!ts.isVariableDeclaration(n)) return;
-    declare(varScope(n), n.name);
-    if (isCounterDecl(n)) counterScopes.add(n.parent.parent);
-    if (ts.isIdentifier(n.name) && n.initializer && ts.isVariableDeclarationList(n.parent) && n.parent.flags & ts.NodeFlags.Const) {
-      let init: ts.Expression = n.initializer;
-      while (ts.isParenthesizedExpression(init)) init = init.expression;
-      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) components.add(n.name.text);
-    }
+    const owner = ownerOf(n);
+    if (owner) owners.add(owner);
   });
-  /** The scope node of the nearest local binding of this name, or undefined when it names a global. */
-  const scopeOf = (id: ts.Identifier): ts.Node | undefined => {
-    for (let a: ts.Node | undefined = id.parent; a; a = a.parent) if (scopes.get(a)?.has(id.text)) return a;
+  /** The declaration of the nearest local binding of this name, or undefined when it names a global. */
+  const declOf = (id: ts.Identifier): ts.Node | undefined => {
+    for (let a: ts.Node | undefined = id.parent; a; a = a.parent) {
+      const d = scopes.get(a)?.get(id.text);
+      if (d) return d;
+    }
     return undefined;
   };
-  const resolvesLocally = (id: ts.Identifier) => scopeOf(id) !== undefined;
+  const refsOf = (d: ts.Node, name: ts.Identifier) => (refs.get(name.text) ?? []).filter((r) => r !== name && declOf(r) === d);
+  const isGlobal = (e: ts.Node, name: string) => { const u = unwrap(e); return ts.isIdentifier(u) && u.text === name && !declOf(u); };
+  const constDecl = (e: ts.Node): ts.VariableDeclaration | undefined => {
+    const u = unwrap(e);
+    const d = ts.isIdentifier(u) ? declOf(u) : undefined;
+    return d && ts.isVariableDeclaration(d) && ts.isIdentifier(d.name) && d.initializer && ts.isVariableDeclarationList(d.parent) && d.parent.flags & ts.NodeFlags.Const ? d : undefined;
+  };
+  const constInit = (e: ts.Node): ts.Expression | undefined => { const d = constDecl(e); return d && (unwrap(d.initializer!) as ts.Expression); };
+  /** Text of a literal, a literal-only template/`+` chain, or a const holding one; undefined otherwise. */
+  const strConst = (e: ts.Node, depth = 0): string | undefined => {
+    const lit = literalString(e);
+    if (lit !== undefined || depth > 20) return lit;
+    const init = constInit(e);
+    return init && strConst(init, depth + 1);
+  };
+  /** Value of a number literal (or -literal), or of a const holding one. */
+  const numLit = (e: ts.Node, depth = 0): number | undefined => {
+    const u = unwrap(e);
+    if (ts.isNumericLiteral(u)) return Number(u.text);
+    if (ts.isPrefixUnaryExpression(u) && u.operator === ts.SyntaxKind.MinusToken) { const v = numLit(u.operand, depth); return v === undefined ? undefined : -v; }
+    const init = depth > 20 ? undefined : constInit(u);
+    return init && numLit(init, depth + 1);
+  };
+  const isFnDecl = (d: ts.Node | undefined) => !!d && (ts.isFunctionDeclaration(d) || ts.isFunctionExpression(d) ||
+    (ts.isVariableDeclaration(d) && !!d.initializer && isFnExpr(unwrap(d.initializer))));
+  const isComponentDecl = (d: ts.Node) => ts.isFunctionDeclaration(d) ||
+    (ts.isVariableDeclaration(d) && ts.isVariableDeclarationList(d.parent) && !!(d.parent.flags & ts.NodeFlags.Const) && isFnDecl(d));
+  const isArrayFromCall = (c: ts.Node): boolean => ts.isCallExpression(c) && ts.isPropertyAccessExpression(c.expression) && c.expression.name.text === "from" && isGlobal(c.expression.expression, "Array");
+  const isUseMemo = (c: ts.Node) => (ts.isIdentifier(c) && c.text === "useMemo" && imported.has("useMemo")) ||
+    (ts.isPropertyAccessExpression(c) && c.name.text === "useMemo" && reactDefault && isGlobal(c.expression, REACT_DEFAULT));
   let fn: string | undefined; // the named function the walk is in
-  const edge = (to: string) => {
-    if (!fn || !fnNames.has(to)) return;
+  const edge = (to: string, owner = false) => {
+    if (!fn || !(owner ? owners : fnNames).has(to)) return;
     let set = calls.get(fn);
     if (!set) calls.set(fn, (set = new Set()));
     set.add(to);
@@ -264,13 +324,13 @@ function walk(source: string, problems: string[]): void {
     const top = stack.pop()!;
     const { n, d } = top;
     fn = top.fn;
-    if (d > MAX_DEPTH) { add(n, "the code is nested too deeply."); return; }
+    if (d > MAX_DEPTH) { add(n, "syntax: the code is nested too deeply; split it into smaller functions."); return; }
     comments(n);
     // `declare` (ambient) names are free variables webpack fills in (__webpack_public_path__ ...): refused everywhere.
-    if (ts.canHaveModifiers(n) && ts.getModifiers(n)?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword)) add(n, "'declare' is not allowed.");
+    if (ts.canHaveModifiers(n) && ts.getModifiers(n)?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword)) add(n, "syntax: 'declare' is not allowed; declare real consts instead.");
     if (isTypeOnlyNode(n)) continue;
     visit(n);
-    const inner = fnNameOf(n) ?? fn;
+    const inner = fnNameOf(n) ?? ownerOf(n) ?? fn;
     const kids: ts.Node[] = [];
     ts.forEachChild(n, (k) => { kids.push(k); });
     for (let i = kids.length - 1; i >= 0; i--) {
@@ -279,8 +339,8 @@ function walk(source: string, problems: string[]): void {
     }
   }
   checkRecursion();
-  if (!hasDefault) problems.push("The file must 'export default' the scene component.");
-  if (!hasMeta) problems.push(`The file must 'export const meta = { durationInFrames, fps: ${TSX_META.fps}, width: ${TSX_META.width}, height: ${TSX_META.height} }'.`);
+  if (!hasDefault) problems.push("exports: the file must 'export default' the scene component; add export default function Scene().");
+  if (!hasMeta) problems.push(`meta: 'export const meta' is missing; add it as { durationInFrames: 90, fps: ${TSX_META.fps}, width: ${TSX_META.width}, height: ${TSX_META.height} }.`);
 
   function comments(n: ts.Node): void {
     if (n.kind === ts.SyntaxKind.JsxText) return;
@@ -289,30 +349,30 @@ function walk(source: string, problems: string[]): void {
       seenComments.add(r.pos);
       const text = source.slice(r.pos, r.end).toLowerCase();
       const hit = COMMENT_DIRECTIVES.find((d) => text.includes(d));
-      if (hit && problems.length < MAX_PROBLEMS * 2) problems.push(`line ${lineOf(r.pos)}: comment directive '${hit}' is not allowed.`);
+      if (hit && problems.length < MAX_PROBLEMS * 2) problems.push(`line ${lineOf(r.pos)}: comments: directive '${hit}' is not allowed; remove that comment.`);
     }
   }
 
   function checkImport(st: ts.ImportDeclaration): void {
     const spec = ts.isStringLiteral(st.moduleSpecifier) ? st.moduleSpecifier.text : "";
     const allowed = Object.prototype.hasOwnProperty.call(TSX_IMPORTS, spec) ? TSX_IMPORTS[spec] : undefined;
-    if (!allowed) return add(st, `import from '${echo(spec)}' is not allowed (only ${Object.keys(TSX_IMPORTS).join(", ")}).`);
-    if (st.attributes) return add(st, "import attributes are not allowed.");
+    if (!allowed) return add(st, `imports: '${echo(spec)}' is not allowed; use react, remotion, @remotion/shapes or @remotion/paths.`);
+    if (st.attributes) return add(st, "imports: import attributes are not allowed; import names only.");
     const clause = st.importClause;
-    if (!clause) return add(st, `side-effect import of '${echo(spec)}' is not allowed.`);
+    if (!clause) return add(st, `imports: side-effect import of '${echo(spec)}' is not allowed; import the names you use.`);
     if (clause.isTypeOnly) return;
     if (clause.name) {
       if (spec === "react" && clause.name.text === REACT_DEFAULT) reactDefault = true;
-      else add(clause, `default import '${echo(clause.name.text)}' from '${echo(spec)}' is not allowed.`);
+      else add(clause, `imports: default import '${echo(clause.name.text)}' is not allowed; use import { Name } from the module.`);
     }
     const nb = clause.namedBindings;
-    if (nb && ts.isNamespaceImport(nb)) add(nb, `'import * as' from '${echo(spec)}' is not allowed; import names one by one.`);
+    if (nb && ts.isNamespaceImport(nb)) add(nb, "imports: 'import * as' is not allowed; import names one by one: import { a, b } from '...'.");
     if (nb && ts.isNamedImports(nb)) {
       for (const el of nb.elements) {
         if (el.isTypeOnly) continue;
         const name = (el.propertyName ?? el.name).text;
-        if (el.propertyName && name !== el.name.text) add(el, `renaming imports ('${snip(el)}') is not allowed.`);
-        else if (!allowed.includes(name)) add(el, `'${echo(name)}' from '${echo(spec)}' is not allowed.`);
+        if (el.propertyName && name !== el.name.text) add(el, `imports: renaming imports ('${snip(el)}') is not allowed; import the name as is.`);
+        else if (!allowed.includes(name)) add(el, `imports: '${echo(name)}' is not allowed from '${spec}'; use only the allow-listed names.`);
         else imported.add(name);
       }
     }
@@ -323,34 +383,33 @@ function walk(source: string, problems: string[]): void {
       case ts.SyntaxKind.Identifier: return checkIdentifier(n as ts.Identifier);
       case ts.SyntaxKind.PrivateIdentifier: {
         const p = n as ts.PrivateIdentifier;
-        if (!IDENT.test(p.text.slice(1)) || p.getText(sf) !== p.text) add(n, "identifiers must be plain ASCII.");
+        if (!IDENT.test(p.text.slice(1)) || p.getText(sf) !== p.text) add(n, "names: identifiers must be plain ASCII; retype the name with letters, digits and _.");
         return;
       }
-      case ts.SyntaxKind.MetaProperty: return add(n, `'${snip(n)}' is not allowed.`);
-      case ts.SyntaxKind.WithStatement: return add(n, "'with' is not allowed.");
+      case ts.SyntaxKind.MetaProperty: return add(n, `syntax: '${snip(n)}' is not allowed; use staticFile('...') for files.`);
+      case ts.SyntaxKind.WithStatement: return add(n, "syntax: 'with' is not allowed; write obj.name in full.");
       case ts.SyntaxKind.WhileStatement:
-      case ts.SyntaxKind.DoStatement: return add(n, "while/do loops are not allowed; use a for loop with a number bound, or .map().");
-      case ts.SyntaxKind.ForInStatement: return add(n, "for...in is not allowed; loop over an array literal or use .map().");
+      case ts.SyntaxKind.DoStatement: return add(n, "loops: while/do loops are not allowed; use for (let i = 0; i < 100; i++) or .map().");
+      case ts.SyntaxKind.ForInStatement: return add(n, "loops: for...in is not allowed; use for (const x of [...]) or .map().");
       case ts.SyntaxKind.ForStatement: return checkFor(n as ts.ForStatement);
       case ts.SyntaxKind.ForOfStatement: return checkForOf(n as ts.ForOfStatement);
-      case ts.SyntaxKind.AwaitExpression: return add(n, "await is not allowed: a frame must render synchronously.");
-      case ts.SyntaxKind.AsyncKeyword: return add(n, "async functions are not allowed: a frame must render synchronously.");
-      case ts.SyntaxKind.YieldExpression: return add(n, "generators are not allowed.");
+      case ts.SyntaxKind.AwaitExpression: return add(n, "async: await is not allowed: a frame must render synchronously; compute values directly.");
+      case ts.SyntaxKind.AsyncKeyword: return add(n, "async: async functions are not allowed: a frame must render synchronously; use plain functions.");
+      case ts.SyntaxKind.YieldExpression: return add(n, "syntax: generators are not allowed; return an array instead.");
       case ts.SyntaxKind.FunctionExpression:
       case ts.SyntaxKind.MethodDeclaration: {
-        if ((n as ts.FunctionExpression).asteriskToken) add(n, "generators are not allowed.");
+        if ((n as ts.FunctionExpression).asteriskToken) add(n, "syntax: generators are not allowed; return an array instead.");
         return;
       }
       case ts.SyntaxKind.ThisKeyword:
-      case ts.SyntaxKind.SuperKeyword: return add(n, `'${snip(n)}' is not allowed; pass values as props or arguments.`);
+      case ts.SyntaxKind.SuperKeyword: return add(n, `syntax: '${snip(n)}' is not allowed; pass values as props or arguments.`);
       case ts.SyntaxKind.ClassDeclaration:
-      case ts.SyntaxKind.ClassExpression: return add(n, "classes are not allowed; write function components.");
+      case ts.SyntaxKind.ClassExpression: return add(n, "syntax: classes are not allowed; write function components.");
       case ts.SyntaxKind.GetAccessor:
-      case ts.SyntaxKind.SetAccessor: return add(n, "getters and setters are not allowed.");
-      case ts.SyntaxKind.RegularExpressionLiteral: return add(n, "regular expressions are not allowed.");
-      // {...x} copies every own key of x, $$typeof included: the way to forge a React element from a real one.
-      case ts.SyntaxKind.SpreadAssignment: return add(n, "object spread {...x} is not allowed; list the fields by name.");
-      case ts.SyntaxKind.TaggedTemplateExpression: return add(n, "tagged templates are not allowed.");
+      case ts.SyntaxKind.SetAccessor: return add(n, "syntax: getters and setters are not allowed; use plain fields or functions.");
+      case ts.SyntaxKind.RegularExpressionLiteral: return add(n, "syntax: regular expressions are not allowed; use .split(), .includes() or .startsWith().");
+      case ts.SyntaxKind.SpreadAssignment: return checkSpread(n as ts.SpreadAssignment);
+      case ts.SyntaxKind.TaggedTemplateExpression: return add(n, "syntax: tagged templates are not allowed; use a plain template literal.");
       case ts.SyntaxKind.ElementAccessExpression: {
         const ea = n as ts.ElementAccessExpression;
         return checkKey(ea, ea.argumentExpression, ea.expression);
@@ -367,55 +426,70 @@ function walk(source: string, problems: string[]): void {
       case ts.SyntaxKind.VariableDeclaration: {
         const v = n as ts.VariableDeclaration;
         const init = v.initializer && unwrap(v.initializer);
-        if (!ts.isIdentifier(v.name) && init && ts.isIdentifier(init) && (GLOBAL_OBJECTS.has(init.text) || init.text === REACT_DEFAULT)) add(n, `destructuring from '${echo(init.text)}' is not allowed.`);
+        if (!ts.isIdentifier(v.name) && init && ts.isIdentifier(init) && (GLOBAL_OBJECTS.has(init.text) || init.text === REACT_DEFAULT)) add(n, `names: destructuring from '${echo(init.text)}' is not allowed; write ${echo(init.text)}.name at each use.`);
         return;
       }
       case ts.SyntaxKind.CallExpression: return checkCall(n as ts.CallExpression);
       case ts.SyntaxKind.NewExpression: {
         const ne = n as ts.NewExpression;
-        if (!ts.isIdentifier(ne.expression) || !NEW_OK.has(ne.expression.text)) return add(n, `'new ${snip(ne.expression)}' is not allowed (only new Map, new Set, new Array).`);
-        if (ne.expression.text === "Array" && !arrayArgsOk(ne.arguments)) add(n, `new Array(n) needs a number n up to ${MAX_ARRAY_LEN}.`);
+        if (!ts.isIdentifier(ne.expression) || !NEW_OK.has(ne.expression.text)) return add(n, `new: 'new ${snip(ne.expression)}' is not allowed (only new Array(n)); use [] or {} instead of Map/Set.`);
+        if (ne.expression.text === "Array" && arraySize(ne.arguments) === undefined) add(n, `arrays: new Array(n) needs n as a number or const number up to ${MAX_ARRAY_LEN}; e.g. new Array(40).`);
         return;
       }
       case ts.SyntaxKind.StringLiteral:
       case ts.SyntaxKind.NoSubstitutionTemplateLiteral: return checkString(n, (n as ts.StringLiteral).text);
       case ts.SyntaxKind.TemplateExpression: return checkTemplate(n as ts.TemplateExpression);
-      case ts.SyntaxKind.BinaryExpression: return checkConcat(n as ts.BinaryExpression);
+      case ts.SyntaxKind.BinaryExpression: {
+        const b = n as ts.BinaryExpression;
+        const k = b.operatorToken.kind;
+        if (k >= ts.SyntaxKind.FirstAssignment && k <= ts.SyntaxKind.LastAssignment) checkWrite(b, b.left, k, b.right);
+        return checkConcat(b);
+      }
+      case ts.SyntaxKind.PrefixUnaryExpression:
+      case ts.SyntaxKind.PostfixUnaryExpression: {
+        const u = n as ts.PrefixUnaryExpression;
+        if (u.operator === ts.SyntaxKind.PlusPlusToken || u.operator === ts.SyntaxKind.MinusMinusToken) checkWrite(n, u.operand);
+        return;
+      }
+      case ts.SyntaxKind.JsxText:
+        if (DANGER_TEXT.test((n as ts.JsxText).text)) add(n, "jsx: url(, @import, expression( or javascript: in text is not allowed; reword the text.");
+        return;
       case ts.SyntaxKind.JsxOpeningElement:
       case ts.SyntaxKind.JsxSelfClosingElement: return checkJsxTag(n as ts.JsxOpeningElement | ts.JsxSelfClosingElement);
-      case ts.SyntaxKind.JsxSpreadAttribute: return add(n, "spreading props into JSX ({...x}) is not allowed; pass each prop by name.");
+      case ts.SyntaxKind.JsxSpreadAttribute: return add(n, "jsx: spreading props into JSX ({...x}) is not allowed; pass each prop by name.");
       case ts.SyntaxKind.JsxAttribute: return checkJsxAttr(n as ts.JsxAttribute);
       case ts.SyntaxKind.ExportDeclaration: {
         const e = n as ts.ExportDeclaration;
-        if (!e.isTypeOnly) add(n, e.moduleSpecifier ? "re-exporting from another module is not allowed." : "'export { ... }' is not allowed; use 'export default' and 'export const meta'.");
+        if (!e.isTypeOnly) add(n, e.moduleSpecifier ? "exports: re-exporting from another module is not allowed; keep everything in this file." : "exports: 'export { ... }' is not allowed; use 'export default' and 'export const meta'.");
         return;
       }
       case ts.SyntaxKind.ExportAssignment: {
-        if ((n as ts.ExportAssignment).isExportEquals) return add(n, "'export =' is not allowed.");
-        if (hasDefault) add(n, "only one default export is allowed.");
+        if ((n as ts.ExportAssignment).isExportEquals) return add(n, "exports: 'export =' is not allowed; use export default.");
+        if (hasDefault) add(n, "exports: only one default export is allowed; remove the extra one.");
         hasDefault = true;
         return;
       }
       case ts.SyntaxKind.FunctionDeclaration:
-        if ((n as ts.FunctionDeclaration).asteriskToken) add(n, "generators are not allowed.");
+        if ((n as ts.FunctionDeclaration).asteriskToken) add(n, "syntax: generators are not allowed; return an array instead.");
         return checkExported(n as ts.FunctionDeclaration);
       case ts.SyntaxKind.VariableStatement: return checkExported(n as ts.VariableStatement);
-      case ts.SyntaxKind.ModuleDeclaration: return add(n, "namespaces/modules are not allowed.");
+      case ts.SyntaxKind.ModuleDeclaration: return add(n, "syntax: namespaces/modules are not allowed; use plain consts.");
     }
   }
 
   function checkExported(n: ts.FunctionDeclaration | ts.ClassDeclaration | ts.VariableStatement): void {
     const mods = ts.canHaveModifiers(n) ? ts.getModifiers(n) ?? [] : [];
     if (!mods.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) return;
+    const only = "exports: only 'export default' and 'export const meta' are allowed; drop the other export.";
     if (!ts.isVariableStatement(n)) {
-      if (!mods.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) return add(n, "only 'export default' and 'export const meta' are allowed.");
-      if (hasDefault) add(n, "only one default export is allowed.");
+      if (!mods.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) return add(n, only);
+      if (hasDefault) add(n, "exports: only one default export is allowed; remove the extra one.");
       hasDefault = true;
       return;
     }
     for (const decl of n.declarationList.declarations) {
-      if (!ts.isIdentifier(decl.name) || decl.name.text !== "meta") { add(decl, "only 'export default' and 'export const meta' are allowed."); continue; }
-      if (!(n.declarationList.flags & ts.NodeFlags.Const)) add(decl, "meta must be 'export const meta'.");
+      if (!ts.isIdentifier(decl.name) || decl.name.text !== "meta") { add(decl, only); continue; }
+      if (!(n.declarationList.flags & ts.NodeFlags.Const)) add(decl, "meta: meta must be 'export const meta'; do not use let or var.");
       checkMeta(decl);
     }
   }
@@ -424,17 +498,17 @@ function walk(source: string, problems: string[]): void {
     hasMeta = true;
     let init = decl.initializer;
     while (init && (ts.isAsExpression(init) || ts.isSatisfiesExpression(init) || ts.isParenthesizedExpression(init))) init = init.expression;
-    if (!init || !ts.isObjectLiteralExpression(init)) return add(decl, "meta must be a plain object of numbers.");
+    if (!init || !ts.isObjectLiteralExpression(init)) return add(decl, "meta: meta must be a plain object of numbers; e.g. { durationInFrames: 90, fps: 30, ... }.");
     const got: Record<string, number> = {};
     for (const p of init.properties) {
-      if (!ts.isPropertyAssignment(p) || !ts.isIdentifier(p.name) || !ts.isNumericLiteral(p.initializer)) { add(p, "meta may only hold plain number values."); continue; }
+      if (!ts.isPropertyAssignment(p) || !ts.isIdentifier(p.name) || !ts.isNumericLiteral(p.initializer)) { add(p, "meta: meta may only hold plain number values; write each value as a number."); continue; }
       got[p.name.text] = Number(p.initializer.text);
     }
-    if (Object.keys(got).sort().join(",") !== "durationInFrames,fps,height,width") add(init, "meta must have exactly durationInFrames, fps, width, height.");
+    if (Object.keys(got).sort().join(",") !== "durationInFrames,fps,height,width") add(init, "meta: meta must have exactly durationInFrames, fps, width, height; remove other keys.");
     const dur = got.durationInFrames;
-    if (dur !== undefined && !(Number.isInteger(dur) && dur >= 1 && dur <= TSX_MAX_FRAMES)) add(init, `meta.durationInFrames must be a whole number from 1 to ${TSX_MAX_FRAMES}.`);
+    if (dur !== undefined && !(Number.isInteger(dur) && dur >= 1 && dur <= TSX_MAX_FRAMES)) add(init, `meta: durationInFrames must be a whole number from 1 to ${TSX_MAX_FRAMES}; pick one in range.`);
     for (const k of ["fps", "width", "height"] as const) {
-      if (got[k] !== undefined && got[k] !== TSX_META[k]) add(init, `meta.${k} must be ${TSX_META[k]}.`);
+      if (got[k] !== undefined && got[k] !== TSX_META[k]) add(init, `meta: meta.${k} must be ${TSX_META[k]}; set it to ${TSX_META[k]}.`);
     }
   }
 
@@ -443,7 +517,16 @@ function walk(source: string, problems: string[]): void {
   }
 
   function memberName(id: ts.Identifier): void {
-    if (FORBIDDEN_MEMBERS.has(id.text.toLowerCase())) add(id, `'${echo(id.text)}' is not allowed.`);
+    const low = id.text.toLowerCase();
+    if (FORBIDDEN_MEMBERS.has(low)) add(id, `members: '${echo(id.text)}' is not allowed; ${MEMBER_HINT[low] ?? "use a plain data field instead"}.`);
+  }
+
+  function globalProblem(name: string): string {
+    const alt = TIMERS.has(name) ? "animate from useCurrentFrame()"
+      : name === "Date" || name === "performance" ? "time comes from useCurrentFrame()"
+        : NETWORK.has(name) ? "there is no network; use staticFile('...') files"
+          : name === "Object" || name === "JSON" ? "use plain arrays and objects" : "use locals, imports, Math, Array, String or Number";
+    return `globals: '${echo(name)}' is not allowed; ${alt}.`;
   }
 
   // Names are judged by position: a member name (x.now) against FORBIDDEN_MEMBERS; a free name (no local of that name in
@@ -452,9 +535,9 @@ function walk(source: string, problems: string[]): void {
     const p = id.parent;
     const jsxAttr = ts.isJsxAttribute(p) || ts.isJsxNamespacedName(p);
     const jsxTag = (ts.isJsxOpeningElement(p) || ts.isJsxSelfClosingElement(p) || ts.isJsxClosingElement(p)) && p.tagName === id;
-    if (!(jsxAttr || jsxTag ? JSX_IDENT : IDENT).test(id.text) || id.getText(sf) !== id.text) return add(id, "identifiers must be plain ASCII letters, digits, _ or $ (no escapes).");
-    if (id.text.startsWith("__")) return add(id, `names starting with '__' ('${echo(id.text)}') are not allowed.`);
-    if (HARD_GLOBALS.has(id.text) && !jsxAttr) return add(id, `'${echo(id.text)}' is not allowed${hint(id.text)}.`);
+    if (!(jsxAttr || jsxTag ? JSX_IDENT : IDENT).test(id.text) || id.getText(sf) !== id.text) return add(id, "names: identifiers must be plain ASCII letters, digits, _ or $ (no escapes); retype the name.");
+    if (id.text.startsWith("__")) return add(id, `names: names starting with '__' ('${echo(id.text)}') are not allowed; rename it.`);
+    if (HARD_GLOBALS.has(id.text) && !jsxAttr) return add(id, globalProblem(id.text));
     if (jsxTag) { if (!ts.isJsxClosingElement(p)) edge(id.text); return; }
     const isMember = (ts.isPropertyAccessExpression(p) && p.name === id) || (ts.isQualifiedName(p) && p.right === id) ||
       ((ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p) || ts.isPropertyDeclaration(p) || ts.isGetAccessorDeclaration(p) || ts.isSetAccessorDeclaration(p)) && p.name === id) ||
@@ -465,14 +548,12 @@ function walk(source: string, problems: string[]): void {
       ts.isClassDeclaration(p) || ts.isClassExpression(p) || ts.isBindingElement(p) || ts.isEnumDeclaration(p)) && p.name === id;
     if (isDecl) {
       if (ts.isBindingElement(p) && !p.propertyName && ts.isObjectBindingPattern(p.parent)) memberName(id); // const { constructor } = f
-      if (NO_SHADOW.has(id.text) || isProtected(id.text)) add(id, `'${echo(id.text)}' may not be declared again (it would hide the real one).`);
+      if (NO_SHADOW.has(id.text) || isProtected(id.text)) add(id, `names: '${echo(id.text)}' may not be declared again (it would hide the real one); pick another name.`);
       return;
     }
     edge(id.text);
-    if (!resolvesLocally(id) && !imported.has(id.text) && !(reactDefault && id.text === REACT_DEFAULT) && !SAFE_GLOBALS.has(id.text)) {
-      return add(id, `'${echo(id.text)}' is not allowed${FORBIDDEN_GLOBALS.has(id.text) ? hint(id.text) : ""} (only locals, the allowed imports and ${[...SAFE_GLOBALS].join(", ")}).`);
-    }
-    if (isProtected(id.text) && !directUse(id)) add(id, `'${echo(id.text)}' may only be used as ${echo(id.text)}.name or ${echo(id.text)}(...): not stored, passed, destructured or changed.`);
+    if (!declOf(id) && !imported.has(id.text) && !(reactDefault && id.text === REACT_DEFAULT) && !SAFE_GLOBALS.has(id.text)) return add(id, globalProblem(id.text));
+    if (isProtected(id.text) && !directUse(id)) add(id, `names: '${echo(id.text)}' may only be used as ${echo(id.text)}.name or ${echo(id.text)}(...); call it directly.`);
   }
 
   /** X.name, X[...], X(...), new X(...), `instanceof X`, and Boolean/Number/String as a call argument. */
@@ -487,43 +568,161 @@ function walk(source: string, problems: string[]): void {
     const obj = pa.expression;
     const name = pa.name.text;
     const root = ts.isIdentifier(obj) ? obj.text : undefined;
-    if (root === "Math" && name === "random") add(pa, "Math.random is not allowed; use random('seed') from remotion.");
-    if (root === REACT_DEFAULT && reactDefault && !TSX_IMPORTS.react!.includes(name)) add(pa, `'React.${echo(name)}' is not allowed (only ${TSX_IMPORTS.react!.join(", ")}).`);
-    if (root === "Array" && name === "from") add(pa, "Array.from is not allowed; use an array literal, Array(n) or a bounded for loop.");
-    if (root && isProtected(root) && isWriteTarget(pa)) add(pa, `changing '${echo(root)}.${echo(name)}' is not allowed.`);
-    if (name === "length" && isWriteTarget(pa)) add(pa, "changing .length is not allowed.");
-    if (name === "fill" && !boundedArray(obj)) add(pa, `.fill() is only allowed on an array literal or Array(n) with a number n up to ${MAX_ARRAY_LEN}.`);
+    if (root === "Math" && name === "random") add(pa, "random: Math.random is not allowed; use random('seed') from remotion.");
+    if (root === REACT_DEFAULT && reactDefault && !TSX_IMPORTS.react!.includes(name)) add(pa, `imports: 'React.${echo(name)}' is not allowed; only React.useMemo and React.Fragment.`);
+    if (root === "Array" && name === "from" && !(ts.isCallExpression(pa.parent) && pa.parent.expression === pa && arrayFromLen(pa.parent) !== undefined)) {
+      add(pa, `arrays: Array.from needs a literal size; use Array.from({ length: N }, fn) with N a number up to ${MAX_ARRAY_LEN}.`);
+    }
+    if (name === "fill" && arrayLen(obj) === undefined) add(pa, `arrays: .fill() only on a literal-sized array; use [...] or Array(N) with N a number up to ${MAX_ARRAY_LEN}.`);
   }
 
-  // Computed keys (x[k], { [k]: v }, const { [k]: v } = x) must be numbers: no text key can then spell a forbidden name.
+  // Computed keys (x[k], { [k]: v }, const { [k]: v } = x): a number, or a text literal (or const text) read from a const
+  // object literal of this file that is not an Object.prototype name. Keys built from text at run time are refused.
   function checkKey(n: ts.Node, key: ts.Expression, obj?: ts.Expression): void {
-    const lit = literalString(key);
-    const root = obj && ts.isIdentifier(obj) ? obj.text : undefined;
+    const lit = strConst(key);
     if (lit !== undefined) {
-      if (root === REACT_DEFAULT && reactDefault && !TSX_IMPORTS.react!.includes(lit)) add(n, `'React.${echo(lit)}' is not allowed (only ${TSX_IMPORTS.react!.join(", ")}).`);
       const low = lit.toLowerCase();
-      if (FORBIDDEN_MEMBERS.has(low) || FORBIDDEN_GLOBALS.has(lit) || STRING_BANNED.has(low) || lit === "random") return add(n, `the key '${echo(lit)}' is not allowed.`);
-      return add(n, "text keys in [...] are not allowed; write x.name, or use a number key.");
+      if (FORBIDDEN_MEMBERS.has(low) || FORBIDDEN_GLOBALS.has(lit) || STRING_BANNED.has(low) || lit === "random" || Object.prototype.hasOwnProperty.call(Object.prototype, lit)) {
+        return add(n, `keys: the key '${echo(lit)}' is not allowed; use a plain data key.`);
+      }
     }
-    if (isNumericKey(key, 0)) return;
-    if (root && isProtected(root)) return add(n, `computed lookup on '${echo(root)}' is not allowed.`);
-    add(n, "computed keys must be numbers (a number, arithmetic like i % 3, Math.floor(x) or a for-loop counter); keys built from text are not allowed.");
+    const o = obj && unwrap(obj);
+    if (o && ts.isIdentifier(o) && (isProtected(o.text) || isFnDecl(declOf(o)))) return add(n, `keys: computed lookup on '${echo(o.text)}' is not allowed; write ${echo(o.text)}.name directly.`);
+    if (lit !== undefined) {
+      if (!obj) return add(n, "keys: computed keys must be numbers; write { name: value } for text keys.");
+      const init = constInit(obj);
+      if (init && ts.isObjectLiteralExpression(init)) return;
+      return add(n, "keys: text keys in [...] work only on a const object literal of this file, e.g. COLORS['a']; else use x.name.");
+    }
+    if (isNumeric(key)) return;
+    add(n, "keys: computed keys must be numbers (i, i % n, Math.floor(x)) or a literal key; keys built from text are not allowed.");
   }
 
   /** True when the expression can only produce a number. Unknown shapes are false (refused). */
-  function isNumericKey(e: ts.Expression, depth: number): boolean {
+  function isNumeric(e: ts.Node, depth = 0): boolean {
     if (depth > 50) return false;
-    const u = unwrap(e) as ts.Expression;
+    const u = unwrap(e);
     if (ts.isNumericLiteral(u) || ts.isBigIntLiteral(u)) return true;
-    if (ts.isIdentifier(u)) { const s = scopeOf(u); return !!s && counterScopes.has(s); }
-    if (ts.isPrefixUnaryExpression(u)) return u.operator === ts.SyntaxKind.MinusToken || u.operator === ts.SyntaxKind.PlusToken || u.operator === ts.SyntaxKind.TildeToken;
+    if (ts.isIdentifier(u)) {
+      const d = declOf(u);
+      if (!d) return u.text === "NaN" || u.text === "Infinity";
+      let r = numMemo.get(d);
+      if (r === undefined) { numMemo.set(d, false); r = numericDecl(d, depth); numMemo.set(d, r); }
+      return r;
+    }
+    if (ts.isPrefixUnaryExpression(u)) return u.operator !== ts.SyntaxKind.ExclamationToken;
+    if (ts.isPostfixUnaryExpression(u)) return true;
     if (ts.isBinaryExpression(u)) {
       if (ARITH.has(u.operatorToken.kind)) return true;
-      return u.operatorToken.kind === ts.SyntaxKind.PlusToken && isNumericKey(u.left, depth + 1) && isNumericKey(u.right, depth + 1);
+      return u.operatorToken.kind === ts.SyntaxKind.PlusToken && isNumeric(u.left, depth + 1) && isNumeric(u.right, depth + 1);
     }
-    if (ts.isConditionalExpression(u)) return isNumericKey(u.whenTrue, depth + 1) && isNumericKey(u.whenFalse, depth + 1);
-    const c = ts.isCallExpression(u) ? u.expression : undefined;
-    return !!c && ts.isPropertyAccessExpression(c) && ts.isIdentifier(c.expression) && c.expression.text === "Math" && MATH_NUMERIC.has(c.name.text);
+    if (ts.isConditionalExpression(u)) return isNumeric(u.whenTrue, depth + 1) && isNumeric(u.whenFalse, depth + 1);
+    if (ts.isPropertyAccessExpression(u)) return isGlobal(u.expression, "Math") && MATH_CONSTS.has(u.name.text);
+    if (ts.isElementAccessExpression(u)) return numberArray(u.expression);
+    if (!ts.isCallExpression(u)) return false;
+    const c = u.expression;
+    if (ts.isPropertyAccessExpression(c)) return isGlobal(c.expression, "Math") && c.name.text !== "random";
+    return ts.isIdentifier(c) && (c.text === "Number" || c.text === "parseInt" || c.text === "parseFloat" ? !declOf(c) : NUMERIC_IMPORTS.has(c.text) && imported.has(c.text));
+  }
+
+  /** A const/let initialised with a number (a let may then only be given numbers: checkWrite), or a numeric parameter. */
+  function numericDecl(d: ts.Node, depth: number): boolean {
+    if (ts.isVariableDeclaration(d)) {
+      return ts.isIdentifier(d.name) && !!d.initializer && ts.isVariableDeclarationList(d.parent) && !!(d.parent.flags & ts.NodeFlags.BlockScoped) && isNumeric(d.initializer, depth + 1);
+    }
+    return ts.isParameter(d) && numericParam(d, depth);
+  }
+
+  // The index parameter of an array callback (arr.map((x, i) => ...) with arr provably an array), or a `: number`
+  // parameter of a named function that is only ever called directly, with a number in that position.
+  function numericParam(p: ts.ParameterDeclaration, depth: number): boolean {
+    if (p.dotDotDotToken || !ts.isIdentifier(p.name)) return false;
+    const f = p.parent;
+    const i = f.parameters.indexOf(p);
+    const call = f.parent;
+    if (i === 1 && isFnExpr(f) && ts.isCallExpression(call)) {
+      const c = call.expression;
+      if (ts.isPropertyAccessExpression(c) && INDEXED.has(c.name.text) && call.arguments[0] === f && isArrayExpr(c.expression)) return true;
+      if (isArrayFromCall(call) && call.arguments[1] === f) return true;
+    }
+    if (p.type?.kind !== ts.SyntaxKind.NumberKeyword) return false;
+    const named = ts.isFunctionDeclaration(f) ? f : ts.isVariableDeclaration(f.parent) && f.parent.initializer === f ? f.parent : undefined;
+    if (!named?.name || !ts.isIdentifier(named.name)) return false;
+    return refsOf(named, named.name).every((r) => {
+      const c = r.parent;
+      if (!ts.isCallExpression(c) || c.expression !== r || c.arguments.some(ts.isSpreadElement)) return false;
+      const a = c.arguments[i] ?? p.initializer;
+      return !!a && isNumeric(a, depth + 1);
+    });
+  }
+
+  /** True when the value is a real array: its .map/.filter... are the built-in ones (writing them is refused). */
+  function isArrayExpr(e: ts.Node, depth = 0): boolean {
+    if (depth > 20) return false;
+    const u = unwrap(e);
+    if (ts.isArrayLiteralExpression(u)) return true;
+    if ((ts.isCallExpression(u) || ts.isNewExpression(u)) && isGlobal(u.expression, "Array")) return true;
+    if (ts.isCallExpression(u)) {
+      const c = u.expression;
+      if (isArrayFromCall(u)) return true;
+      if (ts.isPropertyAccessExpression(c) && ARRAY_RESULT.has(c.name.text)) return isArrayExpr(c.expression, depth + 1);
+      if (ts.isPropertyAccessExpression(c) && c.name.text === "split") return strConst(c.expression) !== undefined || ts.isTemplateExpression(unwrap(c.expression));
+      const a = u.arguments[0];
+      return isUseMemo(c) && !!a && ts.isArrowFunction(a) && !ts.isBlock(a.body) && isArrayExpr(a.body, depth + 1);
+    }
+    const init = constInit(u);
+    return !!init && isArrayExpr(init, depth + 1);
+  }
+
+  /** A const array that never grows: every use reads it (x.name, x[i], for...of, [...x]); no push/unshift/splice/writes. */
+  function frozen(d: ts.VariableDeclaration): boolean {
+    let r = frozenMemo.get(d);
+    if (r !== undefined) return r;
+    r = refsOf(d, d.name as ts.Identifier).every((ref) => {
+      const p = ref.parent;
+      if (ts.isPropertyAccessExpression(p) && p.expression === ref) return !GROW.has(p.name.text) && !isWriteTarget(p);
+      if (ts.isElementAccessExpression(p) && p.expression === ref) return !isWriteTarget(p);
+      return (ts.isForOfStatement(p) && p.expression === ref) || ts.isSpreadElement(p);
+    });
+    frozenMemo.set(d, r);
+    return r;
+  }
+
+  /** The fixed length of a literal-sized array ([..], Array(N), Array.from({ length: N }), a frozen const of one). */
+  function arrayLen(e: ts.Node, depth = 0): number | undefined {
+    if (depth > 20) return undefined;
+    const u = unwrap(e);
+    if (ts.isArrayLiteralExpression(u)) return u.elements.some(ts.isSpreadElement) ? undefined : u.elements.length;
+    if ((ts.isCallExpression(u) || ts.isNewExpression(u)) && isGlobal(u.expression, "Array")) return arraySize(u.arguments);
+    if (isArrayFromCall(u)) return arrayFromLen(u as ts.CallExpression);
+    if (ts.isCallExpression(u) && ts.isPropertyAccessExpression(u.expression) && LENGTH_KEEP.has(u.expression.name.text)) return arrayLen(u.expression.expression, depth + 1);
+    const d = constDecl(u);
+    return d && frozen(d) ? arrayLen(d.initializer!, depth + 1) : undefined;
+  }
+
+  /** A frozen const array literal of plain numbers: x[i] on it is a number. */
+  function numberArray(e: ts.Node): boolean {
+    const d = constDecl(e);
+    const init = d && unwrap(d.initializer!);
+    return !!init && ts.isArrayLiteralExpression(init) && init.elements.every((x) => numLit(x) !== undefined) && frozen(d);
+  }
+
+  /** Array(n)/new Array(n) size: no argument, two or more elements, or one number (or const number) up to MAX_ARRAY_LEN. */
+  function arraySize(args: readonly ts.Expression[] | undefined): number | undefined {
+    if (!args || args.length === 0) return 0;
+    if (args.some(ts.isSpreadElement)) return undefined;
+    if (args.length > 1) return args.length;
+    const n = numLit(args[0]!);
+    return n !== undefined && Number.isInteger(n) && n >= 0 && n <= MAX_ARRAY_LEN ? n : undefined;
+  }
+
+  /** N of Array.from({ length: N }, fn?) with N a number (or const number) up to MAX_ARRAY_LEN. */
+  function arrayFromLen(c: ts.CallExpression): number | undefined {
+    const o = c.arguments[0] && unwrap(c.arguments[0]);
+    if (!o || c.arguments.length > 2 || c.arguments.some(ts.isSpreadElement) || !ts.isObjectLiteralExpression(o) || o.properties.length !== 1) return undefined;
+    const p = o.properties[0]!;
+    if (!ts.isPropertyAssignment(p) || !(ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) || p.name.text !== "length") return undefined;
+    return arraySize([p.initializer]);
   }
 
   function checkRecursion(): void {
@@ -537,7 +736,7 @@ function walk(source: string, problems: string[]): void {
         const next = it.next();
         if (next.done) { state.set(name, 2); path.pop(); continue; }
         const s = state.get(next.value);
-        if (s === 1) { problems.push(`'${echo(next.value)}' calls itself (directly or through another function): recursion is not allowed.`); return; }
+        if (s === 1) { problems.push(`recursion: '${echo(next.value)}' calls itself (directly or via another function); use a for loop instead.`); return; }
         if (s === undefined) { state.set(next.value, 1); path.push([next.value, (calls.get(next.value) ?? new Set<string>()).values()]); }
       }
     }
@@ -545,76 +744,172 @@ function walk(source: string, problems: string[]): void {
 
   function checkStyleKey(p: ts.PropertyAssignment): void {
     const name = ts.isIdentifier(p.name) || ts.isStringLiteral(p.name) ? p.name.text.toLowerCase() : "";
-    if (name.includes("animation") || name.includes("transition")) add(p, "CSS animations/transitions are not allowed; animate from useCurrentFrame().");
-    if (ts.isStringLiteral(p.name) && name.startsWith("__")) add(p, "keys starting with '__' are not allowed.");
+    const none = ts.isStringLiteral(p.initializer) && p.initializer.text === "none";
+    if ((name.includes("animation") || name.includes("transition")) && !none) add(p, "css: CSS animations/transitions are not allowed; animate from useCurrentFrame() (or set 'none').");
+    if (ts.isStringLiteral(p.name) && name.startsWith("__")) add(p, "names: keys starting with '__' are not allowed; rename the key.");
+  }
+
+  // Only {...base} where base is a const object literal of this file (it cannot be a React element) without element keys.
+  function checkSpread(s: ts.SpreadAssignment): void {
+    const init = constInit(s.expression);
+    const ok = !!init && ts.isObjectLiteralExpression(init) && init.properties.every((p) =>
+      (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) && !SPREAD_BANNED.has(p.name.text));
+    if (!ok) add(s, "spread: object spread {...x} only works on a const object literal of this file; else list the fields.");
+  }
+
+  // Assignments: a plain name may change only when it is a number `let` (and stays a number); members may not be React
+  // element / prototype / array-iterator fields, numbers index element writes, and globals, imports and functions stay as
+  // they are. No casts on the left (`(X as any) = "style"`), no destructuring assignment.
+  function checkWrite(n: ts.Node, left: ts.Expression, op?: ts.SyntaxKind, rhs?: ts.Expression): void {
+    const keepsNumber = !!rhs && op !== undefined && KEEP_NUMBER.has(op);
+    let t: ts.Expression = left;
+    for (;;) {
+      if (ts.isAsExpression(t) || ts.isSatisfiesExpression(t) || ts.isTypeAssertionExpression(t)) return add(n, "assign: type casts on the left of '=' are not allowed; change a number 'let' instead.");
+      if (ts.isParenthesizedExpression(t) || ts.isNonNullExpression(t)) { t = t.expression; continue; }
+      if (ts.isPropertyAccessExpression(t)) {
+        if (WRITE_BANNED.has(t.name.text.toLowerCase())) return add(n, `assign: writing '.${echo(t.name.text)}' is not allowed; build a new object or array instead.`);
+        t = t.expression;
+        continue;
+      }
+      if (ts.isElementAccessExpression(t)) {
+        if (!isNumeric(t.argumentExpression)) return add(n, "assign: x[...] = needs a number index; write x.name = ... for a named field.");
+        t = t.expression;
+        continue;
+      }
+      break;
+    }
+    if (ts.isArrayLiteralExpression(t) || ts.isObjectLiteralExpression(t)) return add(n, "assign: destructuring assignment is not allowed; assign each name in its own statement.");
+    if (!ts.isIdentifier(t)) return add(n, "assign: only a named object's fields may change; e.g. const o = { x: 0 }; o.x = 1.");
+    const d = declOf(t);
+    if (t !== unwrap(left)) {
+      if (isProtected(t.text) || isFnDecl(d)) return add(n, `assign: changing '${echo(t.text)}' is not allowed; keep your own values in a const object.`);
+      if (keepsNumber && refersTo(rhs!, t.text) && !isNumeric(rhs!)) add(n, `growth: '${echo(t.text)}' may not be built from itself; compute a new const instead.`);
+      return;
+    }
+    const numberLet = !!d && ts.isVariableDeclaration(d) && ts.isVariableDeclarationList(d.parent) && !!(d.parent.flags & ts.NodeFlags.Let) && isNumeric(t);
+    if (!numberLet) return add(n, `assign: only number 'let's may change, not '${echo(t.text)}'; use a new const, e.g. const b = c ? x : y.`);
+    if (keepsNumber && !isNumeric(rhs!)) add(n, `assign: '${echo(t.text)}' must stay a number; wrap the value in Number(...) or use a const.`);
   }
 
   function checkCall(c: ts.CallExpression): void {
-    if (c.expression.kind === ts.SyntaxKind.ImportKeyword) return add(c, "dynamic import() is not allowed.");
+    if (c.expression.kind === ts.SyntaxKind.ImportKeyword) return add(c, "imports: dynamic import() is not allowed; use a static import at the top.");
     const callee = c.expression;
     if (ts.isPropertyAccessExpression(callee) && ITERATORS.has(callee.name.text)) {
-      // a callback inside a callback inside a callback multiplies the work; two levels are plenty for a scene
+      // a callback inside a callback inside a callback multiplies the work; three levels are plenty for a scene
       let depth = 1;
       for (let a: ts.Node | undefined = c.parent; a; a = a.parent) {
         const q = a.parent;
         if (ts.isFunctionLike(a) && q && ts.isCallExpression(q) && q.arguments.includes(a as ts.Expression) && ts.isPropertyAccessExpression(q.expression) && ITERATORS.has(q.expression.name.text)) depth++;
       }
-      if (depth > MAX_CALLBACK_NEST) add(c, `.map/.filter/.reduce/... callbacks may be nested at most ${MAX_CALLBACK_NEST} deep.`);
+      if (depth > MAX_CALLBACK_NEST) add(c, `loops: .map/.filter/... callbacks may be nested at most ${MAX_CALLBACK_NEST} deep; move the inner part to a const.`);
     }
     // f(f): self-application, recursion without a name (x => x(x))
     const self = unwrap(callee);
-    if (ts.isIdentifier(self) && c.arguments.some((a) => { const u = unwrap(a); return ts.isIdentifier(u) && u.text === self.text; })) add(c, `'${echo(self.text)}' may not be passed to itself (recursion is not allowed).`);
+    if (ts.isIdentifier(self) && c.arguments.some((a) => { const u = unwrap(a); return ts.isIdentifier(u) && u.text === self.text; })) add(c, `recursion: '${echo(self.text)}' may not be passed to itself; use a for loop or .map().`);
+    if (ts.isPropertyAccessExpression(self) || ts.isElementAccessExpression(self)) {
+      const root = rootName(self);
+      // o.f() / a[0]() inside a function stored in o / a: recursion through an object or array
+      if (root && owners.has(root) && (ts.isElementAccessExpression(self) || !(self.name.text in Array.prototype || self.name.text in String.prototype))) edge(root, true);
+      if (root && ts.isPropertyAccessExpression(self) && GROW.has(self.name.text) && c.arguments.some((a) => ts.isSpreadElement(a) && refersTo(a, root))) {
+        add(c, `growth: '${echo(root)}' may not be spread into itself; build a new array with .map() instead.`);
+      }
+    }
+    if (ts.isPropertyAccessExpression(callee)) checkTextCall(c, callee);
     if (!ts.isIdentifier(callee)) return;
     if (callee.text === "random" && imported.has("random")) {
+      // random(null) is truly random. Text (a template or a `+` with a text piece is always text) or a number is fixed.
       const a = c.arguments[0];
       const u = a && unwrap(a);
-      const fixed = !!u && u.kind !== ts.SyntaxKind.NullKeyword && !ts.isVoidExpression(u) && !(ts.isIdentifier(u) && u.text === "undefined");
-      if (!fixed) add(c, "random() needs a fixed seed, e.g. random('dot-1').");
+      const fixed = !!u && (strConst(u) !== undefined || isNumeric(u) || ts.isTemplateExpression(u) ||
+        (isPlus(u) && plusOperands(u as ts.BinaryExpression).some((o) => strConst(o) !== undefined)));
+      if (!fixed) add(c, "random: the seed must be text or a number, e.g. random(`dot-${i}`) or random('a'); not a variable.");
     }
     if (callee.text === "staticFile") checkStaticFile(c);
-    if (callee.text === "Array" && !arrayArgsOk(c.arguments)) add(c, `Array(n) needs a number n up to ${MAX_ARRAY_LEN}.`);
+    if (callee.text === "Array" && arraySize(c.arguments) === undefined) add(c, `arrays: Array(n) needs n as a number or const number up to ${MAX_ARRAY_LEN}; e.g. Array(40).fill(0).`);
+  }
+
+  // ["ur", "l(x)"].join("") and "ur".concat("l(x)") build text from literal pieces: check them like a `+` chain.
+  function checkTextCall(c: ts.CallExpression, callee: ts.PropertyAccessExpression): void {
+    if (callee.name.text === "concat" && strConst(callee.expression) !== undefined) return checkParts(c, [partOf(callee.expression), ...c.arguments.map(partOf)]);
+    if (callee.name.text !== "join") return;
+    const u = unwrap(callee.expression);
+    const arr = ts.isArrayLiteralExpression(u) ? u : constInit(u);
+    if (!arr || !ts.isArrayLiteralExpression(arr) || arr.elements.some(ts.isSpreadElement)) return;
+    const sep = c.arguments[0] ? partOf(c.arguments[0]) : ",";
+    const parts: Part[] = [];
+    arr.elements.forEach((e, i) => { if (i > 0) parts.push(sep); parts.push(ts.isOmittedExpression(e) ? "" : partOf(e)); });
+    checkParts(c, parts);
   }
 
   // Only a plain literal name: no template, no variable, so the files a scene can reach are known before it runs.
   function checkStaticFile(c: ts.CallExpression): void {
     const a = c.arguments.length === 1 ? c.arguments[0]! : undefined;
     const ok = !!a && (ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a)) && isStaticName(a.text);
-    if (!ok) add(c, "staticFile() needs one plain relative file name as a literal, e.g. staticFile('assets/a.png').");
+    if (!ok) add(c, "files: staticFile() needs one plain relative file name as a literal; e.g. staticFile('assets/a.png').");
   }
 
   function checkString(n: ts.Node, text: string): void {
-    if (STRING_BANNED.has(text.toLowerCase())) add(n, `the text '${echo(text)}' is not allowed as a value.`);
-    if (text.includes("\\")) add(n, "backslashes in text are not allowed.");
+    if (STRING_BANNED.has(text.toLowerCase())) add(n, `text: the text '${echo(text)}' is not allowed as a value; use other words.`);
+    if (text.includes("\\")) add(n, "text: backslashes in text are not allowed; write the characters directly.");
     const low = text.toLowerCase();
-    if (low.includes("image-set(") || low.includes("src(")) add(n, "CSS image-set()/src() are not allowed.");
+    if (low.includes("image-set(") || low.includes("src(")) add(n, "css: CSS image-set()/src() are not allowed; use <Img src={staticFile('...')} />.");
     // CSS url(...) only as url(#id) (an SVG reference in this document); pictures use <Img src={staticFile(...)} />.
     for (let i = low.indexOf("url("); i >= 0; i = low.indexOf("url(", i + 4)) {
       let j = i + 4;
       while (low[j] === " " || low[j] === "'" || low[j] === '"') j++;
-      if (low[j] !== "#") { add(n, "CSS url(...) is not allowed except url(#id) or url(${staticFile('...')})."); break; }
+      if (low[j] !== "#") { add(n, "css: CSS url(...) is only allowed as url(#id) or url(${staticFile('...')}); use <Img> for pictures."); break; }
+    }
+    if (/@import|expression\(|javascript:(?!\s)/i.test(text)) add(n, "css: @import, expression( and javascript: are not allowed in text; reword the text.");
+  }
+
+  /** A piece of built text: its literal value when known (literal, const text, number literal), else the expression. */
+  function partOf(e: ts.Expression): Part {
+    const s = strConst(e);
+    if (s !== undefined) return s;
+    const u = unwrap(e);
+    return ts.isNumericLiteral(u) ? String(Number(u.text)) : e;
+  }
+
+  // Literal runs are checked as whole text; a value that is not a number may not sit next to a literal piece that
+  // starts or ends a dangerous token ("ur" + x, x + "l(...)"), since the value could complete it at run time.
+  function checkParts(n: ts.Node, raw: Part[]): void {
+    const parts: Part[] = [];
+    for (const p of raw) {
+      const last = parts[parts.length - 1];
+      if (typeof p === "string" && typeof last === "string") parts[parts.length - 1] = last + p;
+      else parts.push(p);
+    }
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]!;
+      const next = parts[i + 1];
+      if (typeof p === "string") {
+        let s = p;
+        // url(${staticFile('x')}) is the one allowed shape of a url( right before a value.
+        const m = next !== undefined && typeof next !== "string" && isStaticFileCall(next) ? /url\(\s*["']?$/i.exec(s) : null;
+        if (m) s = s.slice(0, m.index);
+        checkString(n, s);
+        continue;
+      }
+      if (isStaticFileCall(p) || isNumeric(p)) continue;
+      const prev = parts[i - 1];
+      if ((typeof prev === "string" && glued(prev, true)) || (typeof next === "string" && glued(next, false))) {
+        return add(n, "css: url(, @import or javascript: may not be glued from pieces; write the whole text, e.g. url(#id).");
+      }
     }
   }
 
   function checkTemplate(t: ts.TemplateExpression): void {
-    const folded = foldTemplate(t);
-    if (folded !== undefined) return checkString(t, folded);
-    // url(${staticFile('x')}) is the one allowed shape of a url( right before a substitution.
-    const parts = [t.head.text, ...t.templateSpans.map((s) => s.literal.text)];
-    for (let i = 0; i < parts.length; i++) {
-      let part = parts[i]!;
-      const span = t.templateSpans[i];
-      const m = /url\(\s*["']?$/i.exec(part);
-      if (m && span && ts.isCallExpression(span.expression) && ts.isIdentifier(span.expression.expression) && span.expression.expression.text === "staticFile") part = part.slice(0, m.index);
-      checkString(t, part);
-    }
+    const parts: Part[] = [t.head.text];
+    for (const s of t.templateSpans) parts.push(partOf(s.expression), s.literal.text);
+    checkParts(t, parts);
   }
 
   function checkConcat(b: ts.BinaryExpression): void {
     if (b.operatorToken.kind !== ts.SyntaxKind.PlusToken) return;
     if (ts.isBinaryExpression(b.parent) && b.parent.operatorToken.kind === ts.SyntaxKind.PlusToken) return; // the whole chain once
-    const runs = literalRuns(b);
-    if ((runs.terms ?? 0) > MAX_PLUS_TERMS) add(b, `a '+' chain may have at most ${MAX_PLUS_TERMS} parts.`);
-    for (const run of runs) checkString(b, run);
+    const ops = plusOperands(b);
+    if (ops.length > MAX_PLUS_TERMS) add(b, `text: a '+' chain may have at most ${MAX_PLUS_TERMS} parts; use a template literal or .join().`);
+    checkParts(b, ops.map(partOf));
   }
 
   function checkJsxTag(el: ts.JsxOpeningElement | ts.JsxSelfClosingElement): void {
@@ -622,33 +917,44 @@ function walk(source: string, problems: string[]): void {
     if (ts.isIdentifier(tag)) {
       const name = tag.text;
       if (/^[a-z]/.test(name) || name.includes("-")) {
-        if (name.includes("-")) return add(el, `custom element <${echo(name)}> is not allowed.`);
-        if (FORBIDDEN_TAGS.has(name.toLowerCase())) add(el, name === "img" ? "<img> is not allowed; use <Img src={staticFile('...')} /> from remotion." : `<${echo(name)}> is not allowed.`);
+        if (name.includes("-")) return add(el, `jsx: custom element <${echo(name)}> is not allowed; use div, span or svg tags.`);
+        if (FORBIDDEN_TAGS.has(name.toLowerCase())) add(el, name === "img" ? "jsx: <img> is not allowed; use <Img src={staticFile('...')} /> from remotion." : `jsx: <${echo(name)}> is not allowed; use div, span, svg shapes or remotion components.`);
         return;
       }
-      if (!imported.has(name) && !components.has(name)) add(el, `<${echo(name)}> must be a component declared in this file or imported from the allowed list.`);
+      // The tag must BE a component: a function declaration or a const arrow/function of this file, or an allowed
+      // import. A let, a parameter or a const holding text would let `<X>` render any intrinsic tag (<style>, <iframe>).
+      const d = declOf(tag);
+      if (d ? !isComponentDecl(d) : !imported.has(name)) add(el, `jsx: <${echo(name)}> must be a component declared here or imported; e.g. const X = () => <div />.`);
       return;
     }
     let root: ts.Node = tag;
     while (ts.isPropertyAccessExpression(root)) root = root.expression;
-    const ok = ts.isIdentifier(root) && (imported.has(root.text) || components.has(root.text) || (root.text === REACT_DEFAULT && reactDefault));
-    if (!ok) add(el, `the tag <${snip(tag)}> is not allowed.`);
+    const ok = ts.isPropertyAccessExpression(tag) && ts.isIdentifier(root) && (imported.has(root.text) || (root.text === REACT_DEFAULT && reactDefault));
+    if (!ok) add(el, `jsx: the tag <${snip(tag)}> is not allowed; member tags only on imports, e.g. <Series.Sequence>.`);
   }
 
   function checkJsxAttr(a: ts.JsxAttribute): void {
     const raw = ts.isJsxNamespacedName(a.name) ? `${a.name.namespace.text}:${a.name.name.text}` : a.name.text;
     const key = raw.toLowerCase().replace(/[:-]/g, "");
-    if (key === "dangerouslysetinnerhtml") return add(a, "dangerouslySetInnerHTML is not allowed.");
-    if (key === "ref") return add(a, "ref is not allowed.");
-    if (key.startsWith("on")) return add(a, `event handler '${echo(raw)}' is not allowed.`);
-    if (key === "is" || key === "srcdoc") return add(a, `'${echo(raw)}' is not allowed.`);
+    if (key === "dangerouslysetinnerhtml") return add(a, "jsx: dangerouslySetInnerHTML is not allowed; put the text in as children.");
+    if (key === "ref") return add(a, "jsx: ref is not allowed; compute values from useCurrentFrame().");
+    if (key.startsWith("on")) return add(a, `jsx: event handler '${echo(raw)}' is not allowed; a video has no clicks, remove it.`);
+    if (key === "is" || key === "srcdoc") return add(a, `jsx: '${echo(raw)}' is not allowed; remove the attribute.`);
     const urlish = URL_ATTRS.has(key) || key.endsWith("href");
     if (!urlish) return;
     const v = a.initializer;
     if (v && ts.isStringLiteral(v) && key.endsWith("href") && /^#[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(v.text)) return; // <use href="#id">
     const e = v && ts.isJsxExpression(v) ? v.expression : undefined;
     if (e && ts.isCallExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === "staticFile") return;
-    add(a, `'${echo(raw)}' must be staticFile('...')${key.endsWith("href") ? " or '#id'" : ""}.`);
+    add(a, `jsx: '${echo(raw)}' must be staticFile('...')${key.endsWith("href") ? " or '#id'" : ""}; e.g. src={staticFile('assets/a.png')}.`);
+  }
+
+  /** The bound N of `i < N`: a number, a const number, or arr.length of a literal-sized array that never grows. */
+  function forBound(f: ts.ForStatement): number | undefined {
+    const c = f.condition;
+    if (!c || !ts.isBinaryExpression(c)) return undefined;
+    const r = unwrap(c.right);
+    return ts.isPropertyAccessExpression(r) && r.name.text === "length" ? arrayLen(r.expression) : numLit(r);
   }
 
   function checkFor(f: ts.ForStatement): void {
@@ -657,21 +963,22 @@ function walk(source: string, problems: string[]): void {
     const v = decl && ts.isIdentifier(decl.name) && decl.initializer && ts.isNumericLiteral(decl.initializer) ? decl.name.text : undefined;
     const cond = f.condition;
     const inc = f.incrementor;
+    const bound = forBound(f);
     const boundOk = !!v && !!cond && ts.isBinaryExpression(cond) && ts.isIdentifier(cond.left) && cond.left.text === v &&
       (cond.operatorToken.kind === ts.SyntaxKind.LessThanToken || cond.operatorToken.kind === ts.SyntaxKind.LessThanEqualsToken) &&
-      ts.isNumericLiteral(cond.right) && Number(cond.right.text) <= MAX_LOOP_BOUND;
+      bound !== undefined && bound <= MAX_LOOP_BOUND;
     const stepOk = !!v && !!inc && (
       ((ts.isPostfixUnaryExpression(inc) || ts.isPrefixUnaryExpression(inc)) && inc.operator === ts.SyntaxKind.PlusPlusToken && ts.isIdentifier(inc.operand) && inc.operand.text === v) ||
       (ts.isBinaryExpression(inc) && inc.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken && ts.isIdentifier(inc.left) && inc.left.text === v && ts.isNumericLiteral(inc.right) && Number(inc.right.text) >= 1));
-    if (!boundOk || !stepOk) return add(f, `for loops need the shape 'for (let i = 0; i < 100; i++)' with a number bound up to ${MAX_LOOP_BOUND}.`);
-    if (assigns(f.statement, v!)) add(f, `the loop variable '${echo(v!)}' may not be changed inside the loop.`);
+    if (!boundOk || !stepOk) return add(f, `loops: for loops need for (let i = 0; i < N; i++) with N a number, const or arr.length up to ${MAX_LOOP_BOUND}.`);
+    if (assigns(f.statement, v!)) add(f, `loops: the loop variable '${echo(v!)}' may not be changed inside the loop; use a separate let.`);
     checkNesting(f);
   }
 
   function checkForOf(f: ts.ForOfStatement): void {
-    if (f.awaitModifier) return add(f, "for await is not allowed.");
-    const e = unwrap(f.expression);
-    if (!ts.isArrayLiteralExpression(e) || e.elements.some(ts.isSpreadElement)) return add(f, "for...of only over an array literal, e.g. for (const c of ['a', 'b']); use .map() on other arrays.");
+    if (f.awaitModifier) return add(f, "loops: for await is not allowed; use for (const x of [...]).");
+    if (!ts.isVariableDeclarationList(f.initializer)) return add(f, "loops: for...of must declare its variable; e.g. for (const x of list).");
+    if (arrayLen(f.expression) === undefined) return add(f, "loops: for...of only over an array literal or a const array that never grows; else use .map().");
     checkNesting(f);
   }
 
@@ -680,28 +987,70 @@ function walk(source: string, problems: string[]): void {
     let depth = 0;
     let product = 1;
     for (let a: ts.Node | undefined = loop; a; a = a.parent) {
-      if (ts.isForStatement(a) || ts.isForOfStatement(a)) { depth++; product *= loopCount(a); }
+      if (ts.isForStatement(a) || ts.isForOfStatement(a)) { depth++; product *= Math.max(1, (ts.isForStatement(a) ? forBound(a) : arrayLen(a.expression)) ?? 1); }
     }
-    if (depth > MAX_LOOP_NEST) add(loop, `loops may be nested at most ${MAX_LOOP_NEST} deep.`);
-    else if (product > MAX_LOOP_PRODUCT) add(loop, `nested loops may run at most ${MAX_LOOP_PRODUCT} times in total.`);
+    if (depth > MAX_LOOP_NEST) add(loop, `loops: loops may be nested at most ${MAX_LOOP_NEST} deep; move the inner loop into .map().`);
+    else if (product > MAX_LOOP_PRODUCT) add(loop, `loops: nested loops may run at most ${MAX_LOOP_PRODUCT} times in total; use smaller bounds.`);
   }
 }
 
-/** Upper bound on a checked loop's runs (shapes that fail their own check count as 1; they are refused anyway). */
-function loopCount(n: ts.ForStatement | ts.ForOfStatement): number {
-  if (ts.isForOfStatement(n)) {
-    const e = unwrap(n.expression);
-    return ts.isArrayLiteralExpression(e) ? Math.max(1, e.elements.length) : 1;
-  }
-  const c = n.condition;
-  return c && ts.isBinaryExpression(c) && ts.isNumericLiteral(c.right) ? Math.max(1, Number(c.right.text)) : 1;
+type Part = string | ts.Expression;
+const KEEP_NUMBER = new Set([
+  ts.SyntaxKind.EqualsToken, ts.SyntaxKind.PlusEqualsToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+  ts.SyntaxKind.QuestionQuestionEqualsToken,
+]);
+
+/** True when the text ends with a start of a GLUE_TOKEN (atEnd) or starts with an end of one ("u", "ur", "l(", "rl("...). */
+function glued(text: string, atEnd: boolean): boolean {
+  const low = text.toLowerCase();
+  return GLUE_TOKENS.some((t) => {
+    for (let k = 1; k < t.length; k++) {
+      const piece = atEnd ? t.slice(0, k) : t.slice(k);
+      if (piece.length >= (t === "url(" ? 1 : 2) && (atEnd ? low.endsWith(piece) : low.startsWith(piece))) return true;
+    }
+    return false;
+  });
 }
 
-/** `for (let i = <number>; ...)`: a numeric loop counter (the loop's own check enforces the rest of the shape). */
-function isCounterDecl(d: ts.VariableDeclaration): boolean {
-  const list = d.parent;
-  return ts.isIdentifier(d.name) && !!d.initializer && ts.isNumericLiteral(d.initializer) && ts.isVariableDeclarationList(list) &&
-    !!(list.flags & ts.NodeFlags.Let) && list.declarations.length === 1 && ts.isForStatement(list.parent) && list.parent.initializer === list;
+function isStaticFileCall(e: ts.Node): boolean {
+  const u = unwrap(e);
+  return ts.isCallExpression(u) && ts.isIdentifier(u.expression) && u.expression.text === "staticFile";
+}
+
+function isFnExpr(e: ts.Node): e is ts.ArrowFunction | ts.FunctionExpression {
+  return ts.isArrowFunction(e) || ts.isFunctionExpression(e);
+}
+
+/** An identifier that names a binding (not a member name, a property key, a label or the declared name itself). */
+function isReference(id: ts.Identifier): boolean {
+  const p = id.parent;
+  if (ts.isPropertyAccessExpression(p)) return p.name !== id;
+  if (ts.isQualifiedName(p)) return p.right !== id;
+  if ((ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p) || ts.isPropertyDeclaration(p) || ts.isPropertySignature(p) || ts.isJsxAttribute(p)) && p.name === id) return false;
+  if (ts.isBindingElement(p) && p.propertyName === id) return false;
+  if (ts.isImportSpecifier(p) || ts.isImportClause(p) || ts.isLabeledStatement(p) || ts.isBreakOrContinueStatement(p)) return false;
+  return !((ts.isVariableDeclaration(p) || ts.isParameter(p) || ts.isFunctionDeclaration(p) || ts.isFunctionExpression(p) || ts.isBindingElement(p)) && p.name === id);
+}
+
+/** The object/array a function is stored in: const o = { f: () => ... }, a.push(() => ...), o.f = () => ... */
+function ownerOf(n: ts.Node): string | undefined {
+  if (!isFnExpr(n) && !ts.isMethodDeclaration(n)) return undefined;
+  let c: ts.Node = n;
+  let p = n.parent;
+  while ((ts.isPropertyAssignment(p) && p.initializer === c) || ts.isObjectLiteralExpression(p) || ts.isArrayLiteralExpression(p) ||
+    ts.isParenthesizedExpression(p) || ts.isAsExpression(p) || ts.isSatisfiesExpression(p)) { c = p; p = p.parent; }
+  if (c === n) {
+    if (ts.isCallExpression(p) && p.arguments.includes(c as ts.Expression) && ts.isPropertyAccessExpression(p.expression) && (GROW.has(p.expression.name.text) || p.expression.name.text === "fill")) return rootName(p.expression.expression);
+    if (ts.isBinaryExpression(p) && p.operatorToken.kind === ts.SyntaxKind.EqualsToken && p.right === c && !ts.isIdentifier(p.left)) return rootName(p.left);
+    return undefined;
+  }
+  return ts.isVariableDeclaration(p) && p.initializer === c && ts.isIdentifier(p.name) ? p.name.text : undefined;
+}
+
+function rootName(e: ts.Node): string | undefined {
+  let r = e;
+  while (ts.isPropertyAccessExpression(r) || ts.isElementAccessExpression(r) || ts.isNonNullExpression(r) || ts.isParenthesizedExpression(r)) r = r.expression;
+  return ts.isIdentifier(r) ? r.text : undefined;
 }
 
 /** The node whose subtree a variable declaration is visible in (block for let/const, function for var). */
@@ -736,21 +1085,6 @@ function isPlus(n: ts.Node): boolean {
   return ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken;
 }
 
-/** Array(n)/new Array(n): no argument, two or more elements, or one number literal up to MAX_ARRAY_LEN. */
-function arrayArgsOk(args: ts.NodeArray<ts.Expression> | undefined): boolean {
-  if (!args || args.length === 0) return true;
-  if (args.some(ts.isSpreadElement)) return false;
-  if (args.length > 1) return true;
-  const a = unwrap(args[0]!);
-  return ts.isNumericLiteral(a) && Number(a.text) <= MAX_ARRAY_LEN;
-}
-
-function boundedArray(e: ts.Expression): boolean {
-  const u = unwrap(e);
-  if (ts.isArrayLiteralExpression(u)) return true;
-  return (ts.isCallExpression(u) || ts.isNewExpression(u)) && ts.isIdentifier(u.expression) && u.expression.text === "Array" && arrayArgsOk(u.arguments);
-}
-
 /** True when the node is (part of) the left side of an assignment, ++/--, or a for...of/in target. */
 function isWriteTarget(n: ts.Node): boolean {
   let c = n;
@@ -765,11 +1099,6 @@ function isWriteTarget(n: ts.Node): boolean {
   }
   return false;
 }
-
-const hint = (name: string): string =>
-  TIMERS.has(name) ? " (animate from useCurrentFrame())"
-    : name === "Date" || name === "performance" ? " (time comes from useCurrentFrame())"
-      : NETWORK.has(name) ? " (there is no network)" : "";
 
 // Type positions are erased by the compiler. ExpressionWithTypeArguments is NOT skipped: it also holds runtime
 // expressions (`class A extends B`, `fn<T>` instantiation).
@@ -789,8 +1118,20 @@ function forEachNode(root: ts.Node, fn: (n: ts.Node) => void): void {
 }
 
 function unwrap(e: ts.Node): ts.Node {
-  while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e) || ts.isNonNullExpression(e)) e = e.expression;
+  while (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e) || ts.isNonNullExpression(e) || ts.isTypeAssertionExpression(e)) e = e.expression;
   return e;
+}
+
+/** The operands of a `+` chain, left to right (parentheses unwrapped). */
+function plusOperands(b: ts.BinaryExpression): ts.Expression[] {
+  const operands: ts.Expression[] = [];
+  const todo: ts.Node[] = [b];
+  while (todo.length > 0) {
+    const n = unwrap(todo.pop()!);
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken) { todo.push(n.right, n.left); continue; }
+    operands.push(n as ts.Expression);
+  }
+  return operands;
 }
 
 /** The constant string value of a literal, template or `+` chain of literals; undefined when any part is not constant. */
@@ -798,34 +1139,16 @@ function literalString(e: ts.Node): string | undefined {
   e = unwrap(e);
   if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) return e.text;
   if (ts.isTemplateExpression(e)) return foldTemplate(e);
-  if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-    const runs = literalRuns(e);
-    return runs.length === 1 && runs.complete ? runs[0] : undefined;
-  }
-  return undefined;
-}
-
-/** The literal runs of a `+` chain: "a" + "b" + x + "c" gives ["ab", "c"]; complete when every operand was constant. */
-function literalRuns(b: ts.BinaryExpression): string[] & { complete?: boolean; terms?: number } {
-  const operands: ts.Node[] = [];
-  const todo: ts.Node[] = [b];
-  while (todo.length > 0) {
-    const n = unwrap(todo.pop()!);
-    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken) { todo.push(n.right, n.left); continue; }
-    operands.push(n);
-  }
-  const runs: string[] & { complete?: boolean; terms?: number } = [];
-  runs.terms = operands.length;
-  let cur: string | undefined;
-  let complete = true;
-  for (const o of operands) {
+  if (!isPlus(e)) return undefined;
+  let out = "";
+  let text = false;
+  for (const o of plusOperands(e as ts.BinaryExpression)) {
     const v = ts.isNumericLiteral(o) ? String(Number(o.text)) : literalString(o);
-    if (v === undefined) { complete = false; if (cur !== undefined) runs.push(cur); cur = undefined; continue; }
-    cur = (cur ?? "") + v;
+    if (v === undefined) return undefined;
+    text ||= !ts.isNumericLiteral(o);
+    out += v;
   }
-  if (cur !== undefined) runs.push(cur);
-  runs.complete = complete;
-  return runs;
+  return text ? out : undefined;
 }
 
 function foldTemplate(t: ts.TemplateExpression): string | undefined {

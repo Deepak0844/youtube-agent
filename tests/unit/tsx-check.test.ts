@@ -40,8 +40,15 @@ const withLine = (line: string) => GOOD.replace("// A title that fades in.", () 
 const bad = (src: string) => {
   const r = checkTsx(src);
   expect(r.ok, `expected a problem for:\n${src.slice(0, 300)}`).toBe(false);
+  // retry feedback for the model: "rule: problem; alternative", at most 120 characters after the line prefix
+  for (const p of r.problems) {
+    const msg = p.replace(/^line [\d?]+: /, "");
+    expect(msg, p).toMatch(/^[a-z]+( error)?: .+; .+/);
+    expect(msg.length, p).toBeLessThanOrEqual(120);
+  }
   return r.problems.join("\n");
 };
+const okSrc = (src: string) => expect(checkTsx(src).problems).toEqual([]);
 const badLine = (line: string, re?: RegExp) => {
   const p = bad(withLine(line));
   if (re) expect(p).toMatch(re);
@@ -59,11 +66,193 @@ describe("checkTsx: a well-formed scene passes", () => {
   });
 });
 
+// Realistic model-written animations (review probe fp.ts): these must pass as written.
+const META150 = "\nexport const meta = { durationInFrames: 150, fps: 30, width: 1080, height: 1920 };\n";
+const ANIM_A = `import React from "react";
+import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig, Easing, Sequence } from "remotion";
+
+const COLORS = ["#ff6b6b", "#feca57", "#48dbfb", "#1dd1a1"];
+type BarProps = { label: string; value: number; index: number };
+
+const Bar: React.FC<BarProps> = ({ label, value, index }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const grow = spring({ frame: frame - index * 6, fps, config: { damping: 14, stiffness: 120 } });
+  const width = interpolate(grow, [0, 1], [0, value * 8]);
+  return (
+    <div style={{ display: "flex", alignItems: "center", marginBottom: 24 }}>
+      <span style={{ width: 200, color: "white", fontSize: 40, fontFamily: "Inter, sans-serif" }}>{label}</span>
+      <div style={{ height: 60, width, backgroundColor: COLORS[index % COLORS.length], borderRadius: 12 }} />
+      <span style={{ marginLeft: 16, color: "#ddd", fontSize: 36 }}>{Math.round(value * grow)}%</span>
+    </div>
+  );
+};
+
+export default function Scene() {
+  const frame = useCurrentFrame();
+  const { width, height, durationInFrames } = useVideoConfig();
+  const titleY = interpolate(frame, [0, 20], [-100, 0], { extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
+  const fadeOut = interpolate(frame, [durationInFrames - 15, durationInFrames], [1, 0], { extrapolateLeft: "clamp" });
+  const data = [
+    { label: "Python", value: 72 },
+    { label: "JS", value: 64 },
+    { label: "Rust", value: 31 },
+    { label: "Go", value: 25 },
+  ];
+  const sorted = [...data].sort((a, b) => b.value - a.value);
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+  return (
+    <AbsoluteFill style={{ background: "linear-gradient(180deg, #0f2027, #203a43)", opacity: fadeOut, padding: 80 }}>
+      <h1 style={{ color: "white", fontSize: 80, transform: \`translateY(\${titleY}px)\`, textAlign: "center" }}>Top languages</h1>
+      <Sequence from={15}>
+        <div style={{ marginTop: height * 0.1, width: width - 160 }}>
+          {sorted.map((d, i) => (
+            <Bar key={d.label} label={d.label} value={d.value} index={i} />
+          ))}
+        </div>
+      </Sequence>
+      <p style={{ color: "#aaa", fontSize: 30 }}>Total: {total.toFixed(0)}</p>
+    </AbsoluteFill>
+  );
+}
+`;
+const ANIM_B = `import { AbsoluteFill, interpolate, interpolateColors, useCurrentFrame, random } from "remotion";
+
+const N = 40;
+const particles = new Array(N).fill(0).map((_, i) => ({
+  x: random(\`x-\${i}\`) * 1080,
+  y: random(\`y-\${i}\`) * 1920,
+  r: 4 + random(\`r-\${i}\`) * 10,
+  speed: 0.5 + random(\`s-\${i}\`) * 2,
+}));
+
+export default function Scene() {
+  const frame = useCurrentFrame();
+  const t = frame / 30;
+  const bg = interpolateColors(frame, [0, 75, 150], ["#1a1a2e", "#16213e", "#0f3460"]);
+  const pulse = 1 + 0.05 * Math.sin(t * Math.PI * 2);
+  const angle = (frame * 2) % 360;
+  const cx = 540 + Math.cos(t) * 200;
+  const cy = 960 + Math.sin(t) * 200;
+  const textOpacity = interpolate(frame, [10, 40], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const words = "Physics is beautiful".split(" ");
+  return (
+    <AbsoluteFill style={{ backgroundColor: bg }}>
+      <svg width={1080} height={1920} viewBox="0 0 1080 1920">
+        <defs>
+          <radialGradient id="glow">
+            <stop offset="0%" stopColor="#e94560" stopOpacity={0.8} />
+            <stop offset="100%" stopColor="#e94560" stopOpacity={0} />
+          </radialGradient>
+        </defs>
+        <circle cx={cx} cy={cy} r={150 * pulse} fill="url(#glow)" />
+        {particles.map((p, i) => {
+          const y = (p.y - frame * p.speed * 4 + 1920) % 1920;
+          return <circle key={i} cx={p.x} cy={y} r={p.r} fill="white" opacity={0.3 + 0.7 * Math.abs(Math.sin(t + i))} />;
+        })}
+        <g transform={\`rotate(\${angle} 540 960)\`}>
+          <rect x={490} y={910} width={100} height={100} fill="none" stroke="#fff" strokeWidth={4} />
+        </g>
+      </svg>
+      <div style={{ position: "absolute", bottom: 300, width: "100%", textAlign: "center", opacity: textOpacity }}>
+        {words.map((w, i) => {
+          const d = Math.max(0, Math.min(1, (frame - 20 - i * 8) / 15));
+          return (
+            <span key={w} style={{ display: "inline-block", margin: "0 12px", fontSize: 72, color: "white", transform: \`scale(\${d}) translateY(\${(1 - d) * 40}px)\` }}>
+              {w}
+            </span>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+}
+`;
+const ANIM_C = `import { useMemo } from "react";
+import { AbsoluteFill, Img, staticFile, interpolate, spring, useCurrentFrame, useVideoConfig, Series } from "remotion";
+import { evolvePath } from "@remotion/paths";
+
+interface Step { title: string; detail: string }
+const STEPS: Step[] = [
+  { title: "Water evaporates", detail: "Sun heats the ocean" },
+  { title: "Clouds form", detail: "Vapor cools and condenses" },
+  { title: "Rain falls", detail: "Drops get heavy" },
+];
+const PATH = "M 100 1500 C 300 1200, 700 1200, 980 1500";
+
+const Card = ({ step, n }: { step: Step; n: number }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const s = spring({ frame, fps, durationInFrames: 20 });
+  const opacity = interpolate(frame, [0, 10, 40, 50], [0, 1, 1, 0], { extrapolateRight: "clamp" });
+  return (
+    <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", opacity }}>
+      <div style={{ transform: \`scale(\${s})\`, background: "rgba(255,255,255,0.1)", borderRadius: 32, padding: 60, width: 860 }}>
+        <div style={{ fontSize: 48, color: "#9ad" }}>Step {n + 1}</div>
+        <div style={{ fontSize: 84, fontWeight: 700, color: "white" }}>{step.title}</div>
+        <div style={{ fontSize: 44, color: "#ccc", marginTop: 20 }}>{step.detail}</div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+export default function Scene() {
+  const frame = useCurrentFrame();
+  const progress = interpolate(frame, [0, 150], [0, 1], { extrapolateRight: "clamp" });
+  const { strokeDasharray, strokeDashoffset } = evolvePath(progress, PATH);
+  const drops = useMemo(() => Array.from({ length: 12 }, (_, i) => i * 90), []);
+  const label = frame < 75 ? "Part 1" : "Part 2";
+  const hue = Math.floor(200 + 40 * Math.sin(frame / 20));
+  return (
+    <AbsoluteFill style={{ backgroundColor: \`hsl(\${hue}, 60%, 15%)\` }}>
+      <Img src={staticFile("assets/cloud.png")} style={{ position: "absolute", top: 100, left: 340, width: 400 }} />
+      <svg width={1080} height={1920} style={{ position: "absolute" }}>
+        <path d={PATH} stroke="#4fc3f7" strokeWidth={10} fill="none" strokeDasharray={strokeDasharray} strokeDashoffset={strokeDashoffset} />
+        {drops.map((x) => <circle key={x} cx={x + 60} cy={(frame * 12 + x) % 1920} r={6} fill="#81d4fa" />)}
+      </svg>
+      <Series>
+        {STEPS.map((step, i) => (
+          <Series.Sequence key={step.title} durationInFrames={50}>
+            <Card step={step} n={i} />
+          </Series.Sequence>
+        ))}
+      </Series>
+      <div style={{ position: "absolute", top: 40, right: 40, color: "white", fontSize: 32 }}>{label}</div>
+    </AbsoluteFill>
+  );
+}
+`;
+
+describe("checkTsx: realistic animations pass (no false positives)", () => {
+  it.each([["A: bar chart", ANIM_A], ["B: particles", ANIM_B], ["C: steps and path", ANIM_C]])("%s", (_, src) => {
+    okSrc(src + META150);
+  });
+
+  it("common helpers pass", () => {
+    const line = (l: string) => `import { AbsoluteFill } from "remotion";\n${l}\nexport default function Scene() { return <AbsoluteFill />; }${META150}`;
+    for (const l of [
+      "const a = [1]; const b = [...a, 2];",
+      "const base = { color: 'red' }; const s = { ...base, fontSize: 10 };",
+      "const COLORS: Record<string, string> = { a: 'red' }; const c = COLORS['a'];",
+      "const COLORS: Record<string, string> = { a: 'red' }; const k = 'a'; const c = COLORS[k];",
+      "const arr = [1, 2, 3]; const i = 2; const v = arr[i];",
+      "const f = (arr: number[], i: number) => arr[i];",
+      "const a = Array.from({ length: 5 }, (_, i) => i);",
+      "const n = 5; for (let i = 0; i < n; i++) {}",
+      "const a = [1, 2]; for (let i = 0; i < a.length; i++) {}",
+      "const a = [1, 2]; for (const x of a) {}",
+      "const st = { transition: 'none' };",
+      "const g = [[1]].map((r) => r.map((c) => [c].map((z) => z)));",
+      "const ok = Number.isFinite(3); const s = (3.14159).toFixed(2); const pts = [{ x: 1, y: 2 }]; const out = pts.map(({ x, y }) => x + y);",
+    ]) okSrc(line(l));
+  });
+});
+
 describe("checkTsx: input handling never throws", () => {
   it("rejects non-text, empty and oversize input before parsing", () => {
     for (const v of [undefined, null, 42, {}, [], Buffer.from("x"), Symbol("s")]) expect(checkTsx(v).ok).toBe(false);
     expect(checkTsx("   \n").problems[0]).toMatch(/empty/);
-    expect(checkTsx("a".repeat(TSX_MAX_BYTES + 1)).problems).toEqual(["The file is bigger than 24 KB."]);
+    expect(checkTsx("a".repeat(TSX_MAX_BYTES + 1)).problems).toEqual(["size: the file is bigger than 24 KB; write a shorter scene."]);
     expect(checkTsx("é".repeat(TSX_MAX_BYTES / 2 + 1)).problems[0]).toMatch(/bigger/); // bytes, not characters
     expect(checkTsx("x".repeat(50 * 1024 * 1024)).ok).toBe(false);
   });
@@ -100,8 +289,10 @@ describe("checkTsx: input handling never throws", () => {
     const body = Array.from({ length: 400 }, (_, i) => `const v${i} = interpolate(useCurrentFrame(), [0, ${i + 1}], ["a" + "b", \`c\${i}\`]);`).join("\n");
     const worst = (GOOD + body).slice(0, TSX_MAX_BYTES);
     const flood = ("window.fetch(eval('x'));\n").repeat(Math.floor(TSX_MAX_BYTES / 26));
+    // name tracing: number params checked at every call site, frozen arrays, const chains, index callbacks
+    const traced = (GOOD + Array.from({ length: 300 }, (_, i) => `const a${i} = [1, 2]; const p${i} = (x: number[], k: number) => x[k] + a${i}[k % 2]; let t${i} = p${i}(a${i}, ${i}) + p${i}(a${i}, t${i > 0 ? i - 1 : 0}); for (const y of a${i}) { t${i} += y; }`).join("\n")).slice(0, TSX_MAX_BYTES);
     checkTsx(GOOD); // warm the TypeScript module
-    for (const s of [worst, flood, "(".repeat(TSX_MAX_BYTES), "\"" + "url(".repeat(TSX_MAX_BYTES / 4 - 1)]) {
+    for (const s of [worst, flood, traced, "(".repeat(TSX_MAX_BYTES), "\"" + "url(".repeat(TSX_MAX_BYTES / 4 - 1)]) {
       const t = performance.now();
       checkTsx(s);
       expect(performance.now() - t).toBeLessThan(100);
@@ -186,9 +377,18 @@ describe("checkTsx: forbidden globals and APIs", () => {
     badLine("const r = Math['ran' + 'dom']();", /random/);
     badLine("const r = Math[`ran${'dom'}`]();", /random/);
     badLine("const { random: r } = Math;", /destructuring/);
-    badLine("const f = () => random(null);", /fixed seed/);
-    badLine("const f = () => random();", /fixed seed/);
-    badLine("const f = () => random(undefined);", /fixed seed/);
+    badLine("const f = () => random(null);", /seed must be text or a number/);
+    badLine("const f = () => random();", /seed must be text or a number/);
+    badLine("const f = () => random(undefined);", /seed must be text or a number/);
+  });
+
+  it("random(seed) takes text or a number, never a variable that could hold null", () => {
+    badLine("const seed: any = null; const f = () => random(seed);", /seed must be text or a number/);
+    badLine("let seed: any; const f = () => random(seed);", /seed must be text or a number/);
+    badLine("const f = (s: string) => random(s);", /seed must be text or a number/);
+    badLine("const f = (o: { s: string }) => random(o.s);", /seed must be text or a number/);
+    const r = checkTsx(withLine("const k = 'a'; const n = 3; const f = (i: number) => random(k) + random(n) + random(`x-${i}`) + random('y-' + i) + random(7);"));
+    expect(r.problems).toEqual([]);
   });
 
   it("refuses dynamic import, import.meta and require in any form", () => {
@@ -373,17 +573,40 @@ describe("checkTsx: hardening (review findings)", () => {
     badLine('const F = (() => 0)[["constr", "uctor"].join("")];', /computed keys must be numbers/);
     badLine("const k = 'x'; const o = {}; const v = o[k.slice(0)];", /computed keys must be numbers/);
     badLine("const o = {}; const v = o[`a${1}`];", /text keys|not allowed/);
-    badLine("const o = { a: 1 }; const v = o['a'];", /text keys/);
+    badLine("const f = (o: any) => o['a'];", /text keys in \[\.\.\.\] work only on a const object literal/);
     badLine("const s = 'x'; const o = {}; const v = o[s + 1];", /computed keys must be numbers/);
-    badLine("const k = 1; const o = [1]; const v = o[k];", /computed keys must be numbers/);
-    badLine("const o = [1]; const v = ['a'].map((x, i) => o[i]);", /computed keys must be numbers/);
     badLine("const k = 'x'; const o = { [k]: 1 };", /computed keys must be numbers/);
     badLine("const o = [1]; const v = o[String(1)];", /computed keys must be numbers/);
     // a name that is a loop counter in one place and text in another is not a counter
-    badLine("for (let i = 0; i < 3; i++) {}\nconst f = () => { const i = 'x'; return ({} as never)[i]; };", /computed keys must be numbers/);
+    badLine("for (let i = 0; i < 3; i++) {}\nconst f = () => { const i = 'x'; return ({} as never)[i]; };", /text keys/);
     ok("const o = [1, 2, 3]; const n = 2; const x = 1.5; const a = o[0]; const b = o[n % 3]; const c = o[n - 1]; const d = o[Math.floor(x)]; const e = o[n > 1 ? 0 : 1]; const g = o[-n * 2];");
     ok("const o = [1, 2, 3]; let t = 0; for (let i = 0; i < 3; i++) { t += o[i] + o[i + 1]; }");
     ok("const o = { [0]: 1 };");
+  });
+
+  it("indexes: numbers, array-callback indexes, number params and literal keys on const object literals", () => {
+    ok("const k = 1; const o = [1]; const v = o[k];");
+    ok("const o = [1]; const v = ['a'].map((x, i) => o[i]);");
+    ok("const o = ['a']; const d = [{ n: 1 }]; const v = [...d].sort((a, b) => a.n - b.n).map((x, i) => o[i]);");
+    ok("const o = ['a']; const v = 'a b'.split(' ').filter((w, i) => o[i]);");
+    ok("const pick = (arr: string[], i: number) => arr[i]; const v = pick(['a'], 0) + pick(['b'], 1 + 1);");
+    ok("const COLORS: Record<string, string> = { a: 'red', b: 'blue' }; const k = 'b'; const v = COLORS['a'] + COLORS[k];");
+    ok("const frame = 3; const pal = ['#a', '#b']; const c = pal[frame > 2 ? 1 : 0] + pal[frame % 2];");
+    // the index of a callback on something that is not provably an array may be text (a custom .map can pass anything)
+    badLine("const g = (xs: any, o: any) => xs.map((x: number, i: number) => o[i]);", /computed keys must be numbers/);
+    badLine("const o = [1]; const g = (xs: { map: Function }) => xs.map((x: never, i: never) => o[i]);", /computed keys must be numbers/);
+    // a number param of a function that is called with text (through a cast) is not a number
+    badLine("const pick = (arr: any, i: number) => arr[i]; const s = 'x'; const v = pick([], s as any);", /computed keys must be numbers/);
+    badLine("const pick = (arr: any, i: number) => arr[i]; const v = [pick].map((f) => f);", /computed keys must be numbers/);
+    // still refused: Object.prototype names, built keys, lookups on functions, imports and globals
+    for (const k of ["'toString'", "'constructor'", "'__proto__'", "'valueOf'", "'hasOwnProperty'"]) badLine(`const R = { a: 1 }; const v = R[${k}];`, /not allowed/);
+    badLine("const R = { a: 1 }; const p = 'a'; const v = R[p + 'b'];", /built from text/);
+    badLine("const R = { a: 1 }; const v = R[['a'].join('')];", /built from text/);
+    badLine("const R = { a: 1 }; const k = `${'a'}${R.a}`; const v = R[k];", /built from text|text keys/);
+    badLine("function F() { return null; } const v = F[0];", /computed lookup on 'F'/);
+    badLine("const F = () => null; const v = F[0];", /computed lookup on 'F'/);
+    badLine("const v = interpolate[0];", /computed lookup on 'interpolate'/);
+    badLine("const v = Math[0];", /computed lookup on 'Math'/);
   });
 
   it("refuses aliasing, shadowing or changing globals and imports", () => {
@@ -396,7 +619,7 @@ describe("checkTsx: hardening (review findings)", () => {
     badLine("const a = [Number];", /may only be used/);
     badLine("const o = { Math };", /may only be used/);
     badLine("const m = (Math as never);", /may only be used/);
-    badLine("Math.floor = () => 1;", /changing 'Math\.floor'/);
+    badLine("Math.floor = () => 1;", /changing 'Math'/);
     badLine("const Math = { floor: () => 1 };", /may not be declared again/);
     badLine("const f = (interpolate: number) => interpolate;", /may not be declared again/);
     badLine("function g(undefined: number) { return undefined; }", /may not be declared again/);
@@ -414,26 +637,45 @@ describe("checkTsx: hardening (review findings)", () => {
   });
 
   it("loops, arrays and strings stay bounded; no regex, no recursion", () => {
-    badLine("const a = [1]; for (const x of a) {}", /for\.\.\.of only over an array literal/);
+    badLine("const a = [1]; a.push(2); for (const x of a) {}", /for\.\.\.of only over an array literal/);
+    badLine("const f = (a: number[]) => { for (const x of a) {} };", /for\.\.\.of only over an array literal/);
     badLine("const a = [1]; for (const x of [...a]) {}", /for\.\.\.of only over an array literal/);
+    badLine("let x = 0; for (x of [1]) {}", /must declare its variable/);
     badLine("for (let i = 0; i < 2; i++) { for (let j = 0; j < 2; j++) { for (let k = 0; k < 2; k++) {} } }", /nested at most 2 deep/);
     badLine("for (let i = 0; i < 2; i++) { const f = () => { for (const a of [1]) { for (const b of [2]) {} } }; }", /nested at most 2 deep/);
     badLine("for (let i = 0; i < 1000; i++) { for (let j = 0; j < 1000; j++) {} }", /at most 100000 times/);
     badLine("const r = /a+/;", /regular expressions/);
     badLine("const r = new RegExp('a');", /RegExp/);
     badLine("const s = 'a'.repeat(1e9);", /'repeat' is not allowed/);
-    badLine("const a = Array.from({ length: 5 });", /Array\.from/);
-    badLine("const n = 5; const a = new Array(n);", /new Array\(n\) needs a number/);
-    badLine("const a = Array(100000);", /Array\(n\) needs a number/);
-    badLine("const a: number[] = []; a.length = 1e9;", /changing \.length/);
-    badLine("const a: number[] = []; [a.length] = [1e9];", /changing \.length/);
-    badLine("const a: number[] = []; a.fill(0);", /\.fill\(\) is only allowed/);
-    badLine("const a = new Uint8Array(1e9);", /only new Map, new Set, new Array/);
+    badLine("const a = Array.from([1, 2]);", /Array\.from needs a literal size/);
+    badLine("const a = Array.from({ length: 5000 });", /Array\.from needs a literal size/);
+    badLine("const a = Array.from({ length: 5, x: 1 });", /Array\.from needs a literal size/);
+    badLine("const n = 5000; const a = new Array(n);", /new Array\(n\) needs n/);
+    badLine("let n = 5; const a = new Array(n);", /new Array\(n\) needs n/);
+    badLine("const a = Array(100000);", /Array\(n\) needs n/);
+    badLine("const a: number[] = []; a.length = 1e9;", /writing '\.length'/);
+    badLine("const a: number[] = []; [a.length] = [1e9];", /destructuring assignment/);
+    badLine("const a: number[] = []; a.push(1); a.fill(0);", /\.fill\(\) only on a literal-sized array/);
+    badLine("const a = new Uint8Array(1e9);", /only new Array\(n\)/);
+    badLine("const m = new Map();", /'new Map' is not allowed \(only new Array\(n\)\); use \[\] or \{\} instead of Map\/Set/);
     badLine("function f(n: number): number { return n < 1 ? 0 : f(n - 1); }", /recursion/);
     badLine("const f = (n: number): number => n < 1 ? 0 : f(n - 1);", /recursion/);
     badLine("const a = (n: number): number => b(n); const b = (n: number): number => a(n);", /recursion/);
     badLine("const X = (): React.ReactNode => <X />;", /recursion/);
     ok("const a = Array(10).fill(0); const b = new Array(5).fill(1); const c = [0, 0].fill(2); for (let i = 0; i < 100; i++) { for (const x of [1, 2]) {} }");
+  });
+
+  it("literal-sized arrays: Array(N) / Array.from({ length: N }) with a const N, arr.length bounds, for...of a const array", () => {
+    ok("const N = 40; const a = new Array(N).fill(0).map((_, i) => i); const b = Array(N); const c = Array.from({ length: N }, (_, i) => i * 2);");
+    ok("const n = 5; for (let i = 0; i < n; i++) {}");
+    ok("const a = [1, 2]; for (let i = 0; i < a.length; i++) {} for (const x of a) {} const s = [...a].map((v) => v);");
+    ok("const a = Array.from({ length: 12 }, (_, i) => i); for (let i = 0; i < a.length; i++) {}");
+    // a.length of an array that can grow (push, an element write, passed away) is not a bound
+    badLine("const a = [1]; for (let i = 0; i < a.length; i++) { a.push(i); }", /for loops need/);
+    badLine("const a = [1]; a[5] = 1; for (let i = 0; i < a.length; i++) {}", /for loops need/);
+    badLine("const a = [1]; const f = (x: number[]) => x; f(a); for (const x of a) {}", /for\.\.\.of only over/);
+    badLine("const n = 100000; for (let i = 0; i < n; i++) {}", /for loops need/);
+    badLine("const a = Array(1000).fill(0); for (let i = 0; i < a.length; i++) { for (let j = 0; j < a.length; j++) {} }", /at most 100000 times/);
   });
 
   it("forbidden member names match case-insensitively; no element forgery", () => {
@@ -470,7 +712,85 @@ describe("checkTsx: hardening (review findings)", () => {
     for (const e of ["JSON.parse('{}')", "Object.fromEntries([])", "Object.assign({}, {})", "Object.entries({})", "Object.values({})", "Object.create(null)", "Object.defineProperty({}, 'a', {})", "Object.setPrototypeOf({}, null)", "structuredClone({})"]) {
       badLine(`const z = () => ${e};`, /not allowed/);
     }
-    badLine("const a = { b: 1 }; const c = { ...a };", /object spread/);
+    // {...base} only for a const object literal of this file without element keys
+    ok("const base = { color: 'red', fontSize: 10 }; const s = { ...base, fontSize: 12 }; const X = () => <div style={{ ...base, opacity: 1 }} />;");
+    badLine("const a = { type: 'iframe' }; const c = { ...a };", /object spread/);
+    badLine("const a = { props: {} }; const c = { ...a };", /object spread|'props'/);
+    badLine("const f = (p: { a: number }) => ({ ...p });", /object spread/);
+    badLine("const a = { b: 1 }; const c = { ...a }; const d = { ...c };", /object spread/);
+    badLine("let a = { b: 1 }; const c = { ...a };", /object spread/);
+  });
+
+  it("no element mutation: element fields, props reads and prototype names are never written", () => {
+    badLine(`const e: any = <Img src={staticFile("a.png")} />; e.props.src = "https://evil.example/x.png";`, /'props'/);
+    badLine(`const e: any = <div />; e.type = "iframe";`, /writing '\.type'/);
+    for (const k of ["type", "key", "ref", "children", "_owner", "constructor", "prototype", "map", "filter"]) {
+      badLine(`const o: any = {}; o.${k} = 1;`, /not allowed/);
+      badLine(`const o: any = {}; o.x.${k} = 1;`, /not allowed/);
+    }
+    badLine("const o: any = {}; o['type'] = 1;", /x\[\.\.\.\] = needs a number index/);
+    badLine("const p = (e: any) => e.props;", /'props' is not allowed/);
+    badLine("const o: any = {}; o.$$typeof = 1;", /not allowed/);
+    badLine("const o: any = {}; o.a.__html = 1;", /'__'/);
+    ok("const o = { x: 1, list: [0] }; o.x = 2; o.x += 1; o.list[0] = 3; const t = { type: 'bar' }; const k = t.type;");
+  });
+
+  it("names cannot be rebound: functions, components, imports, consts and casts", () => {
+    badLine(`function X() { return null; }\nfunction go() { (X as any) = "style"; return <X>@import "https://evil.example/a.css";</X>; }`, /type casts on the left/);
+    badLine(`function X() { return null; }\nfunction go() { (X as any) = "iframe"; return <X />; }`, /type casts on the left/);
+    badLine("function X() { return null; } function go() { X = 'style' as never; }", /only number 'let's may change, not 'X'/);
+    badLine("const T = () => null; const f = () => { (T as unknown as string) = 'style'; };", /type casts/);
+    badLine("const c = 1; const f = () => { (c as any)++; };", /type casts/);
+    badLine("const c = 1; const f = () => { c = 2; };", /only number 'let's/);
+    badLine("var v = 1; v = 2;", /only number 'let's/);
+    badLine("const f = (n: number) => { n = 2; return n; };", /only number 'let's/);
+    badLine("let s = 'a'; s = 'b';", /only number 'let's may change, not 's'/);
+    badLine("let t = 0; t = 'x' as never;", /must stay a number/);
+    badLine("let t = 0; const o = { v: 1 }; t += o.v;", /must stay a number/);
+    badLine("let t = 0; let u = 0; [t, u] = [u, t];", /destructuring assignment/);
+    badLine("const f = () => { interpolate = (() => 1) as never; };", /type casts|only number|may only be used/);
+    badLine("function X() { return null; } X.Y = 'style';", /changing 'X'/);
+    badLine("const X = () => null; const f = () => { X.displayName = 'style'; };", /changing 'X'/);
+    badLine("(Sequence as any).x.y = 'style';", /type casts/);
+    badLine("const a = { x: 1 }; const b = { x: 2 }; const f = (c: boolean) => { (c ? a : b).x = 3; };", /only a named object's fields/);
+    badLine("const f = () => { Sequence.x.y = 'style'; };", /changing 'Sequence'/);
+    // a tag must resolve to a component, not just share its name
+    badLine("function X() { return null; }\nfunction go() { const X = 'style'; return <X>x</X>; }", /must be a component declared/);
+    badLine("function X() { return null; }\nvar X = 'style';\nconst Y = () => <X />;", /must be a component declared/);
+    badLine("function C({ I }: { I: never }) { return <I />; }", /must be a component declared/);
+    badLine("function X() { return null; } const Y = () => <X.Y />;", /member tags only on imports/);
+    ok("let t = 0; let y = 1; for (let i = 0; i < 3; i++) { t += i * 2; y = y * 2 + Number('1'); t++; t -= 1; } const X = () => null; const Y = () => <X />;");
+  });
+
+  it("text cannot glue url(, @import or javascript: together at run time", () => {
+    badLine(`const f = () => { const u = "ur"; return { backgroundImage: u + "l(https://evil.example/x.png)" }; };`, /url\(/);
+    badLine(`const st = { backgroundImage: ["ur", "l(https://evil.example/x.png)"].join("") };`, /url\(/);
+    badLine("const u = 'ur'; const st = { backgroundImage: `${u}l(https://e.example/x)` };", /url\(/);
+    badLine(`const st = { backgroundImage: "ur".concat("l(x)") };`, /url\(/);
+    badLine("const f = (p: string) => ({ backgroundImage: `${p}l(https://e.example/x)` });", /glued from pieces/);
+    badLine("const f = (p: string) => ({ backgroundImage: 'u' + p });", /glued from pieces/);
+    badLine("const f = (p: string) => ({ backgroundImage: [p, '(https://x)'].join('') });", /glued from pieces/);
+    badLine("const f = (p: string) => '@imp' + p;", /glued from pieces/);
+    badLine("const f = (p: string) => p + 'script:alert(1)';", /glued from pieces/);
+    badLine("const s = '@import \"x.css\";';", /@import/);
+    badLine("const X = () => <p>url(https://x)</p>;", /in text is not allowed/);
+    badLine("const X = () => <p>@import x</p>;", /in text is not allowed/);
+    badLine("const X = () => <p>javascript:alert(1)</p>;", /in text is not allowed/);
+    badLine("const X = () => <p>width: expression(alert(1))</p>;", /in text is not allowed/);
+    ok("const f = (label: string, n: number, w: string) => [`${label}: ${n}%`, `translateX(${n}px) scale(${n})`, `hsl(${n}, 60%, 15%)`, label + ' (' + w + ')', `url(#${'g'})`];");
+    ok("const X = () => <p>JavaScript: the good parts</p>;");
+  });
+
+  it("no recursion through objects or arrays, no self-doubling growth", () => {
+    badLine("const o = { f: (n: number): number => (n <= 0 ? 1 : o.f(n - 1) + o.f(n - 1)) };\nconst v = o.f(60);", /recursion/);
+    badLine("const o = { f(n: number): number { return n <= 0 ? 1 : o.f(n - 1); } };", /recursion/);
+    badLine("const a: ((n: number) => number)[] = [];\na.push((n) => (n <= 0 ? 1 : a[0]!(n - 1) + a[0]!(n - 1)));\nconst v = a[0]!(60);", /recursion/);
+    badLine("const fs = [(n: number): number => fs[0]!(n)];", /recursion/);
+    badLine("const go = () => { let a = [0]; for (let i = 0; i < 40; i++) { a = a.concat(a); } };", /only number 'let's/);
+    badLine("const go = () => { let s = 'x'; for (let i = 0; i < 40; i++) { s = s + s; } };", /only number 'let's/);
+    badLine("const go = () => { const o = { s: 'x' }; for (let i = 0; i < 40; i++) { o.s += o.s; } };", /built from itself/);
+    badLine("const go = () => { const a = [0]; for (let i = 0; i < 40; i++) { a.push(...a); } };", /spread into itself/);
+    ok("const o = { f: (n: number) => n * 2, g: 3 }; const v = o.f(2) + o.g; const a = [1, 2].map((x) => x).indexOf(1);");
   });
 
   it("no webpack free variables: declare, ambient blocks and __ names are refused", () => {
@@ -494,16 +814,22 @@ describe("checkTsx: hardening (review findings)", () => {
   });
 
   it("hangs and bombs: padStart/padEnd, flatMap, self-application, deep callbacks, big arrays", () => {
-    badLine("const s = 'a'.padStart(1e9);", /padStart/);
+    badLine("const s = 'a'.padStart(1e9);", /'padStart' is not allowed; use n < 10/);
     badLine("const s = 'a'.padEnd(1e9);", /padEnd/);
-    badLine("const a = [1].flatMap((x) => [x, x]);", /flatMap/);
+    badLine("const s = 'a'.repeat(3);", /'repeat' is not allowed; use Array\(n\)\.fill/);
+    badLine("const a = [1].flatMap((x) => [x, x]);", /'flatMap' is not allowed; use \.map\(\.\.\.\)\.flat\(\)/);
     badLine("const y = (f: never) => (f as (g: never) => void)(f);", /passed to itself/);
     badLine("const w = (f: (g: unknown) => void) => f(f);", /passed to itself/);
-    badLine("const a = [[[1]]].map((x) => x.map((y) => y.map((z) => z)));", /nested at most 2 deep/);
-    badLine("const a = [[1]].forEach((x) => x.filter((y) => [y].some((z) => z)));", /nested at most 2 deep/);
+    badLine("const a = [[[[1]]]].map((x) => x.map((y) => y.map((z) => z.map((q) => q))));", /nested at most 3 deep/);
+    badLine("const a = [[[1]]].forEach((x) => x.filter((y) => y.some((z) => [z].every((q) => q))));", /nested at most 3 deep/);
     badLine("const a = Array(1001);", /up to 1000/);
     badLine("const a = new Array(5000);", /up to 1000/);
-    ok("const a = [[1]].map((x) => x.map((y) => y + 1)); const b = Array(1000).fill(0);");
+    ok("const a = [[1]].map((x) => x.map((y) => y + 1)); const b = Array(1000).fill(0); const g = [[1]].map((r) => r.map((c) => [c].map((z) => z)));");
+  });
+
+  it("CSS transition/animation 'none' is fine; other values are refused", () => {
+    ok("const st = { transition: 'none', animation: 'none' };");
+    badLine("const st = { transition: 'opacity 1s' };", /animations\/transitions/);
   });
 
   it("long + chains are fine up to 1000 parts", () => {
