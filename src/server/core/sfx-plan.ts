@@ -33,14 +33,13 @@ export const CueSheet = z.object({
 });
 export type CueSheet = z.input<typeof CueSheet>;
 
-/** Library only, never a paid clip: `find` returns the id of a library item for the recipe's tags. A missing optional clip is dropped; a missing required one fails. */
+/** Library only, never a paid clip: `find` returns the id of a library item for the recipe's tags. A cue with no clip in the library is dropped (the library may ship with few or no sounds): the video then has fewer effects, never a failure. */
 export async function planFromCueSheet(sheet: CueSheet, palette: Palette, find: (tags: string[]) => Promise<string | undefined>): Promise<SfxPlan> {
   const cues: Cue[] = [];
   for (const c of CueSheet.parse(sheet).cues) {
     const recipe = palette.recipes.find((r) => r.id === c.sound);
     const itemId = recipe && (await find(recipe.tags));
     if (itemId) cues.push({ id: c.id, itemId, atS: c.atS, gainDb: c.gainDb, optional: c.optional });
-    else if (!c.optional) throw new Error(`cue ${c.id}: no library clip for "${c.sound}"`);
   }
   return SfxPlan.parse({ version: 1, cues });
 }

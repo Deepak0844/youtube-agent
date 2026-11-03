@@ -38,7 +38,7 @@ export async function importAudioLibrary(db: pg.Pool, root: string, deps: AudioI
   const plan: { entry: CatalogEntry; abs: string; rel: string }[] = [];
   for (const kind of ["sfx", "music"] as const) {
     const entries = mapCatalog(kind, JSON.parse(await readFile(path.join(root, kind, "catalog.json"), "utf8")));
-    const onDisk = (await readdir(path.join(root, kind, "clips"))).map((f) => `clips/${f}`);
+    const onDisk = (await readdir(path.join(root, kind, "clips")).catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT") return []; throw e; })).map((f) => `clips/${f}`);
     const extra = unlistedFiles(onDisk, entries);
     if (extra.length) throw new Error(`${kind}: files not listed in catalog.json: ${extra.join(", ")}`);
     for (const entry of entries) plan.push({ entry, abs: path.join(root, kind, entry.file), rel: `${kind}/${entry.file}` });

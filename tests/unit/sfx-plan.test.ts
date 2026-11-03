@@ -28,8 +28,8 @@ describe("plan from a cue sheet", () => {
     const plan = await planFromCueSheet({ cues: [{ id: "a", sound: "whoosh", atS: 2 }] }, palette, hit);
     expect(plan.cues).toEqual([{ id: "a", itemId: "item-1", atS: 2, gainDb: -12, optional: true }]);
   });
-  it("drops an optional cue with no library clip, fails a required one", async () => {
+  it("drops a cue with no library clip, optional or not, and never fails", async () => {
     expect((await planFromCueSheet({ cues: [{ id: "a", sound: "boom", atS: 1 }] }, palette, hit)).cues).toEqual([]);
-    await expect(planFromCueSheet({ cues: [{ id: "a", sound: "boom", atS: 1, optional: false }] }, palette, hit)).rejects.toThrow(/cue a: no library clip/);
+    expect((await planFromCueSheet({ cues: [{ id: "a", sound: "boom", atS: 1, optional: false }] }, palette, hit)).cues).toEqual([]);
   });
 });

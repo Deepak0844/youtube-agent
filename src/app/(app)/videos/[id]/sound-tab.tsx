@@ -40,7 +40,7 @@ export async function SoundTabPanel({ p }: { p: VideoPage }) {
       <Audibility s={s} />
 
       <H>Try every bed</H>
-      {s.beds.length === 0 ? <p className="m-0 text-body text-muted">There are no music beds in the library yet.</p> : <BedPicker videoId={p.head.id} beds={s.beds} chosen={s.chosen} />}
+      {s.beds.length === 0 ? <p className="m-0 text-body text-muted">No music beds are shipped, so this video has voice only (no music bed).</p> : <BedPicker videoId={p.head.id} beds={s.beds} chosen={s.chosen} />}
       {s.stale ? <p data-testid="sound-stale" className="m-0 text-small text-pill-negative-ink">The music bed changed since the sound was mixed. Re-run {STAGE_LABELS.sfx} to hear it (free, local).</p> : null}
       {rerun ? <ForceRerunForm videoId={p.head.id} stage="sfx" label={STAGE_LABELS.sfx} hint="Mixes the sound again; the check runs again too." /> : null}
 
