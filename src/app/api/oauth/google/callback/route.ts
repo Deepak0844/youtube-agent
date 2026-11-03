@@ -26,5 +26,6 @@ export async function GET(request: Request) {
   if (!state || !code || state.length > 200 || code.length > 2000) return back("error=state");
 
   const r = await completeConnect(getPool(), loadKeyring, defaultGoogleHttp, { sessionId: owner.sessionId, state, code, appUrl: process.env.APP_URL });
-  return back(r.ok ? "connected=1" : `error=${r.reason}`);
+  if (r.ok) return back("connected=1");
+  return back(r.reason === "scopes" ? `error=scopes&missing=${encodeURIComponent(r.missing.join(","))}` : `error=${r.reason}`);
 }

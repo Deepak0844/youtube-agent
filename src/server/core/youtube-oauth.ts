@@ -42,10 +42,14 @@ export function buildAuthUrl(a: { clientId: string; redirectUri: string; state: 
 }
 
 /** Scopes the owner left unticked on the consent screen. */
+// Google reports the email scope by its long name; treat both spellings as the same permission.
+const SCOPE_ALIASES: Record<string, string> = { "https://www.googleapis.com/auth/userinfo.email": "email" };
 export const missingScopes = (granted: string): string[] => {
-  const have = new Set(granted.split(/\s+/));
+  const have = new Set(granted.split(/\s+/).map((s) => SCOPE_ALIASES[s] ?? s));
   return GOOGLE_SCOPES.filter((s) => !have.has(s));
 };
+/** Short permission name for messages, e.g. "youtube.upload". Names only, never tokens. */
+export const scopeLabel = (s: string) => s.slice(s.lastIndexOf("/") + 1);
 
 export interface ChannelInfo {
   channelId: string;
