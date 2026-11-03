@@ -117,7 +117,7 @@ export function fmt(v: number): string {
  * (use 360 / number of blades) so the LAST frame looks exactly like frame 0 (angle 0).
  */
 export function rotorAngle(frame: number, total: number, keys: readonly Pt[], sym: number): number {
-  const T = Math.round(num(total, 2, 20000, 2));
+  const T = Math.round(num(total, 2, 2700, 2));
   const f = Math.round(num(frame, 0, T, 0));
   const step = num(sym, 1, 360, 45);
   const speed = (g: number): number => {
@@ -140,3 +140,6 @@ export function rotorAngle(frame: number, total: number, keys: readonly Pt[], sy
   const target = Math.ceil(end / step) * step;
   return at + (target - end) * EASE_INOUT(prog(f, T - 60, T - 1));
 }
+
+/** A faint version of a colour for borders: #rrggbb gets an alpha suffix; any other accepted form (rgb(), #abc, ...) gets a neutral translucent white. */
+export const faint = (c: string, alphaHex = "55"): string => (/^#[0-9a-f]{6}$/i.test(c) ? c + alphaHex : "rgba(255,255,255,0.3)");

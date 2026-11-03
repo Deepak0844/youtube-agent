@@ -18,7 +18,7 @@ export const BigTitle: FC<{ lines: readonly { text: string; color?: string }[]; 
 export const Kicker: FC<{ text: string; color?: string; y?: number; at?: number; until?: number }>;
 /** Thin progress bar along the top edge over the whole video. */
 export const ProgressBar: FC<{ color?: string }>;
-/** Karaoke captions from word start frames (the pipeline already adds captions: use only when the task asks). */
+/** Karaoke captions from word start frames (DO NOT USE in scenes: the studio draws captions over them). */
 export const Captions: FC<{ words: readonly CaptionWord[]; y?: number; size?: number; accent?: string; maxWords?: number }>;
 /** Outlined word pill centred on x,y; pops in at frame at, optionally out by frame until. */
 export const Chip: FC<{ text: string; x: number; y: number; color?: string; size?: number; at?: number; until?: number }>;

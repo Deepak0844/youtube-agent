@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { kitDocs, kitExportNames, YT_KIT_NAMES } from "@/server/core/tsx-kit";
 import { YT_KIT_DTS } from "@/server/core/tsx-kit-dts";
 import { typeCheckInThread } from "@/server/providers/renderer/tsx-render";
-import { fmt, num, PALETTE, polyAt, rotorAngle, safeColor, txt } from "../../remotion/kit/tsxlib/util";
+import { faint, fmt, num, PALETTE, polyAt, rotorAngle, safeColor, txt } from "../../remotion/kit/tsxlib/util";
 
 const LIB = path.join(process.cwd(), "remotion", "kit", "tsxlib");
 
@@ -98,6 +98,21 @@ describe("yt-kit safety helpers", () => {
     expect(end).toBeGreaterThan(0);
     expect(rotorAngle(5, 180, [], 45)).toBe(0);
     expect(Number.isFinite(rotorAngle(NaN, NaN, keys, NaN))).toBe(true);
+  });
+  it("rotorAngle caps total at 2700 frames; faint() never builds an invalid border colour", () => {
+    const keys = [[0, 1], [100, 1]] as const;
+    expect(rotorAngle(5, 1e9, keys, 45)).toBe(rotorAngle(5, 2700, keys, 45));
+    expect(faint("#6366F1")).toBe("#6366F155");
+    for (const c of ["rgb(1,2,3)", "rgba(1,2,3,0.5)", "#abc", "#abcd"]) expect(faint(c)).toBe("rgba(255,255,255,0.3)");
+  });
+  it("Bulb scale and Generator radius are clamped to sane sizes", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const React = await import("react");
+    const lib = (await import("../../remotion/kit/tsxlib/index")) as unknown as Record<string, React.FC<Record<string, number>>>;
+    const bulb = renderToStaticMarkup(React.createElement("svg", null, React.createElement(lib.Bulb!, { cx: 0, cy: 0, s: 1e5 })));
+    expect(bulb).toContain("scale(5)");
+    const gen = renderToStaticMarkup(React.createElement("svg", null, React.createElement(lib.Generator!, { cx: 0, cy: 0, r: 1e5, rot: 0 })));
+    expect(gen).toContain('r="800"');
   });
   it("polyAt follows the polyline and wraps", () => {
     expect(polyAt([[0, 0], [10, 0]], 0.5)).toEqual([5, 0]);

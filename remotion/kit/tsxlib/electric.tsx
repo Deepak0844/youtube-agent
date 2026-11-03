@@ -16,7 +16,7 @@ const RAD = Math.PI / 180;
 // Bulb — glass, filament, screw base, halo + rays. glow 0..1. Height ~ 330*s.
 // -----------------------------------------------------------------------------
 const BulbRaw: React.FC<{ cx: number; cy: number; s?: number; glow?: number }> = ({ cx, cy, s = 1, glow = 1 }) => (
-  <g transform={`translate(${cx} ${cy}) scale(${s})`}>
+  <g transform={`translate(${cx} ${cy}) scale(${Math.max(0.1, Math.min(5, s))})`}>
     <circle cx={0} cy={-30} r={340} fill="url(#yk-halo)" opacity={glow} />
     {Array.from({ length: 14 }).map((_, i) => {
       const a = (i / 14) * 360 * RAD;
@@ -38,7 +38,8 @@ const BulbRaw: React.FC<{ cx: number; cy: number; s?: number; glow?: number }> =
 // -----------------------------------------------------------------------------
 // Turbine — front view of a generator: steel housing, copper coil ring, spinning blades.
 // -----------------------------------------------------------------------------
-const GeneratorRaw: React.FC<{ cx: number; cy: number; r: number; rot: number; glow?: number; blur?: number }> = ({ cx, cy, r, rot, glow = 0.5, blur = 0 }) => {
+const GeneratorRaw: React.FC<{ cx: number; cy: number; r: number; rot: number; glow?: number; blur?: number }> = ({ cx, cy, r: rIn, rot, glow = 0.5, blur = 0 }) => {
+  const r = Math.max(20, Math.min(800, rIn));
   const blade = `M 0 0 C ${r * 0.1} ${-r * 0.22} ${r * 0.42} ${-r * 0.34} ${r * 0.7} ${-r * 0.2} L ${r * 0.72} ${r * 0.04} C ${r * 0.45} ${-r * 0.02} ${r * 0.2} ${r * 0.08} 0 ${r * 0.1} Z`;
   return (
     <g transform={`translate(${cx} ${cy})`}>

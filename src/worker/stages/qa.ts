@@ -1,5 +1,6 @@
 import { KnownFailure } from "@/server/core/paid-call";
 import { evaluateQa } from "@/server/core/qa";
+import { tsxCaptionsStatus } from "@/server/core/tsx-captions";
 import { qaFindings, FINDING_DEFAULTS, type Finding } from "@/server/core/qa-findings";
 import { probeVideo, ProbeError } from "@/server/render/probe";
 import { STILLS } from "@/server/render/qa-scan";
@@ -34,6 +35,11 @@ export function qaAttempt(deps: StageDeps): AttemptHandler {
       const known = new Set(findings.map((f) => f.id));
       findings.push(...qaFindings(scan, { ...FINDING_DEFAULTS, stillMaxS: 2, width: ctx.config.qa[video.format].width, height: ctx.config.qa[video.format].height }).filter((f) => f.id !== "all_clear" && !known.has(f.id)));
       files.push(...STILLS);
+    }
+    if (video.kind === "tsx") {
+      const c = await contentBody<{ words?: unknown }>(deps.db, video.id, "captions").catch(() => null);
+      const status = tsxCaptionsStatus(Array.isArray(c?.words) ? c.words : undefined);
+      if (status !== "in_render") findings.push({ id: "tsx_no_captions", severity: "warn", text: `This code-scene video has no captions: ${status}.` });
     }
     if (findings.length === 0) findings.push({ id: "all_clear", severity: "info", text: "All automatic checks passed." });
     const blocks = findings.filter((f) => f.severity === "block");

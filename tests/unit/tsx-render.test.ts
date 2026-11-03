@@ -117,7 +117,7 @@ describe("renderTsx", () => {
     for (const f of ["first", "middle", "last"]) expect(existsSync(path.join(attemptDir, `tsx-frame-${f}.png`))).toBe(true); // kept, not deleted
     expect(seen.video).toBe(SCENE);
     expect(JSON.parse(seen.props!)).toEqual({ title: "Hi" });
-    expect(JSON.parse(seen.meta!)).toEqual({ durationInFrames: 90, stills: [0, 44, 89] });
+    expect(JSON.parse(seen.meta!)).toEqual({ durationInFrames: 90, stills: [0, 44, 89], captions: [] });
     expect(seen.asset).toBe(true);
     expect(seen.entries).toEqual([
       ["/opt/render/kit/render-entry.mjs", "/in", "/out", "--tsx-stills"],

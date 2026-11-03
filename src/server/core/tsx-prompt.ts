@@ -141,6 +141,7 @@ STRUCTURE (the owner's rules; the two examples follow them)
 - Safe area: captions live in the bottom 22% (about 500 px), so nothing important below y = 1420; keep text 60 px from the side edges. Headline 80 to 120 px, other text at least 56 px, at most about 12 words on screen at once.
 - Brand, tasteful not loud: indigo #6366F1, violet #9b7cc4, teal #4db8a8, yellow #f5d76e, pink #e8879f, ink #1a1a2e; Space Grotesk for headlines (FONTS.display), Inter for body (FONTS.body), JetBrains Mono for code (FONTS.mono); soft shadows, calm motion.
 - Follow the beat timing in the task: each beat's visual starts on its start frame.
+- Do not draw captions or subtitles (and never use Captions from yt-kit): the studio draws word-synced captions over your scene.
 
 WHAT THE SAFETY CHECK REFUSES (DON'T -> DO)
 - Date, performance, setTimeout, setInterval, requestAnimationFrame, Math.random -> time comes from useCurrentFrame(), randomness from random("seed") imported from remotion.

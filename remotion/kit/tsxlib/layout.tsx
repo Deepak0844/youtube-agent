@@ -5,7 +5,7 @@
 // MIT License, Copyright (c) 2026 Hasan Aboul Hasan. The full notice is in THIRD_PARTY_NOTICES.md.
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
-import { cycle, EASE_OUT, FONT_BODY, FONT_DISPLAY, FONT_MONO, fmt, H, num, PALETTE, prog, safeColor, txt, W } from "./util";
+import { cycle, EASE_OUT, faint, FONT_BODY, FONT_DISPLAY, FONT_MONO, fmt, H, num, PALETTE, prog, safeColor, txt, W } from "./util";
 
 /** Eased fade/slide-in at frame `at`, optional fade-out ending at `until`. 0..1. */
 const appear = (f: number, at: number, until?: number): number => {
@@ -120,7 +120,7 @@ export const Kicker: React.FC<{ text: string; color?: string; y?: number; at?: n
   if (o <= 0.01) return null;
   return (
     <div style={{ position: "absolute", top: num(y, 0, 1500, 185), left: 0, right: 0, display: "flex", justifyContent: "center", opacity: o, transform: `translateY(${(1 - o) * 12}px)` }}>
-      <div style={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: 30, letterSpacing: 6, textTransform: "uppercase", color: c, border: `2px solid ${c}55`, borderRadius: 999, padding: "12px 30px", background: "rgba(0,0,0,0.35)" }}>{txt(text, 32)}</div>
+      <div style={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: 30, letterSpacing: 6, textTransform: "uppercase", color: c, border: `2px solid ${faint(c)}`, borderRadius: 999, padding: "12px 30px", background: "rgba(0,0,0,0.35)" }}>{txt(text, 32)}</div>
     </div>
   );
 };
@@ -195,7 +195,7 @@ export const Callout: React.FC<{ label?: string; text: string; x: number; y: num
   const c = safeColor(color);
   if (p <= 0.01) return null;
   return (
-    <div style={{ position: "absolute", left: num(x, 0, W, 60), top: num(y, 0, H, 300), width: num(w, 200, 1000, 600), opacity: p, transform: `translateY(${(1 - p) * 18}px)`, background: "rgba(12,14,20,0.9)", border: `2px solid ${c}66`, borderLeft: `10px solid ${c}`, borderRadius: 18, padding: "20px 26px", boxShadow: "0 12px 40px rgba(0,0,0,0.35)" }}>
+    <div style={{ position: "absolute", left: num(x, 0, W, 60), top: num(y, 0, H, 300), width: num(w, 200, 1000, 600), opacity: p, transform: `translateY(${(1 - p) * 18}px)`, background: "rgba(12,14,20,0.9)", border: `2px solid ${faint(c, "66")}`, borderLeft: `10px solid ${c}`, borderRadius: 18, padding: "20px 26px", boxShadow: "0 12px 40px rgba(0,0,0,0.35)" }}>
       {label ? <div style={{ fontFamily: FONT_BODY, fontWeight: 600, fontSize: 27, letterSpacing: 3, color: c, textTransform: "uppercase" }}>{txt(label, 40)}</div> : null}
       <div style={{ fontFamily: FONT_DISPLAY, fontWeight: 600, fontSize: 38, color: PALETTE.white, marginTop: label ? 8 : 0, lineHeight: 1.25 }}>{txt(text, 90)}</div>
     </div>
