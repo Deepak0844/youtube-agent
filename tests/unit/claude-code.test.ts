@@ -7,7 +7,7 @@ import { NotProcessedError, classifyError } from "@/server/core/error-class";
 import { KnownFailure, runPaidCall, type PaidCallPorts } from "@/server/core/paid-call";
 import { priceCardFor, modelInputSchema, type ModelRow } from "@/server/core/llm-catalog";
 import { createAiSdkStep } from "@/server/llm/ai-sdk-step";
-import { createClaudeCodeModel, type ClaudeCodeDeps, type SpawnClaude } from "@/server/llm/claude-code";
+import { callTimeoutMs, createClaudeCodeModel, type ClaudeCodeDeps, type SpawnClaude } from "@/server/llm/claude-code";
 
 // Every test fakes the process: the real `claude` binary is never started here.
 
@@ -418,5 +418,15 @@ describe("claude code in the catalog", () => {
     for (const flag of ["toolUse", "vision", "nativeWebSearch"]) {
       expect(modelInputSchema([]).safeParse({ ...base, capabilities: { ...row.capabilities, [flag]: true } }).success, flag).toBe(false);
     }
+  });
+});
+
+describe("call timeout", () => {
+  it("keeps 2 minutes for short answers and grows with the output size, up to 10 minutes", () => {
+    expect(callTimeoutMs(undefined)).toBe(120_000);
+    expect(callTimeoutMs(500)).toBe(140_000);
+    expect(callTimeoutMs(8000)).toBe(440_000);
+    expect(callTimeoutMs(1_000_000)).toBe(600_000);
+    expect(callTimeoutMs(-5)).toBe(120_000);
   });
 });
