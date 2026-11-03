@@ -23,6 +23,7 @@ import { createImageFor } from "@/server/providers/image/wire";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
 import { createContainerRenderer, resolveRenderImage, sweepRenderContainers } from "@/server/providers/renderer/remotion-container";
+import { createTsxRenderer } from "@/server/providers/renderer/tsx-render";
 import { isWorkerAlive } from "@/server/db/child-processes";
 import type { WorkerHooks } from "./runtime";
 import { probeVideo } from "@/server/render/probe";
@@ -43,6 +44,7 @@ import { generateAttempt } from "./stages/generate";
 import { dryRunPicturesHandler, picturesHandler } from "./stages/pictures";
 import { qaAttempt } from "./stages/qa";
 import { renderAttempt } from "./stages/render";
+import { tsxAuthorAttempt } from "./stages/tsx-author";
 import { sfxHandler } from "./stages/sfx";
 import { ttsAttempt } from "./stages/tts";
 import { voiceAttempt } from "./stages/voice";
@@ -51,7 +53,7 @@ import { voiceAttempt } from "./stages/voice";
 export type StageHandlers = Partial<Record<StageName, StageHandler>>;
 export function createStageDispatcher(handlers: StageHandlers, concurrentRenders: number): StageHandler {
   const render = createSemaphore(concurrentRenders);
-  const resources = new Map(stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }).map((s) => [s.stage, s.resource]));
+  const resources = new Map([...stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }), ...stagePlan("tsx", "short", { paidGeneration: false, requireEvidence: false })].map((s) => [s.stage, s.resource]));
   return async (ctx) => {
     const name = ctx.stage.name;
     if (!(STAGE_NAMES as readonly string[]).includes(name)) throw new KnownFailure("unknown stage");
@@ -85,6 +87,7 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     generate: withAttempt(fin, generateAttempt(deps)),
     tts: withAttempt(fin, ttsAttempt(deps)),
     render: withAttempt(fin, renderAttempt(deps)),
+    tsx_author: withAttempt(fin, tsxAuthorAttempt(deps)),
     voice: withAttempt(fin, voiceAttempt(deps)),
     sfx: sfxHandler(fin, deps),
     qa: withAttempt(fin, qaAttempt(deps)),
@@ -132,6 +135,8 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     scenePictures: (videoId) => assetsForVideo(pool, videoId),
     imageFor: createImageFor(pool, () => loadKeyring(), root),
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
+    // Code scenes (tsx_author): the same container locks plus tighter limits (tsx-sandbox.ts); the model's file never touches the host shell.
+    tsx: createTsxRenderer({ kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) }),
     // Render runs in the locked-down render container (remotion-container.ts). The kit is read from the repo the worker runs in.
     renderer: createContainerRenderer({
       root, kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId,
@@ -162,6 +167,11 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
   const build: StageHandler = async (ctx) => {
     const models = await defaultModelDeps(pool, () => loadKeyring());
     return withAttempt(fin, buildAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
+  };
+  // Code scenes: the Build model route and budget scopes (so Claude Code at $0 or any priced model works); refuses before anything is reserved when none is routed.
+  const tsxAuthor: StageHandler = async (ctx) => {
+    const models = await defaultModelDeps(pool, () => loadKeyring());
+    return withAttempt(fin, tsxAuthorAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
   };
   // On demand only (never in the route): same model wiring and budget scopes as Build; saves its own scenes version.
   const repair: StageHandler = async (ctx) => {
@@ -194,6 +204,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     build: refuseDryRunVideos(pool, build),
     tts: refuseDryRunVideos(pool, withAttempt(fin, ttsAttempt(deps))),
     render: refuseDryRunVideos(pool, withAttempt(fin, renderAttempt(deps))),
+    tsx_author: refuseDryRunVideos(pool, tsxAuthor),
     voice: refuseDryRunVideos(pool, withAttempt(fin, voiceAttempt(deps))),
     sfx: refuseDryRunVideos(pool, sfxHandler(fin, deps)),
     qa: refuseDryRunVideos(pool, withAttempt(fin, qaAttempt(deps))),

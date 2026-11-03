@@ -67,6 +67,8 @@ interface VideoLocked {
   id: string;
   format: "short" | "long";
   kind: PipelineView["kind"];
+  /** 'tsx' when a code-scene video fell back to the scene kit: the parameters hash keeps using the kind the owner chose. */
+  kind_origin?: "tsx" | null;
   language: string;
   topic: string;
   notes: string | null;
@@ -77,7 +79,7 @@ interface VideoLocked {
 }
 
 async function lockVideo(c: pg.PoolClient, videoId: string): Promise<VideoLocked> {
-  const r = await c.query<VideoLocked>("select id, format, kind, language, topic, notes, style, caption_style, status, stage_nonces from videos where id = $1 for update", [videoId]);
+  const r = await c.query<VideoLocked>("select id, format, kind, kind_origin, language, topic, notes, style, caption_style, status, stage_nonces from videos where id = $1 for update", [videoId]);
   const v = r.rows[0];
   if (!v) throw new Error(`video not found: ${videoId}`);
   return v;
@@ -108,7 +110,7 @@ async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineRead
     kind: v.kind,
     format: v.format,
     flags: { requireEvidence, paidGeneration: paid },
-    paramsHash: sha256Hex(canonicalJson({ format: v.format, kind: v.kind, language: v.language, topic: v.topic, notes: v.notes })),
+    paramsHash: sha256Hex(canonicalJson({ format: v.format, kind: v.kind_origin ?? v.kind, language: v.language, topic: v.topic, notes: v.notes })),
     feedback: await readers.feedback(c, v.id),
     content: shas,
     runs,
@@ -322,7 +324,7 @@ export { inTx };
 export async function readNextAction(db: pg.Pool, videoId: string, readers: PipelineReaders = NO_DECISIONS): Promise<Action | null> {
   const c = await db.connect();
   try {
-    const r = await c.query<VideoLocked>("select id, format, kind, language, topic, notes, status, stage_nonces from videos where id = $1", [videoId]);
+    const r = await c.query<VideoLocked>("select id, format, kind, kind_origin, language, topic, notes, status, stage_nonces from videos where id = $1", [videoId]);
     const v = r.rows[0];
     if (!v || !LIVE_VIDEO.includes(v.status)) return null;
     return nextActions(await buildView(c, v, readers))[0] ?? null;
