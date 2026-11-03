@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
 import { Label } from "@/ui/primitives/label";
-import { saveLimitsAction, saveLocalServicesAction, type FormState } from "./actions";
+import { saveCutoverAction, saveKillSwitchAction, saveLimitsAction, saveLocalServicesAction, type FormState } from "./actions";
 
 const field = "flex min-w-0 flex-col gap-2";
 
@@ -63,6 +63,42 @@ export function LimitsForm(props: { renders: number; jobs: number; warnGb: numbe
       </fieldset>
       <div className="flex flex-wrap items-center gap-4">
         <Button type="submit" disabled={pending}>Save limits</Button>
+        <Result state={state} />
+      </div>
+    </form>
+  );
+}
+
+export function KillSwitchForm({ on }: { on: boolean }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveKillSwitchAction, {});
+  return (
+    <form action={action} className="flex flex-col gap-4">
+      <label className="flex min-h-11 items-center gap-3 text-body">
+        <input type="checkbox" name="kill" defaultChecked={on} className="size-5 accent-[var(--text)]" />
+        Stop every upload (kill switch)
+      </label>
+      <div className="flex flex-wrap items-center gap-4">
+        <Button type="submit" disabled={pending}>Save</Button>
+        <Result state={state} />
+      </div>
+    </form>
+  );
+}
+
+export function CutoverForm({ done }: { done: boolean }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveCutoverAction, {});
+  return (
+    <form action={action} className="flex flex-col gap-4">
+      <label className="flex min-h-11 items-center gap-3 text-body">
+        <input type="checkbox" name="cutover" defaultChecked={done} className="size-5 accent-[var(--text)]" />
+        Go-live cutover done
+      </label>
+      <div className={field}>
+        <Label htmlFor="typed">Type GO LIVE to turn it on</Label>
+        <Input id="typed" name="typed" autoComplete="off" spellCheck={false} />
+      </div>
+      <div className="flex flex-wrap items-center gap-4">
+        <Button type="submit" disabled={pending}>Save</Button>
         <Result state={state} />
       </div>
     </form>

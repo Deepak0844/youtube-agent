@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { getPool } from "@/server/db/pool";
 import { hostPortOf, isVoiceField } from "@/server/providers/voice/endpoints";
-import { loadLocalServices, loadVoiceServers, saveLocalServices, saveSystemSettings } from "@/server/db/system-settings";
+import { loadLocalServices, loadVoiceServers, saveLocalServices, saveSystemSettings, saveUploadSwitches } from "@/server/db/system-settings";
 
 export interface FormState {
   ok?: boolean;
@@ -24,6 +24,24 @@ export async function saveLimitsAction(_prev: FormState, form: FormData): Promis
   const fields = ["concurrent_renders", "concurrent_jobs", "storage_warn_gb", "max_long_minutes"].map((k) => [k, text(form.get(k), 8)] as const);
   if (fields.some(([, v]) => v === null)) return { error: TOO_LONG };
   const r = await saveSystemSettings(getPool(), { ...Object.fromEntries(fields), scene_kit: form.get("scene_kit") === "on" });
+  if (r.ok) revalidatePath("/settings/system");
+  return r.ok ? { ok: true } : { error: r.error };
+}
+
+// Owner session only. Two separate forms: the kill switch (one click either way) and the go-live cutover (typed phrase to turn ON).
+export async function saveKillSwitchAction(_prev: FormState, form: FormData): Promise<FormState> {
+  await requireOwner();
+  const r = await saveUploadSwitches(getPool(), { killSwitch: form.get("kill") === "on" });
+  if (r.ok) revalidatePath("/settings/system");
+  return r.ok ? { ok: true } : { error: r.error };
+}
+
+export async function saveCutoverAction(_prev: FormState, form: FormData): Promise<FormState> {
+  await requireOwner();
+  const on = form.get("cutover") === "on";
+  const typed = text(form.get("typed"), 40);
+  if (typed === null) return { error: TOO_LONG };
+  const r = await saveUploadSwitches(getPool(), { cutover: on, typed });
   if (r.ok) revalidatePath("/settings/system");
   return r.ok ? { ok: true } : { error: r.error };
 }

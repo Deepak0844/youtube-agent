@@ -62,6 +62,8 @@ export const SESSION_BATCH_KEYS: readonly string[] = [
   "storage.warn_gb",
   "video.max_long_minutes",
   "tracks.enabled",
+  "uploads.kill_switch",
+  "youtube.cutover_done",
   "assets.max_image_bytes",
   "assets.max_audio_bytes",
   "assets.max_pixels",

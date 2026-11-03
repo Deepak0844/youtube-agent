@@ -1,10 +1,14 @@
 import type pg from "pg";
 import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { metadataProblem, publishPolicyProblem, visibilityProblem, type Visibility } from "@/server/core/publish-rules";
+import { channelUploadProblem } from "@/server/core/channel-safety";
 import { uuidv7 } from "@/server/core/ids";
 import { APPROVAL_SESSION_VALID_SQL, approvalState, approveGateWith, readSnapshot, type ContentVersions } from "@/server/db/approvals";
 import { recordAudit } from "@/server/db/audit";
 import { getSetting } from "@/server/db/settings";
+import type { Policy } from "@/server/core/policy";
+import { loadPolicy } from "@/server/db/policy-file";
+import type { UploadCaps } from "@/server/core/upload-rules";
 import type { UploadTarget } from "@/server/providers/uploader";
 import type { UploadQueue } from "@/server/queue/job-queue";
 import { hashStoredFile, openStoredFile, StoredFileError } from "@/server/storage/hash-file";
@@ -54,6 +58,29 @@ async function policyFacts(client: pg.PoolClient, videoId: string) {
   const videoApproved = (await approvalState(client, videoId, "video")).approved;
   const evidenceApproved = (await approvalState(client, videoId, "evidence")).approved;
   return { allowPublic, requireEvidence, videoApproved, evidenceApproved, nowMs: await dbNowMs(client) };
+}
+/**
+ * Kill switch, cutover, and the connected channel's own switches (production, allow public). Read on the caller's client at
+ * approval time, at job time and again inside the start transaction. A channel id with no connected-channel row has no
+ * per-channel switches (it has no token either), but the kill switch still applies.
+ */
+async function channelSafetyProblem(client: pg.PoolClient, visibility: unknown, channelId: string | null): Promise<string | null> {
+  const killSwitch = await getSetting(client, "uploads.kill_switch");
+  const cutoverDone = await getSetting(client, "youtube.cutover_done");
+  const row = channelId === null ? undefined : (await client.query<{ production: boolean; allow_public: boolean }>("select production, allow_public from youtube_channels where channel_id = $1", [channelId])).rows[0];
+  return channelUploadProblem({ killSwitch, cutoverDone, visibility, channel: row ? { production: row.production, allowPublic: row.allow_public } : null });
+}
+
+/** The upload limits for a channel: the base caps, tightened (never loosened) by the channel's own numbers and the policy quota budget. */
+export async function channelCaps(db: pg.Pool | pg.PoolClient, channelId: string, base: UploadCaps, policy: Policy = loadPolicy()): Promise<UploadCaps> {
+  const r = (await db.query<{ n: number; h: number }>("select max_uploads_per_day as n, min_hours_between_uploads as h from youtube_channels where channel_id = $1", [channelId])).rows[0];
+  if (!r) return base;
+  return {
+    ...base,
+    maxPerDay: Math.min(base.maxPerDay, r.n),
+    minSpacingMs: Math.max(base.minSpacingMs, r.h * 3_600_000),
+    dailyQuotaUnits: Math.min(base.dailyQuotaUnits, policy.quotaBudget),
+  };
 }
 const fileProblem = (e: unknown): string => (e instanceof StoredFileError ? `the video file cannot be used: ${e.message}` : "the video file cannot be read");
 
@@ -110,6 +137,8 @@ export async function approvePublish(db: pg.Pool, queue: Pick<UploadQueue, "enqu
       }
       const policy = publishPolicyProblem({ visibility: body.visibility, publishAt: body.publish_at ?? null, ...(await policyFacts(client, a.videoId)), phase: "approve" });
       if (policy) return policy;
+      const safety = await channelSafetyProblem(client, body.visibility, a.channelId);
+      if (safety) return safety;
       if (snap.versions.video?.id !== preVersionId || video.sha256 !== preFile.sha256) return "the video changed while it was being checked; review again";
       return null;
     },
@@ -161,7 +190,8 @@ export async function recheckPublishStart(q: pg.PoolClient, row: { videoId: stri
   if (s === "no_video" || !s.live.ok || s.live.hash !== state.hash || !meta || metadataProblem(meta.body)) return "approval_changed";
   const body = meta.body as Record<string, unknown>;
   const problem = publishPolicyProblem({ visibility: body.visibility, publishAt: body.publish_at ?? null, ...(await policyFacts(q, row.videoId)), phase: "upload" });
-  return problem ? "policy" : null;
+  if (problem) return "policy";
+  return (await channelSafetyProblem(q, body.visibility, s.inputs.channelId)) ? "policy" : null;
 }
 
 export type TargetRefusal = "not_found" | "not_publish_approved" | "approval_changed" | "approval_session_invalid" | "policy" | "file_changed" | "no_channel";
@@ -212,6 +242,8 @@ export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { ro
     const body = meta.body as Record<string, unknown>;
     const policy = publishPolicyProblem({ visibility: body.visibility, publishAt: body.publish_at ?? null, ...(await policyFacts(client, up.video_id)), phase: "upload" });
     if (policy) return { ok: false, reason: "policy", detail: policy };
+    const safety = await channelSafetyProblem(client, body.visibility, up.channel_id);
+    if (safety) return { ok: false, reason: "policy", detail: safety };
     snap = { up, state, video, body, approvalId: ap.id, channelId: up.channel_id };
     await client.query("commit");
   } finally {
