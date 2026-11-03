@@ -2,7 +2,7 @@ import type pg from "pg";
 import type { UploadCaps } from "@/server/core/upload-rules";
 import { UPLOAD_CAPS } from "@/server/core/publish-rules";
 import { recordAudit } from "@/server/db/audit";
-import { readUploadTarget, recheckPublishStart } from "@/server/db/publish";
+import { channelCaps, readUploadTarget, recheckPublishStart } from "@/server/db/publish";
 import { runUpload } from "@/server/db/upload-job";
 import { startUpload } from "@/server/db/uploads";
 import type { Uploader } from "@/server/providers/uploader";
@@ -40,10 +40,12 @@ export async function handlePublishUpload(pool: pg.Pool, deps: PublishUploadDeps
   await deps.afterRead?.();
   // The start transaction re-reads the live approval and policy after locking (recheckPublishStart): the snapshot above
   // is not trusted across the file hash.
+  // The channel's own limits are re-read inside the start transaction (capsFor), so a limit lowered a moment ago applies.
+  const base = deps.caps ?? { ...UPLOAD_CAPS };
   const started = await startUpload(
     pool, uploadId,
-    { currentApprovalHash: value.approvalHash, currentFileSha: value.fileSha, caps: deps.caps ?? { ...UPLOAD_CAPS } },
-    { recheck: (q, row) => recheckPublishStart(q, row) },
+    { currentApprovalHash: value.approvalHash, currentFileSha: value.fileSha, caps: base },
+    { recheck: (q, row) => recheckPublishStart(q, row), capsFor: (q, channelId) => channelCaps(q, channelId, base) },
   );
   if (!started.started) return refused(started.reason);
   try {

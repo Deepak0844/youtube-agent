@@ -5,7 +5,7 @@ import { getPool } from "@/server/db/pool";
 import { loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
 import { Pill } from "@/ui/primitives/pill";
-import { LimitsForm, LocalServicesForm } from "./forms";
+import { CutoverForm, KillSwitchForm, LimitsForm, LocalServicesForm } from "./forms";
 
 // Reads the session (cookies) and live server facts, so everything sits inside <Suspense> with a static frame.
 export default function SystemSettings() {
@@ -38,6 +38,18 @@ async function Owned() {
           sceneKit={view.sceneKit}
           tracksLater={["Code scenes (Phase 4)", "Collage (Phase 8)", "AI video (Phase 9)"]}
         />
+      </section>
+      <section aria-labelledby="uploads-h" className="rounded-card bg-surface p-pad">
+        <h2 id="uploads-h" className="text-title font-semibold">Uploads to YouTube</h2>
+        <p className="mt-1 mb-5 max-w-[60ch] text-body text-muted">
+          The kill switch refuses every upload, now and when an approved one is about to start. Until the go-live cutover is done,
+          no channel marked Production receives an upload. Google may force uploads from an unaudited app to private, whatever is
+          chosen. Every change is written to the audit log.
+        </p>
+        <div className="flex flex-col gap-6">
+          <KillSwitchForm on={view.killSwitch} />
+          <CutoverForm done={view.cutoverDone} />
+        </div>
       </section>
       <section aria-labelledby="local-h" className="rounded-card bg-surface p-pad">
         <h2 id="local-h" className="text-title font-semibold">Local services</h2>

@@ -6,7 +6,6 @@ import type pg from "pg";
 import { redirectUriFor, SECRET_NAME } from "@/server/core/google-app";
 import {
   CHANNELS_URL,
-  DEFAULT_QUOTA_BUDGET,
   STATE_TTL_MS,
   TOKEN_URL,
   USERINFO_URL,
@@ -21,6 +20,9 @@ import {
   randomToken,
   sha256Hex,
 } from "@/server/core/youtube-oauth";
+import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
+import { channelSettingsSchema, type ChannelSettingsInput } from "@/server/core/channel-safety";
+import { loadPolicy } from "@/server/db/policy-file";
 import type { Keyring } from "@/server/core/vault-crypto";
 import { recordAudit } from "@/server/db/audit";
 import { deleteSecret, getSecret, putSecret } from "@/server/db/vault";
@@ -273,6 +275,7 @@ export interface ChannelView {
   channelId: string;
   title: string;
   status: "connected" | "needs_reconnect" | "unconfirmed";
+  settings: ChannelSettingsInput;
 }
 export interface AccountView {
   id: string;
@@ -281,17 +284,79 @@ export interface AccountView {
 }
 
 export async function listAccounts(pool: Pick<pg.Pool, "query">): Promise<AccountView[]> {
-  const { rows } = await pool.query<{ aid: string; email: string; id: string | null; channel_id: string; title: string; status: ChannelView["status"] }>(
-    `select a.id as aid, a.email, c.id, c.channel_id, c.title, c.status from google_accounts a
+  const { rows } = await pool.query<{
+    aid: string; email: string; id: string | null; channel_id: string; title: string; status: ChannelView["status"];
+    production: boolean; allow_public: boolean; made_for_kids: boolean; synthetic_disclosure_default: boolean;
+    max_uploads_per_day: number; min_hours_between_uploads: number; default_language: string; category_id: number; default_style: ChannelSettingsInput["defaultStyle"];
+  }>(
+    `select a.id as aid, a.email, c.id, c.channel_id, c.title, c.status, c.production, c.allow_public, c.made_for_kids, c.synthetic_disclosure_default,
+            c.max_uploads_per_day, c.min_hours_between_uploads, c.default_language, c.category_id, c.default_style
+       from google_accounts a
        left join youtube_channels c on c.google_account_id = a.id order by a.created_at, a.id, c.created_at, c.id`,
   );
   const out = new Map<string, AccountView>();
   for (const r of rows) {
     const a = out.get(r.aid) ?? { id: r.aid, email: r.email, channels: [] };
     out.set(r.aid, a);
-    if (r.id) a.channels.push({ id: r.id, channelId: r.channel_id, title: r.title, status: r.status });
+    if (r.id) {
+      a.channels.push({
+        id: r.id, channelId: r.channel_id, title: r.title, status: r.status,
+        settings: {
+          production: r.production, allowPublic: r.allow_public, madeForKids: r.made_for_kids, synthetic: r.synthetic_disclosure_default,
+          maxUploadsPerDay: r.max_uploads_per_day, minHoursBetweenUploads: r.min_hours_between_uploads, language: r.default_language,
+          categoryId: r.category_id, defaultStyle: r.default_style,
+        },
+      });
+    }
   }
   return [...out.values()];
+}
+
+const COLUMNS = {
+  production: "production", allowPublic: "allow_public", madeForKids: "made_for_kids", synthetic: "synthetic_disclosure_default",
+  maxUploadsPerDay: "max_uploads_per_day", minHoursBetweenUploads: "min_hours_between_uploads", language: "default_language",
+  categoryId: "category_id", defaultStyle: "default_style",
+} as const satisfies Record<keyof ChannelSettingsInput, string>;
+
+export type SaveChannelResult = { ok: true; changed: string[] } | { ok: false; reason: string };
+
+/**
+ * Owner session only (the actor must be exactly { kind: "session", sessionId }, the same check the gates use). One
+ * transaction: lock the row, write the changed columns, audit what changed (old and new values, no secrets). Every
+ * field is required, so the form always states "made for kids" explicitly; nothing is defaulted silently here.
+ */
+export async function saveChannelSettings(pool: pg.Pool, id: string, input: unknown, actor: GateActor): Promise<SaveChannelResult> {
+  if (actorProblem(actor)) return { ok: false, reason: ACTOR_REASON };
+  const p = channelSettingsSchema.safeParse(input);
+  if (!p.success) return { ok: false, reason: "Check the values: whole numbers within range, a language code like en or hi, and a style from the list." };
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const cur = await client.query<Record<string, unknown> & { channel_id: string }>("select * from youtube_channels where id = $1 for update", [id]);
+    const row = cur.rows[0];
+    if (!row) {
+      await client.query("rollback");
+      return { ok: false, reason: "channel not found" };
+    }
+    const next = p.data;
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+    for (const k of Object.keys(COLUMNS) as Array<keyof typeof COLUMNS>) {
+      if (row[COLUMNS[k]] !== next[k]) changes[k] = { from: row[COLUMNS[k]], to: next[k] };
+    }
+    const keys = Object.keys(changes) as Array<keyof typeof COLUMNS>;
+    if (keys.length > 0) {
+      const sets = keys.map((k, i) => `${COLUMNS[k]} = $${i + 2}`).join(", ");
+      await client.query(`update youtube_channels set ${sets}, updated_at = now() where id = $1`, [id, ...keys.map((k) => next[k])]);
+      await recordAudit(client, "youtube.channel_settings_changed", { channelId: row.channel_id, sessionId: actor.sessionId, changes });
+    }
+    await client.query("commit");
+    return { ok: true, changed: keys };
+  } catch (e) {
+    await client.query("rollback").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 // ---- Quota guard ----
@@ -301,7 +366,7 @@ export async function listAccounts(pool: Pick<pg.Pool, "query">): Promise<Accoun
  */
 export async function reserveQuota(db: Pick<pg.Pool, "query">, call: QuotaCall, opts: { budget?: number; now?: Date } = {}): Promise<boolean> {
   const cost = quotaCost(call);
-  const budget = opts.budget ?? DEFAULT_QUOTA_BUDGET;
+  const budget = opts.budget ?? loadPolicy().quotaBudget;
   if (cost > budget) return false;
   const r = await db.query(
     `insert into quota_usage (day, units) values ($1, $2)

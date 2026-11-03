@@ -105,7 +105,7 @@ describe("no code path in src writes a safety setting as anything but a session"
     });
     for (const names of Object.values(SETTINGS_IMPORT_ALLOW)) expect(names).not.toContain("setSetting");
     expect(SESSION_WRITER_IMPORT_ALLOW).toEqual({
-      "src/app/(app)/settings/system/actions.ts": ["saveLocalServices", "saveSystemSettings"],
+      "src/app/(app)/settings/system/actions.ts": ["saveLocalServices", "saveSystemSettings", "saveUploadSwitches"],
       "src/app/(app)/settings/providers/voice-actions.ts": ["saveVoiceServer"],
       "src/app/(app)/settings/assets/actions.ts": ["saveAssetSettings"],
     });

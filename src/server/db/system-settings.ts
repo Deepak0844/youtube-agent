@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import { z } from "zod";
+import { CUTOVER_PHRASE } from "@/server/core/channel-safety";
 import { redactDetail } from "@/server/core/audit-events";
 import { ownServicePorts, parseLocalServicesInput, validateLocalService } from "@/server/core/local-services";
 import { secretName, type ProviderId } from "@/server/core/provider-keys";
@@ -71,6 +72,22 @@ export async function saveSystemSettings(db: pg.Pool, input: unknown): Promise<S
       { key: "tracks.enabled", value: (cur: unknown) => ({ ...(cur as Record<string, boolean>), scene_kit: v.scene_kit }) },
     ]);
     return { ok: true, changed };
+  } catch {
+    return { ok: false, error: GENERIC };
+  }
+}
+
+/** The two global upload switches. Turning the kill switch ON or the cutover OFF needs nothing more; turning the cutover ON needs the typed phrase. */
+export async function saveUploadSwitches(db: pg.Pool, input: { killSwitch?: boolean; cutover?: boolean; typed?: string }): Promise<SaveResult> {
+  const writes: Array<{ key: string; value: unknown }> = [];
+  if (typeof input.killSwitch === "boolean") writes.push({ key: "uploads.kill_switch", value: input.killSwitch });
+  if (typeof input.cutover === "boolean") {
+    if (input.cutover && input.typed !== CUTOVER_PHRASE) return { ok: false, error: `Type ${CUTOVER_PHRASE} exactly to confirm. Nothing was saved.` };
+    writes.push({ key: "youtube.cutover_done", value: input.cutover });
+  }
+  if (writes.length === 0) return { ok: false, error: GENERIC };
+  try {
+    return { ok: true, changed: await writeAudited(db, writes) };
   } catch {
     return { ok: false, error: GENERIC };
   }
@@ -192,17 +209,21 @@ export interface SystemSettingsView {
   longMinutes: number;
   sceneKit: boolean;
   services: string[];
+  killSwitch: boolean;
+  cutoverDone: boolean;
 }
 
 /** Everything the page shows, read here so only this file touches the settings module. */
 export async function loadSystemSettings(db: pg.Pool): Promise<SystemSettingsView> {
-  const [renders, jobs, warnGb, longMinutes, tracks, services] = await Promise.all([
+  const [renders, jobs, warnGb, longMinutes, tracks, services, killSwitch, cutoverDone] = await Promise.all([
     getSetting(db, "jobs.concurrent_renders") as Promise<number>,
     getSetting(db, "jobs.concurrent_jobs") as Promise<number>,
     getSetting(db, "storage.warn_gb") as Promise<number>,
     getSetting(db, "video.max_long_minutes") as Promise<number>,
     getSetting(db, "tracks.enabled") as Promise<{ scene_kit: boolean }>,
     loadLocalServices(db),
+    getSetting(db, "uploads.kill_switch"),
+    getSetting(db, "youtube.cutover_done"),
   ]);
-  return { renders, jobs, warnGb, longMinutes, sceneKit: tracks.scene_kit, services };
+  return { renders, jobs, warnGb, longMinutes, sceneKit: tracks.scene_kit, services, killSwitch: killSwitch !== false, cutoverDone: cutoverDone === true };
 }

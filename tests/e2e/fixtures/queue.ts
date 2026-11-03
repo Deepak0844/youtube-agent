@@ -10,6 +10,7 @@ import { approveGate, liveGateHash } from "@/server/db/approvals";
 import { advanceVideo } from "@/server/db/pipeline";
 import { claimStage, commitStage } from "@/server/db/stages";
 import { addContent, createVideoRow } from "@/server/db/videos";
+import { ensureChannel } from "../../support/channel-fixture";
 import { mintSession } from "./sessions";
 
 // Test-only seeding for the queue specs. Everything goes through the app role in the e2e database, the same role the real
@@ -51,6 +52,7 @@ export async function advance(videoId: string): Promise<void> {
 /** A video whose draft finished: the pipeline waits at the script gate. `withCost` adds a paid cost plan so the cost gate follows. */
 export async function seedScriptGate(topic: string, opts: { withCost?: boolean } = {}): Promise<{ videoId: string }> {
   const v = await createVideoRow(db(), { format: "short", kind: "scene_kit", language: "en", topic, channelId: "UC-e2e" });
+  await ensureChannel(db(), "UC-e2e");
   await addContent(db(), v.id, "script", { body: script(topic), sha256: sha256Hex(`script-${v.id}`) });
   if (opts.withCost) await addContent(db(), v.id, "cost_plan", { body: costPlan, sha256: sha256Hex(`plan-${v.id}`) });
   await advance(v.id);
@@ -80,6 +82,7 @@ export async function liveFields(videoId: string, gate: "script" | "cost" | "vid
 export async function seedPublishGate(topic: string, visibility: "private" | "unlisted" | "public" = "private"): Promise<{ videoId: string }> {
   const root = process.env.E2E_STORAGE_ROOT!;
   const v = await createVideoRow(db(), { format: "short", kind: "scene_kit", language: "en", topic, channelId: "UC-e2e" });
+  await ensureChannel(db(), "UC-e2e", { allowPublic: visibility === "public" });
   const rel = `queue-e2e/${v.id}.mp4`;
   mkdirSync(path.join(root, "queue-e2e"), { recursive: true });
   const bytes = Buffer.from(`video-bytes-${v.id}`);

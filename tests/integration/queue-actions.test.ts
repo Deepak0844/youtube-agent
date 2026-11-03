@@ -20,6 +20,7 @@ import { reconcile } from "@/server/db/reconciler";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { claimStage, commitStage, getStage } from "@/server/db/stages";
 import { addContent, createVideoRow } from "@/server/db/videos";
+import { ensureChannel } from "../support/channel-fixture";
 import { createFakeProvider, type FakeProvider } from "../support/fake-provider";
 import { withTestDb, type TestDb } from "../support/db";
 
@@ -87,6 +88,7 @@ const plan = { providers_models: { llm: "m1" }, path: "scene_kit", library_scene
 
 async function seedScriptVideo(): Promise<string> {
   const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue", channelId: "UC1" });
+  await ensureChannel(db.pool, "UC1");
   await addContent(db.pool, v.id, "script", { body: script(), sha256: sha256Hex("script-1") });
   return v.id;
 }
@@ -242,6 +244,7 @@ describe("decideGate: publish", () => {
     mkdirSync(path.join(root, "v"), { recursive: true });
     writeFileSync(path.join(root, "v/1.mp4"), "video-1");
     const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Publish me", channelId: "UC1" });
+    await ensureChannel(db.pool, "UC1");
     await addContent(db.pool, v.id, "script", { body: script(), sha256: sha256Hex("script-1") });
     await addContent(db.pool, v.id, "video", { filePath: "v/1.mp4", sha256: sha256Hex("video-1") });
     await addContent(db.pool, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence-1") });
@@ -458,6 +461,7 @@ describe("a cancelled video does nothing more", () => {
     mkdirSync(path.join(root, "v"), { recursive: true });
     writeFileSync(path.join(root, "v/1.mp4"), "video-1");
     const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Cancel me", channelId: "UC1" });
+    await ensureChannel(db.pool, "UC1");
     await addContent(db.pool, v.id, "script", { body: script(), sha256: sha256Hex("script-1") });
     await addContent(db.pool, v.id, "video", { filePath: "v/1.mp4", sha256: sha256Hex("video-1") });
     await addContent(db.pool, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence-1") });

@@ -83,7 +83,6 @@ export const QUOTA_COSTS = {
   "comments.insert": 50, // verify
 } as const;
 export type QuotaCall = keyof typeof QUOTA_COSTS;
-export const DEFAULT_QUOTA_BUDGET = 8000; // ops policy default; the project quota itself is 10,000 a day
 
 /** Google resets quota at midnight Pacific time, so the counter's day is the Pacific calendar date, not UTC. */
 export const quotaDay = (now: Date): string =>

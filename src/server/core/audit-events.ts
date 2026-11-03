@@ -21,6 +21,7 @@ export const AUDIT_EVENTS = {
   "youtube.channel_connected": "A YouTube channel was connected (detail: channel id, status, old and new Google account ids; never a token or code)",
   "youtube.channel_confirmed": "The owner confirmed a connected channel is theirs (detail: channel id, session id)",
   "youtube.channel_disconnected": "A YouTube channel was disconnected and its saved token deleted here; revoking at Google is tried only when it was the last channel of the account, and is not guaranteed (detail: channel id, session id)",
+  "youtube.channel_settings_changed": "The owner changed a channel's safety switches or defaults (detail: channel id, session id, each changed field with old and new value)",
   "youtube.refresh_failed": "Google refused a saved channel token, so the channel needs reconnecting (detail: channel id, reason)",
   "vault.init": "The vault master key was initialised",
   "vault.unreadable": "A vault entry could not be decrypted",

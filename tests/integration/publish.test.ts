@@ -19,6 +19,7 @@ import type { Uploader } from "@/server/providers/uploader";
 import { startRuntime } from "@/worker/runtime";
 import { handlePublishUpload } from "@/worker/stages/publish-upload";
 import { withTestDb, type TestDb } from "../support/db";
+import { ensureChannel } from "../support/channel-fixture";
 import { waitFor } from "./helpers/stage-env";
 
 let db: TestDb;
@@ -57,6 +58,7 @@ interface Seed {
 }
 async function seed(o: { visibility?: string; publishAt?: string | null; approveEvidence?: boolean; approveVideo?: boolean; channel?: string | null } = {}): Promise<Seed> {
   const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t", channelId: o.channel === undefined ? "UC-test" : o.channel });
+  if (o.channel !== null) await ensureChannel(db.pool, o.channel ?? "UC-test", { allowPublic: true });
   const videoBytes = Buffer.from(`video-bytes-${v.id}`);
   const videoPath = `videos/${v.id}/final.mp4`;
   mkdirSync(path.join(root, "videos", v.id), { recursive: true });
