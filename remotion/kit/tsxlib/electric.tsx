@@ -9,7 +9,6 @@ import { FONT_DISPLAY, polyAt, polyD, saneNumbers, txt } from "./util";
 
 const GOLD = "#f5d76e";
 const CYAN = "#4ecdc4";
-const BLUE = "#5b8def";
 const RED = "#e8586f";
 const RAD = Math.PI / 180;
 

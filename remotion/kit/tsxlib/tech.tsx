@@ -125,13 +125,11 @@ export type StackBlock = { label: string; color: string; h?: number };
 export const LayerStack: React.FC<{ blocks: readonly StackBlock[]; x: number; y: number; w?: number; at?: number; stagger?: number; opacity?: number }> = ({ blocks, x, y, w = 760, at = 0, stagger = 6, opacity = 1 }) => {
   const f = useCurrentFrame();
   const ww = num(w, 100, 1040, 760);
-  let acc = 0;
   return (
     <g opacity={num(opacity, 0, 1, 1)}>
       {blocks.slice(0, 8).map((b, i) => {
         const h = num(b.h, 40, 300, 100);
-        const bottom = acc;
-        acc += h;
+        const bottom = blocks.slice(0, i).reduce((s, x) => s + num(x.h, 40, 300, 100), 0);
         const p = EASE_OUT(prog(f, num(at, 0, 1e5, 0) + i * num(stagger, 0, 60, 6), num(at, 0, 1e5, 0) + i * num(stagger, 0, 60, 6) + 10));
         return (
           <g key={i} opacity={p} transform={`translate(0 ${(1 - p) * 40})`} filter="url(#yk-shadow)">
