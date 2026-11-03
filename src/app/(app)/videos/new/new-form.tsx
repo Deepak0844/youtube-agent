@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { LOOKS } from "../../../../../remotion/kit/look";
 import { DEFAULT_STYLE, PRESETS, STYLE_IDS } from "../../../../../remotion/kit/presets";
 import { LANGUAGE_ORDER, LANGUAGE_WORDS } from "@/server/core/videos-view";
@@ -14,6 +14,8 @@ const selectClass = cn("w-full rounded-control border border-control bg-surface 
 
 export function NewForm() {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
+  const [kind, setKind] = useState<"scene_kit" | "tsx">("scene_kit");
+  const custom = kind === "tsx";
   return (
     <form action={run} className="flex max-w-xl min-w-0 flex-col gap-5">
       <div className="flex flex-col gap-2">
@@ -33,15 +35,6 @@ export function NewForm() {
       </div>
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
-          <Label htmlFor="kind">Kind</Label>
-          <select id="kind" name="kind" defaultValue="scene_kit" className={selectClass}>
-            <option value="scene_kit">Scene kit</option>
-            <option value="tsx" disabled>TSX (later)</option>
-            <option value="collage" disabled>Collage (later)</option>
-            <option value="ai" disabled>AI (later)</option>
-          </select>
-        </div>
-        <div className="flex flex-col gap-2">
           <Label htmlFor="format">Format</Label>
           <select id="format" name="format" defaultValue="short" className={selectClass}>
             <option value="short">Short</option>
@@ -50,7 +43,25 @@ export function NewForm() {
         </div>
       </div>
       <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+        <legend className="mb-1 text-body font-medium">Video type</legend>
+        {(
+          [
+            ["scene_kit", "Scene kit (default)", "Safe and fast: the app builds the scenes from a fixed set of parts."],
+            ["tsx", "Custom animation (TSX, experimental)", "Claude writes the animation code. Slower, and it may fall back to the scene kit if the code does not pass the safety checks."],
+          ] as const
+        ).map(([id, title, help]) => (
+          <label key={id} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-rule bg-surface p-3 has-checked:outline-2 has-checked:outline">
+            <input type="radio" name="kind" value={id} checked={kind === id} onChange={() => setKind(id)} className="mt-1" />
+            <span className="flex min-w-0 flex-col gap-1">
+              <span className="text-body font-medium">{title}</span>
+              <span className="text-small text-muted">{help}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <fieldset disabled={custom} className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0 disabled:opacity-50">
         <legend className="mb-1 text-body font-medium">Style</legend>
+        {custom ? <p className="m-0 text-small text-muted">Not used for custom animation: Claude designs the look itself.</p> : null}
         <div className="grid gap-3 sm:grid-cols-2">
           {STYLE_IDS.map((id) => {
             const s = PRESETS[id];
@@ -71,8 +82,8 @@ export function NewForm() {
         </div>
       </fieldset>
       <label className="flex items-start gap-3 text-body">
-        <input type="checkbox" name="captionStyle" value="punchy_captions" className="mt-1" />
-        <span>Punchy captions <span className="block text-small text-muted">Big 1-3 word captions, yellow active word, black outline. Works with any style.</span></span>
+        <input type="checkbox" name="captionStyle" value="punchy_captions" disabled={custom} className="mt-1" />
+        <span>Punchy captions <span className="block text-small text-muted">Big 1-3 word captions, yellow active word, black outline. Works with any style.{custom ? " Not used for custom animation, which has its own captions." : ""}</span></span>
       </label>
       <div className="flex flex-col gap-2">
         <Label htmlFor="notes">Notes (optional)</Label>

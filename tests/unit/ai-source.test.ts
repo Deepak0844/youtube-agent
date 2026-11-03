@@ -14,10 +14,9 @@ describe("AI source switch (pure)", () => {
   it("ON routes only the text stages Claude Code can do and remembers what they had", () => {
     const p = planAiSource(base);
     if (!p.ok) throw new Error(p.reason);
-    expect(p.routes).toEqual({ ...everyStageOnApi, outline: cc.id, draft: cc.id, build_scene_kit: cc.id, titles: cc.id, comment_replies: cc.id });
-    expect(p.previous).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, titles: api.id, comment_replies: null });
+    expect(p.routes).toEqual({ ...everyStageOnApi, outline: cc.id, draft: cc.id, build_scene_kit: cc.id, build_tsx: cc.id, titles: cc.id, comment_replies: cc.id });
+    expect(p.previous).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, titles: api.id, comment_replies: null });
     const text = p.notes.join("\n");
-    expect(text).toMatch(/Build, Remotion TSX stays on its current model: it needs tool use/);
     expect(text).toMatch(/QA, vision review stays on its current model: it needs image input/);
     expect(text).toMatch(/Research and ideas stays on its current model/);
     expect(text).toMatch(/Draft: .*search-then-write/);
@@ -25,7 +24,7 @@ describe("AI source switch (pure)", () => {
 
   it("ON judges Claude Code as tool-free even if an older catalog row claims tools", () => {
     const p = planAiSource({ ...base, models: [api, other, { ...cc, capabilities: all }] });
-    expect(p.ok && [p.routes.build_tsx, p.routes.research, p.routes.qa_vision]).toEqual([api.id, api.id, api.id]);
+    expect(p.ok && [p.routes.build_tsx, p.routes.research, p.routes.qa_vision]).toEqual([cc.id, api.id, api.id]);
   });
 
   it("ON refuses when already on, without a Claude Code model, or when it is disabled", () => {

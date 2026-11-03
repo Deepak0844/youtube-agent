@@ -27,7 +27,7 @@ import { LogTail } from "@/ui/domain/log-tail";
 import { VideoBox } from "@/ui/domain/video-box";
 import { Pill } from "@/ui/primitives/pill";
 import { Skeleton } from "@/ui/primitives/skeleton";
-import { ForceRerunForm, ReframeButtons, RerunForm, SceneButtons } from "./controls";
+import { ForceRerunForm, ReframeButtons, RerunForm, SaveToLibraryForm, SceneButtons } from "./controls";
 import { SoundTabPanel } from "./sound-tab";
 import { TitlesTabPanel } from "./titles-tab";
 
@@ -59,7 +59,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
   const q = live && (p.openGate || p.stages.some((s) => s.state === "needs_you")) ? await loadQueue(db, new Set(Object.keys(jobCheckers())), { videoId: id.data }) : null;
   const card = q?.items[0];
   const status = STATUS_WORDS[p.head.status];
-  const preview = tab === "preview" ? await loadPreview(db, id.data) : null; // read only; only this tab pays for it
+  const preview = tab === "preview" && p.head.kind !== "tsx" ? await loadPreview(db, id.data) : null; // read only; only this tab pays for it
 
   return (
     <div className="flex min-w-0 flex-col gap-layout">
@@ -69,13 +69,14 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
         <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-body text-muted">
           <Pill tone={status.tone}>{status.label}</Pill>
           <span>{LANGUAGE_WORDS[p.head.language]}</span>
-          <span>{KIND_WORDS[p.head.kind]} {FORMAT_WORDS[p.head.format].toLowerCase()}</span>
+          <span data-testid="video-kind">Type: {KIND_WORDS[p.head.kind]}, {FORMAT_WORDS[p.head.format].toLowerCase()}</span>
           <span data-testid="video-style">Style: {presetOf(p.head.style).label}{p.head.captionStyle ? ", punchy captions" : ""}</span>
           <span data-testid="total-spend" className="tabular-nums">{usd(p.spend.totalMicroUsd)} spent</span>
           <span>Started {dt.format(new Date(p.head.createdAt))} UTC</span>
         </p>
       </header>
 
+      {p.kindNote ? <p data-testid="kind-note" className="m-0 max-w-[68ch] rounded-card bg-surface p-pad text-body text-muted">{p.kindNote}</p> : null}
       <LiveFeed />
       <StageStrip p={p} live={live} />
 
@@ -87,6 +88,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
           <video controls preload="metadata" src={p.videoSrc} poster={p.posterSrc ?? undefined} aria-label="Final video" className="size-full object-contain" />
         </VideoBox>
       ) : null}
+      {p.tsxLibrary && p.head.status !== "cancelled" ? <SaveToLibraryForm videoId={p.head.id} hash={p.tsxLibrary.hash} approved={p.tsxLibrary.approved} /> : null}
       {p.videoSrc && p.head.status !== "cancelled" ? <ReframeButtons videoId={p.head.id} links={p.reframed} /> : null}
 
       <nav aria-label="Video sections" className="flex min-w-0 gap-5 overflow-x-auto border-b border-rule">
@@ -183,6 +185,7 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
       );
     }
     case "preview":
+      if (p.head.kind === "tsx") return <Empty>Preview is not available for custom animation; use the final render.</Empty>;
       return !preview ? <Empty>No scenes yet. The preview appears once the build step has made them.</Empty> : (
         <>
           <p data-testid="preview-note" className="m-0 max-w-[68ch] text-body text-muted">Preview only. The final video is made by Render.</p>

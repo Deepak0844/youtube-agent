@@ -14,13 +14,14 @@ import { extractTsx, retryMessages, targetFrames, tsxSystemPrompt, tsxUserPrompt
 // KnownFailure instead of spending another attempt.
 
 export const TSX_MAX_ATTEMPTS = 3;
-/** The model may be this many frames off the exact length (0.5 s); the video is still probed against its own meta by the renderer. */
+/** The model may run this many frames LONGER than the exact length (0.5 s) but at most 3 SHORTER, so the narration is never clipped. */
 export const TSX_FRAME_SLACK = 15;
+export const TSX_FRAME_SHORT_SLACK = 3;
 const MAX_LOG = 120;
 
 // The shape renderTsx returns (providers/renderer/tsx-render.ts); kept here so core code does not import a provider.
 type TsxFailureKind = "check" | "typecheck" | "render" | "timeout" | "preflight" | "output" | "infra";
-type TsxRenderResult = { ok: true; outPath: string; image: string } | { ok: false; error: { kind: TsxFailureKind; message: string; problems: string[] } };
+type TsxRenderResult = { ok: true; outPath: string; image: string; stills?: string[] } | { ok: false; error: { kind: TsxFailureKind; message: string; problems: string[] } };
 
 export interface AuthorDeps {
   /** One reserved, paid model call; returns the raw reply. */
@@ -32,7 +33,7 @@ export interface AuthorDeps {
 
 export type { TsxRenderResult };
 export type AuthorOutcome =
-  | { ok: true; source: string; durationInFrames: number; outPath: string; image: string; attempts: number }
+  | { ok: true; source: string; durationInFrames: number; outPath: string; image: string; stills: string[]; attempts: number }
   | { ok: false; attempts: number; why: "cap" | "repeat"; step: FeedbackStep; problems: string[] };
 
 const STEP_OF: Record<Exclude<TsxFailureKind, "infra">, FeedbackStep> = {
@@ -61,14 +62,14 @@ export async function authorTsx(deps: AuthorDeps, task: TsxTask, maxAttempts: nu
       if (!checked.ok) {
         step = "check";
         problems = checked.problems;
-      } else if (frames === undefined || Math.abs(frames - want) > TSX_FRAME_SLACK) {
+      } else if (frames === undefined || frames - want > TSX_FRAME_SLACK || want - frames > TSX_FRAME_SHORT_SLACK) {
         step = "timing";
         problems = [`meta: durationInFrames must be ${want} (the narration length); set it to ${want}.`];
       } else {
         const r = await deps.render(source);
         if (r.ok) {
           deps.log(`tsx: attempt ${attempt} of ${cap} rendered`);
-          return { ok: true, source, durationInFrames: frames, outPath: r.outPath, image: r.image, attempts: attempt };
+          return { ok: true, source, durationInFrames: frames, outPath: r.outPath, image: r.image, stills: r.stills ?? [], attempts: attempt };
         }
         if (r.error.kind === "infra") throw new KnownFailure(r.error.message);
         step = STEP_OF[r.error.kind];

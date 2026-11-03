@@ -1,5 +1,5 @@
 import type { LanguageModel } from "ai";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -17,6 +17,7 @@ import type { StageOutcome } from "@/server/core/stage-runner";
 import { approveGate, liveGateHash } from "@/server/db/approvals";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { claimStage, commitStage, insertQueuedStage } from "@/server/db/stages";
+import { fallBackToSceneKit } from "@/server/db/tsx-fallback";
 import { addContent, createVideoRow, latestContent } from "@/server/db/videos";
 import { createLlmClient } from "@/server/llm/client";
 import { fakeDraft, fakeModelStep } from "@/server/llm/fake-step";
@@ -69,7 +70,9 @@ function fakeTsx(results: Array<"ok" | { kind: "preflight" | "render" | "typeche
       if (r === "ok") {
         const outPath = path.join(ctx.attemptDir, input.outFile);
         copyFileSync(GOOD_MP4, outPath);
-        return { ok: true, outPath, image: "fake-image" };
+        const stills = ["tsx-frame-first.png", "tsx-frame-middle.png", "tsx-frame-last.png"];
+        for (const f of stills) writeFileSync(path.join(ctx.attemptDir, f), "png");
+        return { ok: true, outPath, image: "fake-image", stills };
       }
       return { ok: false, error: { kind: r.kind, message: r.message, problems: r.problems ?? [] } };
     },
@@ -124,6 +127,7 @@ describe("tsx_author stage", () => {
     expect(saved?.sha256).toBe(sha256Hex(canonicalJson(saved!.body)));
     expect(readFileSync(path.join(root, "videos", id, "render.mp4")).equals(readFileSync(GOOD_MP4))).toBe(true);
     expect(await row(id)).toEqual({ kind: "tsx", kind_origin: null });
+    for (const f of ["first", "middle", "last"]) expect(existsSync(path.join(root, "videos", id, `tsx-frame-${f}.png`))).toBe(true); // preflight stills kept
     expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: false, attempts: 1 });
     expect(await intentCount()).toBeGreaterThanOrEqual(1);
   });
@@ -169,6 +173,31 @@ describe("tsx_author stage", () => {
     expect(JSON.stringify(audit.rows[0].detail)).not.toContain("useCurrentFrame");
     // The parameters hash still names the original kind: draft is not stale, the route is now the scene kit (pictures were not run yet).
     expect(await readNextAction(db.pool, id, readers)).toMatchObject({ kind: "enqueue", stage: "pictures" });
+  });
+
+  it("a retry after a crash between the switch and the commit finishes cleanly: scene_kit with origin tsx is already done", async () => {
+    const { id } = await tsxVideoWithNarration();
+    await db.pool.query("update videos set kind = 'scene_kit', kind_origin = 'tsx' where id = $1", [id]);
+    const out = await play(id, "tsx_author", handler(fakeTsx([]), []));
+    expect(out.kind).toBe("committed");
+    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: true, switched: false, resumed: true });
+  });
+
+  it("fallBackToSceneKit refuses an expired lease and a cancel request, and switches nothing", async () => {
+    const { id } = await tsxVideoWithNarration();
+    const hash = `h-lease-${uuidv7()}`;
+    const stageRunId = await insertQueuedStage(db.pool, { videoId: id, name: "tsx_author", inputHash: hash });
+    const claim = (await claimStage(db.pool, { id: stageRunId, inputHash: hash, workerId: "w1", ttlMs: 60_000 }))!;
+    const detail = { attempts: 3, step: "check", why: "cap" };
+    await db.pool.query("update stage_runs set cancel_requested = true where id = $1", [stageRunId]);
+    await expect(fallBackToSceneKit(db.pool, claim, id, detail)).rejects.toThrow();
+    await db.pool.query("update stage_runs set cancel_requested = false, lease_until = now() - interval '1 minute' where id = $1", [stageRunId]);
+    await expect(fallBackToSceneKit(db.pool, claim, id, detail)).rejects.toThrow();
+    expect(await row(id)).toEqual({ kind: "tsx", kind_origin: null });
+    await db.pool.query("update stage_runs set lease_until = now() + interval '1 minute' where id = $1", [stageRunId]);
+    expect(await fallBackToSceneKit(db.pool, claim, id, detail)).toBe(true);
+    expect(await fallBackToSceneKit(db.pool, claim, id, detail)).toBe(false); // second call: already switched, no second audit row
+    expect(await row(id)).toEqual({ kind: "scene_kit", kind_origin: "tsx" });
   });
 
   it.each([

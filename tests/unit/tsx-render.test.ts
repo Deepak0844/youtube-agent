@@ -113,7 +113,8 @@ const failed = async (d: TsxRendererDeps, i = input()) => {
 describe("renderTsx", () => {
   it("stages the checked file, renders stills then the video under the same sandbox, and probes it", async () => {
     const r = await renderTsx(deps(), ctx(), input());
-    expect(r).toEqual({ ok: true, outPath: path.join(attemptDir, "tsx.mp4"), image: "sha256:" + "b".repeat(64) });
+    expect(r).toEqual({ ok: true, outPath: path.join(attemptDir, "tsx.mp4"), image: "sha256:" + "b".repeat(64), stills: ["tsx-frame-first.png", "tsx-frame-middle.png", "tsx-frame-last.png"] });
+    for (const f of ["first", "middle", "last"]) expect(existsSync(path.join(attemptDir, `tsx-frame-${f}.png`))).toBe(true); // kept, not deleted
     expect(seen.video).toBe(SCENE);
     expect(JSON.parse(seen.props!)).toEqual({ title: "Hi" });
     expect(JSON.parse(seen.meta!)).toEqual({ durationInFrames: 90, stills: [0, 44, 89] });

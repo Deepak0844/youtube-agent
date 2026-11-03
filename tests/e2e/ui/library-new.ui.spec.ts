@@ -16,7 +16,8 @@ test("New short -> the video page -> it shows in the Library with its language",
   await page.goto("/videos/new");
   await page.waitForLoadState("networkidle"); // client form: act only after hydration
   await expect(page.getByRole("heading", { level: 1, name: "New short" })).toBeVisible();
-  await expect(page.getByLabel("Kind").locator("option:disabled")).toHaveCount(3);
+  await expect(page.getByRole("radio", { name: /Scene kit/ })).toBeChecked();
+  await expect(page.getByRole("radio", { name: /Custom animation/ })).not.toBeChecked();
   await expect(page.getByLabel("Format").locator("option:disabled")).toHaveCount(1);
   await noPageScroll(page);
   await page.getByLabel("Topic").fill(topic);

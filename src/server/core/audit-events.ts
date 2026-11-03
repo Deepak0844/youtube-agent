@@ -58,6 +58,7 @@ export const AUDIT_EVENTS = {
   // Phase 4 scenes (detail: video id, scene ids, versions, session id; never scene text)
   // Phase 4 code scenes (detail: video id, attempts, reason class; never source text)
   "video.tsx_fallback": "A code-scene video could not be made and was switched to the scene kit",
+  "tsx.library_approved": "The owner approved saving a custom animation to the library (hash of the file; no source text)",
   "scenes.rechecked": "The saved scenes were re-checked against the house rules (free)",
   "scenes.repaired": "Failing scenes were repaired into a new version",
   "scenes.undone": "The previous scenes version was made current again",

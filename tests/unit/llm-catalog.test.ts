@@ -211,13 +211,14 @@ describe("stage routing and capabilities", () => {
     for (const id of ["outline", "titles", "comment_replies"]) expect(eligibleForStage(id, m({ structuredOutput: false })).ok, id).toBe(false);
     expect(eligibleForStage("outline", m({})).ok).toBe(true);
   });
-  it("tool use is soft for draft (search-then-write mode), not needed for the scene kit (no tools), hard for TSX", () => {
+  it("tool use is soft for draft (search-then-write mode), not needed for the scene kit or TSX (no tools sent)", () => {
     const noTools = m({ toolUse: false });
     const d = eligibleForStage("draft", noTools);
     expect(d.ok).toBe(true);
     expect(d.ok && d.warnings.join(" ")).toMatch(/tool/i);
     expect(eligibleForStage("build_scene_kit", noTools).ok).toBe(true); // build sends no tools (tools: [])
-    expect(eligibleForStage("build_tsx", noTools).ok).toBe(false);
+    expect(eligibleForStage("build_tsx", noTools).ok).toBe(true); // free-form text, no structuredOutput or tool use needed
+    expect(eligibleForStage("build_tsx", m({ structuredOutput: false, toolUse: false })).ok).toBe(true);
   });
   it("qa_vision needs vision; research needs web search or tools", () => {
     expect(eligibleForStage("qa_vision", m({})).ok).toBe(false);
@@ -227,8 +228,8 @@ describe("stage routing and capabilities", () => {
   });
   it("a claude_code row counts as tool-free whatever it claims (tools are off in the adapter)", () => {
     const cc = { ...m({ toolUse: true, vision: true, nativeWebSearch: true }), provider: "claude_code" };
-    for (const id of ["build_tsx", "qa_vision", "research"]) expect(eligibleForStage(id, cc).ok, id).toBe(false);
-    for (const id of ["outline", "draft", "build_scene_kit", "titles", "comment_replies"]) expect(eligibleForStage(id, cc).ok, id).toBe(true);
+    for (const id of ["qa_vision", "research"]) expect(eligibleForStage(id, cc).ok, id).toBe(false);
+    for (const id of ["outline", "draft", "build_scene_kit", "build_tsx", "titles", "comment_replies"]) expect(eligibleForStage(id, cc).ok, id).toBe(true);
   });
   it("unknown stage is refused", () => expect(eligibleForStage("nope", m({})).ok).toBe(false));
   it("a route target must be enabled and priced (or free local)", () => {

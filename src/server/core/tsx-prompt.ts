@@ -10,7 +10,7 @@ import { TSX_IMPORTS, TSX_MAX_BYTES, TSX_MAX_FRAMES, TSX_META } from "@/server/c
 // is never an instruction. No secret, key or setting is passed in: the builders take only the fields below.
 
 export const MS_PER_CHAR = 65; // same estimate Build uses for a beat before narration exists
-const TAIL_S = 0.4; // the video keeps playing a little after the last word, as the scene kit's re-timing does
+export const TAIL_S = 0.4; // the video keeps playing a little after the last word, as the scene kit's re-timing does
 const MAX_WORDS = 400;
 const MAX_FIELD = 600;
 const MAX_PROBLEMS = 20;
@@ -40,6 +40,11 @@ export interface TsxTask {
 export function targetFrames(narrationS: number): number {
   const n = Math.ceil((Math.max(0, narrationS) + TAIL_S) * TSX_META.fps - 1e-9); // the epsilon keeps 6.4 s from becoming 193 frames
   return Math.max(1, Math.min(TSX_MAX_FRAMES, n));
+}
+
+/** True when the narration (plus the tail) needs more frames than a code scene may have. The stage falls back to the scene kit then. */
+export function tooLongForTsx(narrationS: number): boolean {
+  return Math.ceil((Math.max(0, narrationS) + TAIL_S) * TSX_META.fps - 1e-9) > TSX_MAX_FRAMES;
 }
 
 /** Text that is safe to show inside a data block: printable characters only, no code fences, no block markers, capped. */
@@ -153,9 +158,10 @@ function timingLine(b: TimedBeat): string {
 /** The task: script beats with their visuals and timings, and the narration word times, all inside data blocks. */
 export function tsxUserPrompt(task: TsxTask): string {
   const frames = targetFrames(task.narrationS);
-  const timed = beatTimings(task.beats.map((b) => ({ id: sanitizeData(b.id, 40), text: sanitizeData(b.text), ...(b.visual ? { visual: sanitizeData(b.visual) } : {}) })), task.words, task.narrationS);
+  // Timings are worked out on the FULL cleaned text (word counts must match the narration); only the displayed text is capped.
+  const timed = beatTimings(task.beats.map((b) => ({ id: sanitizeData(b.id, 40), text: sanitizeData(b.text, Infinity), ...(b.visual ? { visual: sanitizeData(b.visual) } : {}) })), task.words, task.narrationS);
   const beatText = timed
-    .map((b, i) => `${i + 1}. id=${b.id} ${timingLine(b)}\n   narration: ${b.text}\n   visual: ${b.visual ?? "(none given: choose a fitting drawn visual)"}`)
+    .map((b, i) => `${i + 1}. id=${b.id} ${timingLine(b)}\n   narration: ${sanitizeData(b.text)}\n   visual: ${b.visual ?? "(none given: choose a fitting drawn visual)"}`)
     .join("\n");
   const words = task.words.slice(0, MAX_WORDS).map((w) => `${sanitizeData(w.word, 30).replace(/[@\s]+/g, "") || "_"}@${fr(w.startS)}`);
   const wordBlock = words.length > 0 ? words.join(" ") + (task.words.length > MAX_WORDS ? " ..." : "") : "(no word times are available; use the estimated beat timings)";

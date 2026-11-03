@@ -57,10 +57,10 @@ describe("AI source switch", () => {
     const notes = await setAiSource(db.pool, true, session);
     const cc = (await listModels(db.pool)).find((m) => m.provider === "claude_code")!;
     expect(cc).toMatchObject({ enabled: true, isFree: true, prices: null });
-    expect(await listRoutes(db.pool)).toEqual({ outline: cc.id, draft: cc.id, build_scene_kit: cc.id, titles: cc.id, comment_replies: cc.id, build_tsx: api.id, research: api.id });
-    expect(await getSetting(db.pool, "ai.previous_routes")).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, titles: api.id, comment_replies: null });
+    expect(await listRoutes(db.pool)).toEqual({ outline: cc.id, draft: cc.id, build_scene_kit: cc.id, titles: cc.id, comment_replies: cc.id, build_tsx: cc.id, research: api.id });
+    expect(await getSetting(db.pool, "ai.previous_routes")).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, titles: api.id, comment_replies: null });
     expect(await claudeCodeEnabled(db.pool)).toBe(true);
-    expect(notes.join("\n")).toMatch(/Build, Remotion TSX stays on its current model/);
+    expect(notes.join("\n")).toMatch(/Research and ideas stays on its current model/);
     const audit = await db.pool.query("select detail from audit_log where event = 'ai_source.changed'");
     expect(audit.rows).toHaveLength(1);
     expect(audit.rows[0].detail).toMatchObject({ source: "claude_code", from: { outline: api.id, comment_replies: null }, to: { outline: cc.id } });
@@ -140,7 +140,7 @@ describe("AI source switch, review fixes", () => {
   it("a claude_code row that claims tool use still cannot be routed to a tool stage", async () => {
     const cc = await createModel(db.pool, ccRow, session);
     await db.ownerPool.query(`update llm_models set capabilities = capabilities || '{"toolUse":true,"vision":true,"nativeWebSearch":true}' where id = $1`, [cc.id]);
-    for (const stage of ["build_tsx", "qa_vision", "research"]) await expect(setRoute(db.pool, stage, cc.id, session)).rejects.toThrow(/lacks/);
+    for (const stage of ["qa_vision", "research"]) await expect(setRoute(db.pool, stage, cc.id, session)).rejects.toThrow(/lacks/);
     await setRoute(db.pool, "outline", cc.id, session);
   });
 });
