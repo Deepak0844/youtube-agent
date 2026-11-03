@@ -6,6 +6,7 @@ import { sha256Hex } from "@/server/core/content-hash";
 import type { GateId } from "@/server/core/gates";
 import { approveGate, liveGateHash } from "@/server/db/approvals";
 import { approvePublish } from "@/server/db/publish";
+import { ensureChannel } from "./channel-fixture";
 import { addContent, createVideoRow, type ContentKind } from "@/server/db/videos";
 import type { GateAct, GateAttempt, GateResult } from "./gate-invariants";
 
@@ -60,6 +61,7 @@ async function publishFixture(db: pg.Pool, videoId: string): Promise<{ videoId: 
     "insert into sessions (id, token_hash, expires_at, absolute_expires_at) values ($1, 'gate-fixture', clock_timestamp() + interval '1 day', clock_timestamp() + interval '7 days') on conflict (id) do nothing",
     [SESSION_ID],
   );
+  await ensureChannel(db, "UC1");
   const actor = { kind: "session", sessionId: SESSION_ID } as const;
   for (const g of ["video", "evidence"] as const) await approveGate(db, { videoId, gate: g, seenHash: (await liveGateHash(db, videoId, g))!.hash, actor });
   const seen = (await liveGateHash(db, videoId, "publish"))?.hash;

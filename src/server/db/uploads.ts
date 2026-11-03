@@ -25,6 +25,8 @@ export type StartCtx = { currentApprovalHash: string; currentFileSha: string; ca
 export type RetryCtx = StartCtx & { humanConfirmedNotOnYouTube: true; ignoreLoggedYoutubeId?: true };
 // Optional guard run INSIDE the start transaction, after the upload rows are locked and before the transition. It runs on
 // the same connection, so it sees the committed state at that moment; returning a string refuses the start with that reason.
+// Runs inside the start transaction after the channel advisory lock: returns the caps to enforce (so a limit lowered by the owner applies).
+export type CapsFor = (q: pg.PoolClient, channelId: string) => Promise<UploadCaps>;
 export type StartRecheck = (q: pg.PoolClient, row: { uploadId: string; videoId: string; approvalHash: string }) => Promise<string | null>;
 export type StartResult = { started: true; attempt: number } | { started: false; reason: string };
 
@@ -76,6 +78,7 @@ async function guardedStart(
   ctx: StartCtx & { ignoreLoggedYoutubeId?: true },
   from: "publish_approved" | "upload_failed",
   recheck?: StartRecheck,
+  capsFor?: CapsFor,
 ): Promise<StartResult> {
   assertId(uploadId);
   assertCtx(ctx);
@@ -123,6 +126,8 @@ async function guardedStart(
 
         // 2. serialise every start on this channel so caps/spacing/quota cannot be raced by a sibling video
         await q.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [row.channel_id]);
+        const caps = capsFor ? await capsFor(q as pg.PoolClient, row.channel_id) : ctx.caps;
+        assertUploadCaps(caps);
         const { rows: stat } = await q.query<{ n: string; last: Date | null; attempts: string; now: Date }>(
           `select count(*) filter (where started_at >= ${PACIFIC_DAY_START} and id <> $2) as n,
                   max(started_at) filter (where id <> $2) as last,
@@ -139,10 +144,10 @@ async function guardedStart(
           currentApprovalHash: ctx.currentApprovalHash,
           fileSha: row.file_sha,
           currentFileSha: ctx.currentFileSha,
-          caps: ctx.caps,
+          caps,
           uploadsToday,
           lastUploadAt: s.last,
-          quotaUsedToday: toNumber(s.attempts) * ctx.caps.costUnits,
+          quotaUsedToday: toNumber(s.attempts) * caps.costUnits,
           now: s.now,
         });
         if (!verdict.ok) return { started: false, reason: verdict.reason } as const;
@@ -173,12 +178,12 @@ async function guardedStart(
   }
 }
 
-export function startUpload(db: Db, uploadId: string, ctx: StartCtx, opts: { recheck?: StartRecheck } = {}): Promise<StartResult> {
+export function startUpload(db: Db, uploadId: string, ctx: StartCtx, opts: { recheck?: StartRecheck; capsFor?: CapsFor } = {}): Promise<StartResult> {
   // override flags belong to manualRetry only: strip them even if a caller passes them at runtime
   const clean: Record<string, unknown> = { ...ctx };
   delete clean.ignoreLoggedYoutubeId;
   delete clean.humanConfirmedNotOnYouTube;
-  return guardedStart(db, uploadId, clean as StartCtx, "publish_approved", opts.recheck);
+  return guardedStart(db, uploadId, clean as StartCtx, "publish_approved", opts.recheck, opts.capsFor);
 }
 
 // The ONLY function that moves upload_failed -> uploading. Human-initiated: the caller must state that a human

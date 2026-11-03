@@ -116,9 +116,42 @@ describe("kill switch", () => {
     expect(r2.uploader.totalCalls()).toBe(0);
     expect((await refusals(id)).at(-1)?.reason).toBe("policy");
   });
-  it("applies even when the channel id is not a connected channel", async () => {
+  it("applies even when the channel id has no channel row", async () => {
     await saveUploadSwitches(db.pool, { killSwitch: true });
     expect((await approve(await seed())).ok).toBe(false);
+  });
+});
+
+describe("the channel must exist and be connected", () => {
+  it("refuses a channel id with no row at approval time", async () => {
+    const res = await approve(await seed());
+    expect(res.ok).toBe(false);
+    expect(!res.ok && res.reason).toMatch(/not connected/);
+  });
+  it("refuses at job time when the row is gone", async () => {
+    await channel();
+    const id = await approved();
+    await db.ownerPool.query("delete from youtube_channels");
+    const r = await run(id);
+    expect(r.started).toBe(false);
+    expect(r.uploader.totalCalls()).toBe(0);
+    expect((await refusals(id)).at(-1)?.reason).toBe("policy");
+  });
+  it.each(["unconfirmed", "needs_reconnect"])("refuses a %s channel at approval, at job time and at the start", async (st) => {
+    await channel();
+    expect((await approve(await seed())).ok).toBe(true);
+    await db.ownerPool.query("update youtube_channels set status = $1", [st]);
+    expect((await approve(await seed())).ok).toBe(false);
+    const id = (await db.pool.query("select id from uploads")).rows[0].id as string;
+    const r = await run(id);
+    expect(r.started).toBe(false);
+    expect(r.uploader.totalCalls()).toBe(0);
+    // flipped between the job-time read and the start transaction
+    await db.ownerPool.query("update youtube_channels set status = 'connected'");
+    const r2 = await run(id, createFakeUploader(), async () => void (await db.ownerPool.query("update youtube_channels set status = $1", [st])));
+    expect(r2.started).toBe(false);
+    expect(r2.uploader.totalCalls()).toBe(0);
+    expect(await status(id)).toBe("publish_approved");
   });
 });
 
@@ -163,7 +196,48 @@ describe("allow public per channel", () => {
   });
 });
 
+describe("a switch flipped between the job-time read and the start", () => {
+  it("production turned on is caught by the start transaction", async () => {
+    await channel();
+    const id = await approved();
+    const r = await run(id, createFakeUploader(), async () => void (await db.ownerPool.query("update youtube_channels set production = true")));
+    expect(r.started).toBe(false);
+    expect(r.uploader.totalCalls()).toBe(0);
+    expect(await status(id)).toBe("publish_approved");
+  });
+  it("allow_public turned off is caught by the start transaction", async () => {
+    await setSetting(db.pool, "policy.allow_public", true, { actor: "session" });
+    await channel("allow_public = true");
+    const id = await approved("public");
+    const r = await run(id, createFakeUploader(), async () => void (await db.ownerPool.query("update youtube_channels set allow_public = false")));
+    expect(r.started).toBe(false);
+    expect(r.uploader.totalCalls()).toBe(0);
+    expect(await status(id)).toBe("publish_approved");
+  });
+});
+
 describe("per-channel upload limits", () => {
+  it("a limit lowered after the job-time read still applies (caps are re-read inside the start transaction)", async () => {
+    await channel("max_uploads_per_day = 5, min_hours_between_uploads = 0");
+    const a = await approved();
+    const b = await approved();
+    expect((await run(a)).started).toBe(true);
+    const r = await run(b, createFakeUploader(), async () => void (await db.ownerPool.query("update youtube_channels set max_uploads_per_day = 1")));
+    expect(r.started).toBe(false);
+    expect(r.uploader.totalCalls()).toBe(0);
+    expect((await refusals(b)).at(-1)?.reason).toBe("daily_cap");
+    expect(await status(b)).toBe("publish_approved");
+  });
+  it("two starts at once on a cap of 1: exactly one goes", async () => {
+    await channel("max_uploads_per_day = 1, min_hours_between_uploads = 0");
+    const a = await approved();
+    const b = await approved();
+    const [ra, rb] = await Promise.all([run(a), run(b)]);
+    expect([ra.started, rb.started].filter(Boolean)).toHaveLength(1);
+    expect(ra.uploader.totalCalls() + rb.uploader.totalCalls()).toBe(1);
+    const sts = [await status(a), await status(b)].sort();
+    expect(sts).toEqual(["publish_approved", "uploaded"]);
+  });
   it("defaults to 2 a day, 6 hours apart, not made for kids, category 27", async () => {
     await channel();
     const r = (await db.pool.query("select * from youtube_channels")).rows[0];

@@ -17,6 +17,7 @@ import { readNextAction } from "@/server/db/pipeline";
 import { decideGate, decideParkedStage, type Queues } from "@/server/db/queue-actions";
 import { addContent, createVideoRow } from "@/server/db/videos";
 import { createJobQueue, type StageQueue, type UploadQueue } from "@/server/queue/job-queue";
+import { ensureChannel } from "./channel-fixture";
 import type { TestDb } from "./db";
 
 // Shared pieces of the Task 25 resilience suite: real worker child processes, a fault plan file, the owner's actions through
@@ -165,6 +166,7 @@ export async function ensureLaterContent(db: pg.Pool, videoId: string): Promise<
   if (!have.includes("evidence")) await addContent(db, videoId, "evidence", { filePath: `evidence/${videoId}.pdf`, sha256: sha256Hex(`evidence-${videoId}`) });
   if (!have.includes("metadata")) await addContent(db, videoId, "metadata", { body: { title: "Octopus hearts", visibility: "private", publish_at: null }, sha256: sha256Hex(`metadata-${videoId}`) });
   await db.query("update videos set channel_id = coalesce(channel_id, 'UC-test') where id = $1", [videoId]);
+  await ensureChannel(db, "UC-test");
 }
 
 export type OwnerStep =

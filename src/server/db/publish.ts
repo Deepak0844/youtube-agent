@@ -61,14 +61,13 @@ async function policyFacts(client: pg.PoolClient, videoId: string) {
 }
 /**
  * Kill switch, cutover, and the connected channel's own switches (production, allow public). Read on the caller's client at
- * approval time, at job time and again inside the start transaction. A channel id with no connected-channel row has no
- * per-channel switches (it has no token either), but the kill switch still applies.
+ * approval time, at job time and again inside the start transaction. A channel id with no channel row is refused.
  */
 async function channelSafetyProblem(client: pg.PoolClient, visibility: unknown, channelId: string | null): Promise<string | null> {
   const killSwitch = await getSetting(client, "uploads.kill_switch");
   const cutoverDone = await getSetting(client, "youtube.cutover_done");
-  const row = channelId === null ? undefined : (await client.query<{ production: boolean; allow_public: boolean }>("select production, allow_public from youtube_channels where channel_id = $1", [channelId])).rows[0];
-  return channelUploadProblem({ killSwitch, cutoverDone, visibility, channel: row ? { production: row.production, allowPublic: row.allow_public } : null });
+  const row = channelId === null ? undefined : (await client.query<{ production: boolean; allow_public: boolean; status: string }>("select production, allow_public, status from youtube_channels where channel_id = $1", [channelId])).rows[0];
+  return channelUploadProblem({ killSwitch, cutoverDone, visibility, channel: row ? { production: row.production, allowPublic: row.allow_public, status: row.status } : null });
 }
 
 /** The upload limits for a channel: the base caps, tightened (never loosened) by the channel's own numbers and the policy quota budget. */

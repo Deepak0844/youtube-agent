@@ -9,7 +9,7 @@ import { loadPolicy } from "@/server/db/policy-file";
 import { saveUploadSwitches } from "@/server/db/system-settings";
 import { saveChannelSettings } from "@/server/db/youtube-channels";
 
-const ch = { production: false, allowPublic: false };
+const ch = { production: false, allowPublic: false, status: "connected" };
 const base = { killSwitch: false, cutoverDone: false, visibility: "private", channel: ch };
 
 describe("channelUploadProblem", () => {
@@ -18,6 +18,10 @@ describe("channelUploadProblem", () => {
     expect(channelUploadProblem({ ...base, killSwitch: true })).toMatch(/kill switch/);
     expect(channelUploadProblem({ ...base, killSwitch: true, channel: null })).toMatch(/kill switch/);
     for (const v of [undefined, null, "false", 0]) expect(channelUploadProblem({ ...base, killSwitch: v })).toMatch(/kill switch/);
+  });
+  it("a channel with no row, or one not confirmed and connected, is refused", () => {
+    expect(channelUploadProblem({ ...base, channel: null })).toMatch(/not connected/);
+    for (const status of ["unconfirmed", "needs_reconnect", "", "weird"]) expect(channelUploadProblem({ ...base, channel: { ...ch, status } })).toMatch(/connect/);
   });
   it("public needs the channel's allow_public", () => {
     expect(channelUploadProblem({ ...base, visibility: "public" })).toMatch(/public/);
@@ -38,6 +42,7 @@ describe("policy", () => {
   });
   it("takes valid numbers from the file and ignores bad fields and visibility", () => {
     expect(parsePolicy({ maxUploadsPerDay: 1, quotaBudget: "9", repliesPerDay: -1, defaultVisibility: "public" })).toEqual({ ...POLICY_DEFAULTS, maxUploadsPerDay: 1 });
+    expect(parsePolicy({ quotaBudget: 50_000 }).quotaBudget).toBe(10_000);
     expect(parsePolicy(null)).toEqual(POLICY_DEFAULTS);
     expect(parsePolicy([1])).toEqual(POLICY_DEFAULTS);
   });
