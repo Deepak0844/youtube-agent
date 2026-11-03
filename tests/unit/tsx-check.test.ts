@@ -236,13 +236,13 @@ describe("checkTsx: realistic animations pass (no false positives)", () => {
       "const COLORS: Record<string, string> = { a: 'red' }; const c = COLORS['a'];",
       "const COLORS: Record<string, string> = { a: 'red' }; const k = 'a'; const c = COLORS[k];",
       "const arr = [1, 2, 3]; const i = 2; const v = arr[i];",
-      "const f = (arr: number[], i: number) => arr[i];",
+      "const f = (arr: number[], i: number) => arr[i]; const v = f([1, 2], 1);",
       "const a = Array.from({ length: 5 }, (_, i) => i);",
       "const n = 5; for (let i = 0; i < n; i++) {}",
       "const a = [1, 2]; for (let i = 0; i < a.length; i++) {}",
       "const a = [1, 2]; for (const x of a) {}",
       "const st = { transition: 'none' };",
-      "const g = [[1]].map((r) => r.map((c) => [c].map((z) => z)));",
+      "const g = [[1]].map((r) => [r].map((c) => [c].map((z) => z)));",
       "const ok = Number.isFinite(3); const s = (3.14159).toFixed(2); const pts = [{ x: 1, y: 2 }]; const out = pts.map(({ x, y }) => x + y);",
     ]) okSrc(line(l));
   });
@@ -822,14 +822,14 @@ describe("checkTsx: hardening (review findings)", () => {
     badLine("const s = 'a'.padStart(1e9);", /'padStart' is not allowed; use n < 10/);
     badLine("const s = 'a'.padEnd(1e9);", /padEnd/);
     badLine("const s = 'a'.repeat(3);", /'repeat' is not allowed; use Array\(n\)\.fill/);
-    badLine("const a = [1].flatMap((x) => [x, x]);", /'flatMap' is not allowed; use \.map\(\.\.\.\)\.flat\(\)/);
+    badLine("const a = [1].flatMap((x) => [x, x]);", /'flatMap' is not allowed; write the nested arrays out/);
     badLine("const y = (f: never) => (f as (g: never) => void)(f);", /passed to itself/);
     badLine("const w = (f: (g: unknown) => void) => f(f);", /passed to itself/);
-    badLine("const a = [[[[1]]]].map((x) => x.map((y) => y.map((z) => z.map((q) => q))));", /nested at most 3 deep/);
-    badLine("const a = [[[1]]].forEach((x) => x.filter((y) => y.some((z) => [z].every((q) => q))));", /nested at most 3 deep/);
+    badLine("const a = [[[[1]]]].map((x) => x.map((y) => y.map((z) => z.map((q) => q))));", /nested at most 2 deep/);
+    badLine("const a = [[[1]]].forEach((x) => x.filter((y) => y.some((z) => [z].every((q) => q))));", /nested at most 2 deep/);
     badLine("const a = Array(1001);", /up to 1000/);
     badLine("const a = new Array(5000);", /up to 1000/);
-    ok("const a = [[1]].map((x) => x.map((y) => y + 1)); const b = Array(1000).fill(0); const g = [[1]].map((r) => r.map((c) => [c].map((z) => z)));");
+    ok("const a = [[1]].map((x) => x.map((y) => y + 1)); const b = Array(1000).fill(0); const g = [[1]].map((r) => [r].map((c) => [c].map((z) => z)));");
   });
 
   it("CSS transition/animation 'none' is fine; other values are refused", () => {
@@ -840,5 +840,56 @@ describe("checkTsx: hardening (review findings)", () => {
   it("long + chains are fine up to 1000 parts", () => {
     ok(`const s = ${Array.from({ length: 1000 }, (_, i) => `"p${i}"`).join(" + ")};`);
     badLine(`const s = ${Array.from({ length: 1001 }, () => "1").join(" + ")};`, /at most 1000 parts/);
+  });
+});
+
+describe("checkTsx: round 3 (mutated number arrays, overloads, nesting, entities, tag allow-list)", () => {
+  it("a number array that is mutated or passed around is no longer trusted as numbers", () => {
+    badLine('const a=[0,0]; a.fill(["con","structor"].join(String(""))); const F=({})[a[0]][a[0]]; F("return 1");', /computed keys must be numbers/);
+    badLine("const a=[1]; a.fill(null); random(a[0]);", /seed must be text or a number/);
+    for (const m of ["sort()", "reverse()", "splice(0, 1, 'x')", "copyWithin(0, 1)", "pop()", "push('x')"]) {
+      badLine(`const a=[0,1]; a.${m}; const o = {}; const v = o[a[0]];`, /computed keys must be numbers/);
+    }
+    badLine("const a=[0,1]; const b = a; const o = {}; const v = o[a[0]];", /computed keys must be numbers/);
+    okSrc(withLine("const a=[0,1]; const o = [5, 6]; const v = o[a[0]] + a.length;"));
+  });
+
+  it("join needs a literal separator", () => {
+    badLine('const s = ["a", "b"].join(String(""));', /join\(\) needs a literal text separator/);
+    badLine("const sep = (x: string) => x; const s = ['a', 'b'].join(sep('-'));", /join\(\) needs a literal/);
+    okSrc(withLine("const s = ['a', 'b'].join(', ') + ['c'].join();"));
+  });
+
+  it("a ': number' parameter is not trusted for overloads, unused, component or default-export functions", () => {
+    const call = 'f(["con","structor"].join(String("")));';
+    badLine(`function f(n:any):any; function f(n:number):any{ return ({})[n][n]; } ${call}`, /computed keys must be numbers/);
+    badLine("function f(n: number) { return ({})[n]; }", /computed keys must be numbers/);
+    badLine("function Pick(n: number) { return ({})[n]; } const x = Pick(1);", /computed keys must be numbers/);
+    const dflt = GOOD.replace("export default function Scene() {", "export default function Scene(n: number) { const o = {}; const v = o[n];");
+    expect(bad(dflt)).toMatch(/computed keys must be numbers/);
+    okSrc(withLine("function pick(n: number) { return [1, 2][n]; } const v = pick(1) + pick(0);"));
+  });
+
+  it("callbacks nest 2 deep, 3 only over small literal arrays; arrays built in callbacks stay bounded", () => {
+    badLine("const f = (a: number[]) => a.map((x) => [x].map((y) => [y].map((z) => z)));", /nested at most 2 deep/);
+    badLine("const a = [1, 2].flat();", /'flat' is not allowed/);
+    badLine("const a = Array(1000).fill(0).map(() => Array(1000).fill(0));", /may total at most 100000/);
+    badLine("const a = Array(1000).fill(0).map(() => Array.from({ length: 500 }));", /may total at most 100000/);
+    okSrc(withLine("const a = Array(100).fill(0).map(() => Array(100).fill(0));"));
+  });
+
+  it("HTML entities in JSX attributes and text are refused", () => {
+    expect(bad(GOOD.replace("<rect stroke-width={2} />", '<rect fill="&#117;rl(https://evil.test/a.svg#x)" />'))).toMatch(/entity/);
+    expect(bad(GOOD.replace("<rect stroke-width={2} />", "<text>&#117;rl(x)</text>"))).toMatch(/entities/);
+    expect(bad(GOOD.replace("<rect stroke-width={2} />", '<rect fill="a&amp;b" />'))).toMatch(/entity/);
+  });
+
+  it("lower-case JSX tags come from an allow-list", () => {
+    for (const t of ["input", "textarea", "button", "form", "select", "video", "audio", "canvas", "base", "template", "slot", "dialog", "details", "summary", "table", "center"]) {
+      expect(bad(GOOD.replace("<rect stroke-width={2} />", `<${t} />`)), t).toMatch(/is not allowed/);
+    }
+    for (const t of ["g", "path", "circle", "rect", "line", "polyline", "polygon", "ellipse", "text", "tspan", "defs", "linearGradient", "radialGradient", "stop", "clipPath", "mask", "div", "span", "p", "h1"]) {
+      expect(checkTsx(GOOD.replace("<rect stroke-width={2} />", `<${t} />`)).problems, t).toEqual([]);
+    }
   });
 });

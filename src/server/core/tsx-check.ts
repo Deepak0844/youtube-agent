@@ -61,12 +61,12 @@ const FORBIDDEN_MEMBERS = lower([
   "srcdoc", "contentWindow", "contentDocument", "ownerDocument", "defaultView", "getRootNode", "sendBeacon", "cookie",
   "createElement", "cloneElement", "createPortal", "dangerouslySetInnerHTML", "now",
   "eval", "Function", "fetch", "require", "process", "window", "document", "globalThis", "importScripts", "self", "$$typeof",
-  "repeat", "callee", "caller", "padStart", "padEnd", "flatMap", "props", "_owner", "_store",
+  "repeat", "callee", "caller", "padStart", "padEnd", "flatMap", "flat", "props", "_owner", "_store",
 ]);
 // What to write instead of a refused member (keyed by lower-case name).
 const MEMBER_HINT: Record<string, string> = {
   padstart: "use n < 10 ? `0${n}` : `${n}`", padend: "build the text with a template literal",
-  repeat: "use Array(n).fill(s).join('') with n up to 1000", flatmap: "use .map(...).flat()",
+  repeat: "use Array(n).fill(s).join('') with n up to 1000", flatmap: "write the nested arrays out with .map()", flat: "write the nested arrays out with .map()",
   fromcharcode: "write the text as a literal", now: "time comes from useCurrentFrame()",
   props: "name the prop you need, e.g. ({ title }) =>", constructor: "use plain values and functions",
 };
@@ -103,8 +103,16 @@ const STRING_BANNED = lower([
 const FORBIDDEN_TAGS = new Set([
   "script", "iframe", "frame", "frameset", "object", "embed", "applet", "portal", "link", "style", "meta", "base", "form",
   "img", "video", "audio", "source", "track", "picture", "foreignobject", "animate", "animatemotion", "animatetransform",
-  "set", "a", "noscript", "template", "slot", "dialog", "marquee", "canvas",
+  "set", "a", "noscript", "template", "slot", "dialog", "marquee", "canvas", "input", "textarea", "button", "select", "details",
 ]);
+// The ONLY lower-case JSX tags a scene may use (everything else is refused, FORBIDDEN_TAGS only picks the message).
+const ALLOWED_TAGS = new Set([
+  "svg", "g", "path", "circle", "rect", "line", "polyline", "polygon", "ellipse", "text", "tspan", "defs", "linearGradient",
+  "radialGradient", "stop", "clipPath", "mask", "use", "pattern", "symbol", "filter", "feGaussianBlur", "feOffset",
+  "feColorMatrix", "feMerge", "feMergeNode", "feFlood", "feComposite", "feDropShadow",
+  "div", "span", "p", "h1", "h2", "h3", "h4", "h5", "h6", "b", "i", "strong", "em", "br", "ul", "ol", "li", "section",
+]);
+const MUTATORS = new Set(["fill", "copyWithin", "sort", "reverse", "splice", "push", "pop", "shift", "unshift"]);
 const URL_ATTRS = new Set(["src", "href", "xlinkhref", "srcset", "poster", "action", "formaction", "data", "background", "ping", "manifest", "codebase"]);
 // Built-in objects that may only be used as X.name, X(...), new X(...) or `instanceof X`: never aliased, passed around,
 // destructured or shadowed (so `Math.floor` really is Math.floor).
@@ -116,7 +124,8 @@ const AS_ARGUMENT_OK = new Set(["Boolean", "Number", "String"]); // .filter(Bool
 const NEW_OK = new Set(["Array"]);
 const NO_SHADOW = SAFE_GLOBALS;
 const MAX_ARRAY_LEN = 1000;
-const MAX_CALLBACK_NEST = 3;
+const MAX_CALLBACK_NEST = 2;
+const MAX_CALLBACK_NEST_SMALL = 3; // allowed only when every receiver is a literal-sized array and the sizes multiply to <= MAX_LOOP_PRODUCT
 // Array methods whose function argument runs once per element.
 const ITERATORS = new Set(["map", "filter", "reduce", "reduceRight", "forEach", "some", "every", "find", "findIndex", "findLast", "findLastIndex", "sort", "toSorted"]);
 const ARITH = new Set([
@@ -434,6 +443,7 @@ function walk(source: string, problems: string[]): void {
         const ne = n as ts.NewExpression;
         if (!ts.isIdentifier(ne.expression) || !NEW_OK.has(ne.expression.text)) return add(n, `new: 'new ${snip(ne.expression)}' is not allowed (only new Array(n)); use [] or {} instead of Map/Set.`);
         if (ne.expression.text === "Array" && arraySize(ne.arguments) === undefined) add(n, `arrays: new Array(n) needs n as a number or const number up to ${MAX_ARRAY_LEN}; e.g. new Array(40).`);
+        else nestedBuild(n, arraySize(ne.arguments));
         return;
       }
       case ts.SyntaxKind.StringLiteral:
@@ -453,6 +463,7 @@ function walk(source: string, problems: string[]): void {
       }
       case ts.SyntaxKind.JsxText:
         if (DANGER_TEXT.test((n as ts.JsxText).text)) add(n, "jsx: url(, @import, expression( or javascript: in text is not allowed; reword the text.");
+        else if (/&#|&[a-z]+;/i.test((n as ts.JsxText).text)) add(n, "jsx: HTML entities (&#117; or &amp;) in text are not allowed; write the character itself.");
         return;
       case ts.SyntaxKind.JsxOpeningElement:
       case ts.SyntaxKind.JsxSelfClosingElement: return checkJsxTag(n as ts.JsxOpeningElement | ts.JsxSelfClosingElement);
@@ -648,7 +659,12 @@ function walk(source: string, problems: string[]): void {
     if (p.type?.kind !== ts.SyntaxKind.NumberKeyword) return false;
     const named = ts.isFunctionDeclaration(f) ? f : ts.isVariableDeclaration(f.parent) && f.parent.initializer === f ? f.parent : undefined;
     if (!named?.name || !ts.isIdentifier(named.name)) return false;
-    return refsOf(named, named.name).every((r) => {
+    // overloads / redeclaration (the name maps to something else), components and the default export get their values from outside
+    if (declOf(named.name) !== named || /^[A-Z]/.test(named.name.text)) return false;
+    if (ts.isFunctionDeclaration(named) && ts.getModifiers(named)?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) return false;
+    const uses = refsOf(named, named.name);
+    if (uses.length === 0) return false;
+    return uses.every((r) => {
       const c = r.parent;
       if (!ts.isCallExpression(c) || c.expression !== r || c.arguments.some(ts.isSpreadElement)) return false;
       const a = c.arguments[i] ?? p.initializer;
@@ -680,7 +696,7 @@ function walk(source: string, problems: string[]): void {
     if (r !== undefined) return r;
     r = refsOf(d, d.name as ts.Identifier).every((ref) => {
       const p = ref.parent;
-      if (ts.isPropertyAccessExpression(p) && p.expression === ref) return !GROW.has(p.name.text) && !isWriteTarget(p);
+      if (ts.isPropertyAccessExpression(p) && p.expression === ref) return !GROW.has(p.name.text) && !MUTATORS.has(p.name.text) && !isWriteTarget(p);
       if (ts.isElementAccessExpression(p) && p.expression === ref) return !isWriteTarget(p);
       return (ts.isForOfStatement(p) && p.expression === ref) || ts.isSpreadElement(p);
     });
@@ -704,7 +720,16 @@ function walk(source: string, problems: string[]): void {
   function numberArray(e: ts.Node): boolean {
     const d = constDecl(e);
     const init = d && unwrap(d.initializer!);
-    return !!init && ts.isArrayLiteralExpression(init) && init.elements.every((x) => numLit(x) !== undefined) && frozen(d);
+    return !!init && ts.isArrayLiteralExpression(init) && init.elements.every((x) => numLit(x) !== undefined) && readOnly(d);
+  }
+
+  /** Every use of the const array is a plain read x[i] or x.length: never a method call (fill, sort...), argument or alias. */
+  function readOnly(d: ts.VariableDeclaration): boolean {
+    return refsOf(d, d.name as ts.Identifier).every((ref) => {
+      const p = ref.parent;
+      if (ts.isElementAccessExpression(p) && p.expression === ref) return !isWriteTarget(p);
+      return ts.isPropertyAccessExpression(p) && p.expression === ref && p.name.text === "length" && !isWriteTarget(p);
+    });
   }
 
   /** Array(n)/new Array(n) size: no argument, two or more elements, or one number (or const number) up to MAX_ARRAY_LEN. */
@@ -795,14 +820,19 @@ function walk(source: string, problems: string[]): void {
     if (c.expression.kind === ts.SyntaxKind.ImportKeyword) return add(c, "imports: dynamic import() is not allowed; use a static import at the top.");
     const callee = c.expression;
     if (ts.isPropertyAccessExpression(callee) && ITERATORS.has(callee.name.text)) {
-      // a callback inside a callback inside a callback multiplies the work; three levels are plenty for a scene
-      let depth = 1;
-      for (let a: ts.Node | undefined = c.parent; a; a = a.parent) {
-        const q = a.parent;
-        if (ts.isFunctionLike(a) && q && ts.isCallExpression(q) && q.arguments.includes(a as ts.Expression) && ts.isPropertyAccessExpression(q.expression) && ITERATORS.has(q.expression.name.text)) depth++;
+      // nested callbacks multiply the work: two levels, three only over small literal-sized arrays
+      const outer = enclosingIters(c);
+      const depth = outer.length + 1;
+      if (depth > MAX_CALLBACK_NEST) {
+        let product = arrayLen(callee.expression) ?? Infinity;
+        for (const q of outer) product *= arrayLen((q.expression as ts.PropertyAccessExpression).expression) ?? Infinity;
+        if (depth > MAX_CALLBACK_NEST_SMALL || !(product <= MAX_LOOP_PRODUCT)) {
+          add(c, `loops: .map/.filter/... callbacks may be nested at most ${MAX_CALLBACK_NEST} deep (${MAX_CALLBACK_NEST_SMALL} over small literal arrays); use a const.`);
+        }
       }
-      if (depth > MAX_CALLBACK_NEST) add(c, `loops: .map/.filter/... callbacks may be nested at most ${MAX_CALLBACK_NEST} deep; move the inner part to a const.`);
     }
+    if (ts.isPropertyAccessExpression(callee) && isArrayFromCall(c)) nestedBuild(c, arrayFromLen(c));
+    if (ts.isIdentifier(callee) && callee.text === "Array") nestedBuild(c, arraySize(c.arguments));
     // f(f): self-application, recursion without a name (x => x(x))
     const self = unwrap(callee);
     if (ts.isIdentifier(self) && c.arguments.some((a) => { const u = unwrap(a); return ts.isIdentifier(u) && u.text === self.text; })) add(c, `recursion: '${echo(self.text)}' may not be passed to itself; use a for loop or .map().`);
@@ -828,10 +858,28 @@ function walk(source: string, problems: string[]): void {
     if (callee.text === "Array" && arraySize(c.arguments) === undefined) add(c, `arrays: Array(n) needs n as a number or const number up to ${MAX_ARRAY_LEN}; e.g. Array(40).fill(0).`);
   }
 
+  /** The iterator calls (.map/.filter...) whose callback the node sits inside. */
+  function enclosingIters(n: ts.Node): ts.CallExpression[] {
+    const out: ts.CallExpression[] = [];
+    for (let a: ts.Node | undefined = n.parent; a; a = a.parent) {
+      const q = a.parent;
+      if (ts.isFunctionLike(a) && q && ts.isCallExpression(q) && q.arguments.includes(a as ts.Expression) && ts.isPropertyAccessExpression(q.expression) && ITERATORS.has(q.expression.name.text)) out.push(q);
+    }
+    return out;
+  }
+
+  /** An array built inside callbacks is built once per outer element: the sizes multiply (known receiver sizes only). */
+  function nestedBuild(n: ts.Node, size: number | undefined): void {
+    let work = size ?? 1;
+    for (const q of enclosingIters(n)) work *= Math.max(1, arrayLen((q.expression as ts.PropertyAccessExpression).expression) ?? 1);
+    if (work > MAX_LOOP_PRODUCT) add(n, `arrays: arrays built inside callbacks may total at most ${MAX_LOOP_PRODUCT} items; use smaller sizes.`);
+  }
+
   // ["ur", "l(x)"].join("") and "ur".concat("l(x)") build text from literal pieces: check them like a `+` chain.
   function checkTextCall(c: ts.CallExpression, callee: ts.PropertyAccessExpression): void {
     if (callee.name.text === "concat" && strConst(callee.expression) !== undefined) return checkParts(c, [partOf(callee.expression), ...c.arguments.map(partOf)]);
     if (callee.name.text !== "join") return;
+    if (c.arguments.length > 0 && !(c.arguments.length === 1 && strConst(c.arguments[0]!) !== undefined)) return add(c, "text: .join() needs a literal text separator; e.g. .join(', ') or .join('').");
     const u = unwrap(callee.expression);
     const arr = ts.isArrayLiteralExpression(u) ? u : constInit(u);
     if (!arr || !ts.isArrayLiteralExpression(arr) || arr.elements.some(ts.isSpreadElement)) return;
@@ -918,7 +966,7 @@ function walk(source: string, problems: string[]): void {
       const name = tag.text;
       if (/^[a-z]/.test(name) || name.includes("-")) {
         if (name.includes("-")) return add(el, `jsx: custom element <${echo(name)}> is not allowed; use div, span or svg tags.`);
-        if (FORBIDDEN_TAGS.has(name.toLowerCase())) add(el, name === "img" ? "jsx: <img> is not allowed; use <Img src={staticFile('...')} /> from remotion." : `jsx: <${echo(name)}> is not allowed; use div, span, svg shapes or remotion components.`);
+        if (!ALLOWED_TAGS.has(name) || FORBIDDEN_TAGS.has(name.toLowerCase())) add(el, name === "img" ? "jsx: <img> is not allowed; use <Img src={staticFile('...')} /> from remotion." : `jsx: <${echo(name)}> is not allowed; use div, span, svg shapes or remotion components.`);
         return;
       }
       // The tag must BE a component: a function declaration or a const arrow/function of this file, or an allowed
@@ -940,6 +988,7 @@ function walk(source: string, problems: string[]): void {
     if (key === "ref") return add(a, "jsx: ref is not allowed; compute values from useCurrentFrame().");
     if (key.startsWith("on")) return add(a, `jsx: event handler '${echo(raw)}' is not allowed; a video has no clicks, remove it.`);
     if (key === "is" || key === "srcdoc") return add(a, `jsx: '${echo(raw)}' is not allowed; remove the attribute.`);
+    if (a.initializer && ts.isStringLiteral(a.initializer) && a.initializer.getText(sf).includes("&")) return add(a, "jsx: '&' (HTML entity) in an attribute is not allowed; write the character itself.");
     const urlish = URL_ATTRS.has(key) || key.endsWith("href");
     if (!urlish) return;
     const v = a.initializer;
