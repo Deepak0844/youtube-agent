@@ -77,8 +77,9 @@ export function judgeDraft(
   lang: Lang,
   format: "short" | "long",
   fetched: ReadonlyMap<string, string>,
+  kind?: string,
 ): { ok: true; script: Script } | { ok: false; problems: string[] } {
-  const v = validateScript(raw, lang, format);
+  const v = validateScript(raw, lang, format, { kind });
   if (!v.ok) return v;
   const e = checkEvidence(v.script, fetched);
   return e.ok ? { ok: true, script: v.script } : e;

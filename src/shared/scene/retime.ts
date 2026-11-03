@@ -31,6 +31,9 @@ function scaleInner(v: unknown, ratio: number): unknown {
   return v;
 }
 
+/** The video ends at most this long after the narration. */
+export const MAX_TAIL_MS = 600;
+
 const wordCount = (t: string) => t.split(/\s+/).filter(Boolean).length;
 
 /** Raw start (ms) of each scene from the real word times, or null when the beats and words cannot be matched. */
@@ -63,7 +66,7 @@ function wordStarts(doc: SceneDoc, inp: RetimeInput): number[] | null {
 
 export function retimeScenes(doc: SceneDoc, inp: RetimeInput): RetimeResult {
   const min = inp.minSceneMs ?? 1200;
-  const totalMs = Math.round(inp.narrationDurationS * 1000 + (inp.tailMs ?? 400));
+  const totalMs = Math.round(inp.narrationDurationS * 1000 + Math.min(MAX_TAIL_MS, inp.tailMs ?? 400));
   const n = doc.scenes.length;
   if (!(totalMs > 0) || n === 0) return { ok: false, errors: ["no narration length or no scenes to retime"] };
   if (totalMs > LIMITS.maxTotalMs) return { ok: false, errors: [`narration needs ${totalMs} ms, over the ${LIMITS.maxTotalMs} ms limit`] };

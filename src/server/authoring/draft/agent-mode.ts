@@ -115,7 +115,7 @@ export async function agentDraft(ctx: StageContext, deps: DraftDeps, input: Draf
     stepsLeft -= run.steps;
     const fetched = fetchedPages(run.messages);
     const parsed = parseAnswer(run.text, rawDraftSchema);
-    const verdict = parsed.ok ? judgeDraft(parsed.value, input.lang, input.format, fetched) : { ok: false as const, problems: [parsed.reason] };
+    const verdict = parsed.ok ? judgeDraft(parsed.value, input.lang, input.format, fetched, input.kind) : { ok: false as const, problems: [parsed.reason] };
     if (verdict.ok) return { script: verdict.script, spentMicroUsd: spent };
     if (attempt >= MAX_DRAFT_RETRIES) throw new DraftInvalidError(verdict.problems, spent);
     messages = [...run.messages, { role: "user", content: rejectionMessage(verdict.problems, [...fetched.keys()]) }];

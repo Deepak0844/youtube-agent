@@ -53,7 +53,7 @@ function goodScript(quote = QUOTE, computedOnly = false) {
     title: "Three hearts",
     description: "d",
     narration,
-    beats: [{ id: "hook", text: narration }],
+    beats: [{ id: "hook", text: narration }, { id: "reveal", text: "r" }, { id: "loop", text: "l" }],
     evidence: computedOnly ? [{ text: "Three hearts times two", kind: "computed", method: "3 x 2 = 6" }] : [{ text: "Two hearts feed the gills", kind: "sourced", source_url: PAGE_URL, quote }],
   };
 }

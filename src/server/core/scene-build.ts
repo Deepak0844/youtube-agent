@@ -3,6 +3,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { describeSceneFormat, kindBlurbs, LIMITS, usableKinds, validateScenes, type SceneDoc } from "@/shared/scene";
 import { SVG_EXAMPLE } from "../../../remotion/kit/svgLogic";
 import { styleGuidance } from "../../../remotion/kit/presets";
+import { roleGuidance, roleOf } from "@/shared/scene/beat-roles";
 import { checkSceneRules, validateAndCheck } from "@/shared/scene/rules";
 
 // Build, scene kit: one model answer per script beat, each checked against the scene format, then assembled into one
@@ -71,8 +72,8 @@ export function beatBlock(beat: SceneBeat, shownForReal?: string): string {
   return `Beat ${beat.id}:\n${beat.text}${brief}${real}${search}`;
 }
 
-export function pickMessages(beat: SceneBeat, kinds: readonly string[], shownForReal?: string, style?: string | null): Message[] {
-  const guide = styleGuidance(style); // "" for the default look, so the default prompt is unchanged
+export function pickMessages(beat: SceneBeat, kinds: readonly string[], shownForReal?: string, style?: string | null, roleHint = ""): Message[] {
+  const guide = [styleGuidance(style), roleHint].filter(Boolean).join("\n"); // "" for the default look and a free-form beat, so the default prompt is unchanged
   return [
     { role: "system", content: `Pick the scene kind that best shows one beat of a short portrait video script. The visual brief is an on-screen action: choose the scene kind whose motion matches it (algo_cells for search or sort, orbit for planets and moons, network for packets and servers, chart for numbers, svg_diagram for any other mechanism, process or flow whose action is a motion and no picture or clip is linked: it draws a labelled animated diagram). When the brief describes motion, prefer a drawn or animated kind over a text kind. If no available kind can show it truthfully, choose the most abstract honest kind that fits the content (chart, math, chat, terminal, pause_card...). NEVER use drawn_objects unless the brief literally names one of its eight objects (jug, measuring_cup, ruler, laptop, server_rack, container, cloud, padlock).\nKinds:\n${kindBlurbs(kinds)}\nReply with only JSON: {"kind": "<one of the kinds>"}.${guide ? `\n${guide}` : ""}` },
     { role: "user", content: beatBlock(beat, shownForReal) },
@@ -181,10 +182,17 @@ export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, 
     let kind: string;
     if (plan) kind = plan.kind;
     else {
-      const allowed = noRepeat(kinds);
-      const pick = await withRetries(ask, pickMessages(beat, allowed, opts.shownForReal, opts.style), (t) => checkPick(t, allowed));
-      if ("errors" in pick) throw fail(pick.errors);
-      kind = pick.value;
+      const role = roleOf(beat.id);
+      let allowed = noRepeat(kinds);
+      const prev = scenes[scenes.length - 1]?.kind;
+      if (role === "twist" && prev && allowed.some((k) => k !== prev)) allowed = allowed.filter((k) => k !== prev); // a twist looks different from the beat before it
+      const hint = [roleGuidance(beat.id), role === "loop" && scenes[0] ? `Scene 1 is a ${String(scenes[0].kind)} scene.` : ""].filter(Boolean).join(" ");
+      if (role === "quiz" && allowed.includes("pause_card")) kind = "pause_card";
+      else {
+        const pick = await withRetries(ask, pickMessages(beat, allowed, opts.shownForReal, opts.style, hint), (t) => checkPick(t, allowed));
+        if ("errors" in pick) throw fail(pick.errors);
+        kind = pick.value;
+      }
     }
     const fill = await withRetries(ask, fillMessages(beat, kind, beatAssets, { exact: !!plan, language: opts.language }), (t) => {
       const r = check(t, kind, beatAssets, beat.visual, !!plan);

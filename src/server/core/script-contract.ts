@@ -1,6 +1,7 @@
 // The shape a drafted script must have before it is stored. Pure: no IO. Anything the model says about its own
 // verification (verified / verified_by) is dropped: only the system verifies evidence.
 import { z } from "zod";
+import { checkBeatRoles } from "@/shared/scene/beat-roles";
 import { wordCount, wordRange, type Lang } from "./lang";
 
 const MAX_BYTES = 256 * 1024;
@@ -21,6 +22,9 @@ export const beatSchema = z.looseObject({
   id: z.string().min(1),
   visual: z.string().max(320).optional(),
   search: z.array(z.string().min(1).max(80)).max(5).optional(),
+  /** Estimated seconds from the start, set at Draft save (2.7 words/sec); never rendered. */
+  est_start: z.number().nonnegative().optional(),
+  est_end: z.number().nonnegative().optional(),
 });
 export const claimSchema = z.discriminatedUnion("kind", [
   z.object({ text: z.string().min(1), kind: z.literal("sourced"), source_url: httpUrl, quote: z.string().min(1) }),
@@ -56,7 +60,7 @@ export function validateScript(
   script: unknown,
   lang: Lang,
   format: "short" | "long",
-  opts: { requireEvidence?: boolean; speakingRate?: number } = {},
+  opts: { requireEvidence?: boolean; speakingRate?: number; kind?: string } = {},
 ): { ok: true; script: Script } | { ok: false; problems: string[] } {
   const problems: string[] = [];
   let bytes = 0;
@@ -77,6 +81,7 @@ export function validateScript(
     const { min, max } = wordRange(lang, opts.speakingRate);
     if (words < min || words > max) problems.push(`${words} spoken words (want ${min}-${max})`);
   }
+  if (format === "short" && opts.kind === "scene_kit") problems.push(...checkBeatRoles(s.beats.map((b) => b.id)));
   const cta = CTA.exec(s.narration);
   if (cta) problems.push(`engagement-CTA phrasing in the narration (${JSON.stringify(cta[0])}); end on the payoff instead`);
   if ((opts.requireEvidence ?? true) && s.evidence.length === 0) problems.push("evidence is empty but evidence is required");
