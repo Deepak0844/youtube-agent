@@ -7,15 +7,15 @@ export const USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 export const CHANNELS_URL = "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true";
 export const STATE_TTL_MS = 10 * 60_000;
 
-// All scopes are asked for up front so later slices never need a second consent.
+// All scopes are asked for up front so later slices never need a second consent. Deliberately narrow: no broad `youtube` and no
+// `youtube.readonly`. Per Google's method docs (verify in the spike): videos.insert accepts upload; thumbnails.set, playlists.*,
+// playlistItems.insert, videos.update, channels.list and comments accept youtube.force-ssl; analytics reports accept yt-analytics.readonly.
 export const GOOGLE_SCOPES = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/youtube.upload",
-  "https://www.googleapis.com/auth/youtube.readonly",
   "https://www.googleapis.com/auth/yt-analytics.readonly",
   "https://www.googleapis.com/auth/youtube.force-ssl",
-  "https://www.googleapis.com/auth/youtube",
 ] as const;
 
 const b64url = (b: Buffer) => b.toString("base64url");
@@ -63,7 +63,7 @@ export function parseChannels(json: unknown): ChannelInfo[] {
   return out;
 }
 
-export const channelSecretName = (channelId: string) => `youtube.channel.${channelId.toLowerCase()}.refresh`;
+export const channelSecretName = (rowId: string) => `youtube.channel.${rowId}.refresh`;
 
 // ---- Quota guard (pure part) ----
 // Costs per call in YouTube Data API units. VERIFY against Google's quota calculator before relying on them

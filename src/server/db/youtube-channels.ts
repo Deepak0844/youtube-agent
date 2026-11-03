@@ -1,6 +1,7 @@
 // Connecting YouTube channels through the owner's own Google app. Refresh tokens are written ONLY to the vault; the
 // tables hold the vault entry name. Codes, tokens and the client secret are never logged or audited (audit rows carry
 // channel ids and reasons only). Every Google call goes through the injected `GoogleHttp` (default: safeFetch), so tests use fakes.
+import { randomUUID } from "node:crypto";
 import type pg from "pg";
 import { redirectUriFor, SECRET_NAME } from "@/server/core/google-app";
 import {
@@ -28,6 +29,7 @@ type Ring = Keyring | (() => Keyring);
 const keyringOf = (r: Ring) => (typeof r === "function" ? r() : r);
 
 export type GoogleHttp = (url: string, init?: RequestInit) => Promise<Response>;
+export const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 export const defaultGoogleHttp: GoogleHttp = (url, init) => safeFetch(url, init, { mode: "indirect" });
 
 const form = (o: Record<string, string>) => ({
@@ -68,7 +70,7 @@ export async function startConnect(pool: pg.Pool, a: { sessionId: string; appUrl
 
 export type CompleteResult =
   | { ok: true; channelIds: string[] }
-  | { ok: false; reason: "state" | "no_app" | "bad_app_url" | "exchange" | "no_refresh_token" | "scopes" | "profile" | "no_channel" };
+  | { ok: false; reason: "state" | "no_app" | "bad_app_url" | "exchange" | "no_refresh_token" | "scopes" | "profile" | "no_channel" | "quota" };
 
 async function json(res: Response): Promise<Record<string, unknown> | null> {
   try {
@@ -112,6 +114,8 @@ export async function completeConnect(
   const scopes = typeof tokens?.scope === "string" ? tokens.scope : "";
   if (missingScopes(scopes).length > 0) return { ok: false, reason: "scopes" };
 
+  // Reserve BEFORE the channels.list call and honour the answer.
+  if (!(await reserveQuota(pool, "channels.list"))) return { ok: false, reason: "quota" };
   let sub: string, email: string, channels;
   try {
     const auth = { headers: { authorization: `Bearer ${access}` } };
@@ -125,7 +129,6 @@ export async function completeConnect(
     return { ok: false, reason: "profile" };
   }
   if (channels.length === 0) return { ok: false, reason: "no_channel" };
-  await reserveQuota(pool, "channels.list");
 
   const client = await pool.connect();
   try {
@@ -135,19 +138,29 @@ export async function completeConnect(
        on conflict (google_sub) do update set email = excluded.email returning id`,
       [sub, email],
     );
+    const touchedOld = new Set<string>();
     for (const c of channels) {
-      const name = channelSecretName(c.channelId);
-      await putSecret(client, keyringOf(ring), name, refresh, { hint: false });
-      // New -> unconfirmed. Reconnect keeps a confirmed channel confirmed (needs_reconnect -> connected).
-      const r = await client.query<{ status: string }>(
-        `insert into youtube_channels (google_account_id, channel_id, title, token_secret_name, scopes) values ($1, $2, $3, $4, $5)
-         on conflict (channel_id) do update set google_account_id = excluded.google_account_id, title = excluded.title,
-           token_secret_name = excluded.token_secret_name, scopes = excluded.scopes, updated_at = now(),
-           status = case when youtube_channels.status = 'unconfirmed' then 'unconfirmed' else 'connected' end
-         returning status`,
-        [acct.rows[0]!.id, c.channelId, c.title, name, scopes],
+      const cur = await client.query<{ id: string; google_account_id: string; status: string; token_secret_name: string }>(
+        "select id, google_account_id, status, token_secret_name from youtube_channels where channel_id = $1 for update",
+        [c.channelId],
       );
-      await recordAudit(client, "youtube.channel_connected", { channelId: c.channelId, status: r.rows[0]!.status });
+      const old = cur.rows[0];
+      const acctId = acct.rows[0]!.id;
+      const rowId = old?.id ?? randomUUID();
+      const name = old?.token_secret_name ?? channelSecretName(rowId);
+      await putSecret(client, keyringOf(ring), name, refresh, { hint: false });
+      // New, still-unconfirmed, or moved to a DIFFERENT Google account -> unconfirmed. Same account reconnect keeps it confirmed.
+      const status = !old || old.status === "unconfirmed" || old.google_account_id !== acctId ? "unconfirmed" : "connected";
+      if (old) {
+        await client.query("update youtube_channels set google_account_id = $2, title = $3, scopes = $4, status = $5, updated_at = now() where id = $1", [rowId, acctId, c.title, scopes, status]);
+        if (old.google_account_id !== acctId) touchedOld.add(old.google_account_id);
+      } else {
+        await client.query("insert into youtube_channels (id, google_account_id, channel_id, title, token_secret_name, scopes, status) values ($1, $2, $3, $4, $5, $6, $7)", [rowId, acctId, c.channelId, c.title, name, scopes, status]);
+      }
+      await recordAudit(client, "youtube.channel_connected", { channelId: c.channelId, status, oldAccountId: old?.google_account_id ?? null, newAccountId: acctId });
+    }
+    for (const id of touchedOld) {
+      await client.query("delete from google_accounts a where a.id = $1 and not exists (select 1 from youtube_channels c where c.google_account_id = a.id)", [id]);
     }
     await client.query("commit");
   } catch (e) {
@@ -166,9 +179,21 @@ export async function confirmChannel(pool: pg.Pool, id: string, sessionId: strin
   return true;
 }
 
-/** Deletes the channel row and its vault token in one transaction; drops a Google account left with no channels. */
-export async function disconnectChannel(pool: pg.Pool, id: string, sessionId: string): Promise<boolean> {
+/**
+ * Deletes the channel row and its vault token in one transaction; drops a Google account left with no channels. After commit,
+ * and only when no other channel of that account remains, it asks Google to revoke the token. Best effort: a revoke failure
+ * never fails the disconnect.
+ */
+export async function disconnectChannel(pool: pg.Pool, ring: Ring, http: GoogleHttp, id: string, sessionId: string): Promise<boolean> {
+  let token: string | null = null;
+  try {
+    const n = await pool.query<{ token_secret_name: string }>("select token_secret_name from youtube_channels where id = $1", [id]);
+    if (n.rows[0]) token = await getSecret(pool, keyringOf(ring), n.rows[0].token_secret_name);
+  } catch {
+    token = null;
+  }
   const client = await pool.connect();
+  let lastOfAccount = false;
   try {
     await client.query("begin");
     const r = await client.query<{ channel_id: string; token_secret_name: string; google_account_id: string }>(
@@ -181,25 +206,35 @@ export async function disconnectChannel(pool: pg.Pool, id: string, sessionId: st
       return false;
     }
     await deleteSecret(client, row.token_secret_name);
-    await client.query("delete from google_accounts a where a.id = $1 and not exists (select 1 from youtube_channels c where c.google_account_id = a.id)", [row.google_account_id]);
-    await recordAudit(client, "youtube.channel_disconnected", { channelId: row.channel_id, sessionId });
+    const gone = await client.query("delete from google_accounts a where a.id = $1 and not exists (select 1 from youtube_channels c where c.google_account_id = a.id)", [row.google_account_id]);
+    lastOfAccount = (gone.rowCount ?? 0) > 0;
+    await recordAudit(client, "youtube.channel_disconnected", { channelId: row.channel_id, sessionId, lastOfAccount });
     await client.query("commit");
-    return true;
   } catch (e) {
     await client.query("rollback").catch(() => {});
     throw e;
   } finally {
     client.release();
   }
+  if (lastOfAccount && token) {
+    try {
+      await http(REVOKE_URL, form({ token }));
+    } catch {
+      // best effort
+    }
+  }
+  return true;
 }
 
-export type AccessResult = { ok: true; accessToken: string } | { ok: false; reason: "needs_reconnect" | "unavailable" };
+export type AccessResult = { ok: true; accessToken: string } | { ok: false; reason: "needs_reconnect" | "unconfirmed" | "unavailable" };
 
 /** Trades the vault refresh token for a short-lived access token (never stored). invalid_grant -> needs_reconnect + audit. */
 export async function getAccessToken(pool: pg.Pool, ring: Ring, http: GoogleHttp, id: string): Promise<AccessResult> {
-  const { rows } = await pool.query<{ channel_id: string; token_secret_name: string; status: string }>("select channel_id, token_secret_name, status from youtube_channels where id = $1", [id]);
+  const { rows } = await pool.query<{ channel_id: string; token_secret_name: string; status: string; token_version: Date | null }>("select channel_id, token_secret_name, status, (select updated_at from secrets where name = token_secret_name) as token_version from youtube_channels where id = $1", [id]);
   const ch = rows[0];
-  if (!ch || ch.status === "needs_reconnect") return { ok: false, reason: ch ? "needs_reconnect" : "unavailable" };
+  if (!ch) return { ok: false, reason: "unavailable" };
+  if (ch.status === "unconfirmed") return { ok: false, reason: "unconfirmed" }; // never use a token the owner has not confirmed
+  if (ch.status === "needs_reconnect") return { ok: false, reason: "needs_reconnect" };
   const creds = await appCreds(pool, ring);
   if (!creds) return { ok: false, reason: "unavailable" };
   let refresh: string;
@@ -217,9 +252,14 @@ export async function getAccessToken(pool: pg.Pool, ring: Ring, http: GoogleHttp
   const body = await json(res);
   if (res.ok && typeof body?.access_token === "string") return { ok: true, accessToken: body.access_token };
   if (body?.error === "invalid_grant") {
-    await pool.query("update youtube_channels set status = 'needs_reconnect', updated_at = now() where id = $1", [id]);
-    await recordAudit(pool, "youtube.refresh_failed", { channelId: ch.channel_id, reason: "invalid_grant" });
-    return { ok: false, reason: "needs_reconnect" };
+    // Only if the token is still the one we tried (a reconnect in between replaced it) and the owner has not un-confirmed it.
+    const u = await pool.query(
+      `update youtube_channels set status = 'needs_reconnect', updated_at = now() where id = $1 and status <> 'unconfirmed'
+         and (select updated_at from secrets where name = token_secret_name) is not distinct from $2::timestamptz`,
+      [id, ch.token_version],
+    );
+    if ((u.rowCount ?? 0) > 0) await recordAudit(pool, "youtube.refresh_failed", { channelId: ch.channel_id, reason: "invalid_grant" });
+    return { ok: false, reason: (u.rowCount ?? 0) > 0 ? "needs_reconnect" : "unavailable" };
   }
   return { ok: false, reason: "unavailable" };
 }

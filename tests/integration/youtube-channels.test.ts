@@ -14,11 +14,15 @@ const APP_URL = "http://localhost:3000";
 const REFRESH = "1//refresh-token-value-that-must-stay-in-the-vault";
 
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-const fakeHttp = (over: { token?: Response; channels?: unknown } = {}): GoogleHttp => async (url) => {
+const fakeHttp = (over: { token?: Response; channels?: unknown; sub?: string } = {}): GoogleHttp => async (url) => {
   if (url.includes("oauth2.googleapis.com/token")) return over.token ?? reply({ access_token: "at", refresh_token: REFRESH, scope: GOOGLE_SCOPES.join(" ") });
-  if (url.includes("userinfo")) return reply({ sub: "sub-1", email: "me@example.com" });
+  if (url.includes("userinfo")) return reply({ sub: over.sub ?? "sub-1", email: "me@example.com" });
   return reply(over.channels ?? { items: [{ id: "UCchan1", snippet: { title: "My Channel" } }] });
 };
+
+const tokenName = async () => (await db.ownerPool.query("select token_secret_name from youtube_channels limit 1")).rows[0].token_secret_name as string;
+const connect = (http: GoogleHttp = fakeHttp()) => (async () => completeConnect(db.pool, ring, http, { sessionId: SESSION, state: await begin(), code: "c", appUrl: APP_URL }))();
+const status = async () => (await listAccounts(db.pool)).flatMap((a) => a.channels).map((c) => c.status);
 
 async function begin(): Promise<string> {
   const r = await startConnect(db.pool, { sessionId: SESSION, appUrl: APP_URL });
@@ -44,7 +48,7 @@ describe("connect flow", () => {
     expect(r).toEqual({ ok: true, channelIds: ["UCchan1"] });
     const accts = await listAccounts(db.pool);
     expect(accts[0]!.channels[0]).toMatchObject({ channelId: "UCchan1", status: "unconfirmed" });
-    expect(await hasSecret(db.pool, "youtube.channel.uchan1.refresh")).toBe(true);
+    expect(await hasSecret(db.pool, await tokenName())).toBe(true);
     const dump = JSON.stringify((await db.ownerPool.query("select * from youtube_channels")).rows) + JSON.stringify((await db.ownerPool.query("select * from audit_log")).rows);
     expect(dump).not.toContain(REFRESH);
     expect(await completeConnect(db.pool, ring, fakeHttp(), { sessionId: SESSION, state, code: "c", appUrl: APP_URL })).toEqual({ ok: false, reason: "state" });
@@ -76,9 +80,74 @@ describe("connect flow", () => {
     // Reconnect keeps a confirmed channel confirmed.
     await completeConnect(db.pool, ring, fakeHttp(), { sessionId: SESSION, state: await begin(), code: "c", appUrl: APP_URL });
     expect((await listAccounts(db.pool))[0]!.channels[0]!.status).toBe("connected");
-    expect(await disconnectChannel(db.pool, id, SESSION)).toBe(true);
-    expect(await hasSecret(db.pool, "youtube.channel.uchan1.refresh")).toBe(false);
+    const name = await tokenName();
+    expect(await disconnectChannel(db.pool, ring, fakeHttp(), id, SESSION)).toBe(true);
+    expect(await hasSecret(db.pool, name)).toBe(false);
     expect(await listAccounts(db.pool)).toEqual([]);
+  });
+});
+
+describe("review fixes", () => {
+  it("reconnect from a different Google account needs confirming again, with both account ids audited", async () => {
+    await connect();
+    await confirmChannel(db.pool, (await listAccounts(db.pool))[0]!.channels[0]!.id, SESSION);
+    await connect(fakeHttp({ sub: "sub-2" }));
+    expect(await status()).toEqual(["unconfirmed"]);
+    const a = (await db.ownerPool.query("select detail from audit_log where event = 'youtube.channel_connected' order by id desc limit 1")).rows[0].detail;
+    expect(a.oldAccountId).toBeTruthy();
+    expect(a.newAccountId).not.toBe(a.oldAccountId);
+    expect(await listAccounts(db.pool)).toHaveLength(1); // emptied old account removed
+  });
+
+  it("unconfirmed channel: no token use, stays unconfirmed through reconnect", async () => {
+    await connect();
+    const id = (await listAccounts(db.pool))[0]!.channels[0]!.id;
+    expect(await getAccessToken(db.pool, ring, fakeHttp({ token: reply({ error: "invalid_grant" }, 400) }), id)).toEqual({ ok: false, reason: "unconfirmed" });
+    await connect();
+    expect(await status()).toEqual(["unconfirmed"]);
+  });
+
+  it("an error other than invalid_grant leaves the status alone", async () => {
+    await connect();
+    const id = (await listAccounts(db.pool))[0]!.channels[0]!.id;
+    await confirmChannel(db.pool, id, SESSION);
+    expect(await getAccessToken(db.pool, ring, fakeHttp({ token: reply({ error: "server_error" }, 500) }), id)).toEqual({ ok: false, reason: "unavailable" });
+    expect(await status()).toEqual(["connected"]);
+  });
+
+  it("invalid_grant for a token replaced meanwhile does not flip the status", async () => {
+    await connect();
+    const id = (await listAccounts(db.pool))[0]!.channels[0]!.id;
+    await confirmChannel(db.pool, id, SESSION);
+    const http: GoogleHttp = async () => {
+      await db.ownerPool.query("update secrets set updated_at = now() + interval '1 minute' where name = $1", [await tokenName()]);
+      return reply({ error: "invalid_grant" }, 400);
+    };
+    expect((await getAccessToken(db.pool, ring, http, id)).ok).toBe(false);
+    expect(await status()).toEqual(["connected"]);
+  });
+
+  it("disconnect revokes only when it was the account's last channel, and never fails if revoke fails", async () => {
+    const two = { items: [{ id: "UCchan1", snippet: { title: "A" } }, { id: "UCchan2", snippet: { title: "B" } }] };
+    await connect(fakeHttp({ channels: two }));
+    const ids = (await listAccounts(db.pool))[0]!.channels.map((c) => c.id);
+    const revokes: string[] = [];
+    const http: GoogleHttp = async (url) => {
+      if (url.includes("revoke")) {
+        revokes.push(url);
+        throw new Error("network");
+      }
+      return reply({});
+    };
+    expect(await disconnectChannel(db.pool, ring, http, ids[0]!, SESSION)).toBe(true);
+    expect(revokes).toHaveLength(0);
+    expect(await disconnectChannel(db.pool, ring, http, ids[1]!, SESSION)).toBe(true);
+    expect(revokes).toHaveLength(1);
+  });
+
+  it("quota exhausted stops the connect", async () => {
+    await db.ownerPool.query("insert into quota_usage (day, units) values ($1, 8000)", [(await import("@/server/core/youtube-oauth")).quotaDay(new Date())]);
+    expect(await connect()).toEqual({ ok: false, reason: "quota" });
   });
 });
 
