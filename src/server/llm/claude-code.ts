@@ -117,7 +117,12 @@ function promptText(prompt: Prompt): string {
 
 interface Ran { code: number | null; stdout: string; stderr: string; failed?: "timeout" | "overflow" | "aborted" | "missing" | "error" }
 
-async function runOnce(deps: ClaudeCodeDeps, args: string[], input: string, signal: AbortSignal | undefined): Promise<Ran> {
+/** 2 minutes for a short answer, up to 10 minutes for a long one (a whole animation file is about 8000 tokens). */
+export function callTimeoutMs(maxOutputTokens: number | undefined): number {
+  return Math.min(600_000, 120_000 + Math.max(0, maxOutputTokens ?? 0) * 40);
+}
+
+async function runOnce(deps: ClaudeCodeDeps, args: string[], input: string, signal: AbortSignal | undefined, timeoutMs: number): Promise<Ran> {
   const spawn = deps.spawn ?? (nodeSpawn as unknown as SpawnClaude);
   const killGroup = deps.killGroup ?? ((pid, sig) => { try { process.kill(-pid, sig); } catch { /* already gone */ } });
   const maxOut = deps.maxStdoutBytes ?? 1024 * 1024;
@@ -152,7 +157,7 @@ async function runOnce(deps: ClaudeCodeDeps, args: string[], input: string, sign
       };
       const onAbort = () => stop("aborted");
       signal?.addEventListener("abort", onAbort, { once: true });
-      timers.push(setTimeout(() => stop("timeout"), deps.timeoutMs ?? 120_000));
+      timers.push(setTimeout(() => stop("timeout"), timeoutMs));
       child.stdout.on("data", (d: Buffer) => {
         if (failed) return;
         out = Buffer.concat([out, d]);
@@ -239,7 +244,7 @@ export function createClaudeCodeModel(modelId: string, deps: ClaudeCodeDeps): La
         if (signal?.aborted) throw refuse(CANCELLED); // cancelled while queued: no cap slot used
         if (!(await deps.gate.takeSlot())) throw refuse("daily Claude Code cap reached. It resets at midnight UTC.");
         if (signal?.aborted) throw refuse(CANCELLED);
-        return runOnce(deps, claudeArgs(modelId), input, signal);
+        return runOnce(deps, claudeArgs(modelId), input, signal, deps.timeoutMs ?? callTimeoutMs(options.maxOutputTokens));
       });
       let got: Interpreted;
       try {
