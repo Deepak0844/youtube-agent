@@ -26,6 +26,14 @@ describe("youtube oauth helpers", () => {
     expect(missingScopes(GOOGLE_SCOPES.join(" "))).toEqual([]);
     expect(missingScopes(GOOGLE_SCOPES.slice(0, 3).join(" "))).toHaveLength(GOOGLE_SCOPES.length - 3);
   });
+  it("missingScopes accepts Google's long email scope and extras", () => {
+    const g = "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/yt-analytics.readonly https://www.googleapis.com/auth/youtube.force-ssl";
+    expect(missingScopes(g)).toEqual([]);
+  });
+  it("missingScopes still fails when a youtube scope is absent", () => {
+    const g = "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.force-ssl";
+    expect(missingScopes(g)).toEqual(["https://www.googleapis.com/auth/yt-analytics.readonly"]);
+  });
   it("parseChannels keeps only well-formed items", () => {
     expect(parseChannels({ items: [{ id: "UCabc_-1", snippet: { title: "Mine" } }, { id: "bad id" }, { snippet: {} }] })).toEqual([{ channelId: "UCabc_-1", title: "Mine" }]);
     expect(parseChannels(null)).toEqual([]);

@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
+import { GOOGLE_SCOPES, scopeLabel } from "@/server/core/youtube-oauth";
 import { getPool } from "@/server/db/pool";
 import { listAccounts } from "@/server/db/youtube-channels";
 import { Button } from "@/ui/primitives/button";
@@ -21,7 +22,6 @@ const MESSAGES: Record<string, string> = {
   denied: "Google sign-in was cancelled.",
   exchange: "Google did not accept the sign-in. Check the client ID, secret and redirect address, then try again.",
   no_refresh_token: "Google did not give a long-lived token. Start again and allow everything asked.",
-  scopes: "Some permissions were left unticked. Start again and tick them all.",
   profile: "Could not read your Google profile. Try again.",
   no_channel: "That Google account has no YouTube channel.",
 };
@@ -31,7 +31,14 @@ const STATUS = { connected: ["positive", "Connected"], needs_reconnect: ["warnin
 async function Owned({ searchParams }: { searchParams: PageProps<"/settings/channels">["searchParams"] }) {
   await requireOwner();
   const sp = await searchParams;
-  const err = typeof sp.error === "string" ? (MESSAGES[sp.error] ?? "Something went wrong. Try again.") : null;
+  const known = GOOGLE_SCOPES.map(scopeLabel);
+  const missing = (typeof sp.missing === "string" ? sp.missing.split(",") : []).filter((m) => known.includes(m));
+  const err =
+    sp.error === "scopes"
+      ? `Some permissions were left unticked${missing.length ? ` (${missing.join(", ")})` : ""}. Start again and tick them all.`
+      : typeof sp.error === "string"
+        ? (MESSAGES[sp.error] ?? "Something went wrong. Try again.")
+        : null;
   const accounts = await listAccounts(getPool());
 
   return (

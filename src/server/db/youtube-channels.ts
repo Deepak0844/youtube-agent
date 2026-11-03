@@ -13,6 +13,7 @@ import {
   buildAuthUrl,
   channelSecretName,
   missingScopes,
+  scopeLabel,
   parseChannels,
   quotaCost,
   quotaDay,
@@ -70,7 +71,8 @@ export async function startConnect(pool: pg.Pool, a: { sessionId: string; appUrl
 
 export type CompleteResult =
   | { ok: true; channelIds: string[] }
-  | { ok: false; reason: "state" | "no_app" | "bad_app_url" | "exchange" | "no_refresh_token" | "scopes" | "profile" | "no_channel" | "quota" };
+  | { ok: false; reason: "scopes"; missing: string[] }
+  | { ok: false; reason: "state" | "no_app" | "bad_app_url" | "exchange" | "no_refresh_token" | "profile" | "no_channel" | "quota" };
 
 async function json(res: Response): Promise<Record<string, unknown> | null> {
   try {
@@ -112,7 +114,8 @@ export async function completeConnect(
   const refresh = tokens?.refresh_token;
   if (typeof refresh !== "string" || !refresh) return { ok: false, reason: "no_refresh_token" };
   const scopes = typeof tokens?.scope === "string" ? tokens.scope : "";
-  if (missingScopes(scopes).length > 0) return { ok: false, reason: "scopes" };
+  const missing = missingScopes(scopes);
+  if (missing.length > 0) return { ok: false, reason: "scopes", missing: missing.map(scopeLabel) };
 
   // Reserve BEFORE the channels.list call and honour the answer.
   if (!(await reserveQuota(pool, "channels.list"))) return { ok: false, reason: "quota" };
