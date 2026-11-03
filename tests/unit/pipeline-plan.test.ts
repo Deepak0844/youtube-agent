@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GateId } from "@/server/core/gates";
 import {
+  chainPrev,
   expectedInputHash,
   FORCE_RERUN_STAGES,
   FREE_VOICE_PROVIDERS,
@@ -253,7 +254,7 @@ describe("tsx route (slice 3)", () => {
   it("scene_kit route is exactly what it was; tsx replaces build and render by tsx_author after tts", () => {
     expect(stagePlan("scene_kit", "short", { requireEvidence: false, paidGeneration: true }).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "generate", "tts", "render", "voice", "sfx", "qa"]);
     expect(stagePlan("scene_kit", "short", f).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
-    expect(stagePlan("tsx", "short", f).map((s) => s.stage)).toEqual(["draft", "pictures", "tts", "tsx_author", "voice", "sfx", "qa"]);
+    expect(stagePlan("tsx", "short", f).map((s) => s.stage)).toEqual(["draft", "tts", "tsx_author", "voice", "sfx", "qa"]);
     expect(stagePlan("tsx", "short", f).find((s) => s.stage === "draft")?.gateAfter).toBe("script");
     expect(stagePlan("tsx", "short", f).find((s) => s.stage === "tsx_author")?.resource).toBe("render");
   });
@@ -266,9 +267,19 @@ describe("tsx route (slice 3)", () => {
   it("a tsx video runs tsx_author after tts; after a switch to scene_kit the next step is build", () => {
     const { trail, v } = walk(base({ kind: "tsx", flags: f }));
     const stages = trail.filter((t) => !t.startsWith("gate:"));
-    expect(stages.slice(0, 7)).toEqual(["draft", "pictures", "tts", "tsx_author", "voice", "sfx", "qa"]);
-    expect(trail.indexOf("gate:script")).toBeLessThan(trail.indexOf("pictures"));
-    const switched: PipelineView = { ...v, kind: "scene_kit", runs: { draft: v.runs.draft!, pictures: v.runs.pictures!, tts: v.runs.tts!, tsx_author: v.runs.tsx_author! } };
-    expect(nextActions(switched)[0]).toMatchObject({ kind: "enqueue", stage: "build" });
+    expect(stages.slice(0, 6)).toEqual(["draft", "tts", "tsx_author", "voice", "sfx", "qa"]);
+    expect(stages).not.toContain("pictures");
+    const switched: PipelineView = { ...v, kind: "scene_kit", runs: { draft: v.runs.draft!, tts: v.runs.tts!, tsx_author: v.runs.tsx_author! } };
+    // fall-back before build started: pictures is queued first, then build
+    expect(nextActions(switched)[0]).toMatchObject({ kind: "enqueue", stage: "pictures" });
+    const withPics: PipelineView = { ...switched, runs: { ...switched.runs, pictures: { status: "succeeded", inputHash: expectedInputHash(switched, "pictures", v.runs.draft!.inputHash) } } };
+    expect(nextActions(withPics)[0]).toMatchObject({ kind: "enqueue", stage: "build" });
+  });
+  it("tsx tts and tsx_author hashes chain from draft and ignore pictures and beats", () => {
+    const a = base({ kind: "tsx", flags: f, content: { script: "s", narration: "n" } });
+    const b = { ...a, content: { ...a.content, beats: "b" } };
+    expect(expectedInputHash(a, "tsx_author", "t")).toBe(stageInputHash("tsx_author", { prev: "t", script: "s", narration: "n" }, {}));
+    expect(expectedInputHash(b, "tsx_author", "t")).toBe(expectedInputHash(a, "tsx_author", "t"));
+    expect(chainPrev(stagePlan("tsx", "short", f), 1)?.stage).toBe("draft");
   });
 });

@@ -154,7 +154,7 @@ describe("tsx_author stage", () => {
     const draftId = await insertQueuedStage(db.pool, { videoId: id, name: "draft", inputHash: draftHash.inputHash });
     const draftClaim = await claimStage(db.pool, { id: draftId, inputHash: draftHash.inputHash, workerId: "w0", ttlMs: 60_000 });
     expect(await commitStage(db.pool, draftClaim!, { ok: true })).toBe(true);
-    expect(await readNextAction(db.pool, id, readers)).toMatchObject({ kind: "enqueue", stage: "pictures" });
+    expect(await readNextAction(db.pool, id, readers)).toMatchObject({ kind: "enqueue", stage: "tts" }); // tsx has no pictures step
 
     const tsx = fakeTsx([{ kind: "preflight", message: "The preview frames show a problem.", problems: ["Frame 0 is black."] }, { kind: "render", message: "The TSX render failed (exit 1)." }, { kind: "typecheck", message: "The scene file has type errors.", problems: ["line 3: x"] }]);
     const texts = [reply(withFrames(frames, "// a\n")), reply(withFrames(frames, "// b\n")), reply(withFrames(frames, "// c\n"))];
