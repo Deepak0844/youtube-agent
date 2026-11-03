@@ -10,4 +10,4 @@ export { Canvas, Backdrop, BigTitle, Kicker, ProgressBar, Captions, Chip, Callou
 export { Gear, Battery, Wire, Magnet, Arrow } from "./shapes";
 export { Laptop, ServerRack, Container, CargoShip, Cloud, StatusBadge, LayerStack } from "./tech";
 export { Bulb, Generator, MagnetCoil, Boiler, WindTurbine, Dam, SolarPanel, Pylon, Donut } from "./electric";
-export { prog, mix, ramp, win, cycle, rotorAngle, EASE_OUT, EASE_INOUT, PALETTE, FONTS } from "./util";
+export { prog, mix, ramp, win, cycle, rotorAngle, EASE_OUT, EASE_INOUT, PALETTE, FONTS, MOTION, PACE } from "./util";

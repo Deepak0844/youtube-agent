@@ -7,8 +7,8 @@ export const PER_PAGE = 3;
 export const HOLD_S = 0.2; // the last word of a page stays a moment after it ends
 
 /** The page showing at time `t` (seconds) and which of its words is active, or null between pages. */
-export function captionAt(words: readonly CaptionWord[], t: number): { words: string[]; active: number } | null {
-  const pages = pageWords(words, PER_PAGE);
+export function captionAt(words: readonly CaptionWord[], t: number, perPage: number = PER_PAGE): { words: string[]; active: number } | null {
+  const pages = pageWords(words, perPage);
   for (let pi = 0; pi < pages.length; pi++) {
     const page = pages[pi]!;
     const first = words[page[0]!]!;

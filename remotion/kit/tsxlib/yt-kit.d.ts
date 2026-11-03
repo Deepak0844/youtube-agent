@@ -7,6 +7,8 @@ import type { FC, ReactNode } from "react";
 
 export type CaptionWord = { w: string; at: number };
 export type StackBlock = { label: string; color: string; h?: number };
+/** Colour names, valid as a colour prop and as PALETTE.name: style colours first, then fixed brand colours. */
+export type ColorName = "bg" | "text" | "muted" | "surface" | "accent" | "accent2" | "accent3" | "indigo" | "violet" | "teal" | "yellow" | "pink" | "ink" | "white" | "cyan" | "blue" | "red" | "orange";
 
 /** Bands: title y 70-330, objects 360-1380, captions 1420-1900. Read as ZONES.objects.y0. */
 export const ZONES: Readonly<{ title: { y0: number; y1: number }; objects: { y0: number; y1: number }; captions: { y0: number; y1: number } }>;
@@ -21,7 +23,7 @@ export const Label: FC<{ text: string; ax: number; ay: number; side: "top" | "bo
 
 /** Persistent 1080x1920 svg surface: put every drawn prop (Bulb, Gear, Wire, Laptop...) inside it. */
 export const Canvas: FC<{ children?: ReactNode }>;
-/** Full-screen dark stage with slow glows; the glows loop exactly so the last frame equals frame 0. */
+/** The page of the style (paper, grid, glow, night or gradient) as a full-screen background, no props needed; it loops so the last frame equals frame 0. */
 export const Backdrop: FC<{ base?: string; glow?: string }>;
 /** OLD headline (DO NOT USE: overlaps; use Stage headline). Up to 3 coloured lines plus subtitle. */
 export const BigTitle: FC<{ lines: readonly { text: string; color?: string }[]; subtitle?: string; y?: number; size?: number; opacity?: number }>;
@@ -99,7 +101,11 @@ export function rotorAngle(frame: number, total: number, keys: readonly (readonl
 export const EASE_OUT: (t: number) => number;
 /** Easing curve for 0..1 values: soft start and end. */
 export const EASE_INOUT: (t: number) => number;
-/** Brand colour names accepted wherever a colour prop is taken: indigo violet teal yellow pink ink white cyan blue red orange. */
-export const PALETTE: Readonly<Record<string, string>>;
-/** Font stacks for your own text: display (Space Grotesk headlines), body (Inter), mono (JetBrains Mono code). */
+/** Style colours (page, ink, accents) plus the fixed brand names; read as PALETTE.accent. */
+export const PALETTE: Readonly<Record<ColorName, string>>;
+/** Font stacks of the style for your own text: display (headlines), body, mono (code, numbers). */
 export const FONTS: Readonly<{ display: string; body: string; mono: string }>;
+/** Style motion: spring stiffness, damping, frames to arrive, rise in px, start scale. */
+export const MOTION: Readonly<{ stiffness: number; damping: number; frames: number; rise: number; scaleFrom: number }>;
+/** Scene hold of the style in frames: min and max. */
+export const PACE: Readonly<{ min: number; max: number }>;

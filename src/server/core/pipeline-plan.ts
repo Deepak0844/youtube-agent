@@ -181,6 +181,7 @@ export function expectedInputHash(view: PipelineView, stage: StageName, prevHash
   for (const k of STAGE_CONTENT_INPUTS[stage]) upstream[k] = view.content[k] ?? "none";
   const nonce = view.nonces?.[stage];
   if (view.style && (stage === "build" || stage === "render")) Object.assign(upstream, styleHashParts(view.style.style, view.style.captionStyle)); // only when chosen: older hashes stay identical
+  if (view.style?.style && stage === "tsx_author") upstream.style = view.style.style; // only when chosen: a tsx video with no style keeps its old hash
   if (nonce) upstream.nonce = nonce; // only when set: every hash made before forced reruns existed stays identical
   return stageInputHash(stage, upstream, {});
 }

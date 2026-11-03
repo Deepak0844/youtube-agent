@@ -17,6 +17,9 @@ export function NewForm() {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
   const [kind, setKind] = useState<"scene_kit" | "tsx">("scene_kit");
   const custom = kind === "tsx";
+  // Custom animation has no Classic look: its default card is AI Studio. Scene kit keeps Classic ("" = no style).
+  const [picked, setPicked] = useState("");
+  const style = custom && picked === "" ? "ai_studio" : picked;
   return (
     <form action={run} className="flex max-w-xl min-w-0 flex-col gap-5">
       <div className="flex flex-col gap-2">
@@ -60,13 +63,13 @@ export function NewForm() {
           </label>
         ))}
       </fieldset>
-      <fieldset disabled={custom} className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0 disabled:opacity-50">
+      <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
         <legend className="mb-1 text-body font-medium">Style</legend>
-        {custom ? <p className="m-0 text-small text-muted">Not used for custom animation: Claude designs the look itself.</p> : null}
+        {custom ? <p className="m-0 text-small text-muted">Claude draws the animation in this style: its colours, fonts, motion and pace.</p> : null}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {([["", null], ...STYLE_IDS.map((id) => [id, PRESETS[id]] as const)] as const).map(([id, s]) => (
+          {([...(custom ? [] : [["", null] as const]), ...STYLE_IDS.map((id) => [id, PRESETS[id]] as const)] as const).map(([id, s]) => (
             <label key={id || "classic"} className="relative flex min-w-0 cursor-pointer flex-col gap-2 rounded-card border border-rule bg-surface p-2 has-checked:outline-2 has-checked:outline has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline">
-              <input type="radio" name="style" value={id} defaultChecked={id === ""} className="sr-only" />
+              <input type="radio" name="style" value={id} checked={style === id} onChange={() => setPicked(id)} className="sr-only" />
               <StyleMock id={id} />
               <span className="flex min-w-0 flex-col gap-1">
                 <span className="text-body font-medium">{s ? s.label : "Classic (default)"}</span>
