@@ -271,14 +271,15 @@ export const STAGES: readonly StageDef[] = [
   },
   // Sends no tools (tools: []), so a text-only model (local, Claude Code) can fill scene JSON.
   { id: "build_scene_kit", label: "Build, scene kit", hint: "Fills scene JSON. Built for cheap and local models.", requires: ["structuredOutput"], requiresAny: [], prefers: [] },
+  // Free-form text (one tsx code block back), no tools sent: needs neither structured output nor tool use, so Claude Code works too.
   {
     id: "build_tsx",
     label: "Build, Remotion TSX",
-    hint: "Opt-in path. Needs tool use and strong coding.",
-    requires: ["toolUse"],
+    hint: "Writes one animation file as plain text. Strong coding helps; used only for custom-animation videos.",
+    requires: [],
     requiresAny: [],
     prefers: [],
-    localWarning: "Small local models are not recommended for the TSX path.",
+    localWarning: "Small local models are not recommended for custom animation.",
   },
   { id: "qa_vision", label: "QA, vision review", hint: "Optional review of frames. Leave unset to skip.", requires: ["vision"], requiresAny: [], prefers: [], optional: true },
   { id: "research", label: "Research and ideas", hint: "Native web search, or tool use with our own search tool.", requires: [], requiresAny: ["nativeWebSearch", "toolUse"], prefers: [] },

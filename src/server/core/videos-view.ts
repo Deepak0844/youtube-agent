@@ -18,7 +18,7 @@ export const STATUS_WORDS: Record<Status, { label: string; tone: "positive" | "n
   cancelled: { label: "Cancelled", tone: "neutral" },
 };
 export const FORMAT_WORDS = { short: "Short", long: "Long" } as const;
-export const KIND_WORDS = { scene_kit: "Scene kit", tsx: "TSX", collage: "Collage", ai: "AI" } as const;
+export const KIND_WORDS = { scene_kit: "Scene kit", tsx: "Custom animation", collage: "Collage", ai: "AI" } as const;
 export const LANGUAGE_WORDS = { en: "English", hi: "Hindi", ta: "Tamil", te: "Telugu", kn: "Kannada", ml: "Malayalam" } as const;
 /** Order shown in the New form. */
 export const LANGUAGE_ORDER = ["en", "hi", "ta", "te", "kn", "ml"] as const;
@@ -65,7 +65,7 @@ export function ageLabel(then: Date, now: Date = new Date()): string {
 export const newVideoSchema = z.object({
   topic: z.string().trim().min(1, "Enter a topic.").max(200, "Keep the topic to 200 characters or fewer."),
   language: z.enum(LANGS, "Pick a narration language."),
-  kind: z.literal("scene_kit", "Only the scene kit is available for now."),
+  kind: z.enum(["scene_kit", "tsx"], "Pick a video type."),
   format: z.literal("short", "Only Shorts are available for now."),
   notes: z.string().trim().max(2000, "Keep the notes to 2000 characters or fewer.").optional(),
   // Empty or missing = the default look (stored as null).
@@ -77,5 +77,10 @@ export type NewVideoInput = z.infer<typeof newVideoSchema>;
 export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
   const g = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
   const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "scene_kit", format: g("format") ?? "short", notes: g("notes") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined });
+  // Custom animation (tsx) draws its own picture and burns its own captions: the style and caption pickers do not apply.
+  if (r.success && r.data.kind === "tsx") {
+    const { topic, language, kind, format, notes } = r.data;
+    return { ok: true, value: { topic, language, kind, format, notes } };
+  }
   return r.success ? { ok: true, value: r.data } : { ok: false, message: r.error.issues[0]?.message ?? "Check the form and try again." };
 }

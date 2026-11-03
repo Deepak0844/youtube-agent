@@ -2,7 +2,7 @@ import { lstat } from "node:fs/promises";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { Message } from "@/server/core/agent-loop";
 import { authorTsx } from "@/server/core/tsx-author";
-import type { PromptBeat, PromptWord } from "@/server/core/tsx-prompt";
+import { tooLongForTsx, type PromptBeat, type PromptWord } from "@/server/core/tsx-prompt";
 import { approvedScript } from "@/server/db/stage-content";
 import { fallBackToSceneKit } from "@/server/db/tsx-fallback";
 import type { LlmClient, LlmStageContext } from "@/server/llm/client";
@@ -13,9 +13,9 @@ import { audioSeconds } from "./voice-audio";
 // The reply is one whole file (24 KB at most is about 7,000 tokens); this is the per-attempt output cap. Three attempts at most.
 const TSX_MAX_OUTPUT_TOKENS = 8000;
 
-/** One reserved, paid model call per attempt, through the Build route. A budget refusal or an unclear outcome goes up as is: the runner parks the stage for the owner. Never retried here. */
+/** One reserved, paid model call per attempt, through the build_tsx route (free-form text). A budget refusal or an unclear outcome goes up as is: the runner parks the stage for the owner. Never retried here. */
 export function tsxAsk(llm: LlmClient, ctx: LlmStageContext): (messages: Message[]) => Promise<string> {
-  return async (messages) => (await llm.agent(ctx, { stage: "build_scene_kit", tools: [], messages, maxSteps: 1, maxOutputTokens: TSX_MAX_OUTPUT_TOKENS })).text;
+  return async (messages) => (await llm.agent(ctx, { stage: "build_tsx", tools: [], messages, maxSteps: 1, maxOutputTokens: TSX_MAX_OUTPUT_TOKENS })).text;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -31,6 +31,9 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 export function tsxAuthorAttempt(deps: StageDeps): AttemptHandler {
   return async (ctx) => {
     const video = await loadVideo(deps.db, ctx);
+    // A retry after a crash between the switch and the commit: the video is already a scene-kit video that began as tsx. Done.
+    const origin = (await deps.db.query<{ kind_origin: string | null }>("select kind_origin from videos where id = $1", [video.id])).rows[0]?.kind_origin;
+    if (video.kind === "scene_kit" && origin === "tsx") return { files: [], result: { fellBack: true, switched: false, resumed: true } };
     if (video.kind !== "tsx") throw new KnownFailure("This video is not a code-scene video.");
     if (!deps.makeLlm) throw new KnownFailure("No scene model is wired, so the code scene cannot be written.");
     if (!deps.tsx) throw new KnownFailure("Code scenes are not set up on this worker.");
@@ -50,6 +53,13 @@ export function tsxAuthorAttempt(deps: StageDeps): AttemptHandler {
     const narrationS = await audioSeconds(deps.mix, ctx, audioFile).catch(() => lastEnd);
     if (!(narrationS > 0)) throw new KnownFailure("The length of the narration is not known. Run the voice step again.");
 
+    // The scene file is capped at 90 s. Narration longer than that is not clipped: the video goes to the scene kit (no such cap).
+    if (tooLongForTsx(narrationS)) {
+      const switched = await fallBackToSceneKit(deps.db, ctx.claim, video.id, { attempts: 0, step: "length", why: "narration_over_90s" });
+      ctx.log(`tsx: the narration is ${narrationS.toFixed(1)} s, over the 90 s limit of a code scene; the video was switched to the scene kit`);
+      return { files: [], result: { fellBack: true, switched, attempts: 0, step: "length", why: "narration_over_90s" } };
+    }
+
     const beats: PromptBeat[] = script.beats.map((b, i) => {
       const x = b as { id?: unknown; text?: unknown; visual?: unknown };
       return { id: str(x.id) || `beat-${i + 1}`, text: str(x.text), ...(str(x.visual) ? { visual: str(x.visual) } : {}) };
@@ -68,8 +78,8 @@ export function tsxAuthorAttempt(deps: StageDeps): AttemptHandler {
 
     if (out.ok) {
       return {
-        files: ["render.mp4"],
-        content: [{ kind: "tsx", body: { source: out.source, durationInFrames: out.durationInFrames, attempts: out.attempts, image: out.image } }],
+        files: ["render.mp4", ...out.stills],
+        content: [{ kind: "tsx", body: { source: out.source, durationInFrames: out.durationInFrames, attempts: out.attempts, image: out.image, stills: out.stills } }],
         result: { rendered: "render.mp4", attempts: out.attempts, durationInFrames: out.durationInFrames, image: out.image, fellBack: false },
       };
     }

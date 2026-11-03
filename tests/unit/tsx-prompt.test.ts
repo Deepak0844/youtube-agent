@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { checkTsx, TSX_IMPORTS, TSX_MAX_FRAMES, tsxDuration } from "@/server/core/tsx-check";
 import { TSX_EXAMPLE_LOOP, TSX_EXAMPLE_SEQUENCE } from "@/server/core/tsx-examples";
 import {
-  beatTimings, dataFence, extractTsx, retryMessages, sanitizeData, targetFrames, tsxFeedbackPrompt, tsxSystemPrompt, tsxUserPrompt, type TsxTask,
+  beatTimings, dataFence, tooLongForTsx, extractTsx, retryMessages, sanitizeData, targetFrames, tsxFeedbackPrompt, tsxSystemPrompt, tsxUserPrompt, type TsxTask,
 } from "@/server/core/tsx-prompt";
 import { typeCheckInThread } from "@/server/providers/renderer/tsx-render";
 
@@ -107,6 +107,20 @@ describe("helpers", () => {
     expect(t[2]!.realEndS).toBe(6);
     expect(t[2]!.estEndS).toBeCloseTo(6, 5);
     expect(beatTimings(TASK.beats, [], 6)[0]!.realStartS).toBeUndefined();
+  });
+  it("a long beat (over 600 chars) still gets real timing: only the shown text is capped", () => {
+    const long = Array.from({ length: 160 }, (_, i) => `w${i}`).join(" "); // about 1000 chars
+    expect(long.length).toBeGreaterThan(600);
+    const text = `${long} ${Array.from({ length: 40 }, (_, i) => `x${i}`).join(" ")}`; // 200 words
+    const task: TsxTask = { topic: "t", beats: [{ id: "b1", text }], words: words(text), narrationS: 70 };
+    expect(beatTimings([{ id: "b1", text: sanitizeData(text, Infinity) }], task.words, 70)[0]!.realStartS).toBe(0);
+    const prompt = tsxUserPrompt(task);
+    expect(prompt).toContain("real timing");
+    expect(prompt).not.toContain(" w159 "); // display is still capped
+  });
+  it("tooLongForTsx: over 89.6 s of narration (plus the tail) is refused", () => {
+    expect(tooLongForTsx(89.5)).toBe(false);
+    expect(tooLongForTsx(89.7)).toBe(true);
   });
 });
 

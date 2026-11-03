@@ -3,7 +3,7 @@
 import { useActionState, useState, useTransition } from "react";
 import { Button } from "@/ui/primitives/button";
 import { recheckScenesAction, requestSceneRepairAction, undoScenesAction, type SceneActionState } from "../../queue/scenes-actions";
-import { forceRerunStageAction, reframeAction, rerunStageAction, type RerunState } from "./actions";
+import { forceRerunStageAction, reframeAction, rerunStageAction, saveTsxToLibraryAction, type RerunState } from "./actions";
 
 /** "Run again" for one failed or cancelled step, with the time and cost stated before the click. */
 export function RerunForm({ videoId, stage, label, estimate, costNote }: { videoId: string; stage: string; label: string; estimate: string; costNote: string }) {
@@ -81,5 +81,21 @@ export function SceneButtons({ videoId }: { videoId: string }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** Owner approval to keep a custom animation. Shows the file's short hash so the approval is for exactly this file. */
+export function SaveToLibraryForm({ videoId, hash, approved }: { videoId: string; hash: string; approved: boolean }) {
+  const [state, run, pending] = useActionState<RerunState, FormData>(saveTsxToLibraryAction, {});
+  return (
+    <form action={run} data-testid="save-to-library" className="flex min-w-0 flex-col gap-2 rounded-card bg-surface p-pad">
+      <input type="hidden" name="videoId" value={videoId} />
+      <input type="hidden" name="seenHash" value={hash} />
+      <p className="m-0 text-body text-muted">Nothing is kept unless you say so. Animation file {hash.slice(0, 8)}.</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" variant="secondary" disabled={pending || approved}>{approved ? "Approved to save" : "Save this animation to my library"}</Button>
+        {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
+      </div>
+    </form>
   );
 }

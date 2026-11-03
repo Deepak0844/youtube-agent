@@ -23,7 +23,7 @@ import { TSX_SANDBOX, tsxRenderPlan } from "./tsx-sandbox";
 //     tighter limits); render-entry.mjs bundles only that file (tsx-index.ts imports nothing of the kit).
 //  4. Preflight: frames 0, middle and last as PNG stills under the SAME plan and timeout, copied out without following
 //     symlinks, decoded in a child process (still-child.mjs) and checked (tsx-preflight.ts). The full render runs only
-//     when they pass.
+//     when they pass; the three stills are then kept as tsx-frame-*.png in the attempt folder.
 //  5. The video is copied out size-capped and probed: 1080x1920, not empty, the length meta promised.
 // Error text is capped, scrubbed of secrets, and never quotes more than 30 characters of the scene source.
 
@@ -46,7 +46,8 @@ export interface TsxRenderFailure {
   /** Details (checker/compiler/preflight problems, last render lines), each scrubbed; at most 10. */
   problems: string[];
 }
-export type TsxRenderResult = { ok: true; outPath: string; image: string } | { ok: false; error: TsxRenderFailure };
+/** `stills`: the three checked preview frames (first, middle, last) kept as tsx-frame-<first|middle|last>.png in the attempt folder, for the video page and QA. */
+export type TsxRenderResult = { ok: true; outPath: string; image: string; stills: string[] } | { ok: false; error: TsxRenderFailure };
 
 export interface TsxRenderInput {
   /** The model-written file. */
@@ -238,6 +239,20 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
     if (problems.length > 0) return failure("preflight", "The preview frames could not be read.", problems);
     const pre = checkPreflight(stills, SIZE);
     if (!pre.ok) return failure("preflight", "The preview frames show a problem.", pre.problems);
+    const kept: string[] = [];
+    try {
+      const names = ["first", "middle", "last"];
+      const fs = preflightFrames(frames);
+      for (let i = 0; i < fs.length; i++) {
+        const name = `tsx-frame-${i === fs.length - 1 && fs.length > 1 ? "last" : names[i]}.png`; // a one- or two-frame file keeps first and last
+        const dest = path.join(ctx.attemptDir, name);
+        await rm(dest, { force: true }); // an earlier attempt in this folder may have left one
+        await copyRegular(path.join(stillsDir, `still-${fs[i]}.png`), dest, MAX_STILL_BYTES);
+        kept.push(name);
+      }
+    } catch {
+      return failure("infra", "The preview frames could not be saved.");
+    }
     await rm(stillsDir, { recursive: true, force: true });
     await Promise.all(preflightFrames(frames).map((f) => rm(path.join(outDir, `still-${f}.png`), { force: true })));
     await rm(path.join(outDir, "out.mp4"), { force: true });
@@ -263,7 +278,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
     if (p.width !== SIZE.width || p.height !== SIZE.height) return failure("output", `The render is ${p.width}x${p.height}, expected ${SIZE.width}x${SIZE.height}.`);
     if (!(p.durationS > 0)) return failure("output", "The rendered video is empty.");
     if (Math.abs(p.durationS - wantS) > 1) return failure("output", `The video is ${p.durationS.toFixed(1)} s but meta says ${wantS.toFixed(1)} s.`);
-    return { ok: true, outPath, image: image.ref };
+    return { ok: true, outPath, image: image.ref, stills: kept };
   } finally {
     await cleanup();
   }

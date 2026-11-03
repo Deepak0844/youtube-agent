@@ -9,7 +9,7 @@ import type { TsxRenderResult } from "@/server/providers/renderer/tsx-render";
 const TASK = { topic: "t", beats: [{ id: "b1", text: "hello there", visual: "bars" }], words: [], narrationS: 8.6 };
 const GOOD = TSX_EXAMPLE_LOOP;
 const reply = (src: string) => "```tsx\n" + src + "\n```";
-const OK: TsxRenderResult = { ok: true, outPath: "/x/render.mp4", image: "img" };
+const OK: TsxRenderResult = { ok: true, outPath: "/x/render.mp4", image: "img", stills: [] };
 const fail = (kind: "check" | "typecheck" | "render" | "timeout" | "preflight" | "output" | "infra", message = "m", problems: string[] = []): TsxRenderResult => ({ ok: false, error: { kind, message, problems } });
 
 function run(replies: string[], renders: TsxRenderResult[]) {
@@ -63,6 +63,13 @@ describe("authorTsx", () => {
     expect(t.asked[1]![3]!.content).toMatch(/line \d+: /);
   });
 
+  it("slack is one-sided: up to 15 frames longer is fine, at most 3 frames shorter", async () => {
+    const at = (n: number) => GOOD.replace("durationInFrames: 270", `durationInFrames: ${n}`);
+    for (const [n, ok] of [[285, true], [286, false], [267, true], [266, false]] as const) {
+      const t = run([reply(at(n)), reply(at(n))], [OK, OK]);
+      expect((await authorTsx(t.deps, TASK, 1)).ok, String(n)).toBe(ok);
+    }
+  });
   it("a wrong length is a timing problem with the exact number", async () => {
     const wrong = GOOD.replace("durationInFrames: 270", "durationInFrames: 90");
     const t = run([reply(wrong), reply(GOOD)], [OK]);

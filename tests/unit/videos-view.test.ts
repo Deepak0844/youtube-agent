@@ -44,6 +44,13 @@ describe("parseNewVideoForm", () => {
       expect(r).toEqual({ ok: true, value: { topic: "Why the sky is blue", language, kind: "scene_kit", format: "short", notes: undefined } });
     }
   });
+  it("custom animation (tsx) is accepted; style and caption style are dropped for it, and kept for the scene kit", () => {
+    const tsx = parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", style: "neon_flat", captionStyle: "punchy_captions" }));
+    expect(tsx).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "tsx", format: "short", notes: undefined } });
+    const kit = parseNewVideoForm(form({ topic: "x", language: "en", style: "neon_flat" }));
+    expect(kit.ok && kit.value.style).toBe("neon_flat");
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", format: "long" })).ok).toBe(false);
+  });
   it("refuses empty or too long topics and unknown language/kind/format", () => {
     expect(parseNewVideoForm(form({ topic: "   ", language: "en" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ topic: "x".repeat(201), language: "en" })).ok).toBe(false);

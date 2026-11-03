@@ -8,6 +8,7 @@ import { BAD_FORM, parseIdForm } from "@/server/core/queue-input";
 import { getPool } from "@/server/db/pool";
 import type { ActionResult } from "@/server/db/queue-actions";
 import { requestReframe } from "@/server/db/reframe";
+import { approveTsxLibrarySave } from "@/server/db/tsx-library";
 import { forceRerunStageById, rerunStageById } from "@/server/db/video-page-actions";
 import { webStageQueue } from "@/server/queue/web-queues";
 
@@ -51,4 +52,17 @@ export async function reframeAction(_prev: RerunState, form: FormData): Promise<
   const r = await requestReframe(getPool(), webStageQueue(), id.value, format.data, owner.sessionId);
   refresh();
   return r.ok ? { ok: true, message: "Queued. The new version appears in a minute or two." } : { ok: false, message: r.message };
+}
+
+// Owner "Save this animation to my library". Never automatic: the form posts the hash of the file the owner was shown. Same guard order.
+export async function saveTsxToLibraryAction(_prev: RerunState, form: FormData): Promise<RerunState> {
+  const owner = await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { ok: false, message: origin };
+  const id = parseIdForm(form, "videoId");
+  const hash = z.string().regex(/^[0-9a-f]{64}$/).safeParse(form.get("seenHash"));
+  if (!id.ok || !hash.success) return { ok: false, message: BAD_FORM };
+  const r = await approveTsxLibrarySave(getPool(), { kind: "session", sessionId: owner.sessionId }, { videoId: id.value, seenHash: hash.data });
+  refresh();
+  return r;
 }

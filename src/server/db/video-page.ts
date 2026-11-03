@@ -10,6 +10,7 @@ import { getEngineConfig } from "@/server/db/engine-config";
 import { resolveRoute } from "@/server/db/media-registry";
 import { localVoiceUrl, readNextAction } from "@/server/db/pipeline";
 import { mediaSigner } from "@/server/db/queue-data";
+import { tsxLibraryState, type TsxLibraryState } from "@/server/db/tsx-library";
 import { latestContent, type ContentKind, type VideoRow } from "@/server/db/videos";
 
 // Everything /videos/[id] shows, read in one place. Read only. Media paths never leave this file: the page gets signed,
@@ -34,6 +35,8 @@ export interface VideoPage {
   head: VideoHead;
   /** Plain note when a code-scene video was switched to the scene kit; null otherwise. */
   kindNote: string | null;
+  /** Custom-animation videos with an accepted scene file: the hash the owner approves saving to the library; null otherwise. */
+  tsxLibrary: TsxLibraryState | null;
   stages: StageView[];
   /** The newest run status per stage, for the re-run buttons. */
   runStatus: Partial<Record<StageName, RunStatus>>;
@@ -61,7 +64,7 @@ export interface VideoPage {
   log: LogRow[];
 }
 
-export const KIND_NOTE_TSX_FALLBACK = "This video was set up as a code-scene video, but the code scene could not be made reliably, so it is being built with the standard scene kit instead. Your approved script is unchanged.";
+export const KIND_NOTE_TSX_FALLBACK = "Custom animation did not pass the safety checks after 3 tries, so the scene kit was used.";
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const asObj = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const clip = (s: string, n = 240) => (s.length > n ? s.slice(0, n) + "..." : s);
@@ -189,7 +192,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   return {
-    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
+    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
     beats: beats?.body ?? null,
     evidence: evidence ? { body: evidence.body, fileSrc: sign?.(evidence.filePath) ?? null } : null,
     titles: titles?.body ?? null,
