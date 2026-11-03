@@ -51,12 +51,6 @@ export async function muxNarration(mix: MixDeps, ctx: StageContext, qa: { meanDb
   await run(mix, ctx, "ffmpeg", args);
 }
 
-/** Burns an ASS subtitle file (a plain file name inside the attempt folder) into the picture. Needs ffmpeg with libass; callers treat a failure as "no captions". */
-export async function burnCaptions(mix: MixDeps, ctx: StageContext, f: { video: string; ass: string; out: string }): Promise<void> {
-  if (!/^[\w.-]+\.ass$/.test(f.ass)) throw new Error("burnCaptions: bad subtitle file name");
-  await run(mix, ctx, "ffmpeg", ["-nostdin", "-hide_banner", "-y", "-protocol_whitelist", "file", "-i", f.video, "-vf", `subtitles=${f.ass}`, "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", f.out]);
-}
-
 /** Mixes the sound plan onto the voiced video. Required inaudible cues fail with their ids; optional ones are dropped. Writes cue-sheet.txt beside the video. */
 export async function mixPlan(mix: MixDeps, db: pg.Pool, ctx: StageContext, qa: { meanDbMin: number; peakDbMax: number }, f: { voiced: string; planFile: string; out: string }): Promise<{ droppedCues: string[]; usedItems: string[]; verdicts: Verdict[] }> {
   const raw = await readFile(f.planFile, "utf8").catch((e: NodeJS.ErrnoException) => {

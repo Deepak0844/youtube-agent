@@ -2,6 +2,7 @@ import { lstat } from "node:fs/promises";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { Message } from "@/server/core/agent-loop";
 import { authorTsx } from "@/server/core/tsx-author";
+import { tsxCaptionWords } from "@/server/core/tsx-captions";
 import { tooLongForTsx, type PromptBeat, type PromptWord } from "@/server/core/tsx-prompt";
 import { approvedScript } from "@/server/db/stage-content";
 import { fallBackToSceneKit } from "@/server/db/tsx-fallback";
@@ -70,7 +71,7 @@ export function tsxAuthorAttempt(deps: StageDeps): AttemptHandler {
     const out = await authorTsx(
       {
         ask: tsxAsk(llm, ctx),
-        render: (source) => deps.tsx!.renderTsx(ctx, { source, outFile: "render.mp4" }),
+        render: (source) => deps.tsx!.renderTsx(ctx, { source, captions: tsxCaptionWords(words), outFile: "render.mp4" }),
         log: ctx.log,
       },
       { topic, beats, words, narrationS },

@@ -132,6 +132,7 @@ REMOTION RULES
 - Safe area: the bottom 22% (everything below y = 1497) stays empty background for captions, and keep text 60 px away from the side edges. Put everything important between y = 120 and y = 1480.
 - Show the subject as a drawn object or diagram (svg or div shapes), not only text. Big, high-contrast type: headline 80 to 120 px, other text at least 56 px, at most about 12 words on screen at once.
 - Follow the beat timing and the word times in the task: each beat's visual starts on its start frame.
+- Do not draw captions or subtitles: the studio draws word-synced captions over your scene.
 
 WHAT THE SAFETY CHECK REFUSES (DON'T -> DO)
 - Date, performance, setTimeout, setInterval, requestAnimationFrame, Math.random -> time comes from useCurrentFrame(), randomness from random("seed") imported from remotion.
