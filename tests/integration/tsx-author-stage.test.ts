@@ -10,7 +10,7 @@ import type { ModelRow } from "@/server/core/llm-catalog";
 import type { PipelineReaders } from "@/server/db/pipeline";
 import { readNextAction } from "@/server/db/pipeline";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
-import { TSX_EXAMPLE_LOOP } from "@/server/core/tsx-examples";
+import { GOOD_SCENE } from "../fixtures/tsx-good-scene";
 import { targetFrames } from "@/server/core/tsx-prompt";
 import type { StageHandler } from "@/server/core/stage-handler";
 import type { StageOutcome } from "@/server/core/stage-runner";
@@ -109,7 +109,7 @@ async function tsxVideoWithNarration(): Promise<{ id: string; frames: number }> 
 }
 
 const reply = (src: string) => "```tsx\n" + src + "\n```";
-const withFrames = (n: number, extra = "") => TSX_EXAMPLE_LOOP.replace("durationInFrames: 270", `durationInFrames: ${n}`) + extra;
+const withFrames = (n: number, extra = "") => GOOD_SCENE.replace("durationInFrames: 270", `durationInFrames: ${n}`) + extra;
 const row = async (id: string) => (await db.pool.query("select kind, kind_origin from videos where id = $1", [id])).rows[0] as { kind: string; kind_origin: string | null };
 const stageRow = async (id: string, name: string) => (await db.pool.query("select status, result from stage_runs where video_id = $1 and name = $2 order by created_at desc limit 1", [id, name])).rows[0] as { status: string; result: Record<string, unknown> };
 const intentCount = async () => Number((await db.pool.query("select count(*) n from spend_intents")).rows[0].n);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkTsx, echo, TSX_MAX_BYTES } from "@/server/core/tsx-check";
+import { YT_KIT_NAMES } from "@/server/core/tsx-kit";
 
 const META = "export const meta = { durationInFrames: 90, fps: 30, width: 1080, height: 1920 };";
 const GOOD = `import React from "react";
@@ -336,6 +337,31 @@ describe("checkTsx: imports", () => {
     [`import { hasOwnProperty } from "remotion";`, /not allowed/],
   ])("%s", (line, re) => {
     expect(bad(`${line}\n${GOOD}`)).toMatch(re);
+  });
+
+  describe("yt-kit", () => {
+    it("accepts every exported name, one by one and all together", () => {
+      expect(YT_KIT_NAMES.length).toBeGreaterThan(30);
+      for (const n of YT_KIT_NAMES) expect(checkTsx(`import { ${n} } from "yt-kit";\n${GOOD}`)).toEqual({ ok: true, problems: [] });
+      expect(checkTsx(`import { ${YT_KIT_NAMES.join(", ")} } from "yt-kit";\n${GOOD}`)).toEqual({ ok: true, problems: [] });
+    });
+    it("accepts type-only imports", () => {
+      expect(checkTsx(`import type { CaptionWord } from "yt-kit";\n${GOOD}`).ok).toBe(true);
+    });
+    it.each([
+      [`import { Bulb, notAName } from "yt-kit";`, /'notAName' is not allowed from 'yt-kit'/],
+      [`import { PALETTE as P } from "yt-kit";`, /renaming/],
+      [`import * as K from "yt-kit";`, /import \* as/],
+      [`import Kit from "yt-kit";`, /default import/],
+      [`import "yt-kit";`, /side-effect/],
+      [`import { Bulb } from "yt-kit/index";`, /not allowed/],
+      [`import { Bulb } from "./yt-kit";`, /not allowed/],
+      [`import { saneNumbers } from "yt-kit";`, /not allowed from 'yt-kit'/],
+      [`import { safeColor } from "yt-kit";`, /not allowed from 'yt-kit'/],
+      [`import { constructor } from "yt-kit";`, /not allowed/],
+    ])("%s", (line, re) => {
+      expect(bad(`${line}\n${GOOD}`)).toMatch(re);
+    });
   });
 
   it("React.* only allows the allow-listed members", () => {

@@ -1,63 +1,126 @@
-// Two short, working scenes shown to the model as style references (tsx-prompt.ts). Each one passes checkTsx verbatim: the unit
-// test runs the checker over them, so an example can never teach a pattern the checker refuses.
+// Two full, working scenes shown to the model as references (tsx-prompt.ts). Both import from "yt-kit" and pass checkTsx and the
+// real type-check verbatim: the unit tests run both over them, so an example can never teach a pattern the checker refuses.
+// Their timings are examples only: a real scene takes every cue frame from the word times in the task.
 
-/** Bars that grow and fall back: frame 0 is fully drawn and the last frame equals frame 0 (a loop). */
-export const TSX_EXAMPLE_LOOP = `import { AbsoluteFill, Easing, interpolate, useCurrentFrame } from "remotion";
+/** A machine story: the payoff is on screen at frame 0, one persistent canvas evolves, rotors land on a symmetric pose, the last frame equals frame 0. */
+export const TSX_EXAMPLE_ELECTRICITY = `import { AbsoluteFill, useCurrentFrame } from "remotion";
+import { Backdrop, BigTitle, Bulb, Canvas, Chip, Counter, Donut, Generator, Kicker, Pylon, SolarPanel, WindTurbine, Wire, ramp, rotorAngle, win } from "yt-kit";
 
-const PEAKS = [0.9, 0.55, 1, 0.7, 0.4];
+const TOTAL = 900;
+// [frame, degrees per frame] keys; the cues below are the frames of the spoken words (here: "generator" 190, "wind" 430, "percent" 670).
+const SPEED = [[0, 0], [60, 3], [200, 14], [500, 16], [800, 4], [899, 3]] as const;
 
 export default function Scene() {
-  const frame = useCurrentFrame();
-  const ease = Easing.bezier(0.4, 0, 0.2, 1);
+  const f = useCurrentFrame();
+  const spin = rotorAngle(f, TOTAL, SPEED, 45); // 8 blades: same look every 45 degrees
+  const windSpin = rotorAngle(f, TOTAL, SPEED, 120); // 3 blades: every 120
+  const pulse = (3 * f) / (TOTAL - 1); // whole cycles, so the last frame repeats frame 0
+  const grid = 1 - ramp(f, 150, 190) + ramp(f, 800, 860); // frame 0 and the last frame show the finished grid
+  const gen = win(f, 190, 230, 410, 450);
+  const green = win(f, 430, 470, 650, 690);
+  const share = win(f, 670, 710, 790, 830);
+  const dial = ramp(f, 700, 770);
+
   return (
-    <AbsoluteFill style={{ backgroundColor: "#0b1020", fontFamily: "sans-serif" }}>
-      <div style={{ position: "absolute", left: 80, right: 80, top: 160, color: "#ffffff", fontSize: 96, fontWeight: 800, lineHeight: 1.1 }}>
-        Five signals, one loop
-      </div>
-      <div style={{ position: "absolute", left: 80, right: 80, top: 520, height: 800, display: "flex", alignItems: "flex-end", gap: 24 }}>
-        {PEAKS.map((peak, i) => {
-          const h = interpolate(frame, [0, 135, 269], [0.2, peak, 0.2], { easing: ease });
-          return <div key={i} style={{ flex: 1, height: \`\${Math.round(h * 100)}%\`, backgroundColor: "#ffb703", borderRadius: 24 }} />;
-        })}
+    <AbsoluteFill>
+      <Backdrop base="#0b1020" glow="#1a2650" />
+      <Canvas>
+        <g opacity={grid}>
+          <Pylon x={250} baseY={1320} h={380} />
+          <Pylon x={830} baseY={1320} h={380} />
+          <WindTurbine x={110} baseY={1320} h={440} rot={windSpin} />
+          <SolarPanel cx={900} cy={1010} w={380} lit={1} beams={0.5} flow={pulse * 3} t={f} />
+          <Wire pts={[[540, 930], [540, 1320]]} phase={pulse * 2} color="yellow" width={10} n={4} />
+          <Bulb cx={540} cy={690} s={1.3} glow={1} />
+        </g>
+        <g opacity={gen}>
+          <Generator cx={540} cy={860} r={340} rot={spin} glow={0.4 + 0.6 * ramp(f, 260, 330)} blur={ramp(f, 200, 260) * 0.8} />
+          <Wire pts={[[880, 860], [960, 860], [960, 1240]]} phase={pulse * 2} color="cyan" width={10} n={4} />
+        </g>
+        <g opacity={green}>
+          <WindTurbine x={270} baseY={1300} h={520} rot={windSpin * 1.8} />
+          <SolarPanel cx={760} cy={1000} w={520} lit={ramp(f, 480, 560)} beams={ramp(f, 500, 540)} flow={pulse * 3} t={f} />
+          <Wire pts={[[270, 1300], [270, 1340], [760, 1340]]} phase={pulse * 2} color="cyan" width={10} n={5} />
+        </g>
+        <g opacity={share}>
+          <Donut cx={540} cy={820} r={290} pct={0.21 * dial} label={Math.round(21 * dial) + "%"} />
+        </g>
+      </Canvas>
+      <BigTitle lines={[{ text: "How electricity" }, { text: "is really made", color: "yellow" }]} subtitle="a 200-year-old trick" opacity={grid} />
+      <Kicker text="The generator" color="cyan" at={195} until={440} />
+      <Kicker text="Skip the heat" color="teal" at={435} until={680} />
+      <Kicker text="The U.S. mix" color="yellow" at={675} until={820} />
+      <Chip text="Spin a magnet" x={540} y={330} color="yellow" size={50} at={215} until={400} />
+      <Chip text="Wind" x={300} y={330} color="cyan" at={430} until={640} />
+      <Chip text="Sun" x={780} y={330} color="yellow" at={490} until={640} />
+      <div style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, opacity: gen }}>
+        <Counter from={0} to={120} start={250} end={330} x={540} y={1290} size={110} color="yellow" suffix=" V" />
       </div>
     </AbsoluteFill>
   );
 }
 
-export const meta = { durationInFrames: 270, fps: 30, width: 1080, height: 1920 };
+export const meta = { durationInFrames: 900, fps: 30, width: 1080, height: 1920 };
 `;
 
-/** Cards timed with Sequence (from = the frame a narrated word starts); the first card is already on screen at frame 0 and the last frame repeats it. */
-export const TSX_EXAMPLE_SEQUENCE = `import { AbsoluteFill, Easing, Sequence, interpolate, useCurrentFrame } from "remotion";
 
-const CARDS = [
-  { from: 0, length: 90, label: "Signal in", color: "#4cc9f0", enter: false },
-  { from: 90, length: 90, label: "Gate opens", color: "#f72585", enter: true },
-  { from: 180, length: 60, label: "Signal out", color: "#ffb703", enter: true },
-  { from: 240, length: 30, label: "Signal in", color: "#4cc9f0", enter: false },
+/** An algorithm story: the finished board first (frame 0), one persistent board whose steps land on the spoken words, a counter, and a return to frame 0. */
+export const TSX_EXAMPLE_SEARCH = `import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
+import { Backdrop, BigTitle, Canvas, Chip, Counter, FONTS, Kicker, StatusBadge, ramp, win } from "yt-kit";
+
+const TARGET = 12; // 16 numbers (cells 0 to 15); binary search needs 4 guesses for cell 12
+// Each guess: the range still alive, the cell guessed, and the frame its word is spoken ("middle" 150, "again" 270, "again" 390, "found" 510).
+const STEPS = [
+  { lo: 0, hi: 15, mid: 7, at: 150 },
+  { lo: 8, hi: 15, mid: 11, at: 270 },
+  { lo: 12, hi: 15, mid: 13, at: 390 },
+  { lo: 12, hi: 12, mid: 12, at: 510 },
 ];
 
-const Card = ({ label, color, enter }: { label: string; color: string; enter: boolean }) => {
-  const f = useCurrentFrame(); // inside a Sequence this counts from 0 at the Sequence start
-  const rise = interpolate(f, [0, 12], [enter ? 80 : 0, 0], { easing: Easing.bezier(0.2, 0.8, 0.2, 1), extrapolateRight: "clamp" });
-  return (
-    <div style={{ position: "absolute", left: 90, right: 90, top: 520, height: 560, borderRadius: 48, backgroundColor: color, display: "flex", alignItems: "center", justifyContent: "center", transform: \`translateY(\${rise}px)\` }}>
-      <span style={{ color: "#0b1020", fontSize: 110, fontWeight: 800, fontFamily: "sans-serif" }}>{label}</span>
-    </div>
-  );
-};
-
 export default function Scene() {
+  const f = useCurrentFrame();
+  const hook = 1 - ramp(f, 120, 150) + ramp(f, 740, 800); // frame 0 and the last frame show the finished board
+  const lit = Math.max(hook, ramp(f, 510, 540)); // the answer is lit
+  let s = 0; // index of the current guess (0 until the first word)
+  for (let i = 0; i < 4; i++) {
+    if (f >= STEPS[i]!.at) s = i;
+  }
+  const now = STEPS[s]!;
+  const zoom = interpolate(f, [0, 405, 809], [1, 1.04, 1]); // a slow push-in that returns
+
   return (
-    <AbsoluteFill style={{ backgroundColor: "#0b1020" }}>
-      {CARDS.map((c, i) => (
-        <Sequence key={i} from={c.from} durationInFrames={c.length}>
-          <Card label={c.label} color={c.color} enter={c.enter} />
-        </Sequence>
-      ))}
+    <AbsoluteFill>
+      <Backdrop base="#0e141a" glow="#16222e" />
+      <Canvas>
+        <g transform={"translate(540 960) scale(" + zoom + ") translate(-540 -960)"}>
+          {Array.from({ length: 16 }).map((_, i) => {
+            const x = 150 + (i % 4) * 260;
+            const y = 560 + Math.floor(i / 4) * 190;
+            const alive = i >= now.lo && i <= now.hi;
+            const guessed = f >= STEPS[0]!.at - 20 && i === now.mid;
+            const gold = i === TARGET && lit > 0.5;
+            return (
+              <g key={i} opacity={alive || lit > 0.99 ? 1 : 0.25}>
+                <rect x={x - 110} y={y - 70} width={220} height={140} rx={28} fill={gold ? "#f5d76e" : "#1d2b3c"} stroke={guessed && hook < 0.5 ? "#4db8a8" : "#2a3a50"} strokeWidth={guessed && hook < 0.5 ? 10 : 4} />
+                <text x={x} y={y + 22} textAnchor="middle" fontFamily={FONTS.mono} fontWeight={700} fontSize={64} fill={gold ? "#1a1a2e" : "#ffffff"}>{i + 1}</text>
+              </g>
+            );
+          })}
+        </g>
+        <StatusBadge kind="ok" x={900} y={470} r={60} at={510} opacity={win(f, 510, 525, 700, 740)} />
+      </Canvas>
+      <BigTitle lines={[{ text: "16 numbers." }, { text: "4 guesses.", color: "yellow" }]} subtitle="binary search" opacity={hook} />
+      <Kicker text="Guess the middle" color="indigo" at={140} until={265} />
+      <Kicker text="Cut it in half" color="teal" at={265} until={500} />
+      <Chip text="Too low" x={540} y={1260} color="indigo" at={160} until={265} />
+      <Chip text="Too low" x={540} y={1260} color="indigo" at={280} until={385} />
+      <Chip text="Too high" x={540} y={1260} color="pink" at={400} until={505} />
+      <div style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, opacity: win(f, 140, 170, 700, 740) }}>
+        <Counter from={0} to={4} start={150} end={510} x={540} y={1360} size={90} color="yellow" prefix="Guesses: " />
+      </div>
     </AbsoluteFill>
   );
 }
 
-export const meta = { durationInFrames: 270, fps: 30, width: 1080, height: 1920 };
+export const meta = { durationInFrames: 810, fps: 30, width: 1080, height: 1920 };
 `;

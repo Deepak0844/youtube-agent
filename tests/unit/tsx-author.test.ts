@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "@/server/core/agent-loop";
 import { KnownFailure, NeedsDecisionError } from "@/server/core/paid-call";
-import { TSX_EXAMPLE_LOOP } from "@/server/core/tsx-examples";
+import { GOOD_SCENE } from "../fixtures/tsx-good-scene";
 import { authorTsx, TSX_MAX_ATTEMPTS, type AuthorDeps } from "@/server/core/tsx-author";
 import type { TsxRenderResult } from "@/server/providers/renderer/tsx-render";
 
 // narration 8.6 s -> ceil(9 * 30) = 270 frames, the example's length
 const TASK = { topic: "t", beats: [{ id: "b1", text: "hello there", visual: "bars" }], words: [], narrationS: 8.6 };
-const GOOD = TSX_EXAMPLE_LOOP;
+const GOOD = GOOD_SCENE;
 const reply = (src: string) => "```tsx\n" + src + "\n```";
 const OK: TsxRenderResult = { ok: true, outPath: "/x/render.mp4", image: "img", stills: [] };
 const fail = (kind: "check" | "typecheck" | "render" | "timeout" | "preflight" | "output" | "infra", message = "m", problems: string[] = []): TsxRenderResult => ({ ok: false, error: { kind, message, problems } });

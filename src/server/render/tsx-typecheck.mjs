@@ -2,10 +2,11 @@
 // transpiles, so a missing import or a wrong prop would otherwise surface only at render time).
 // Runs in a worker thread of the worker process (tsx-render.ts starts it with a timeout and a heap cap and terminates it);
 // never in the render container. The scene is an in-memory file; nothing is written or emitted.
-// Only the allowed modules resolve from the scene (react, react/jsx-runtime, remotion, @remotion/shapes, @remotion/paths);
+// Only the allowed modules resolve from the scene (react, react/jsx-runtime, remotion, @remotion/shapes, @remotion/paths, yt-kit);
 // no @types are pulled in automatically and Node's types never resolve, so `process`, `require`, `Buffer` are unknown.
 import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { isMainThread, parentPort, workerData } from "node:worker_threads";
 import ts from "typescript";
 
@@ -13,6 +14,8 @@ const NODE_MODULES = path.dirname(path.dirname(createRequire(import.meta.url).re
 // A virtual path beside node_modules, so the allowed modules resolve from the app's own install.
 const SCENE = path.join(path.dirname(NODE_MODULES), "__tsx_scene__", "video.tsx");
 const ALLOWED = new Set(["react", "react/jsx-runtime", "remotion", "@remotion/shapes", "@remotion/paths"]);
+// "yt-kit" (the vetted drawing library) is typed by its hand-written declaration file; the runtime code is not read here.
+const YT_KIT_DTS = fileURLToPath(new URL("../../../remotion/kit/tsxlib/yt-kit.d.ts", import.meta.url));
 const MAX_PROBLEMS = 10;
 const OPTIONS = {
   strict: true,
@@ -41,7 +44,10 @@ export function typeCheckTsx(source) {
   host.readFile = (f) => (f === SCENE ? source : readFile(f));
   host.writeFile = () => {};
   host.resolveModuleNameLiterals = (literals, containing, redirected, options) =>
-    literals.map((l) => (containing === SCENE && !ALLOWED.has(l.text) ? { resolvedModule: undefined } : ts.resolveModuleName(l.text, containing, options, host, undefined, redirected)));
+    literals.map((l) => {
+      if (containing === SCENE && l.text === "yt-kit") return { resolvedModule: { resolvedFileName: YT_KIT_DTS, extension: ts.Extension.Dts, isExternalLibraryImport: false } };
+      return containing === SCENE && !ALLOWED.has(l.text) ? { resolvedModule: undefined } : ts.resolveModuleName(l.text, containing, options, host, undefined, redirected);
+    });
   host.resolveTypeReferenceDirectiveReferences = (refs, containing, redirected, options) =>
     refs.map((r) => {
       const name = (typeof r === "string" ? r : r.fileName).toLowerCase();

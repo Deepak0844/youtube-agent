@@ -1,5 +1,7 @@
 import type { Message } from "@/server/core/agent-loop";
-import { TSX_EXAMPLE_LOOP, TSX_EXAMPLE_SEQUENCE } from "@/server/core/tsx-examples";
+import { TSX_EXAMPLE_ELECTRICITY, TSX_EXAMPLE_SEARCH } from "@/server/core/tsx-examples";
+import { kitDocs, YT_KIT_MODULE } from "@/server/core/tsx-kit";
+import { YT_KIT_DTS } from "@/server/core/tsx-kit-dts";
 import { TSX_IMPORTS, TSX_MAX_BYTES, TSX_MAX_FRAMES, TSX_META } from "@/server/core/tsx-check";
 
 // The prompt pack for the code-scene (TSX) author. Pure: no IO, no model. The rules mirror what checkTsx refuses and what the
@@ -101,7 +103,7 @@ export function beatTimings(beats: readonly PromptBeat[], words: readonly Prompt
 const fr = (s: number) => Math.round(s * TSX_META.fps);
 
 function importLines(): string {
-  return Object.entries(TSX_IMPORTS).map(([mod, names]) => `- "${mod}": ${names.join(", ")}`).join("\n");
+  return Object.entries(TSX_IMPORTS).map(([mod, names]) => (mod === YT_KIT_MODULE ? `- "${mod}": the library below (every name is listed there)` : `- "${mod}": ${names.join(", ")}`)).join("\n");
 }
 
 /** The fixed rules. No data of any kind goes in here. */
@@ -121,18 +123,25 @@ FILE SHAPE
 
 IMPORTS (named imports only, no renaming, no "import * as"; React itself may be imported only as the default "React")
 ${importLines()}
-Type-only imports from these modules are fine. Nothing else can be imported. No picture or file is provided, so draw everything with div, span and svg shapes.
+Type-only imports from these modules are fine. Nothing else can be imported. No picture or file is provided: build the scene from the "yt-kit" library below and add your own div, span and svg shapes only where it has nothing fitting.
+
+THE LIBRARY: import { ... } from "yt-kit" (named imports only). Colours are #hex, rgb() or a name: indigo violet teal yellow pink ink white cyan blue red orange. Drawn props (Bulb, Gear, Wire, Laptop...) go INSIDE <Canvas>, which is one persistent 1080x1920 svg; the other pieces sit beside it. Props are driven by numbers you compute from the frame: opacity from win()/ramp(), rotors from rotorAngle(), pulses from cycle() or (k * f) / (durationInFrames - 1). at/until/start/end are frames. PALETTE and FONTS may only be read as PALETTE.teal or FONTS.display; never pass them around whole.
+${kitDocs(YT_KIT_DTS)}
 
 REMOTION RULES
 - Animate ONLY from useCurrentFrame(). Never use the clock or timers. Every move is a function of the frame number.
 - interpolate(frame, inputRange, outputRange, options): inputRange must be strictly increasing numbers with the same length as outputRange. Add extrapolateLeft: "clamp" and extrapolateRight: "clamp" when a value must hold still outside its range. Use Easing from remotion (for example Easing.bezier(0.4, 0, 0.2, 1)) for natural motion.
 - Inside a Sequence, useCurrentFrame() counts from 0 at the start of that Sequence. Use <Sequence from={startFrame} durationInFrames={length}> to show something at the moment its words are spoken.
-- The hook is fully composed at frame 0: the first frame already shows the headline and the main picture at full strength. No fade up from black, no empty first frame.
-- The last frame (durationInFrames - 1) must look the same as frame 0, so the video loops cleanly. Something must move in between.
-- Safe area: the bottom 22% (everything below y = 1497) stays empty background for captions, and keep text 60 px away from the side edges. Put everything important between y = 120 and y = 1480.
-- Show the subject as a drawn object or diagram (svg or div shapes), not only text. Big, high-contrast type: headline 80 to 120 px, other text at least 56 px, at most about 12 words on screen at once.
-- Follow the beat timing and the word times in the task: each beat's visual starts on its start frame.
-- Do not draw captions or subtitles: the studio draws word-synced captions over your scene.
+STRUCTURE (the owner's rules; the two examples follow them)
+- Frame 0 is the payoff and thumbnail-grade: the finished picture and the headline at full strength. No fade up from black, no empty first frame.
+- The last frame (durationInFrames - 1) equals frame 0, so the video loops. Rotors: rotorAngle(f, durationInFrames, keys, sym) ends on a symmetric pose; repeating phases use whole cycles; things that appear later fade out before the end.
+- One persistent canvas that evolves (props fade, move and morph in place) instead of cutting between separate scenes.
+- Every cue lands on the frame of the REAL word in the data block (word@frame), never on a guess.
+- Big objects: the main drawing spans at least 60% of the width (650 px or more). No scene made only of text; show the subject as a drawn object, diagram or chart.
+- Safe area: captions live in the bottom 22% (about 500 px), so nothing important below y = 1420; keep text 60 px from the side edges. Headline 80 to 120 px, other text at least 56 px, at most about 12 words on screen at once.
+- Brand, tasteful not loud: indigo #6366F1, violet #9b7cc4, teal #4db8a8, yellow #f5d76e, pink #e8879f, ink #1a1a2e; Space Grotesk for headlines (FONTS.display), Inter for body (FONTS.body), JetBrains Mono for code (FONTS.mono); soft shadows, calm motion.
+- Follow the beat timing in the task: each beat's visual starts on its start frame.
+- Do not draw captions or subtitles (and never use Captions from yt-kit): the studio draws word-synced captions over your scene.
 
 WHAT THE SAFETY CHECK REFUSES (DON'T -> DO)
 - Date, performance, setTimeout, setInterval, requestAnimationFrame, Math.random -> time comes from useCurrentFrame(), randomness from random("seed") imported from remotion.
@@ -177,10 +186,10 @@ ${dataFence("beats", beatText)}
 ${dataFence("word start frames (word@frame)", wordBlock)}
 
 STYLE REFERENCES (trusted, short working files; write your own scene, do not copy them)
-BEGIN_EXAMPLE 1: bars that loop
-${TSX_EXAMPLE_LOOP}END_EXAMPLE
-BEGIN_EXAMPLE 2: cards timed with Sequence
-${TSX_EXAMPLE_SEQUENCE}END_EXAMPLE
+BEGIN_EXAMPLE 1: a machine story built from yt-kit
+${TSX_EXAMPLE_ELECTRICITY}END_EXAMPLE
+BEGIN_EXAMPLE 2: an algorithm story built from yt-kit
+${TSX_EXAMPLE_SEARCH}END_EXAMPLE
 
 Reply with ONE fenced tsx block that holds the whole file, and nothing else.`;
 }

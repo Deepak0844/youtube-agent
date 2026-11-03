@@ -6,7 +6,7 @@
 // Kit mode: <inDir> (read-only) holds props.json (built and validated on the host) plus the staged narration and asset
 // files, served as the public dir. TSX modes: <inDir> holds video.tsx (statically checked and type-checked on the host),
 // props.json, meta.json ({ durationInFrames, stills }) and public/ (the staged staticFile() files, the only public dir).
-// The TSX bundle's entry is tsx-index.ts, which imports nothing of the kit; the scene is reached through one webpack alias.
+// The TSX bundle's entry is tsx-index.ts, which imports nothing of the kit; the scene and the yt-kit library are reached through webpack aliases.
 // Prints "PROGRESS <0-100>" lines; the host turns them into stage log lines.
 // ESM import ignores NODE_PATH; createRequire honours it (/opt/render/node_modules in the image).
 import { readFileSync } from "node:fs";
@@ -39,12 +39,20 @@ if (tsx) {
   inputProps = readJson("props.json");
 }
 
-// TSX only: "tsx-scene" (exactly) resolves to the checked file. Kit mode leaves resolve.alias untouched.
+// TSX only: "tsx-scene" (exactly) resolves to the checked file, and "yt-kit" (exactly) to our vetted drawing library
+// (tsxlib/index.ts, trusted code from the read-only kit mount; the scene may import only the names checkTsx allows).
+// Kit mode leaves resolve.alias untouched.
 const withScene = (r) => {
   if (!tsx) return r;
   const scene = path.join(inDir, "video.tsx");
+  const lib = path.join(import.meta.dirname, "tsxlib", "index.ts");
   const a = r.alias;
-  return { ...r, alias: Array.isArray(a) ? [...a, { name: "tsx-scene", alias: scene, onlyModule: true }] : { ...(a ?? {}), "tsx-scene$": scene } };
+  return {
+    ...r,
+    alias: Array.isArray(a)
+      ? [...a, { name: "tsx-scene", alias: scene, onlyModule: true }, { name: "yt-kit", alias: lib, onlyModule: true }]
+      : { ...(a ?? {}), "tsx-scene$": scene, "yt-kit$": lib },
+  };
 };
 const serveUrl = await bundle({
   entryPoint: path.join(import.meta.dirname, tsx ? "tsx-index.ts" : "index.ts"),
