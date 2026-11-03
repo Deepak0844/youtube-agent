@@ -4,7 +4,7 @@
 
 /** A machine story: the payoff is on screen at frame 0, one persistent canvas evolves, rotors land on a symmetric pose, the last frame equals frame 0. */
 export const TSX_EXAMPLE_ELECTRICITY = `import { AbsoluteFill, useCurrentFrame } from "remotion";
-import { Backdrop, BigTitle, Bulb, Canvas, Chip, Counter, Donut, Generator, Kicker, Pylon, SolarPanel, WindTurbine, Wire, ramp, rotorAngle, win } from "yt-kit";
+import { Backdrop, Bulb, Counter, Donut, Generator, Label, Place, Pylon, SolarPanel, Stage, WindTurbine, Wire, ramp, rotorAngle, win } from "yt-kit";
 
 const TOTAL = 900;
 // [frame, degrees per frame] keys; the cues below are the frames of the spoken words (here: "generator" 190, "wind" 430, "percent" 670).
@@ -24,17 +24,21 @@ export default function Scene() {
   return (
     <AbsoluteFill>
       <Backdrop base="#0b1020" glow="#1a2650" />
-      <Canvas>
+      <Stage headline="How electricity is really made" accent="yellow" opacity={grid}>
         <g opacity={grid}>
           <Pylon x={250} baseY={1320} h={380} />
           <Pylon x={830} baseY={1320} h={380} />
           <WindTurbine x={110} baseY={1320} h={440} rot={windSpin} />
           <SolarPanel cx={900} cy={1010} w={380} lit={1} beams={0.5} flow={pulse * 3} t={f} />
           <Wire pts={[[540, 930], [540, 1320]]} phase={pulse * 2} color="yellow" width={10} n={4} />
-          <Bulb cx={540} cy={690} s={1.3} glow={1} />
+          <Place x={540} y={640} w={440} h={440}>
+            <Bulb cx={0} cy={0} s={1.3} glow={1} />
+          </Place>
         </g>
         <g opacity={gen}>
-          <Generator cx={540} cy={860} r={340} rot={spin} glow={0.4 + 0.6 * ramp(f, 260, 330)} blur={ramp(f, 200, 260) * 0.8} />
+          <Place x={540} y={860} w={700} h={700}>
+            <Generator cx={0} cy={0} r={340} rot={spin} glow={0.4 + 0.6 * ramp(f, 260, 330)} blur={ramp(f, 200, 260) * 0.8} />
+          </Place>
           <Wire pts={[[880, 860], [960, 860], [960, 1240]]} phase={pulse * 2} color="cyan" width={10} n={4} />
         </g>
         <g opacity={green}>
@@ -45,14 +49,11 @@ export default function Scene() {
         <g opacity={share}>
           <Donut cx={540} cy={820} r={290} pct={0.21 * dial} label={Math.round(21 * dial) + "%"} />
         </g>
-      </Canvas>
-      <BigTitle lines={[{ text: "How electricity" }, { text: "is really made", color: "yellow" }]} subtitle="a 200-year-old trick" opacity={grid} />
-      <Kicker text="The generator" color="cyan" at={195} until={440} />
-      <Kicker text="Skip the heat" color="teal" at={435} until={680} />
-      <Kicker text="The U.S. mix" color="yellow" at={675} until={820} />
-      <Chip text="Spin a magnet" x={540} y={330} color="yellow" size={50} at={215} until={400} />
-      <Chip text="Wind" x={300} y={330} color="cyan" at={430} until={640} />
-      <Chip text="Sun" x={780} y={330} color="yellow" at={490} until={640} />
+      </Stage>
+      {/* labels sit NEXT to an object on an explicit side: above the generator, above the turbine hub, below the panel */}
+      <Label text="Spin a magnet" ax={540} ay={520} side="top" color="yellow" at={215} until={400} />
+      <Label text="Wind" ax={270} ay={590} side="top" color="cyan" at={430} until={640} />
+      <Label text="Sun" ax={760} ay={1180} side="bottom" color="yellow" at={490} until={640} />
       <div style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, opacity: gen }}>
         <Counter from={0} to={120} start={250} end={330} x={540} y={1290} size={110} color="yellow" suffix=" V" />
       </div>
@@ -66,7 +67,7 @@ export const meta = { durationInFrames: 900, fps: 30, width: 1080, height: 1920 
 
 /** An algorithm story: the finished board first (frame 0), one persistent board whose steps land on the spoken words, a counter, and a return to frame 0. */
 export const TSX_EXAMPLE_SEARCH = `import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
-import { Backdrop, BigTitle, Canvas, Chip, Counter, FONTS, Kicker, StatusBadge, ramp, win } from "yt-kit";
+import { Backdrop, Counter, FONTS, Label, Stage, StatusBadge, ramp, win } from "yt-kit";
 
 const TARGET = 12; // 16 numbers (cells 0 to 15); binary search needs 4 guesses for cell 12
 // Each guess: the range still alive, the cell guessed, and the frame its word is spoken ("middle" 150, "again" 270, "again" 390, "found" 510).
@@ -91,7 +92,7 @@ export default function Scene() {
   return (
     <AbsoluteFill>
       <Backdrop base="#0e141a" glow="#16222e" />
-      <Canvas>
+      <Stage headline="16 numbers. 4 guesses." accent="yellow" opacity={hook}>
         <g transform={"translate(540 960) scale(" + zoom + ") translate(-540 -960)"}>
           {Array.from({ length: 16 }).map((_, i) => {
             const x = 150 + (i % 4) * 260;
@@ -107,16 +108,14 @@ export default function Scene() {
             );
           })}
         </g>
-        <StatusBadge kind="ok" x={900} y={470} r={60} at={510} opacity={win(f, 510, 525, 700, 740)} />
-      </Canvas>
-      <BigTitle lines={[{ text: "16 numbers." }, { text: "4 guesses.", color: "yellow" }]} subtitle="binary search" opacity={hook} />
-      <Kicker text="Guess the middle" color="indigo" at={140} until={265} />
-      <Kicker text="Cut it in half" color="teal" at={265} until={500} />
-      <Chip text="Too low" x={540} y={1260} color="indigo" at={160} until={265} />
-      <Chip text="Too low" x={540} y={1260} color="indigo" at={280} until={385} />
-      <Chip text="Too high" x={540} y={1260} color="pink" at={400} until={505} />
+        <StatusBadge kind="ok" x={900} y={425} r={55} at={510} opacity={win(f, 510, 525, 700, 740)} />
+      </Stage>
+      {/* one verdict at a time, above the board (its top edge is y 490), never on a cell */}
+      <Label text="Too low" ax={540} ay={490} side="top" color="indigo" at={160} until={265} />
+      <Label text="Too low" ax={540} ay={490} side="top" color="indigo" at={280} until={385} />
+      <Label text="Too high" ax={540} ay={490} side="top" color="pink" at={400} until={505} />
       <div style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, opacity: win(f, 140, 170, 700, 740) }}>
-        <Counter from={0} to={4} start={150} end={510} x={540} y={1360} size={90} color="yellow" prefix="Guesses: " />
+        <Counter from={0} to={4} start={150} end={510} x={540} y={1310} size={90} color="yellow" prefix="Guesses: " />
       </div>
     </AbsoluteFill>
   );
