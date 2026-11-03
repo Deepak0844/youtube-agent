@@ -7,7 +7,7 @@ const api: ModelRow = { id: "00000000-0000-4000-8000-0000000000a1", provider: "a
 const other: ModelRow = { ...api, id: "00000000-0000-4000-8000-0000000000a2", label: "Other" };
 const cc: ModelRow = { id: "00000000-0000-4000-8000-0000000000c1", provider: "claude_code", modelId: "default", label: "Claude Code", baseUrl: null, prices: null, isFree: true, capabilities: { structuredOutput: true, toolUse: false, vision: false, nativeWebSearch: false, contextWindow: 200000 }, enabled: true, endpointKind: "local" };
 
-const everyStageOnApi = { outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, qa_vision: api.id, research: api.id, titles: api.id };
+const everyStageOnApi = { outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, qa_vision: api.id, review_frames: api.id, research: api.id, titles: api.id };
 const base: SwitchInput = { on: true, routes: everyStageOnApi, models: [api, other, cc], local: [], previous: null, claudeCodeId: cc.id };
 
 describe("AI source switch (pure)", () => {
@@ -77,7 +77,7 @@ describe("AI source switch (pure)", () => {
     const hostile = JSON.parse(`{"constructor":"${api.id}","__proto__":"${api.id}","outline":null}`) as Record<string, string | null>;
     const off = planAiSource({ ...base, on: false, routes: { outline: cc.id }, previous: hostile });
     if (!off.ok) throw new Error(off.reason);
-    expect(Object.keys(off.routes).sort()).toEqual(["build_scene_kit", "build_tsx", "comment_replies", "draft", "outline", "qa_vision", "research", "titles"]);
+    expect(Object.keys(off.routes).sort()).toEqual(["build_scene_kit", "build_tsx", "comment_replies", "draft", "outline", "qa_vision", "research", "review_frames", "titles"]);
     expect(off.routes.outline).toBeNull();
   });
 });

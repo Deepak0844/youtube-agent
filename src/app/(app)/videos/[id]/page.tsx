@@ -77,6 +77,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
       </header>
 
       {p.kindNote ? <p data-testid="kind-note" className="m-0 max-w-[68ch] rounded-card bg-surface p-pad text-body text-muted">{p.kindNote}</p> : null}
+      {p.frameReviewNote ? <p data-testid="frame-review-note" className={`m-0 max-w-[68ch] rounded-card bg-surface p-pad text-body ${p.frameReviewNote.warn ? "text-warning" : "text-muted"}`}>{p.frameReviewNote.text}</p> : null}
       <LiveFeed />
       <StageStrip p={p} live={live} />
 

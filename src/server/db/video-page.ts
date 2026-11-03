@@ -37,6 +37,8 @@ export interface VideoPage {
   kindNote: string | null;
   /** Custom-animation videos with an accepted scene file: the hash the owner approves saving to the library; null otherwise. */
   tsxLibrary: TsxLibraryState | null;
+  /** The frame check of a code scene as one plain sentence (a warning when it found problems or did not run), or null. */
+  frameReviewNote: { text: string; warn: boolean } | null;
   stages: StageView[];
   /** The newest run status per stage, for the re-run buttons. */
   runStatus: Partial<Record<StageName, RunStatus>>;
@@ -62,6 +64,19 @@ export interface VideoPage {
   posterSrc: string | null;
   audit: AuditItem[];
   log: LogRow[];
+}
+
+/** The saved frame_review record -> a sentence for the video page. The record holds only cleaned, capped text. */
+export function frameReviewNote(body: unknown): { text: string; warn: boolean } | null {
+  const b = asObj(body);
+  if (b.status === "done" && Array.isArray(b.frames)) {
+    if (b.ok === true) return { text: "Frame check: a reviewer looked at key frames and found nothing wrong.", warn: false };
+    const bad = b.frames.map(asObj).filter((f) => f.showsWhatIsSaid === false || (Array.isArray(f.problems) && f.problems.length > 0));
+    const first = bad.map((f) => (typeof f.fix === "string" ? f.fix : "")).find((x) => x !== "");
+    return { text: `Frame check: a reviewer saw problems in ${bad.length} of ${b.frames.length} key frames.${first ? ` For example: ${first.slice(0, 140)}` : ""} Look at the video before you publish.`, warn: true };
+  }
+  if ((b.status === "skipped" || b.status === "unavailable") && typeof b.reason === "string") return { text: b.reason.slice(0, 240), warn: true };
+  return null;
 }
 
 export const KIND_NOTE_TSX_FALLBACK = "Custom animation did not pass the safety checks after 3 tries, so the scene kit was used.";
@@ -192,7 +207,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   return {
-    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
+    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
     beats: beats?.body ?? null,
     evidence: evidence ? { body: evidence.body, fileSrc: sign?.(evidence.filePath) ?? null } : null,
     titles: titles?.body ?? null,

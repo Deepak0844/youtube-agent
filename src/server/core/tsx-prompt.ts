@@ -194,16 +194,17 @@ ${TSX_EXAMPLE_SEARCH}END_EXAMPLE
 Reply with ONE fenced tsx block that holds the whole file, and nothing else.`;
 }
 
-export type FeedbackStep = "format" | "check" | "typecheck" | "timing" | "preflight" | "render" | "timeout" | "output";
+export type FeedbackStep = "format" | "check" | "typecheck" | "timing" | "preflight" | "render" | "timeout" | "output" | "review";
 const STEP_TEXT: Record<FeedbackStep, string> = {
   format: "the reply was not one complete tsx block",
   check: "the safety check refused the file",
   typecheck: "the type-check found errors",
   timing: "the length did not match the task",
-  preflight: "the preview frames (first, middle, last) showed a problem",
+  preflight: "the preview frames showed a problem",
   render: "the render failed",
   timeout: "the render took too long; make the scene lighter",
   output: "the rendered video was not acceptable",
+  review: "a reviewer looked at key frames of the render and found problems on screen",
 };
 
 /** Retry message: what failed and the short problem list, inside a data block. */

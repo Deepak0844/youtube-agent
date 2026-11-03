@@ -205,7 +205,7 @@ describe("form text is bounded, never silently emptied", () => {
 describe("stage routing and capabilities", () => {
   const m = (c: Partial<typeof caps>, o: Partial<ModelRow> = {}): ModelRow => ({ id: "00000000-0000-4000-8000-000000000002", ...hosted, endpointKind: "hosted", ...o, capabilities: { ...caps, ...c } });
   it("stages follow Doc 8 section 3 and are unique", () => {
-    expect(STAGES.map((s) => s.id)).toEqual(["outline", "draft", "build_scene_kit", "build_tsx", "qa_vision", "research", "titles", "comment_replies"]);
+    expect(STAGES.map((s) => s.id)).toEqual(["outline", "draft", "build_scene_kit", "build_tsx", "qa_vision", "review_frames", "research", "titles", "comment_replies"]);
   });
   it("structured-output stages exclude models without it", () => {
     for (const id of ["outline", "titles", "comment_replies"]) expect(eligibleForStage(id, m({ structuredOutput: false })).ok, id).toBe(false);

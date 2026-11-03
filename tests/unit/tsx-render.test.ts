@@ -226,6 +226,46 @@ describe("renderTsx", () => {
   });
 });
 
+describe("renderTsx frame review", () => {
+  const writeStills = (outDir: string) => {
+    for (const f of [0, 20, 44, 60, 89]) writeFileSync(path.join(outDir, `still-${f}.png`), "png");
+    return OK;
+  };
+  const decode = (spec: ChildSpec) => {
+    const [, png, raw, , , jpg] = spec.args;
+    const f = Number(/still-(\d+)\.png$/.exec(png!)![1]);
+    writeFileSync(raw!, frameBytes(f));
+    if (jpg) writeFileSync(jpg, Buffer.from([0xff, 0xd8, f]));
+    spec.onLine?.('{"ok":true}');
+    return OK;
+  };
+
+  it("renders the beat midpoints too, hands the JPEGs to the review, and renders the video when it finds nothing", async () => {
+    let got: number[] = [];
+    const r = await renderTsx(deps({ stills: writeStills, decode }), ctx(), input({ reviewAt: [20, 60, 60], review: async (shots) => { got = shots.map((s) => s.frame); return null; } }));
+    expect(r.ok).toBe(true);
+    expect(got).toEqual([0, 20, 44, 60, 89]);
+    expect(JSON.parse(seen.meta!).stills).toEqual([0, 20, 44, 60, 89]);
+    expect(runs().some((c) => c.args.at(-1) === "--tsx")).toBe(true);
+  });
+
+  it("review problems stop before the video render and come back as a 'review' failure", async () => {
+    const e = await failed(deps({ stills: writeStills, decode }), input({ reviewAt: [20, 60], review: async () => ["frame 20: object too small"] }));
+    expect(e.kind).toBe("review");
+    expect(e.problems).toEqual(["frame 20: object too small"]);
+    expect(runs().some((c) => c.args.at(-1) === "--tsx")).toBe(false);
+  });
+
+  it("a review that throws (budget, unclear outcome) goes up untouched; no review means three stills and no JPEG", async () => {
+    await expect(renderTsx(deps({ stills: writeStills, decode }), ctx(), input({ review: async () => { throw new Error("unclear"); } }))).rejects.toThrow("unclear");
+    calls = [];
+    const r = await renderTsx(deps(), ctx(), input());
+    expect(r.ok).toBe(true);
+    expect(JSON.parse(seen.meta!).stills).toEqual([0, 44, 89]);
+    expect(calls.filter((c) => c.command === process.execPath).every((c) => c.args.length === 5)).toBe(true);
+  });
+});
+
 describe("scrub", () => {
   it("shortens long quotes, hides lines that repeat the source, keeps plain text", () => {
     expect(scrub("line 2: Cannot find name 'x'.", SCENE)).toBe("line 2: Cannot find name 'x'.");

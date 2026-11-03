@@ -7,7 +7,7 @@ import { redactLine } from "@/server/core/log-redact";
 import type { ProbeResult } from "@/server/core/qa";
 import type { StageContext } from "@/server/core/stage-handler";
 import { checkTsx, echo, isStaticName, TSX_META, tsxDuration } from "@/server/core/tsx-check";
-import { checkPreflight, preflightFrames, type RgbFrame } from "@/server/core/tsx-preflight";
+import { checkPreflight, preflightFrames, reviewStillFrames, type RgbFrame } from "@/server/core/tsx-preflight";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { daemonLimits, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
 import { ASSET_EXT, copyRegular, mountable, NAME_PREFIX, realDir, runRenderContainer } from "./remotion-container";
@@ -34,11 +34,12 @@ const TYPECHECK_HEAP_MB = 1024;
 const MAX_PROPS_BYTES = 64 * 1024;
 const MAX_ASSETS = 40;
 const MAX_STILL_BYTES = 32 * 1024 * 1024;
+const MAX_JPEG_BYTES = 400 * 1024; // a 540x960 review picture; anything bigger is dropped, not sent to a model
 const MAX_MESSAGE = 600;
 const MAX_PROBLEMS = 10;
 const SIZE = { width: TSX_META.width, height: TSX_META.height };
 
-export type TsxFailureKind = "check" | "typecheck" | "render" | "timeout" | "preflight" | "output" | "infra";
+export type TsxFailureKind = "check" | "typecheck" | "render" | "timeout" | "preflight" | "output" | "review" | "infra";
 export interface TsxRenderFailure {
   kind: TsxFailureKind;
   /** One plain sentence, at most 600 characters, safe to show and to feed back to the model. */
@@ -60,6 +61,18 @@ export interface TsxRenderInput {
   captions?: { word: string; startS: number; endS: number }[];
   /** A plain file name inside ctx.attemptDir. */
   outFile: string;
+  /**
+   * The frame review. When set, up to 8 stills are rendered (the three preflight frames plus `reviewAt`, frame numbers of the
+   * beats' midpoints) instead of 3, and after the preflight passes this is called with a 540x960 JPEG of each (our own render
+   * output). Returning problems stops here with a 'review' failure (no full render); null/empty goes on to the video.
+   * A throw (budget refusal, unclear paid outcome) goes up untouched.
+   */
+  review?: (shots: ReviewShot[]) => Promise<string[] | null>;
+  reviewAt?: readonly number[];
+}
+export interface ReviewShot {
+  frame: number;
+  jpeg: Uint8Array;
 }
 
 export interface TsxRendererDeps {
@@ -159,6 +172,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
   if (ctx.signal.aborted) throw aborted();
   if (typed.ok !== true) return failure("typecheck", "The scene file has type errors.", typed.problems);
 
+  const stillList = input.review ? reviewStillFrames(frames, input.reviewAt ?? []) : preflightFrames(frames);
   const inDir = mountable(path.join(ctx.attemptDir, "tsx-in"));
   const outDir = mountable(path.join(ctx.attemptDir, "tsx-out"));
   const stillsDir = path.join(ctx.attemptDir, "tsx-stills");
@@ -179,7 +193,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       await mkdir(stillsDir, { mode: 0o700 });
       await writeFile(path.join(inDir, "video.tsx"), source, { mode: 0o644, flag: "wx" });
       await writeFile(path.join(inDir, "props.json"), propsJson, { mode: 0o644, flag: "wx" });
-      await writeFile(path.join(inDir, "meta.json"), JSON.stringify({ durationInFrames: frames, stills: preflightFrames(frames), captions: (input.captions ?? []).slice(0, 1500) }), { mode: 0o644, flag: "wx" });
+      await writeFile(path.join(inDir, "meta.json"), JSON.stringify({ durationInFrames: frames, stills: stillList, captions: (input.captions ?? []).slice(0, 1500) }), { mode: 0o644, flag: "wx" });
     } catch (e) {
       return failure("infra", `The TSX render folders could not be prepared (${e instanceof Error ? e.message : "unknown"}).`);
     }
@@ -232,15 +246,25 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
     const stillsRun = await runOnce("stills");
     if (stillsRun) return stillsRun;
     const stills: RgbFrame[] = [];
+    const shots: ReviewShot[] = [];
     const problems: string[] = [];
-    for (const f of preflightFrames(frames)) {
-      const got = await readStill(deps, ctx, outDir, stillsDir, f);
-      if (typeof got === "string") problems.push(got);
-      else stills.push(got);
+    const base = new Set(preflightFrames(frames));
+    for (const f of stillList) {
+      const got = await readStill(deps, ctx, outDir, stillsDir, f, input.review !== undefined);
+      if (typeof got === "string") {
+        if (base.has(f)) problems.push(got); // a missing extra frame only thins the review
+      } else {
+        if (base.has(f)) stills.push(got.rgb);
+        if (got.jpeg) shots.push({ frame: f, jpeg: got.jpeg });
+      }
     }
     if (problems.length > 0) return failure("preflight", "The preview frames could not be read.", problems);
     const pre = checkPreflight(stills, SIZE);
     if (!pre.ok) return failure("preflight", "The preview frames show a problem.", pre.problems);
+    if (input.review && shots.length > 0) {
+      const found = await input.review(shots); // throws go up: a budget refusal or an unclear paid outcome is never swallowed here
+      if (found && found.length > 0) return failure("review", "A reviewer looked at key frames of the render and found problems.", found);
+    }
     const kept: string[] = [];
     try {
       const names = ["first", "middle", "last"];
@@ -256,7 +280,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       return failure("infra", "The preview frames could not be saved.");
     }
     await rm(stillsDir, { recursive: true, force: true });
-    await Promise.all(preflightFrames(frames).map((f) => rm(path.join(outDir, `still-${f}.png`), { force: true })));
+    await Promise.all(stillList.map((f) => rm(path.join(outDir, `still-${f}.png`), { force: true })));
     await rm(path.join(outDir, "out.mp4"), { force: true });
 
     // 6. The video.
@@ -287,9 +311,10 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
 }
 
 /** Copies still-<f>.png out of the container folder (no symlink, size-capped) and decodes it in a child. A string is a problem. */
-async function readStill(deps: TsxRendererDeps, ctx: StageContext, outDir: string, stillsDir: string, f: number): Promise<RgbFrame | string> {
+async function readStill(deps: TsxRendererDeps, ctx: StageContext, outDir: string, stillsDir: string, f: number, wantJpeg: boolean): Promise<{ rgb: RgbFrame; jpeg?: Uint8Array } | string> {
   const png = path.join(stillsDir, `still-${f}.png`);
   const raw = path.join(stillsDir, `still-${f}.rgb`);
+  const jpg = path.join(stillsDir, `still-${f}.jpg`);
   try {
     await copyRegular(path.join(outDir, `still-${f}.png`), png, MAX_STILL_BYTES);
   } catch {
@@ -297,7 +322,7 @@ async function readStill(deps: TsxRendererDeps, ctx: StageContext, outDir: strin
   }
   const lines: string[] = [];
   const r = await deps.runChild({
-    command: process.execPath, args: [STILL_CHILD, png, raw, String(SIZE.width), String(SIZE.height)], cwd: stillsDir, cwdRoot: stillsDir,
+    command: process.execPath, args: [STILL_CHILD, png, raw, String(SIZE.width), String(SIZE.height), ...(wantJpeg ? [jpg] : [])], cwd: stillsDir, cwdRoot: stillsDir,
     envAllow: ["PATH"], timeoutMs: 30_000, maxOutputBytes: 4096, signal: ctx.signal, stageRunId: ctx.claim.stageRunId, onLine: (l) => { lines.push(l); },
   }).catch(() => null);
   if (r?.aborted) throw ctx.signal.reason ?? new Error("render aborted");
@@ -310,5 +335,8 @@ async function readStill(deps: TsxRendererDeps, ctx: StageContext, outDir: strin
   if (!r || r.code !== 0 || answer.ok !== true) return typeof answer.message === "string" ? `Frame ${f}: ${answer.message.slice(0, 120)}` : `Frame ${f} could not be decoded.`;
   const st = await lstat(raw).catch(() => null);
   if (!st?.isFile() || st.size !== SIZE.width * SIZE.height * 3) return `Frame ${f} could not be decoded.`;
-  return { frame: f, width: SIZE.width, height: SIZE.height, rgb: new Uint8Array(await readFile(raw)) };
+  const rgb: RgbFrame = { frame: f, width: SIZE.width, height: SIZE.height, rgb: new Uint8Array(await readFile(raw)) };
+  if (!wantJpeg) return { rgb };
+  const js = await lstat(jpg).catch(() => null);
+  return { rgb, ...(js?.isFile() && js.size > 0 && js.size <= MAX_JPEG_BYTES ? { jpeg: new Uint8Array(await readFile(jpg)) } : {}) };
 }

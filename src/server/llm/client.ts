@@ -17,7 +17,7 @@ import { sharedPacer, type Pacer } from "./pacer";
 import { KnownFailure, type ClaimLike } from "@/server/core/paid-call";
 import { worstCaseMicroUsd, type PriceCard } from "@/server/core/spend";
 import { getModel, listRoutes, localServices } from "@/server/db/llm-models";
-import { createAiSdkStep, type ToolDecl } from "./ai-sdk-step";
+import { createAiSdkStep, createImagesStep, type StepImage, type ToolDecl } from "./ai-sdk-step";
 
 // The one door to a language model for stage code (Doc 08 section 2-3).
 //
@@ -78,6 +78,10 @@ export interface LlmClient {
       checkpoint?: { claim: ClaimLike; store: AgentStepStore; runOrdinal: number };
     },
   ): Promise<AgentResult>;
+  /** One paid call that reads images (frame review). Same refusals, reservation and no-retry rule as `agent`. Images are our own render output. */
+  vision(ctx: LlmStageContext, a: { stage: string; messages: Message[]; images: readonly StepImage[]; maxOutputTokens: number }): Promise<{ text: string; spentMicroUsd: number }>;
+  /** A plain sentence when the stage's route cannot be used right now (nothing is reserved or sent), else null. */
+  routeProblem?(stage: string): Promise<string | null>;
 }
 
 export interface LlmClientDeps {
@@ -94,7 +98,11 @@ export interface LlmClientDeps {
   pacer?: Pacer;
   /** Tests only. */
   makeStep?(model: LanguageModel, decls: ToolDecl[], maxOutputTokens: number): ModelStep;
+  /** Tests only. */
+  makeImagesStep?(model: LanguageModel, maxOutputTokens: number, images: readonly StepImage[]): ModelStep;
 }
+
+const IMAGE_TOKEN_ALLOWANCE = 1500; // generous per-image input estimate, so the reserve is a ceiling, not a guess
 
 const MAX_FEEDBACK_ECHO = 4000; // characters of the rejected answer shown back to the model
 const MAX_ISSUES = 5;
@@ -169,6 +177,28 @@ export function createLlmClient(deps: LlmClientDeps): LlmClient {
   }
 
   return {
+    async routeProblem(stage) {
+      try {
+        await resolve(stage, false);
+        return null;
+      } catch (err) {
+        if (err instanceof LlmRefusal) return err.message;
+        throw err;
+      }
+    },
+
+    async vision(ctx, a) {
+      const { row, model, price } = await resolve(a.stage, false); // eligibleForStage proves image input
+      const step = (deps.makeImagesStep ?? createImagesStep)(model, a.maxOutputTokens, a.images);
+      // Throws UnpricedCallError if the price card cannot cover the usage: nothing reserved, nothing sent. A free model prices at 0.
+      const reserveMicroUsd = worstCaseMicroUsd(price, { inputTokens: estimateInputTokens(a.messages) + a.images.length * IMAGE_TOKEN_ALLOWANCE, maxOutputTokens: a.maxOutputTokens });
+      const res = await pacedPaid(ctx, row)<StepResult>({ reserveMicroUsd, budgetScopes: deps.budgetScopes(ctx), kind: "paid" }, async (key, signal) => {
+        const result = await step(a.messages, key, signal);
+        return { result, actualMicroUsd: worstCaseMicroUsd(price, { inputTokens: result.usage.inputTokens, maxOutputTokens: result.usage.outputTokens }) };
+      });
+      return { text: res.text, spentMicroUsd: worstCaseMicroUsd(price, { inputTokens: res.usage.inputTokens, maxOutputTokens: res.usage.outputTokens }) };
+    },
+
     async generate(ctx, a) {
       const retries = Math.min(2, Math.max(0, Math.trunc(a.invalidRetries ?? 2))) as 0 | 1 | 2;
       const { row, model, price } = await resolve(a.stage, false);
