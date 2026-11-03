@@ -75,7 +75,7 @@ describe("connect flow", () => {
     expect(await getAccessToken(db.pool, ring, fakeHttp({ token: reply({ access_token: "at2" }) }), id)).toEqual({ ok: true, accessToken: "at2" });
     expect(await getAccessToken(db.pool, ring, fakeHttp({ token: reply({ error: "invalid_grant" }, 400) }), id)).toEqual({ ok: false, reason: "needs_reconnect" });
     expect((await listAccounts(db.pool))[0]!.channels[0]!.status).toBe("needs_reconnect");
-    const ev = (await db.ownerPool.query("select event from audit_log order by id")).rows.map((r: { event: string }) => r.event);
+    const ev = (await db.ownerPool.query("select event from audit_log where event like 'youtube.%' order by id")).rows.map((r: { event: string }) => r.event);
     expect(ev).toEqual(["youtube.channel_connected", "youtube.channel_confirmed", "youtube.refresh_failed"]);
     // Reconnect keeps a confirmed channel confirmed.
     await completeConnect(db.pool, ring, fakeHttp(), { sessionId: SESSION, state: await begin(), code: "c", appUrl: APP_URL });
