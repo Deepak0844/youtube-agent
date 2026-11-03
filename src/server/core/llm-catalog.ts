@@ -282,6 +282,8 @@ export const STAGES: readonly StageDef[] = [
     localWarning: "Small local models are not recommended for custom animation.",
   },
   { id: "qa_vision", label: "QA, vision review", hint: "Optional review of frames. Leave unset to skip.", requires: ["vision"], requiresAny: [], prefers: [], optional: true },
+  // Reads rendered key frames of a code scene (images in, strict JSON out). Unrouted = the review is skipped, never the video.
+  { id: "review_frames", label: "Frame check, code scenes", hint: "Reads key frames of a custom animation and says what looks wrong. Leave unset to skip.", requires: ["vision"], requiresAny: [], prefers: [], optional: true },
   { id: "research", label: "Research and ideas", hint: "Native web search, or tool use with our own search tool.", requires: [], requiresAny: ["nativeWebSearch", "toolUse"], prefers: [] },
   { id: "titles", label: "Titles and insights", hint: "Structured output. Cheapest adequate model.", requires: ["structuredOutput"], requiresAny: [], prefers: [] },
   { id: "comment_replies", label: "Comment replies", hint: "Structured output. You approve before anything is sent.", requires: ["structuredOutput"], requiresAny: [], prefers: [] },

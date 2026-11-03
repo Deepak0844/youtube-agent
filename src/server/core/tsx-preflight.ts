@@ -27,6 +27,24 @@ export function preflightFrames(durationInFrames: number): number[] {
   return [...new Set([0, Math.floor((durationInFrames - 1) / 2), durationInFrames - 1])];
 }
 
+/** Most stills one attempt renders for the frame review (the three preflight frames are always among them). */
+export const REVIEW_STILLS_MAX = 8;
+
+/**
+ * Frames for the review: the preflight frames (first, middle, last) plus the beats' midpoints (frame numbers, any order, may
+ * lie outside the scene), clamped to the scene, deduplicated, sorted and capped. When there are too many midpoints they are
+ * thinned evenly; the preflight frames are never dropped.
+ */
+export function reviewStillFrames(durationInFrames: number, midpoints: readonly number[]): number[] {
+  const base = preflightFrames(durationInFrames);
+  if (base.length === 0) return [];
+  const have = new Set(base);
+  const extra = [...new Set(midpoints.filter((m) => Number.isFinite(m)).map((m) => Math.min(durationInFrames - 1, Math.max(0, Math.round(m)))))].filter((m) => !have.has(m)).sort((a, b) => a - b);
+  const room = REVIEW_STILLS_MAX - base.length;
+  const pick = extra.length <= room ? extra : Array.from({ length: room }, (_, i) => extra[Math.floor(((i + 0.5) * extra.length) / room)]!);
+  return [...new Set([...base, ...pick])].sort((a, b) => a - b);
+}
+
 function validFrame(f: unknown): f is RgbFrame {
   if (!f || typeof f !== "object") return false;
   const { width, height, rgb, frame } = f as Partial<RgbFrame>;

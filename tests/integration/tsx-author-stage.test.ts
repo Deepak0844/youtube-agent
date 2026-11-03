@@ -54,19 +54,29 @@ beforeEach(async () => {
 });
 
 const ROW: ModelRow = { id: "00000000-0000-4000-8000-0000000000bb", provider: "anthropic", modelId: "m", label: "Fake", baseUrl: null, prices: { inputPerMTokMicro: 1_000_000, outputPerMTokMicro: 1_000_000 }, isFree: false, capabilities: { structuredOutput: true, toolUse: true, vision: false, nativeWebSearch: false, contextWindow: 128000 }, enabled: true, endpointKind: "hosted" };
-const llmWith = (texts: string[]) => {
+const VROW: ModelRow = { ...ROW, id: "00000000-0000-4000-8000-0000000000cc", label: "Fake vision", capabilities: { ...ROW.capabilities, vision: true } };
+/** `looks`: the replies of the vision model for the frame review (none = the review_frames route is the text-only ROW, so the review is skipped). */
+const llmWith = (texts: string[], looks?: string[]) => {
   const step = fakeModelStep({ script: texts.map((text) => ({ text, toolCalls: [], usage: { inputTokens: 100, outputTokens: 50 } })) });
-  return (scopes: string[]) => createLlmClient({ db: db.pool, catalog: { route: async () => ROW, localServices: async () => [] }, getKey: async () => null, buildModel: () => ({}) as LanguageModel, budgetScopes: () => scopes, makeStep: () => step });
+  const look = fakeModelStep({ script: (looks ?? []).map((text) => ({ text, toolCalls: [], usage: { inputTokens: 100, outputTokens: 50 } })) });
+  return (scopes: string[]) => createLlmClient({
+    db: db.pool,
+    catalog: { route: async (stage) => (stage === "review_frames" && looks ? VROW : ROW), localServices: async () => [] },
+    getKey: async () => null, buildModel: () => ({}) as LanguageModel, budgetScopes: () => scopes, makeStep: () => step, makeImagesStep: () => look,
+  });
 };
+const verdict = (ok: boolean) => JSON.stringify({ ok, frames: [0, 100].map((frame) => ({ frame, shows_what_is_said: ok, problems: ok ? [] : ["object too small"], fix: ok ? "" : "Make the main object bigger" })) });
 
 /** A scripted sandbox: one result per call; a success copies a real mp4 into the attempt folder like renderTsx does. */
-function fakeTsx(results: Array<"ok" | { kind: "preflight" | "render" | "typecheck"; message: string; problems?: string[] }>): TsxRenderer & { sources: string[] } {
+function fakeTsx(results: Array<"ok" | { kind: "preflight" | "render" | "typecheck" | "review"; message: string; problems?: string[] }>): TsxRenderer & { sources: string[] } {
   const sources: string[] = [];
   return {
     sources,
     async renderTsx(ctx, input): Promise<TsxRenderResult> {
       sources.push(input.source);
       const r = results[sources.length - 1]!;
+      const found = r !== "ok" || !input.review ? null : await input.review([0, 100].map((frame) => ({ frame, jpeg: new Uint8Array([0xff, 0xd8, frame]) })));
+      if (found && found.length > 0) return { ok: false, error: { kind: "review", message: "A reviewer found problems.", problems: found } };
       if (r === "ok") {
         const outPath = path.join(ctx.attemptDir, input.outFile);
         copyFileSync(GOOD_MP4, outPath);
@@ -113,7 +123,7 @@ const withFrames = (n: number, extra = "") => GOOD_SCENE.replace("durationInFram
 const row = async (id: string) => (await db.pool.query("select kind, kind_origin from videos where id = $1", [id])).rows[0] as { kind: string; kind_origin: string | null };
 const stageRow = async (id: string, name: string) => (await db.pool.query("select status, result from stage_runs where video_id = $1 and name = $2 order by created_at desc limit 1", [id, name])).rows[0] as { status: string; result: Record<string, unknown> };
 const intentCount = async () => Number((await db.pool.query("select count(*) n from spend_intents")).rows[0].n);
-const handler = (tsx: TsxRenderer, texts: string[]) => withAttempt({ db: db.pool, root }, tsxAuthorAttempt(mkDeps({ tsx, makeLlm: llmWith(texts) })));
+const handler = (tsx: TsxRenderer, texts: string[], looks?: string[]) => withAttempt({ db: db.pool, root }, tsxAuthorAttempt(mkDeps({ tsx, makeLlm: llmWith(texts, looks) })));
 
 describe("tsx_author stage", () => {
   it("success: the accepted source is saved as content tsx, render.mp4 is promoted, the video stays a tsx video", async () => {
@@ -130,6 +140,53 @@ describe("tsx_author stage", () => {
     for (const f of ["first", "middle", "last"]) expect(existsSync(path.join(root, "videos", id, `tsx-frame-${f}.png`))).toBe(true); // preflight stills kept
     expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: false, attempts: 1 });
     expect(await intentCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  it("frame review ok: one vision call, the verdict is saved as content frame_review and in the stage result", async () => {
+    const { id, frames } = await tsxVideoWithNarration();
+    const before = await intentCount();
+    const out = await play(id, "tsx_author", handler(fakeTsx(["ok"]), [reply(withFrames(frames))], [verdict(true)]));
+    expect(out.kind).toBe("committed");
+    expect(await intentCount()).toBe(before + 2); // one author call and one review call, both reserved
+    expect((await latestContent(db.pool, id, "frame_review"))?.body).toMatchObject({ status: "done", ok: true, attempt: 1 });
+    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: false, frameReview: { status: "done", ok: true } });
+  });
+
+  it("frame review not ok with attempts left: the problem list goes back to the author, the second file is accepted, still 3 attempts at most", async () => {
+    const { id, frames } = await tsxVideoWithNarration();
+    const before = await intentCount();
+    const tsx = fakeTsx(["ok", "ok"]);
+    const out = await play(id, "tsx_author", handler(tsx, [reply(withFrames(frames)), reply(withFrames(frames, "// bigger\n"))], [verdict(false), verdict(true)]));
+    expect(out.kind).toBe("committed");
+    expect(tsx.sources).toHaveLength(2);
+    expect(await intentCount()).toBe(before + 4); // 2 author + 2 review
+    expect((await latestContent(db.pool, id, "tsx"))?.body).toMatchObject({ attempts: 2 });
+    expect((await latestContent(db.pool, id, "frame_review"))?.body).toMatchObject({ status: "done", ok: true, attempt: 2 });
+  });
+
+  it("frame review not ok on every attempt: the last render is accepted with a warning, the video is not blocked", async () => {
+    const { id, frames } = await tsxVideoWithNarration();
+    const out = await play(id, "tsx_author", handler(fakeTsx(["ok", "ok", "ok"]), [reply(withFrames(frames)), reply(withFrames(frames, "// b\n")), reply(withFrames(frames, "// c\n"))], [verdict(false), verdict(false), verdict(false)]));
+    expect(out.kind).toBe("committed");
+    expect(await row(id)).toEqual({ kind: "tsx", kind_origin: null });
+    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: false, attempts: 3, frameReview: { status: "done", ok: false } });
+  });
+
+  it("frame review unavailable (bad JSON from the vision model): neither a pass nor a fail, the video goes on", async () => {
+    const { id, frames } = await tsxVideoWithNarration();
+    const out = await play(id, "tsx_author", handler(fakeTsx(["ok"]), [reply(withFrames(frames))], ["I cannot tell"]));
+    expect(out.kind).toBe("committed");
+    expect((await latestContent(db.pool, id, "frame_review"))?.body).toMatchObject({ status: "unavailable" });
+    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: false, attempts: 1 });
+  });
+
+  it("no vision model: the review is skipped with a plain reason, no vision call, and the video goes on", async () => {
+    const { id, frames } = await tsxVideoWithNarration();
+    const before = await intentCount();
+    const out = await play(id, "tsx_author", handler(fakeTsx(["ok"]), [reply(withFrames(frames))]));
+    expect(out.kind).toBe("committed");
+    expect(await intentCount()).toBe(before + 1);
+    expect((await latestContent(db.pool, id, "frame_review"))?.body).toMatchObject({ status: "skipped", reason: expect.stringContaining("frame review skipped: no vision model") });
   });
 
   it("retry: a file the checker refuses is sent back with the problem, and the corrected file is rendered once", async () => {

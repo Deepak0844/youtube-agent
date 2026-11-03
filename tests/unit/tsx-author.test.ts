@@ -10,7 +10,7 @@ const TASK = { topic: "t", beats: [{ id: "b1", text: "hello there", visual: "bar
 const GOOD = GOOD_SCENE;
 const reply = (src: string) => "```tsx\n" + src + "\n```";
 const OK: TsxRenderResult = { ok: true, outPath: "/x/render.mp4", image: "img", stills: [] };
-const fail = (kind: "check" | "typecheck" | "render" | "timeout" | "preflight" | "output" | "infra", message = "m", problems: string[] = []): TsxRenderResult => ({ ok: false, error: { kind, message, problems } });
+const fail = (kind: "check" | "typecheck" | "render" | "timeout" | "preflight" | "output" | "review" | "infra", message = "m", problems: string[] = []): TsxRenderResult => ({ ok: false, error: { kind, message, problems } });
 
 function run(replies: string[], renders: TsxRenderResult[]) {
   const asked: Message[][] = [];
@@ -123,5 +123,52 @@ describe("authorTsx", () => {
     await authorTsx(t.deps, TASK);
     for (const l of t.logs) expect(l).not.toContain("SUPER_SECRET_MARKER_VALUE_THAT");
     expect(t.logs.some((l) => /attempt 1 of 3 failed at check/.test(l))).toBe(true);
+  });
+});
+
+describe("authorTsx frame review", () => {
+  const SHOTS = [{ frame: 0, jpeg: new Uint8Array([1]) }];
+  const BAD = { status: "done" as const, ok: false, frames: [{ frame: 0, showsWhatIsSaid: false, problems: ["object too small" as const], fix: "Make it bigger" }] };
+  const GOODV = { status: "done" as const, ok: true, frames: [{ frame: 0, showsWhatIsSaid: true, problems: [], fix: "" }] };
+  /** A renderer that, like renderTsx, calls the review hook with shots and stops with a 'review' failure when it returns problems. */
+  function reviewed(replies: string[], verdicts: Array<typeof BAD | typeof GOODV | { status: "unavailable"; reason: string }>) {
+    const t = run(replies, []);
+    let reviews = 0;
+    t.deps.review = async () => verdicts[reviews++]!;
+    t.deps.render = async (s, hook) => {
+      t.sources.push(s);
+      const found = hook ? await hook(SHOTS) : null;
+      return found && found.length > 0 ? fail("review", "A reviewer found problems.", found) : OK;
+    };
+    return { t, reviews: () => reviews };
+  }
+
+  it("a not-ok review with attempts left goes back to the author as a problem list and counts as an attempt", async () => {
+    const { t } = reviewed([reply(GOOD), reply(GOOD + "\n// better\n")], [BAD, GOODV]);
+    const out = await authorTsx(t.deps, TASK);
+    expect(out).toMatchObject({ ok: true, attempts: 2, review: { status: "done", ok: true } });
+    expect(t.asked[1]![3]!.content).toContain("frame 0: does not show what is said, object too small. Fix: Make it bigger");
+    expect(t.asked[1]![3]!.content).toContain("key frames");
+  });
+
+  it("the same review problem twice does not stop early, and on the last attempt the render is accepted with the bad verdict", async () => {
+    const { t } = reviewed([reply(GOOD), reply(GOOD), reply(GOOD)], [BAD, BAD, BAD]);
+    const out = await authorTsx(t.deps, TASK);
+    expect(out).toMatchObject({ ok: true, attempts: TSX_MAX_ATTEMPTS, review: { status: "done", ok: false } });
+  });
+
+  it("an unavailable review never blocks or retries", async () => {
+    const { t } = reviewed([reply(GOOD)], [{ status: "unavailable", reason: "frame review unavailable: the answer was not valid JSON" }]);
+    const out = await authorTsx(t.deps, TASK);
+    expect(out).toMatchObject({ ok: true, attempts: 1, review: { status: "unavailable" } });
+    expect(t.asked).toHaveLength(1);
+  });
+
+  it("an unclear paid outcome in the review goes up untouched", async () => {
+    const { t } = reviewed([reply(GOOD)], []);
+    t.deps.review = async () => {
+      throw new NeedsDecisionError("run", "k", 5);
+    };
+    await expect(authorTsx(t.deps, TASK)).rejects.toBeInstanceOf(NeedsDecisionError);
   });
 });

@@ -1,6 +1,7 @@
 import { lstat } from "node:fs/promises";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { Message } from "@/server/core/agent-loop";
+import { reviewRecord } from "@/server/core/frame-review";
 import { authorTsx } from "@/server/core/tsx-author";
 import { tsxCaptionWords } from "@/server/core/tsx-captions";
 import { tooLongForTsx, type PromptBeat, type PromptWord } from "@/server/core/tsx-prompt";
@@ -9,6 +10,7 @@ import { fallBackToSceneKit } from "@/server/db/tsx-fallback";
 import type { LlmClient, LlmStageContext } from "@/server/llm/client";
 import { promotedPath, type AttemptHandler } from "./attempt";
 import { contentBody, loadVideo, videoMoneyScopes, type StageDeps } from "./deps";
+import { beatMidFrames, reviewBeats, reviewReady, reviewShots } from "./frame-review";
 import { audioSeconds } from "./voice-audio";
 
 // The reply is one whole file (24 KB at most is about 7,000 tokens); this is the per-attempt output cap. Three attempts at most.
@@ -68,20 +70,31 @@ export function tsxAuthorAttempt(deps: StageDeps): AttemptHandler {
     const topic = (await deps.db.query<{ topic: string }>("select topic from videos where id = $1", [video.id])).rows[0]?.topic ?? "";
 
     const llm = deps.makeLlm(await videoMoneyScopes(deps.db, video));
+    // Frame review: key frames of each rendered attempt are read by a vision model. With no usable route it is skipped up front
+    // (the extra stills are not even rendered) and the reason is logged and stored; it never blocks the video.
+    const timed = reviewBeats(beats, words, narrationS);
+    const skipped = await reviewReady(llm);
+    if (skipped?.status === "skipped") ctx.log(skipped.reason);
     const out = await authorTsx(
       {
         ask: tsxAsk(llm, ctx),
-        render: (source) => deps.tsx!.renderTsx(ctx, { source, captions: tsxCaptionWords(words), outFile: "render.mp4" }),
+        render: (source, review) => deps.tsx!.renderTsx(ctx, { source, captions: tsxCaptionWords(words), outFile: "render.mp4", ...(review ? { review, reviewAt: beatMidFrames(timed) } : {}) }),
+        ...(skipped ? {} : { review: (shots: { frame: number; jpeg: Uint8Array }[]) => reviewShots(llm, ctx, timed, shots) }),
         log: ctx.log,
       },
       { topic, beats, words, narrationS },
     );
 
     if (out.ok) {
+      const verdict = out.review ?? skipped ?? { status: "unavailable" as const, reason: "frame review unavailable: no frames were reviewed" };
+      const record = reviewRecord(verdict, out.attempts);
       return {
         files: ["render.mp4", ...out.stills],
-        content: [{ kind: "tsx", body: { source: out.source, durationInFrames: out.durationInFrames, attempts: out.attempts, image: out.image, stills: out.stills } }],
-        result: { rendered: "render.mp4", attempts: out.attempts, durationInFrames: out.durationInFrames, image: out.image, fellBack: false },
+        content: [
+          { kind: "tsx", body: { source: out.source, durationInFrames: out.durationInFrames, attempts: out.attempts, image: out.image, stills: out.stills } },
+          { kind: "frame_review", body: record },
+        ],
+        result: { rendered: "render.mp4", attempts: out.attempts, durationInFrames: out.durationInFrames, image: out.image, fellBack: false, frameReview: record },
       };
     }
     const switched = await fallBackToSceneKit(deps.db, ctx.claim, video.id, { attempts: out.attempts, step: out.step, why: out.why });

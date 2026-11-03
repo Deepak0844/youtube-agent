@@ -93,3 +93,38 @@ export function createVisionStep(model: LanguageModel, maxOutputTokens: number, 
     return { text: r.text, toolCalls: [], usage: { inputTokens, outputTokens } };
   };
 }
+
+export interface StepImage {
+  data: Uint8Array;
+  mediaType: "image/jpeg" | "image/png";
+}
+
+/** Several of our own images + one text, no tools (the frame review). Same error scrubbing and no-retry rule as above. */
+export function createImagesStep(model: LanguageModel, maxOutputTokens: number, images: readonly StepImage[]): ModelStep {
+  return async (messages, _key, signal): Promise<StepResult> => {
+    let r;
+    try {
+      r = await generateText({
+        model,
+        instructions: messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n") || undefined,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: messages.filter((m) => m.role === "user").map((m) => m.content).join("\n\n") },
+              ...images.map((i) => ({ type: "image" as const, image: i.data, mediaType: i.mediaType })),
+            ],
+          },
+        ],
+        maxOutputTokens,
+        abortSignal: signal,
+        maxRetries: 0,
+      });
+    } catch (err) {
+      throw toSafeModelError(err);
+    }
+    const { inputTokens, outputTokens } = r.usage;
+    if (inputTokens === undefined || outputTokens === undefined) throw new Error("provider returned no token usage");
+    return { text: r.text, toolCalls: [], usage: { inputTokens, outputTokens } };
+  };
+}

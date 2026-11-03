@@ -1,5 +1,6 @@
 import type { Message } from "@/server/core/agent-loop";
 import { KnownFailure } from "@/server/core/paid-call";
+import { logSafe, reviewProblems, type FrameReview } from "@/server/core/frame-review";
 import { checkTsx, echo, tsxDuration } from "@/server/core/tsx-check";
 import { extractTsx, retryMessages, targetFrames, tsxSystemPrompt, tsxUserPrompt, type FeedbackStep, type TsxTask } from "@/server/core/tsx-prompt";
 
@@ -20,24 +21,30 @@ export const TSX_FRAME_SHORT_SLACK = 3;
 const MAX_LOG = 120;
 
 // The shape renderTsx returns (providers/renderer/tsx-render.ts); kept here so core code does not import a provider.
-type TsxFailureKind = "check" | "typecheck" | "render" | "timeout" | "preflight" | "output" | "infra";
+type TsxFailureKind = "check" | "typecheck" | "render" | "timeout" | "preflight" | "output" | "review" | "infra";
 type TsxRenderResult = { ok: true; outPath: string; image: string; stills?: string[] } | { ok: false; error: { kind: TsxFailureKind; message: string; problems: string[] } };
 
 export interface AuthorDeps {
   /** One reserved, paid model call; returns the raw reply. */
   ask(messages: Message[]): Promise<string>;
-  /** renderTsx for a checked source (it checks and type-checks again, renders the stills, then the video). */
-  render(source: string): Promise<TsxRenderResult>;
+  /** renderTsx for a checked source (it checks and type-checks again, renders the stills, then the video). `review`, when given, is passed on as renderTsx's frame-review hook. */
+  render(source: string, review?: (shots: ReviewShotLike[]) => Promise<string[] | null>): Promise<TsxRenderResult>;
+  /**
+   * The frame review of one attempt's key frames (one paid vision call, or a skipped/unavailable verdict; it never fails the
+   * animation). Absent = no review. A budget refusal or unclear paid outcome is thrown out of here untouched, like `ask`.
+   */
+  review?(shots: ReviewShotLike[]): Promise<FrameReview>;
   log(line: string): void;
 }
+export type ReviewShotLike = { frame: number; jpeg: Uint8Array };
 
 export type { TsxRenderResult };
 export type AuthorOutcome =
-  | { ok: true; source: string; durationInFrames: number; outPath: string; image: string; stills: string[]; attempts: number }
+  | { ok: true; source: string; durationInFrames: number; outPath: string; image: string; stills: string[]; attempts: number; review: FrameReview | null }
   | { ok: false; attempts: number; why: "cap" | "repeat"; step: FeedbackStep; problems: string[] };
 
 const STEP_OF: Record<Exclude<TsxFailureKind, "infra">, FeedbackStep> = {
-  check: "check", typecheck: "typecheck", render: "render", timeout: "timeout", preflight: "preflight", output: "output",
+  check: "check", typecheck: "typecheck", render: "render", timeout: "timeout", preflight: "preflight", output: "output", review: "review",
 };
 
 export async function authorTsx(deps: AuthorDeps, task: TsxTask, maxAttempts: number = TSX_MAX_ATTEMPTS): Promise<AuthorOutcome> {
@@ -45,6 +52,7 @@ export async function authorTsx(deps: AuthorDeps, task: TsxTask, maxAttempts: nu
   const first: Message[] = [{ role: "system", content: tsxSystemPrompt() }, { role: "user", content: tsxUserPrompt(task) }];
   let messages = first;
   let lastSig = "";
+  let review: FrameReview | null = null; // the verdict of the attempt that was finally rendered
   const cap = Math.max(1, Math.min(TSX_MAX_ATTEMPTS, Math.trunc(maxAttempts)));
   for (let attempt = 1; ; attempt++) {
     const reply = await deps.ask(messages);
@@ -66,10 +74,23 @@ export async function authorTsx(deps: AuthorDeps, task: TsxTask, maxAttempts: nu
         step = "timing";
         problems = [`meta: durationInFrames must be ${want} (the narration length); set it to ${want}.`];
       } else {
-        const r = await deps.render(source);
+        // The review hook runs inside the render, after the stills pass and before the long video render. It asks for a retry only
+        // while attempts remain: on the last attempt the verdict is kept and the video is rendered anyway (a warning shows).
+        const n = attempt;
+        const hook = deps.review
+          ? async (shots: ReviewShotLike[]): Promise<string[] | null> => {
+              const rv = await deps.review!(shots);
+              review = rv;
+              deps.log(`tsx: attempt ${n} frame review: ${rv.status === "done" ? (rv.ok ? "ok" : `${reviewProblems(rv).length} frame problem(s) found`) : logSafe(rv.reason)}`);
+              const found = n < cap ? reviewProblems(rv) : [];
+              return found.length > 0 ? found : null;
+            }
+          : undefined;
+        review = null;
+        const r = await deps.render(source, hook);
         if (r.ok) {
           deps.log(`tsx: attempt ${attempt} of ${cap} rendered`);
-          return { ok: true, source, durationInFrames: frames, outPath: r.outPath, image: r.image, stills: r.stills ?? [], attempts: attempt };
+          return { ok: true, source, durationInFrames: frames, outPath: r.outPath, image: r.image, stills: r.stills ?? [], attempts: attempt, review };
         }
         if (r.error.kind === "infra") throw new KnownFailure(r.error.message);
         step = STEP_OF[r.error.kind];
@@ -78,7 +99,7 @@ export async function authorTsx(deps: AuthorDeps, task: TsxTask, maxAttempts: nu
     }
     deps.log(`tsx: attempt ${attempt} of ${cap} failed at ${step}: ${echo(problems[0] ?? "").slice(0, MAX_LOG)} (${problems.length} problem${problems.length === 1 ? "" : "s"})`);
     const sig = `${step}\n${problems.join("\n")}`;
-    if (sig === lastSig) return { ok: false, attempts: attempt, why: "repeat", step, problems };
+    if (step !== "review" && sig === lastSig) return { ok: false, attempts: attempt, why: "repeat", step, problems };
     if (attempt >= cap) return { ok: false, attempts: attempt, why: "cap", step, problems };
     lastSig = sig;
     messages = retryMessages(first, source, step, problems);
