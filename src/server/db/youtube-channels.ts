@@ -230,7 +230,7 @@ export type AccessResult = { ok: true; accessToken: string } | { ok: false; reas
 
 /** Trades the vault refresh token for a short-lived access token (never stored). invalid_grant -> needs_reconnect + audit. */
 export async function getAccessToken(pool: pg.Pool, ring: Ring, http: GoogleHttp, id: string): Promise<AccessResult> {
-  const { rows } = await pool.query<{ channel_id: string; token_secret_name: string; status: string; token_version: Date | null }>("select channel_id, token_secret_name, status, (select updated_at from secrets where name = token_secret_name) as token_version from youtube_channels where id = $1", [id]);
+  const { rows } = await pool.query<{ channel_id: string; token_secret_name: string; status: string; token_version: string | null }>("select channel_id, token_secret_name, status, (select updated_at::text from secrets where name = token_secret_name) as token_version from youtube_channels where id = $1", [id]);
   const ch = rows[0];
   if (!ch) return { ok: false, reason: "unavailable" };
   if (ch.status === "unconfirmed") return { ok: false, reason: "unconfirmed" }; // never use a token the owner has not confirmed
@@ -252,10 +252,11 @@ export async function getAccessToken(pool: pg.Pool, ring: Ring, http: GoogleHttp
   const body = await json(res);
   if (res.ok && typeof body?.access_token === "string") return { ok: true, accessToken: body.access_token };
   if (body?.error === "invalid_grant") {
+    // Version is compared as text: a JS Date round trip would drop Postgres' microseconds and never match.
     // Only if the token is still the one we tried (a reconnect in between replaced it) and the owner has not un-confirmed it.
     const u = await pool.query(
       `update youtube_channels set status = 'needs_reconnect', updated_at = now() where id = $1 and status <> 'unconfirmed'
-         and (select updated_at from secrets where name = token_secret_name) is not distinct from $2::timestamptz`,
+         and (select updated_at::text from secrets where name = token_secret_name) is not distinct from $2::text`,
       [id, ch.token_version],
     );
     if ((u.rowCount ?? 0) > 0) await recordAudit(pool, "youtube.refresh_failed", { channelId: ch.channel_id, reason: "invalid_grant" });
