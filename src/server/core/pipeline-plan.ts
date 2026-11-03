@@ -35,9 +35,10 @@ export interface PlanFlags {
 export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags): PlanStep[] {
   if (format === "long") throw new Error("long format is not built yet (Phase 6b)");
   // tsx: the model writes one Remotion file after narration exists (word times), then it is checked, previewed and rendered
-  // in one stage that replaces build + render. Every other kind keeps the route below exactly as it was.
+  // in one stage that replaces build + render. It never uses pictures, so tsx has no pictures step (a fall-back to the scene kit gets it
+  // from the scene_kit route). Every other kind keeps the route below exactly as it was.
   if (kind === "tsx") {
-    const head: PlanStep[] = flags.imported ? [] : [{ stage: "draft", gateAfter: "script", resource: "net" }, { stage: "pictures", resource: "net" }];
+    const head: PlanStep[] = flags.imported ? [] : [{ stage: "draft", gateAfter: "script", resource: "net" }];
     return [
       ...head,
       { stage: "tts", resource: "net" },
@@ -84,7 +85,7 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   generate: ["cost_plan"],
   tts: ["script"],
   render: ["beats", "narration", "scenes"],
-  tsx_author: ["script", "beats", "narration"],
+  tsx_author: ["script", "narration"],
   voice: [],
   sfx: [],
   qa: [],
