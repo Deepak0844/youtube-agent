@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { YT_KIT_MODULE, YT_KIT_NAMES } from "@/server/core/tsx-kit";
 
 // SECURITY CONTROL (first line, ADR 0009): a static check of ONE model-written Remotion TSX file before it is type-checked,
 // bundled or rendered. It works on the TypeScript AST, not on regexes over the code. It is deliberately strict: an
@@ -30,6 +31,8 @@ export const TSX_IMPORTS: Readonly<Record<string, readonly string[]>> = {
   // Installed in the render image (infra/Dockerfile.render), same version as remotion.
   "@remotion/shapes": ["Circle", "Ellipse", "Rect", "Triangle", "Star", "Pie"],
   "@remotion/paths": ["evolvePath", "getLength", "getPointAtLength", "getTangentAtLength"],
+  // Our vetted drawing library (remotion/kit/tsxlib, typed by yt-kit.d.ts): the names are read from that file, so they cannot drift.
+  [YT_KIT_MODULE]: YT_KIT_NAMES,
 };
 const REACT_DEFAULT = "React"; // `import React from "react"` is allowed; only React.useMemo / React.Fragment may be used on it
 
@@ -84,7 +87,7 @@ const ARRAY_RESULT = new Set(["map", "filter", "slice", "concat", "sort", "toSor
 const LENGTH_KEEP = new Set(["map", "fill", "sort", "toSorted", "reverse", "toReversed"]);
 const GROW = new Set(["push", "unshift", "splice"]);
 // Imports that always return a number.
-const NUMERIC_IMPORTS = new Set(["interpolate", "spring", "random", "useCurrentFrame", "getLength"]);
+const NUMERIC_IMPORTS = new Set(["interpolate", "spring", "random", "useCurrentFrame", "getLength", "prog", "mix", "ramp", "win", "cycle", "rotorAngle"]);
 const MATH_CONSTS = new Set(["PI", "E", "LN2", "LN10", "LOG2E", "LOG10E", "SQRT2", "SQRT1_2"]);
 // Tokens that may not be glued together at run time from a literal piece and a value (url( + https...).
 const GLUE_TOKENS = ["url(", "@import", "javascript:", "expression("];
@@ -365,7 +368,7 @@ function walk(source: string, problems: string[]): void {
   function checkImport(st: ts.ImportDeclaration): void {
     const spec = ts.isStringLiteral(st.moduleSpecifier) ? st.moduleSpecifier.text : "";
     const allowed = Object.prototype.hasOwnProperty.call(TSX_IMPORTS, spec) ? TSX_IMPORTS[spec] : undefined;
-    if (!allowed) return add(st, `imports: '${echo(spec)}' is not allowed; use react, remotion, @remotion/shapes or @remotion/paths.`);
+    if (!allowed) return add(st, `imports: '${echo(spec)}' is not allowed; use react, remotion, @remotion/* or yt-kit.`);
     if (st.attributes) return add(st, "imports: import attributes are not allowed; import names only.");
     const clause = st.importClause;
     if (!clause) return add(st, `imports: side-effect import of '${echo(spec)}' is not allowed; import the names you use.`);

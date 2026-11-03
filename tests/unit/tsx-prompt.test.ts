@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkTsx, TSX_IMPORTS, TSX_MAX_FRAMES, tsxDuration } from "@/server/core/tsx-check";
-import { TSX_EXAMPLE_LOOP, TSX_EXAMPLE_SEQUENCE } from "@/server/core/tsx-examples";
+import { TSX_EXAMPLE_ELECTRICITY, TSX_EXAMPLE_SEARCH } from "@/server/core/tsx-examples";
 import {
   beatTimings, dataFence, tooLongForTsx, extractTsx, retryMessages, sanitizeData, targetFrames, tsxFeedbackPrompt, tsxSystemPrompt, tsxUserPrompt, type TsxTask,
 } from "@/server/core/tsx-prompt";
@@ -20,14 +20,15 @@ const TASK: TsxTask = {
 
 describe("examples", () => {
   it("both pass the static checker verbatim and carry the exact meta", () => {
-    for (const src of [TSX_EXAMPLE_LOOP, TSX_EXAMPLE_SEQUENCE]) {
+    for (const src of [TSX_EXAMPLE_ELECTRICITY, TSX_EXAMPLE_SEARCH]) {
       expect(checkTsx(src)).toEqual({ ok: true, problems: [] });
-      expect(tsxDuration(src)).toBe(270);
+      expect(tsxDuration(src)).toBeGreaterThan(600);
+      expect(src).toContain(`from "yt-kit"`);
       expect(src).toContain("height: 1920");
     }
   });
-  it("both type-check against the installed remotion typings", async () => {
-    for (const src of [TSX_EXAMPLE_LOOP, TSX_EXAMPLE_SEQUENCE]) expect(await typeCheckInThread(src, 60_000)).toEqual({ ok: true, problems: [] });
+  it("both type-check against the remotion typings and the yt-kit declaration file", async () => {
+    for (const src of [TSX_EXAMPLE_ELECTRICITY, TSX_EXAMPLE_SEARCH]) expect(await typeCheckInThread(src, 60_000)).toEqual({ ok: true, problems: [] });
   }, 120_000);
 });
 
@@ -39,6 +40,12 @@ describe("system prompt", () => {
       for (const n of names) expect(sys).toContain(n);
     }
     for (const must of ["useCurrentFrame", "strictly increasing", "Easing", "1080", "1920", "30 fps", "bottom 22%", "frame 0", "last frame", "ONE fenced code block", "BEGIN_DATA", "Math.random", "durationInFrames"]) expect(sys).toContain(must);
+  });
+  it("documents the library from the declaration file and carries the owner's structure rules", () => {
+    for (const must of ["Bulb {", "rotorAngle(", "Canvas", "#6366F1", "Space Grotesk", "equals frame 0", "REAL word", "60% of the width", "y = 1420", "no scene made only of text"]) expect(sys.toLowerCase()).toContain(must.toLowerCase());
+  });
+  it("whole prompt stays within about 30 KB", () => {
+    expect(sys.length + tsxUserPrompt(TASK).length).toBeLessThanOrEqual(31_000);
   });
   it("is fixed text: it holds no task data and no secret-looking words", () => {
     expect(sys).not.toMatch(/api[_ -]?key|password|secret|token|DATABASE_URL|sk-/i);
