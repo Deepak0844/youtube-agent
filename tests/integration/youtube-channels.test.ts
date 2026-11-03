@@ -65,7 +65,7 @@ describe("connect flow", () => {
     const t1 = reply({ access_token: "at", scope: GOOGLE_SCOPES.join(" ") });
     expect(await completeConnect(db.pool, ring, fakeHttp({ token: t1 }), { sessionId: SESSION, state: await begin(), code: "c", appUrl: APP_URL })).toEqual({ ok: false, reason: "no_refresh_token" });
     const t2 = reply({ access_token: "at", refresh_token: REFRESH, scope: "openid email" });
-    expect(await completeConnect(db.pool, ring, fakeHttp({ token: t2 }), { sessionId: SESSION, state: await begin(), code: "c", appUrl: APP_URL })).toEqual({ ok: false, reason: "scopes" });
+    expect(await completeConnect(db.pool, ring, fakeHttp({ token: t2 }), { sessionId: SESSION, state: await begin(), code: "c", appUrl: APP_URL })).toEqual({ ok: false, reason: "scopes", missing: ["youtube.upload", "yt-analytics.readonly", "youtube.force-ssl"] });
   });
 
   it("confirm, then invalid_grant marks needs_reconnect with an audit row; disconnect deletes the token", async () => {
