@@ -2,7 +2,7 @@ import { lookBg } from "./look";
 import React, { useMemo } from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import { inRegion, REGIONS, kitProject, placeLabels, visibleCount, type Region } from "./helpers";
-import { Headline } from "./LookParts";
+import { Headline, useInk } from "./LookParts";
 import { theme } from "./theme";
 import { WORLD_RINGS } from "./world";
 
@@ -19,6 +19,7 @@ const H = 960;
 
 export const MapPiece: React.FC<MapProps> = ({ title, region, markers, route, framesPerMarker }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const land = useMemo(
     () =>
       WORLD_RINGS.map((r) =>
@@ -43,7 +44,7 @@ export const MapPiece: React.FC<MapProps> = ({ title, region, markers, route, fr
   const slots = placeLabels(pts, shown.map((m) => m.label.length * 21), { w: W, h: H });
   const routeD = pts.slice(0, n).map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("");
   return (
-    <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.ui, color: theme.palette.text }}>
+    <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.ui, color: ink.text }}>
       {title ? (
         <div style={{ position: "absolute", top: theme.safe.top, left: theme.safe.side, right: theme.safe.side, }}><Headline text={title} size={64} /></div>
       ) : null}
@@ -54,17 +55,17 @@ export const MapPiece: React.FC<MapProps> = ({ title, region, markers, route, fr
           </clipPath>
         </defs>
         <g clipPath="url(#box)">
-          <path d={land} fill={theme.palette.surface} stroke={theme.palette.muted} strokeWidth={1.5} strokeLinejoin="round" />
+          <path d={land} fill={ink.surface} stroke={ink.muted} strokeWidth={1.5} strokeLinejoin="round" />
         </g>
-        {route && n > 1 ? <path d={routeD} fill="none" stroke={theme.palette.accent} strokeWidth={5} strokeDasharray="14 10" strokeLinecap="round" /> : null}
+        {route && n > 1 ? <path d={routeD} fill="none" stroke={ink.accent} strokeWidth={5} strokeDasharray="14 10" strokeLinecap="round" /> : null}
         {pts.slice(0, n).map((p, i) => {
           const s = interpolate(frame - i * framesPerMarker, [0, 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
           const label = shown[i].label;
           const sl = slots[i]!;
           return (
             <g key={i} transform={`translate(${p[0]} ${p[1]}) scale(${s})`}>
-              <circle r={14} fill={theme.palette.accent} stroke={theme.palette.bg} strokeWidth={4} />
-              <text x={sl.x} y={sl.y} textAnchor={sl.anchor} fontSize={36} fontWeight={600} fill={theme.palette.text} stroke={theme.palette.bg} strokeWidth={10} strokeLinejoin="round" paintOrder="stroke">
+              <circle r={14} fill={ink.accent} stroke={ink.bg} strokeWidth={4} />
+              <text x={sl.x} y={sl.y} textAnchor={sl.anchor} fontSize={36} fontWeight={600} fill={ink.text} stroke={ink.bg} strokeWidth={10} strokeLinejoin="round" paintOrder="stroke">
                 {label}
               </text>
             </g>

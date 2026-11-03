@@ -1,9 +1,10 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, spring, useCurrentFrame, useVideoConfig } from "remotion";
 import { hashString, lookBg } from "./look";
-import { Headline, useLook } from "./LookParts";
+import { Headline, useInk, useLook } from "./LookParts";
 import { animAt, diagOf, drawFrames, parseAnim, sanitizeSvg, stepAt, type SvgNode } from "./svgLogic";
 import { theme } from "./theme";
+import type { Ink } from "./ink";
 
 export type SvgDiagramProps = {
   title: string;
@@ -14,15 +15,15 @@ export type SvgDiagramProps = {
 const STAGE = theme.width - 2 * theme.safe.side; // square stage; the 1000 viewBox is scaled to it
 const TOP = 380;
 
-function paint(v: string, accent: string, pfx: string): string {
+function paint(v: string, accent: string, pfx: string, ink: Ink): string {
   if (v === "currentColor" || v === "accent") return accent;
-  const t: Record<string, string> = { text: theme.palette.text, muted: theme.palette.muted, ok: theme.art.ok, warn: theme.art.warn, blue: theme.art.blue, surface: theme.palette.surface };
+  const t: Record<string, string> = { text: ink.text, muted: ink.muted, ok: theme.art.ok, warn: theme.art.warn, blue: theme.art.blue, surface: ink.surface };
   if (Object.hasOwn(t, v)) return t[v]!;
   return v.startsWith("url(#") ? `url(#${pfx}${v.slice(5)}` : v;
 }
 const camel = (k: string) => k.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
 const COLOR_ATTRS = new Set(["fill", "stroke", "stop-color", "marker-start", "marker-mid", "marker-end"]);
-type Env = { frame: number; fps: number; accent: string; pfx: string };
+type Env = { frame: number; fps: number; accent: string; pfx: string; ink: Ink };
 
 /** Builds React elements from the allow-listed tree. Only validated names and values reach the DOM. */
 function build(n: SvgNode, key: string, o: Env): React.ReactNode {
@@ -31,7 +32,7 @@ function build(n: SvgNode, key: string, o: Env): React.ReactNode {
     if (k.startsWith("data-") || k === "xmlns") continue;
     if (k === "id") props.id = o.pfx + v;
     else if (k === "font-family") props.fontFamily = /mono/i.test(v) ? theme.fonts.mono : theme.fonts.ui;
-    else if (COLOR_ATTRS.has(k)) props[camel(k)] = paint(v, o.accent, o.pfx);
+    else if (COLOR_ATTRS.has(k)) props[camel(k)] = paint(v, o.accent, o.pfx, o.ink);
     else props[camel(k)] = v;
   }
   const a = parseAnim(n.attrs);
@@ -57,6 +58,7 @@ function build(n: SvgNode, key: string, o: Env): React.ReactNode {
 
 export const SvgDiagram: React.FC<SvgDiagramProps> = ({ title, svg, steps }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const { fps, durationInFrames } = useVideoConfig();
   const look = useLook();
   // Defence in depth: the same sanitizer as at build time. If it fails, nothing from the string is rendered.
@@ -66,12 +68,12 @@ export const SvgDiagram: React.FC<SvgDiagramProps> = ({ title, svg, steps }) => 
       <Headline text={title} size={64} />
     </div>
   );
-  if (!res.ok) return <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.ui, color: theme.palette.text }}>{head}</AbsoluteFill>;
-  const o: Env = { frame, fps, accent: look.accent, pfx: `d${hashString(svg)}-` };
+  if (!res.ok) return <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.ui, color: ink.text }}>{head}</AbsoluteFill>;
+  const o: Env = { frame, fps, accent: look.accent, ink, pfx: `d${hashString(svg)}-` };
   const k = steps?.length ? stepAt(steps, frame / Math.max(1, durationInFrames)) : -1;
   const caption = k >= 0 ? steps![k]!.caption : undefined;
   return (
-    <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.ui, color: theme.palette.text }}>
+    <AbsoluteFill style={{ background: lookBg, fontFamily: theme.fonts.ui, color: ink.text }}>
       {head}
       <svg width={STAGE} height={STAGE} viewBox="0 0 1000 1000" fill="none" style={{ position: "absolute", left: theme.safe.side, top: TOP, overflow: "hidden" }} fontFamily={theme.fonts.ui}>
         {res.root.kids.map((c, i) => (typeof c === "string" ? null : build(c, String(i), o)))}

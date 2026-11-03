@@ -48,7 +48,8 @@ export type StylePreset = {
   sheet?: readonly string[];
   /** null = today's behaviour: the gradient is picked from the video seed. */
   look: Look | null;
-  /** Scene-kit pieces draw light text, so light styles use their ink-on-night twin here. */
+  /** Light page, dark ink: the kit pieces take their text and card colours from `palette` (see ink.ts). */
+  light?: true;
   palette: { bg: string; surface: string; text: string; muted: string; accent: string; accent2?: string; chart: readonly string[] };
   fonts: { heading: string; body: string; mono?: string; headingWeight: number; bodyWeight?: number };
   /** `scaleFrom` = start size that settles to 1 (a pop or a punch-in); `rise` = px of drift. */
@@ -133,8 +134,7 @@ const LEGACY: Record<Exclude<LegacyStyleId, "clean_pro">, StylePreset> = {
   },
 };
 
-// The three light styles (1, 3, 4) have a paper look in the owner's sheet (`sheet`). The scene-kit pieces paint light text, so their
-// `palette`/`look` are the night-ink twin: same accents and fonts on a deep background. The Custom animation PR can use `sheet` as is.
+// The three light styles (1, 3, 4) are light: white or paper page, dark ink (`light: true`; the kit reads ink.ts).
 export const PRESETS: Record<AnyStyleId, StylePreset> = {
   ...LEGACY,
   clean_pro: LEGACY.legacy_default, // the old id for today's look
@@ -144,8 +144,9 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     mood: "Calm, trustworthy, lots of white space.",
     bestFor: "Finance, how-it-works, trust",
     sheet: ["#FFFFFF", "#1F2937", "#2563EB", "#F59E0B"],
-    look: { name: "clean-professional", from: "#0b1730", to: "#12264a", accent: "#f59e0b", accent2: "#60a5fa" },
-    palette: { bg: "#0b1730", surface: "#14233f", text: "#f8fafc", muted: "#a9b6cc", accent: "#f59e0b", accent2: "#60a5fa", chart: ["#60a5fa", "#f59e0b", "#34d399", "#f8fafc", "#a9b6cc", "#93c5fd"] },
+    light: true,
+    look: { name: "clean-professional", from: "#ffffff", to: "#ffffff", accent: "#2563eb", accent2: "#f59e0b" },
+    palette: { bg: "#ffffff", surface: "#e8ebf0", text: "#1f2937", muted: "#4b5563", accent: "#2563eb", accent2: "#f59e0b", chart: ["#2563eb", "#f59e0b", "#059669", "#1f2937", "#6b7280", "#60a5fa"] },
     fonts: { heading: "Inter", body: "Inter", mono: "JetBrains Mono", headingWeight: 800, bodyWeight: 400 },
     motion: { kind: "smooth", stiffness: 0, damping: 0, transitionFrames: 12, rise: 16, scaleFrom: 0.95 },
     pacing: { minHoldFrames: 75, maxHoldFrames: 360, cutRhythm: "even" },
@@ -176,12 +177,13 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     mood: "Exact, quiet, drawn by a steady hand.",
     bestFor: "How it works, maths, coding",
     sheet: ["#FAFAFA", "#1A1A2E", "#E94560"],
-    look: { name: "minimal-diagram", from: "#1a1a2e", to: "#1a1a2e", accent: "#f25f78", accent2: "#f25f78" },
-    palette: { bg: "#1a1a2e", surface: "#242442", text: "#fafafa", muted: "#a8a8be", accent: "#f25f78", accent2: "#f25f78", chart: ["#f25f78", "#fafafa", "#a8a8be", "#d4d4e2", "#7c7c98", "#fda4b3"] },
+    light: true,
+    look: { name: "minimal-diagram", from: "#fafafa", to: "#fafafa", accent: "#e94560", accent2: "#e94560" },
+    palette: { bg: "#fafafa", surface: "#e8ebf0", text: "#1a1a2e", muted: "#4b5563", accent: "#e94560", accent2: "#e94560", chart: ["#e94560", "#1a1a2e", "#6b7280", "#9ca3af", "#7c7c98", "#f08a9c"] },
     fonts: { heading: "IBM Plex Sans", body: "IBM Plex Sans", mono: "IBM Plex Mono", headingWeight: 600, bodyWeight: 400 },
     motion: { kind: "smooth", stiffness: 0, damping: 0, transitionFrames: 15, rise: 0 },
     pacing: { minHoldFrames: 90, maxHoldFrames: 450, cutRhythm: "even" },
-    captions: { ...PILL, ...NO_PILL, wordsPerPage: 5, textColor: "#fafafa", font: "IBM Plex Mono" },
+    captions: { ...PILL, ...NO_PILL, wordsPerPage: 5, textColor: "#1a1a2e", font: "IBM Plex Mono" },
     preferKinds: ["svg_diagram", "math", "algo_cells", "network", "drawn_objects", "chart"],
     avoidKinds: ["stock_clip", "story_kenburns"],
     antiPatterns: ["bounce or springy motion", "a second accent colour; one accent only", "gradients", "photos unless the beat truly needs one"],
@@ -192,8 +194,9 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     mood: "Magazine calm: one big idea per frame.",
     bestFor: "Premium explainers, ideas",
     sheet: ["#F9FAFB", "#111827", "#2563EB", "#0D9488"],
-    look: { name: "premium-editorial", from: "#111827", to: "#111827", accent: "#60a5fa", accent2: "#2dd4bf" },
-    palette: { bg: "#111827", surface: "#1b2436", text: "#f9fafb", muted: "#9ca3af", accent: "#60a5fa", accent2: "#2dd4bf", chart: ["#60a5fa", "#2dd4bf", "#f9fafb", "#9ca3af", "#93c5fd", "#99f6e4"] },
+    light: true,
+    look: { name: "premium-editorial", from: "#f9fafb", to: "#f9fafb", accent: "#2563eb", accent2: "#0d9488" },
+    palette: { bg: "#f9fafb", surface: "#e8ebf0", text: "#111827", muted: "#4b5563", accent: "#2563eb", accent2: "#0d9488", chart: ["#2563eb", "#0d9488", "#111827", "#6b7280", "#60a5fa", "#0f766e"] },
     fonts: { heading: "Inter", body: "Inter", mono: "IBM Plex Mono", headingWeight: 800, bodyWeight: 500 },
     motion: { kind: "smooth", stiffness: 0, damping: 0, transitionFrames: 14, rise: 12 },
     pacing: { minHoldFrames: 83, maxHoldFrames: 360, cutRhythm: "even" },

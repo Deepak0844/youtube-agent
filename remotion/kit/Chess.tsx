@@ -4,7 +4,7 @@ import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { FILES, spritesAt, squareCenter, squareRC, type BoardMap, type Move, type Piece } from "./chessLogic";
-import { useSceneCaptions } from "./LookParts";
+import { useInk, useSceneCaptions } from "./LookParts";
 import { theme } from "./theme";
 
 export type ChessProps = {
@@ -80,6 +80,7 @@ export const PieceGlyph: React.FC<{ piece: Piece; size: number }> = ({ piece, si
 
 export const Chess: React.FC<ChessProps> = ({ board, moves, highlights, arrows, flip, caption, framesPerMove }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
   const showCaption = useSceneCaptions();
   const size = theme.width - 2 * theme.safe.side;
   const s = size / 8;
@@ -139,7 +140,7 @@ export const Chess: React.FC<ChessProps> = ({ board, moves, highlights, arrows, 
         </svg>
       </div>
       {caption && showCaption && (
-        <div style={{ position: "absolute", left: theme.safe.side, right: theme.safe.side, top: top + size + 56, fontFamily: theme.fonts.ui, fontSize: 52, fontWeight: 700, color: theme.palette.text, textAlign: "center" }}>
+        <div style={{ position: "absolute", left: theme.safe.side, right: theme.safe.side, top: top + size + 56, fontFamily: theme.fonts.ui, fontSize: 52, fontWeight: 700, color: ink.text, textAlign: "center" }}>
           {caption}
         </div>
       )}

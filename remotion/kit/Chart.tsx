@@ -2,7 +2,7 @@ import { lookBg, popScale } from "./look";
 import React from "react";
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame } from "remotion";
 import { niceMax, pieSlices } from "./helpers";
-import { Headline } from "./LookParts";
+import { Headline, useInk } from "./LookParts";
 import { theme } from "./theme";
 
 export type ChartProps = {
@@ -17,10 +17,11 @@ export type ChartProps = {
 const W = theme.width - theme.safe.side * 2; // 936
 const H = 960;
 const PAD = { l: 20, r: 20, t: 20, b: 80 };
-const color = (i: number) => theme.palette.chart[i % theme.palette.chart.length]!;
 
 export const Chart: React.FC<ChartProps> = ({ chart, title, labels, series, drawFrames }) => {
   const frame = useCurrentFrame();
+  const ink = useInk();
+  const color = (i: number) => ink.chart[i % ink.chart.length]!;
   const t = interpolate(frame, [0, Math.max(1, drawFrames)], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) });
   const n = labels.length;
   const top = niceMax(Math.max(0, ...series.flatMap((s) => s.values)));
@@ -33,10 +34,10 @@ export const Chart: React.FC<ChartProps> = ({ chart, title, labels, series, draw
 
   const axes = (
     <>
-      <line x1={PAD.l} x2={W - PAD.r} y1={y(0)} y2={y(0)} stroke={theme.palette.muted} strokeWidth={3} />
+      <line x1={PAD.l} x2={W - PAD.r} y1={y(0)} y2={y(0)} stroke={ink.muted} strokeWidth={3} />
       {labels.map((l, i) =>
         showLabelsAt(i) ? (
-          <text key={i} x={xc(i)} y={H - 20} textAnchor="middle" fill={theme.palette.text} fontSize={44} fontFamily={theme.fonts.ui}>
+          <text key={i} x={xc(i)} y={H - 20} textAnchor="middle" fill={ink.text} fontSize={44} fontFamily={theme.fonts.ui}>
             {l}
           </text>
         ) : null,
@@ -97,7 +98,7 @@ export const Chart: React.FC<ChartProps> = ({ chart, title, labels, series, draw
           const p = (a: number) => `${cx + r * Math.sin(a)} ${cy - r * Math.cos(a)}`;
           if (a1 - a0 < 1e-4) return null;
           const large = a1 - a0 > Math.PI ? 1 : 0;
-          return <path key={i} d={`M ${cx} ${cy} L ${p(a0)} A ${r} ${r} 0 ${large} 1 ${p(a1)} Z`} fill={color(i)} stroke={theme.palette.bg} strokeWidth={4} />;
+          return <path key={i} d={`M ${cx} ${cy} L ${p(a0)} A ${r} ${r} 0 ${large} 1 ${p(a1)} Z`} fill={color(i)} stroke={ink.bg} strokeWidth={4} />;
         })}
       </>
     );
@@ -111,7 +112,7 @@ export const Chart: React.FC<ChartProps> = ({ chart, title, labels, series, draw
         background: lookBg,
         padding: `${theme.safe.top}px ${theme.safe.side}px ${theme.safe.bottom}px`,
         fontFamily: theme.fonts.ui,
-        color: theme.palette.text,
+        color: ink.text,
         justifyContent: "center",
       }}
     >
@@ -119,7 +120,7 @@ export const Chart: React.FC<ChartProps> = ({ chart, title, labels, series, draw
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ transform: `scale(${popScale(frame)})` }}>
         {body}
       </svg>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "12px 32px", marginTop: 24, fontSize: 44, color: theme.palette.text }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "12px 32px", marginTop: 24, fontSize: 44, color: ink.text }}>
         {legend.map((l, i) => (
           <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 32, height: 32, borderRadius: 6, background: color(i) }} />

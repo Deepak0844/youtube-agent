@@ -27,8 +27,8 @@ describe("preset shape", () => {
     expect(contrast(p.palette.text, p.palette.bg)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(p.palette.text, p.palette.surface)).toBeGreaterThanOrEqual(4.5);
     if (p.look) {
-      for (const bg of [p.look.from, p.look.to]) expect(contrast("#f2f4f8", bg)).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(p.look.accent, p.look.from)).toBeGreaterThanOrEqual(4.5);
+      for (const bg of [p.look.from, p.look.to]) expect(contrast(p.light ? p.palette.text : "#f2f4f8", bg)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(p.look.accent, p.look.from)).toBeGreaterThanOrEqual(p.light ? 3 : 4.5); // light: accent is large headline text only
     }
     expect(p.pacing.minHoldFrames).toBeLessThan(p.pacing.maxHoldFrames);
     expect(p.motion.transitionFrames).toBeGreaterThan(0);

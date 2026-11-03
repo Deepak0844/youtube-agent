@@ -1,7 +1,7 @@
 import { lookBg } from "./look";
 import React from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
-import { Headline, useLook } from "./LookParts";
+import { Headline, useInk, useLook } from "./LookParts";
 import { theme } from "./theme";
 
 export type PauseCardProps = {
@@ -15,6 +15,7 @@ export type PauseCardProps = {
 export const PauseCard: React.FC<PauseCardProps> = ({ question, options, answer, revealAtFrame }) => {
   const frame = useCurrentFrame();
   const look = useLook();
+  const ink = useInk();
   const revealed = frame >= revealAtFrame;
   return (
     <AbsoluteFill
@@ -24,7 +25,7 @@ export const PauseCard: React.FC<PauseCardProps> = ({ question, options, answer,
         justifyContent: "center",
         gap: 28,
         fontFamily: theme.fonts.ui,
-        color: theme.palette.text,
+        color: ink.text,
       }}
     >
       <Headline text={question} size={theme.type.hero} style={{ marginBottom: 24 }} />
@@ -37,8 +38,8 @@ export const PauseCard: React.FC<PauseCardProps> = ({ question, options, answer,
               padding: "32px 40px",
               borderRadius: theme.radii.card + 12,
               fontSize: theme.type.big,
-              background: right ? look.accent : "rgba(0,0,0,0.35)",
-              color: right ? theme.palette.bg : theme.palette.text,
+              background: right ? look.accent : ink.chip,
+              color: right ? ink.bg : ink.text,
               opacity: revealed && !right ? 0.4 : 1,
             }}
           >

@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
-import { useLook } from "./LookParts";
+import { useInk, useLook } from "./LookParts";
 import { ScriptText } from "./ScriptText";
 import { theme } from "./theme";
 import { currentWord, paginate, type CaptionWord } from "./timeline";
@@ -16,6 +16,7 @@ const banned = (t: string) => theme.copy.bannedPhrases.some((p) => t.toLowerCase
 const PillCaptions: React.FC<{ words: CaptionWord[]; cs?: CaptionStyle }> = ({ words, cs }) => {
   const frame = useCurrentFrame();
   const look = useLook();
+  const ink = useInk();
   const { fps, width, height } = useVideoConfig();
   const maxWidth = Math.min(width - theme.safe.side * 2, theme.copy.maxCharsPerLine * CHAR_W);
   const pages = useMemo(() => paginate(words.map((w) => w.word), maxWidth, measure, 2), [words, maxWidth]);
@@ -29,12 +30,12 @@ const PillCaptions: React.FC<{ words: CaptionWord[]; cs?: CaptionStyle }> = ({ w
     <AbsoluteFill style={{ justifyContent: "flex-start", alignItems: left ? "flex-start" : "center", paddingTop: height - theme.safe.bottom + 24, paddingLeft: theme.safe.side, paddingRight: theme.safe.side }}>
       <div style={{ background: cs?.pillBg ?? "rgba(0,0,0,0.6)", borderRadius: 40, padding: cs?.pillBg === "transparent" ? "18px 0" : "18px 36px", textAlign: left ? "left" : "center", boxShadow: cs?.pillBg ? "none" : "0 8px 28px rgba(0,0,0,0.35)" }}>
       {page.map((line, li) => (
-        <div key={li} style={{ fontSize: cs?.fontSize ?? FONT, fontWeight: 800, lineHeight: 1.25, color: cs?.textColor ?? theme.palette.text, whiteSpace: "pre", textShadow: cs?.glow ? `0 0 14px ${cs.glow}` : undefined }}>
+        <div key={li} style={{ fontSize: cs?.fontSize ?? FONT, fontWeight: 800, lineHeight: 1.25, color: cs?.textColor ?? ink.text, whiteSpace: "pre", textShadow: cs?.glow ? `0 0 14px ${cs.glow}` : undefined }}>
           {line.map((i, k) => {
             const w = words[i]!;
             const on = i === cur && !w.estimated;
             return (
-              <span key={i} style={{ color: on ? active : cs?.textColor ?? theme.palette.text }}>
+              <span key={i} style={{ color: on ? active : cs?.textColor ?? ink.text }}>
                 <ScriptText text={w.word} font={cs?.font} />
                 {k < line.length - 1 ? " " : ""}
               </span>
