@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedShare, checkPreflight, isBlack, isFlat, preflightFrames, type RgbFrame } from "@/server/core/tsx-preflight";
+import { changedShare, checkPreflight, EMPTY_FRAME0, isBlack, isFlat, preflightFrames, zoneEdgeShare, type RgbFrame } from "@/server/core/tsx-preflight";
 
 const W = 100;
 const H = 200;
@@ -53,6 +53,32 @@ describe("pixel checks", () => {
   });
 });
 
+describe("first-frame content (objects zone)", () => {
+  const BIG = { width: 1080, height: 1920 };
+  const gradient = (n: number) => frame(n, (x, y) => [10 + (y >> 6), 14 + (x >> 6), 40 + (y >> 5)], 1080, 1920);
+  // a soft glow: a wide radial brightening, no sharp edge anywhere
+  const glow = (n: number) => frame(n, (x, y) => { const k = Math.max(0, 1 - Math.hypot(x - 540, y - 800) / 700); return [Math.round(12 + 60 * k * k), Math.round(16 + 50 * k * k), Math.round(40 + 90 * k * k)]; }, 1080, 1920);
+  const shapes = (n: number) => frame(n, (x, y) => (Math.hypot(x - 540, y - 800) < 150 || (x > 200 && x < 320 && y > 900 && y < 1250) ? [255, 220, 80] : [12, 16, 40]), 1080, 1920);
+  it("a flat gradient and a glow-only frame fail with the retry message", () => {
+    expect(zoneEdgeShare(gradient(0))).toBeLessThan(0.001);
+    expect(zoneEdgeShare(glow(0))).toBeLessThan(0.001);
+    expect(checkPreflight([gradient(0)], BIG).problems).toEqual([EMPTY_FRAME0]);
+    expect(checkPreflight([glow(0)], BIG).problems).toEqual([EMPTY_FRAME0]);
+    expect(EMPTY_FRAME0.length).toBeLessThanOrEqual(120);
+  });
+  it("glow plus bright shapes passes", () => {
+    expect(zoneEdgeShare(shapes(0))).toBeGreaterThan(0.004);
+    expect(checkPreflight([shapes(0)], BIG).ok).toBe(true);
+  });
+  it("shapes only outside the zone (in the title area) still fail", () => {
+    const top = frame(0, (x, y) => (x > 100 && x < 900 && y > 80 && y < 300 ? [255, 255, 255] : [12, 16, 40]), 1080, 1920);
+    expect(checkPreflight([top], BIG).problems).toEqual([EMPTY_FRAME0]);
+  });
+  it("only frame 0 is held to it", () => {
+    expect(checkPreflight([shapes(0), glow(44), gradient(89)], BIG).ok).toBe(true);
+  });
+});
+
 describe("checkPreflight", () => {
   it("passes when frames have content and something moves", () => {
     expect(checkPreflight([square(0, 10), square(44, 40), square(89, 10)], SIZE)).toEqual({ ok: true, problems: [] });
@@ -90,7 +116,7 @@ describe("checkPreflight", () => {
   });
 
   it("a full-size 1080x1920 check is fast", () => {
-    const big = (n: number, sx: number) => frame(n, (x, y) => (x >= sx && x < sx + 100 && y < 100 ? [255, 255, 255] : [10, 40, 90]), 1080, 1920);
+    const big = (n: number, sx: number) => frame(n, (x) => (((x + sx) % 200 < 100) ? [255, 255, 255] : [10, 40, 90]), 1080, 1920);
     const fr = [big(0, 0), big(1349, 500), big(2699, 900)];
     const t = performance.now();
     expect(checkPreflight(fr, { width: 1080, height: 1920 }).ok).toBe(true);

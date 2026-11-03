@@ -8,19 +8,30 @@ import type { FC, ReactNode } from "react";
 export type CaptionWord = { w: string; at: number };
 export type StackBlock = { label: string; color: string; h?: number };
 
+/** Bands: title y 70-330, objects 360-1380, captions 1420-1900. Read as ZONES.objects.y0. */
+export const ZONES: Readonly<{ title: { y0: number; y1: number }; objects: { y0: number; y1: number }; captions: { y0: number; y1: number } }>;
+/** THE PAGE: auto-sized headline (60 chars max) in the title zone plus the svg surface for your props. */
+export const Stage: FC<{ headline?: string; color?: string; accent?: string; opacity?: number; children?: ReactNode }>;
+/** Headline fitted into the title zone (already part of Stage; accent colours the last line). */
+export const Headline: FC<{ text: string; color?: string; accent?: string; opacity?: number }>;
+/** Keeps an object in the objects zone: children drawn centred on 0,0 (cx={0} cy={0}) in a w x h box at x,y, shrunk to fit. */
+export const Place: FC<{ x: number; y: number; w: number; h: number; scale?: number; children?: ReactNode }>;
+/** Word pill beside the object point ax,ay (never on it), offset px away; clamped in the objects zone. */
+export const Label: FC<{ text: string; ax: number; ay: number; side: "top" | "bottom" | "left" | "right"; offset?: number; color?: string; size?: number; at?: number; until?: number }>;
+
 /** Persistent 1080x1920 svg surface: put every drawn prop (Bulb, Gear, Wire, Laptop...) inside it. */
 export const Canvas: FC<{ children?: ReactNode }>;
 /** Full-screen dark stage with slow glows; the glows loop exactly so the last frame equals frame 0. */
 export const Backdrop: FC<{ base?: string; glow?: string }>;
-/** Hook headline, up to 3 lines each with its own colour, plus optional subtitle; fully drawn on every frame (opacity 0..1). */
+/** OLD headline (DO NOT USE: overlaps; use Stage headline). Up to 3 coloured lines plus subtitle. */
 export const BigTitle: FC<{ lines: readonly { text: string; color?: string }[]; subtitle?: string; y?: number; size?: number; opacity?: number }>;
-/** Small label pill, top centre; fades in at frame at and out ending at frame until. */
+/** OLD top pill (DO NOT USE: it sits on the headline). Small label pill, top centre; fades in at frame at and out ending at frame until. */
 export const Kicker: FC<{ text: string; color?: string; y?: number; at?: number; until?: number }>;
 /** Thin progress bar along the top edge over the whole video. */
 export const ProgressBar: FC<{ color?: string }>;
 /** Karaoke captions from word start frames (DO NOT USE in scenes: the studio draws captions over them). */
 export const Captions: FC<{ words: readonly CaptionWord[]; y?: number; size?: number; accent?: string; maxWords?: number }>;
-/** Outlined word pill centred on x,y; pops in at frame at, optionally out by frame until. */
+/** Word pill centred on x,y (prefer Label, which sits beside an object); pops in at frame at, optionally out by frame until. */
 export const Chip: FC<{ text: string; x: number; y: number; color?: string; size?: number; at?: number; until?: number }>;
 /** Card with a coloured edge (small label over a line of text); x,y is its top-left corner. */
 export const Callout: FC<{ label?: string; text: string; x: number; y: number; w?: number; color?: string; at?: number; until?: number }>;

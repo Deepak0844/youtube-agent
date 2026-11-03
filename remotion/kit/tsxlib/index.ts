@@ -5,6 +5,7 @@
 //
 // Adapted from the claude-faceless-shorts-creator kit. MIT License, Copyright (c) 2026 Hasan Aboul Hasan.
 // The full notice is in THIRD_PARTY_NOTICES.md.
+export { ZONES, Stage, Headline, Label, Place } from "./stage";
 export { Canvas, Backdrop, BigTitle, Kicker, ProgressBar, Captions, Chip, Callout, Counter } from "./layout";
 export { Gear, Battery, Wire, Magnet, Arrow } from "./shapes";
 export { Laptop, ServerRack, Container, CargoShip, Cloud, StatusBadge, LayerStack } from "./tech";

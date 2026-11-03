@@ -42,7 +42,7 @@ describe("system prompt", () => {
     for (const must of ["useCurrentFrame", "strictly increasing", "Easing", "1080", "1920", "30 fps", "bottom 22%", "frame 0", "last frame", "ONE fenced code block", "BEGIN_DATA", "Math.random", "durationInFrames"]) expect(sys).toContain(must);
   });
   it("documents the library from the declaration file and carries the owner's structure rules", () => {
-    for (const must of ["Bulb {", "rotorAngle(", "Canvas", "#6366F1", "Space Grotesk", "equals frame 0", "REAL word", "60% of the width", "y = 1420", "no scene made only of text"]) expect(sys.toLowerCase()).toContain(must.toLowerCase());
+    for (const must of ["Bulb {", "rotorAngle(", "Canvas", "#6366F1", "Space Grotesk", "equals frame 0", "REAL word", "60% of the width", "y 1420-1900", "no scene made only of text", "LAYOUT ZONES", "<Stage headline", "<Place x y w h>", "<Label text ax ay side", "At most 3 labels", "Place {", "Label {", "ZONES:"]) expect(sys.toLowerCase()).toContain(must.toLowerCase());
   });
   it("whole prompt stays within about 30 KB", () => {
     expect(sys.length + tsxUserPrompt(TASK).length).toBeLessThanOrEqual(31_000);

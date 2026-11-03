@@ -125,7 +125,7 @@ IMPORTS (named imports only, no renaming, no "import * as"; React itself may be 
 ${importLines()}
 Type-only imports from these modules are fine. Nothing else can be imported. No picture or file is provided: build the scene from the "yt-kit" library below and add your own div, span and svg shapes only where it has nothing fitting.
 
-THE LIBRARY: import { ... } from "yt-kit" (named imports only). Colours are #hex, rgb() or a name: indigo violet teal yellow pink ink white cyan blue red orange. Drawn props (Bulb, Gear, Wire, Laptop...) go INSIDE <Canvas>, which is one persistent 1080x1920 svg; the other pieces sit beside it. Props are driven by numbers you compute from the frame: opacity from win()/ramp(), rotors from rotorAngle(), pulses from cycle() or (k * f) / (durationInFrames - 1). at/until/start/end are frames. PALETTE and FONTS may only be read as PALETTE.teal or FONTS.display; never pass them around whole.
+THE LIBRARY: import { ... } from "yt-kit" (named imports only). Colours are #hex, rgb() or a name: indigo violet teal yellow pink ink white cyan blue red orange. Drawn props (Bulb, Gear, Wire, Laptop...) go INSIDE <Stage>, which is one persistent 1080x1920 svg plus the headline; Label and Counter sit beside it. Props are driven by numbers you compute from the frame: opacity from win()/ramp(), rotors from rotorAngle(), pulses from cycle() or (k * f) / (durationInFrames - 1). at/until/start/end are frames. PALETTE, FONTS and ZONES may only be read as PALETTE.teal, FONTS.display, ZONES.objects.y0; never pass them around whole.
 ${kitDocs(YT_KIT_DTS)}
 
 REMOTION RULES
@@ -133,12 +133,15 @@ REMOTION RULES
 - interpolate(frame, inputRange, outputRange, options): inputRange must be strictly increasing numbers with the same length as outputRange. Add extrapolateLeft: "clamp" and extrapolateRight: "clamp" when a value must hold still outside its range. Use Easing from remotion (for example Easing.bezier(0.4, 0, 0.2, 1)) for natural motion.
 - Inside a Sequence, useCurrentFrame() counts from 0 at the start of that Sequence. Use <Sequence from={startFrame} durationInFrames={length}> to show something at the moment its words are spoken.
 STRUCTURE (the owner's rules; the two examples follow them)
-- Frame 0 is the payoff and thumbnail-grade: the finished picture and the headline at full strength. No fade up from black, no empty first frame.
+- Frame 0 is the payoff and thumbnail-grade: the hero objects fully drawn and lit (not a gradient or glow alone) plus the headline, at full strength. No fade up from black, no empty first frame (it is checked and refused).
 - The last frame (durationInFrames - 1) equals frame 0, so the video loops. Rotors: rotorAngle(f, durationInFrames, keys, sym) ends on a symmetric pose; repeating phases use whole cycles; things that appear later fade out before the end.
-- One persistent canvas that evolves (props fade, move and morph in place) instead of cutting between separate scenes.
+- One persistent canvas that evolves (props fade, move and morph in place) instead of cutting between separate scenes: every scene change evolves the same canvas, keeping the hero objects in place.
 - Every cue lands on the frame of the REAL word in the data block (word@frame), never on a guess.
 - Big objects: the main drawing spans at least 60% of the width (650 px or more). No scene made only of text; show the subject as a drawn object, diagram or chart.
-- Safe area: captions live in the bottom 22% (about 500 px), so nothing important below y = 1420; keep text 60 px from the side edges. Headline 80 to 120 px, other text at least 56 px, at most about 12 words on screen at once.
+- LAYOUT ZONES (nothing may overlap): title y 70-330, objects y 360-1380, captions y 1420-1900 (the studio's bottom 22%; keep it empty). Keep text 60 px from the side edges, other text at least 56 px, at most about 12 words on screen at once.
+  - The headline goes ONLY through <Stage headline="...">, short (it is auto-sized, at most 3 lines). Never BigTitle or Kicker, never other text in the title zone.
+  - Objects go ONLY in the objects zone: wrap big ones in <Place x y w h> (children drawn at cx={0} cy={0}) so they cannot cross a zone.
+  - Name an object with <Label text ax ay side="top|bottom|left|right"> beside it, never text on top of an object. At most 3 labels, chips or callouts on screen at once.
 - Brand, tasteful not loud: indigo #6366F1, violet #9b7cc4, teal #4db8a8, yellow #f5d76e, pink #e8879f, ink #1a1a2e; Space Grotesk for headlines (FONTS.display), Inter for body (FONTS.body), JetBrains Mono for code (FONTS.mono); soft shadows, calm motion.
 - Follow the beat timing in the task: each beat's visual starts on its start frame.
 - Do not draw captions or subtitles (and never use Captions from yt-kit): the studio draws word-synced captions over your scene.
