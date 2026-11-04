@@ -63,11 +63,17 @@ jobs:
           sudo timeout 300 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=20 install -y --no-install-recommends ffmpeg
           ffmpeg -filters 2>/dev/null | grep -q volumedetect
           ffprobe -version
-      - name: Run integration suites without starving engine workers
-        run: |
-          npm run test:integration -- --exclude tests/integration/engine-resilience.test.ts --exclude tests/integration/engine-chaos.test.ts
-          npm run test:integration -- --run tests/integration/engine-resilience.test.ts
-          npm run test:integration -- --run tests/integration/engine-chaos.test.ts
+      # Three steps (same commands, same order) so each has its own limit: a hang fails in minutes, and the verbose reporter
+      # prints every test as it finishes instead of one silent block per file.
+      - name: Run integration suites (without the engine suites)
+        timeout-minutes: 25
+        run: npm run test:integration -- --exclude tests/integration/engine-resilience.test.ts --exclude tests/integration/engine-chaos.test.ts
+      - name: Run the engine resilience suite
+        timeout-minutes: 15
+        run: npm run test:integration -- --run tests/integration/engine-resilience.test.ts --reporter=verbose
+      - name: Run the engine chaos suite
+        timeout-minutes: 15
+        run: npm run test:integration -- --run tests/integration/engine-chaos.test.ts --reporter=verbose
 
   e2e:
     runs-on: ubuntu-latest

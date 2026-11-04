@@ -4,7 +4,7 @@ import { UPLOAD_CAPS } from "@/server/core/publish-rules";
 import { recordAudit } from "@/server/db/audit";
 import { channelCaps, readUploadTarget, recheckPublishStart } from "@/server/db/publish";
 import { runUpload } from "@/server/db/upload-job";
-import { startUpload } from "@/server/db/uploads";
+import { isUnclearReason, manualRetry, startUpload, unclearCleared } from "@/server/db/uploads";
 import type { Uploader } from "@/server/providers/uploader";
 
 // The `uploads` queue consumer's handler (Task 21). The job payload is ONLY an upload id. Everything that decides whether
@@ -23,7 +23,59 @@ export interface PublishUploadDeps {
 
 const QUIET = new Set(["not_publish_approved", "not_found"]); // a duplicate delivery is normal, not news
 
+// A human asked for a re-send (upload_log `retry_requested`, written by requestRetry after the owner confirmed). The same
+// job-time proofs run as for a first send; a request is consumed by the transition (it only counts if newer than the failure).
+async function handleRetry(pool: pg.Pool, deps: PublishUploadDeps, uploadId: string): Promise<{ started: boolean }> {
+  const refused = async (reason: string): Promise<{ started: false }> => {
+    await recordAudit(pool, "upload.retry_refused", { uploadId, reason }).catch(() => undefined);
+    return { started: false };
+  };
+  const asked = await pool.query<{ event: string; failure_reason: string | null }>(
+    `select l.event, u.failure_reason from upload_log l join uploads u on u.id = l.upload_id
+      where l.upload_id = $1 and u.status = 'upload_failed' and l.event like 'retry_requested: session=%' and l.at > u.finished_at order by l.id desc limit 1`,
+    [uploadId],
+  );
+  const req = asked.rows[0];
+  const requester = /session=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(req?.event ?? "")?.[1];
+  if (!req || !requester) return refused("no_human_request");
+  // An unclear failure may be live on YouTube: the check (same attempt, after the cooldown) is re-proved here, not trusted from the UI.
+  if (isUnclearReason(req.failure_reason) && !(await unclearCleared(pool, uploadId))) return refused("not_checked_on_youtube");
+  // The re-send is bound to the session that asked for it, which must be live now (the original approving session may be long gone).
+  const t = await readUploadTarget(pool, uploadId, { root: deps.root, status: "upload_failed", retrySessionId: requester });
+  if (!t.ok) return refused(t.reason);
+  const { value } = t;
+  const base = deps.caps ?? { ...UPLOAD_CAPS };
+  const started = await manualRetry(
+    pool, uploadId,
+    { currentApprovalHash: value.approvalHash, currentFileSha: value.fileSha, caps: base, humanConfirmedNotOnYouTube: true },
+    { recheck: (q, row) => recheckPublishStart(q, row), capsFor: (q, channelId) => channelCaps(q, channelId, base) },
+  );
+  if (!started.started) return refused(started.reason);
+  await recordAudit(pool, "upload.retry_started", { uploadId, videoId: value.target.videoId, approvalId: value.approvalId, attempt: started.attempt }).catch(() => undefined);
+  await runUpload(
+    pool,
+    { startCtx: () => { throw new Error("startCtx is not used after the start"); }, uploader: { upload: (id, onProgress, signal) => deps.uploader.upload(id, onProgress, signal, value.target) } },
+    uploadId,
+    started.attempt,
+  );
+  await auditFinished(pool, uploadId);
+  return { started: true };
+}
+
+/** One audit row for how the attempt ended (the upload row is the truth; no tokens, no session address). */
+async function auditFinished(pool: pg.Pool, uploadId: string): Promise<void> {
+  try {
+    const r = (await pool.query<{ status: string; youtube_id: string | null; failure_reason: string | null }>("select status, youtube_id, failure_reason from uploads where id = $1", [uploadId])).rows[0];
+    if (r) await recordAudit(pool, "upload.finished", { uploadId, status: r.status, youtubeId: r.youtube_id, unclear: isUnclearReason(r.failure_reason), reason: r.failure_reason });
+  } catch {
+    // the row already says how it ended
+  }
+}
+
 export async function handlePublishUpload(pool: pg.Pool, deps: PublishUploadDeps, uploadId: string): Promise<{ started: boolean }> {
+  if (typeof uploadId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uploadId)) return { started: false };
+  const st = await pool.query<{ status: string }>("select status from uploads where id = $1", [uploadId]);
+  if (st.rows[0]?.status === "upload_failed") return handleRetry(pool, deps, uploadId);
   const refused = async (reason: string, detail?: string): Promise<{ started: false }> => {
     if (!QUIET.has(reason)) {
       try {
@@ -67,5 +119,6 @@ export async function handlePublishUpload(pool: pg.Pool, deps: PublishUploadDeps
     uploadId,
     started.attempt,
   );
+  await auditFinished(pool, uploadId);
   return { started: true };
 }

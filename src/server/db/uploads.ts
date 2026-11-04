@@ -188,13 +188,13 @@ export function startUpload(db: Db, uploadId: string, ctx: StartCtx, opts: { rec
 
 // The ONLY function that moves upload_failed -> uploading. Human-initiated: the caller must state that a human
 // checked YouTube Studio and the video is not there. The returned attempt must be handed to runUpload.
-export async function manualRetry(db: Db, uploadId: string, ctx: RetryCtx): Promise<StartResult> {
+export async function manualRetry(db: Db, uploadId: string, ctx: RetryCtx, opts: { recheck?: StartRecheck; capsFor?: CapsFor } = {}): Promise<StartResult> {
   assertId(uploadId);
   if ((ctx as { humanConfirmedNotOnYouTube?: unknown }).humanConfirmedNotOnYouTube !== true) {
     return { started: false, reason: "human_confirmation_required" };
   }
   const ignore = (ctx as { ignoreLoggedYoutubeId?: unknown }).ignoreLoggedYoutubeId === true;
-  return guardedStart(db, uploadId, { ...ctx, ...(ignore ? { ignoreLoggedYoutubeId: true as const } : { ignoreLoggedYoutubeId: undefined }) }, "upload_failed");
+  return guardedStart(db, uploadId, { ...ctx, ...(ignore ? { ignoreLoggedYoutubeId: true as const } : { ignoreLoggedYoutubeId: undefined }) }, "upload_failed", opts.recheck, opts.capsFor);
 }
 
 // Monotonic and bounded: a lower value than recorded, a value above bytes_total, or a stale attempt is ignored (false).
@@ -223,7 +223,22 @@ export const STALLED_REASON = "no progress: check YouTube Studio first";
 export const STUDIO_FIRST_PREFIX = "check YouTube Studio first: ";
 // Failure reasons that make a stalled/failed attempt eligible for a late success. Reserved: matched EXACTLY, and an
 // uploader-supplied reason can never produce them (it gets a neutral prefix).
-const isLateSuccessReason = (r: string | null): boolean => r !== null && (r === STALLED_REASON || r.startsWith(STUDIO_FIRST_PREFIX));
+/** An unclear upload may be sent again only this long after it ended: by then any request still in flight at Google is long dead. */
+export const UNCLEAR_COOLDOWN_MIN = 15;
+/** The stall sweep must be far longer than one request timeout (120 s) plus a flush; the uploader also sends a heartbeat. */
+export const STALL_MS = 20 * 60_000;
+/**
+ * SQL (alias u = uploads, l = upload_log): the owner's "Check on YouTube" found nothing for THIS failure (same attempt), and at
+ * least the cooldown had passed since the attempt ended when it looked.
+ */
+export const CHECKED_NOT_FOUND_SQL = `l.event = 'checked_not_found: attempt=' || u.attempt::text and u.finished_at is not null and l.at > u.finished_at + interval '${UNCLEAR_COOLDOWN_MIN} minutes'`;
+/** True when an unclear failure has been cleared for a re-send (checked, not found, cooldown passed). */
+export async function unclearCleared(db: Db, uploadId: string): Promise<boolean> {
+  const r = await db.query(`select 1 from uploads u join upload_log l on l.upload_id = u.id where u.id = $1 and u.status = 'upload_failed' and ${CHECKED_NOT_FOUND_SQL} limit 1`, [uploadId]);
+  return r.rowCount === 1;
+}
+export const isUnclearReason = (r: string | null): boolean => r !== null && (r === STALLED_REASON || r.startsWith(STUDIO_FIRST_PREFIX));
+const isLateSuccessReason = isUnclearReason;
 const isReservedReason = (r: unknown): boolean => {
   const c = safeReason(String(r));
   return c === STALLED_REASON || c.startsWith("check YouTube Studio first");

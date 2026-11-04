@@ -19,6 +19,13 @@ import { createFakeUploader } from "@/server/providers/uploader/fake";
 import type { Uploader } from "@/server/providers/uploader";
 import { startRuntime } from "@/worker/runtime";
 import { handlePublishUpload } from "@/worker/stages/publish-upload";
+import { randomBytes } from "node:crypto";
+import { makeKeyring } from "@/server/core/vault-crypto";
+import { saveOwnGoogleApp } from "@/server/db/google-app";
+import { putSecret } from "@/server/db/vault";
+import { checkOnYoutube, listUploads, requestRetry, savePublishChoice } from "@/server/db/upload-actions";
+import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
+import type { GoogleHttp } from "@/server/db/youtube-channels";
 import { withTestDb, type TestDb } from "../support/db";
 import { ensureChannel } from "../support/channel-fixture";
 import { waitFor } from "./helpers/stage-env";
@@ -550,5 +557,323 @@ describe("worker runtime uploads consumer", () => {
       await uq.close();
       await sq.close();
     }
+  });
+});
+
+// ---- Real uploader through the whole job, against a FAKE Google (no network) ----
+describe("youtube upload outcomes through the job", () => {
+  const ring = makeKeyring(randomBytes(32).toString("base64"));
+  const json = (b: unknown, status = 200, h: Record<string, string> = {}) => new Response(JSON.stringify(b), { status, headers: h });
+  interface Fake { http: GoogleHttp; puts: number; inserts: number }
+  function google(o: { final?: () => Response; init?: () => Response; onInit?: () => Promise<void>; throwFinal?: boolean; privacy?: string; playlist?: unknown | (() => Promise<unknown>) } = {}): Fake {
+    const f: Fake = { puts: 0, inserts: 0, http: async () => json({}) };
+    f.http = async (url, init) => {
+      if (url.includes("oauth2.googleapis.com/token")) return json({ access_token: "at" });
+      if (url.includes("&part=snippet,status")) { f.inserts++; await o.onInit?.(); if (o.init) return o.init(); return json({}, 200, { location: "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=S" }); }
+      if (init?.method === "PUT") { f.puts++; if (o.throwFinal) throw new TypeError("socket hang up"); return o.final ? o.final() : json({ id: "ytvid1" }); }
+      if (url.includes("videos?part=status")) return json({ items: [{ status: { privacyStatus: o.privacy ?? "private" } }] });
+      if (url.includes("channels?part=contentDetails")) return json({ items: [{ id: "UC-test", contentDetails: { relatedPlaylists: { uploads: "UUtest" } } }] });
+      if (url.includes("playlistItems")) return json((typeof o.playlist === "function" ? await (o.playlist as () => Promise<unknown>)() : o.playlist) ?? { items: [] });
+      throw new Error(`unexpected ${url}`);
+    };
+    return f;
+  }
+  const uploaderFor = async (f: Fake) => {
+    await saveOwnGoogleApp(db.pool, ring, { clientId: "123456789012-abcdefghijklmnopqrstuv12.apps.googleusercontent.com", clientSecret: "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1" });
+    await putSecret(db.pool, ring, "tok-uc-test", "1//refresh", { hint: false });
+    return createYouTubeUploader({ pool: db.pool, ring, http: f.http });
+  };
+  const actorFor = async () => ({ kind: "session", sessionId: await newSession() }) as const;
+  /** Pretend the attempt ended `min` minutes ago (the cooldown is measured from finished_at). */
+  const aged = (uploadId: string, min = 20) => db.ownerPool.query("update uploads set finished_at = finished_at - ($2::int * interval '1 minute') where id = $1", [uploadId, min]);
+
+  it("success stores the YouTube id and audits the end", async () => {
+    const { uploadId } = await approved();
+    const f = google();
+    expect(await run(uploadId, await uploaderFor(f))).toEqual({ started: true });
+    expect(await row(uploadId)).toMatchObject({ status: "uploaded", youtube_id: "ytvid1" });
+    expect((await auditOf("upload.finished")).at(-1)?.detail).toMatchObject({ uploadId, status: "uploaded", youtubeId: "ytvid1" });
+    expect(JSON.stringify(await auditOf(""))).not.toContain("upload_id"); // the session address never reaches the audit log
+  });
+
+  it("a 5xx after bytes started is unclear: no second send, redelivery does nothing, Retry needs a Studio check", async () => {
+    const { uploadId, q } = await approved();
+    const f = google({ final: () => json({}, 503) });
+    const up = await uploaderFor(f);
+    await run(uploadId, up);
+    expect(await row(uploadId)).toMatchObject({ status: "upload_failed", youtube_id: null });
+    expect((await row(uploadId)).failure_reason).toMatch(/^check YouTube Studio first/);
+    expect(await run(uploadId, up)).toEqual({ started: false }); // redelivery
+    expect(f.puts).toBe(1);
+    expect(f.inserts).toBe(1);
+    const actor = await actorFor();
+    expect(await requestRetry(db.pool, q, uploadId, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/Check on YouTube first/) });
+    expect((await listUploads(db.pool))[0]).toMatchObject({ unclear: true, status: "upload_failed" });
+  });
+
+  it("a timeout or socket reset is unclear as well", async () => {
+    const { uploadId } = await approved();
+    const f = google({ throwFinal: true });
+    await run(uploadId, await uploaderFor(f));
+    expect((await row(uploadId)).failure_reason).toMatch(/^check YouTube Studio first/);
+    expect(f.puts).toBe(1);
+  });
+
+  it("Check on YouTube: nothing found allows one human-requested re-send, which re-runs the job-time checks", async () => {
+    const { uploadId, q } = await approved();
+    await run(uploadId, await uploaderFor(google({ final: () => json({}, 503) })));
+    const actor = await actorFor();
+    // cooldown: right after the failure nothing can be recorded and no re-send is possible
+    expect(await checkOnYoutube(db.pool, ring, google().http, uploadId, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/too soon/) });
+    expect(await count(`upload_log where upload_id = '${uploadId}' and event like 'checked_not_found%'`)).toBe(0);
+    await aged(uploadId);
+    const checked = await checkOnYoutube(db.pool, ring, google().http, uploadId, actor);
+    expect(checked).toMatchObject({ ok: true, message: expect.stringMatching(/No matching video/) });
+    expect(await requestRetry(db.pool, q, uploadId, actor)).toMatchObject({ ok: true });
+    const f2 = google();
+    expect(await run(uploadId, await uploaderFor(f2))).toEqual({ started: true });
+    expect(await row(uploadId)).toMatchObject({ status: "uploaded", youtube_id: "ytvid1" });
+    expect(f2.puts).toBe(1);
+    expect(await run(uploadId, await uploaderFor(f2))).toEqual({ started: false });
+    expect(f2.puts).toBe(1);
+  });
+
+  it("Check on YouTube: a matching video is recorded as the upload's result and no re-send is possible", async () => {
+    const { uploadId, q } = await approved();
+    await run(uploadId, await uploaderFor(google({ final: () => json({}, 503) })));
+    const actor = await actorFor();
+    await aged(uploadId);
+    const hit = { items: [{ snippet: { title: "t", resourceId: { videoId: "found1" }, publishedAt: new Date().toISOString() } }] };
+    expect(await checkOnYoutube(db.pool, ring, google({ playlist: hit }).http, uploadId, actor)).toMatchObject({ ok: true, message: expect.stringMatching(/Found it/) });
+    expect(await row(uploadId)).toMatchObject({ status: "uploaded", youtube_id: "found1" });
+    expect(await requestRetry(db.pool, q, uploadId, actor)).toMatchObject({ ok: false });
+  });
+
+  it("a clear 4xx is a plain failure that the owner may send again without a check", async () => {
+    const { uploadId, q } = await approved();
+    const f = google({ init: () => json({ error: { errors: [{ reason: "quotaExceeded" }] } }, 403) });
+    await run(uploadId, await uploaderFor(f));
+    expect(await row(uploadId)).toMatchObject({ status: "upload_failed", failure_reason: "YouTube says the daily quota is used up" });
+    expect(await run(uploadId, await uploaderFor(f))).toEqual({ started: false }); // no automatic retry
+    expect(f.inserts).toBe(1);
+    expect(await requestRetry(db.pool, q, uploadId, await actorFor())).toMatchObject({ ok: true });
+    const f2 = google();
+    expect(await run(uploadId, await uploaderFor(f2))).toEqual({ started: true });
+    expect((await row(uploadId)).status).toBe("uploaded");
+  });
+
+  it("a re-send request is refused at job time when the approval no longer stands", async () => {
+    const { s, uploadId, q } = await approved();
+    await run(uploadId, await uploaderFor(google({ init: () => json({ error: { errors: [{ reason: "forbidden" }] } }, 403) })));
+    expect(await requestRetry(db.pool, q, uploadId, await actorFor())).toMatchObject({ ok: true });
+    await addContent(db.pool, s.videoId, "metadata", { body: metaBody({ title: "changed" }), sha256: sha256Hex("meta2") });
+    const f = google();
+    expect(await run(uploadId, await uploaderFor(f))).toEqual({ started: false });
+    expect(f.puts).toBe(0);
+    expect((await auditOf("upload.retry_refused")).at(-1)?.detail.reason).toBe("approval_changed");
+  });
+
+  it("when YouTube kept a different visibility the upload is recorded with that fact, not as a plain success", async () => {
+    await allowPublic(true);
+    const { uploadId } = await approved({ visibility: "public" }, { visibility: "public" });
+    await run(uploadId, await uploaderFor(google({ privacy: "private" })));
+    const l = (await listUploads(db.pool))[0]!;
+    expect(l).toMatchObject({ status: "uploaded", youtubeId: "ytvid1", keptPrivate: true, visibility: "public" });
+  });
+
+  it("the retry job is not honoured without a human request", async () => {
+    const { uploadId } = await approved();
+    await run(uploadId, await uploaderFor(google({ init: () => json({}, 403) })));
+    const f = google();
+    expect(await run(uploadId, await uploaderFor(f))).toEqual({ started: false });
+    expect((await auditOf("upload.retry_refused")).at(-1)?.detail.reason).toBe("no_human_request");
+    expect(f.puts).toBe(0);
+  });
+});
+
+describe("unclear uploads: cooldown, stall, race, session, recheck", () => {
+  const ring = makeKeyring(randomBytes(32).toString("base64"));
+  const json = (b: unknown, status = 200, h: Record<string, string> = {}) => new Response(JSON.stringify(b), { status, headers: h });
+  const SESSION_URI = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=S";
+  let puts = 0;
+  const http = (o: { final?: () => Response; onInit?: () => Promise<void>; playlist?: () => Promise<unknown> } = {}): GoogleHttp => async (url, init) => {
+    if (url.includes("oauth2.googleapis.com/token")) return json({ access_token: "at" });
+    if (url.includes("&part=snippet,status")) { await o.onInit?.(); return json({}, 200, { location: SESSION_URI }); }
+    if (init?.method === "PUT") { puts++; return o.final ? o.final() : json({ id: "ytvid1" }); }
+    if (url.includes("videos?part=status")) return json({ items: [{ status: { privacyStatus: "private" } }] });
+    if (url.includes("channels?part=contentDetails")) return json({ items: [{ id: "UC-test", contentDetails: { relatedPlaylists: { uploads: "UUtest" } } }] });
+    if (url.includes("playlistItems")) return json((await o.playlist?.()) ?? { items: [] });
+    throw new Error(`unexpected ${url}`);
+  };
+  const upFor = async (h: GoogleHttp) => {
+    await saveOwnGoogleApp(db.pool, ring, { clientId: "123456789012-abcdefghijklmnopqrstuv12.apps.googleusercontent.com", clientSecret: "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1" });
+    await putSecret(db.pool, ring, "tok-uc-test", "1//refresh", { hint: false });
+    return createYouTubeUploader({ pool: db.pool, ring, http: h });
+  };
+  const actorFor = async () => ({ kind: "session", sessionId: await newSession() }) as const;
+  const aged = (uploadId: string, min = 20) => db.ownerPool.query("update uploads set finished_at = finished_at - ($2::int * interval '1 minute') where id = $1", [uploadId, min]);
+  beforeEach(() => { puts = 0; });
+
+  it("a re-send of an unclear upload is refused at job time without a check made after the cooldown", async () => {
+    const { uploadId } = await approved();
+    await run(uploadId, await upFor(http({ final: () => json({}, 503) })));
+    const sess = (await actorFor()).sessionId;
+    // forge the request and an early "not found": the worker still refuses
+    await db.ownerPool.query("insert into upload_log (upload_id, event) values ($1, $2)", [uploadId, `retry_requested: session=${sess}`]);
+    expect(await run(uploadId, await upFor(http()))).toEqual({ started: false });
+    expect((await auditOf("upload.retry_refused")).at(-1)?.detail.reason).toBe("not_checked_on_youtube");
+    await db.ownerPool.query("insert into upload_log (upload_id, event) values ($1, 'checked_not_found: attempt=1')", [uploadId]);
+    expect(await run(uploadId, await upFor(http()))).toEqual({ started: false }); // logged right after the failure: inside the cooldown
+    expect(puts).toBe(1);
+  });
+
+  it("a stalled sweep does not touch an upload whose request is still in flight (heartbeat)", async () => {
+    const { uploadId } = await approved();
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    const slow: GoogleHttp = async (url, init) => (init?.method === "PUT" ? (await hold, http()(url, init)) : http()(url, init));
+    await saveOwnGoogleApp(db.pool, ring, { clientId: "123456789012-abcdefghijklmnopqrstuv12.apps.googleusercontent.com", clientSecret: "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1" });
+    await putSecret(db.pool, ring, "tok-uc-test", "1//refresh", { hint: false });
+    const pending = run(uploadId, createYouTubeUploader({ pool: db.pool, ring, http: slow, heartbeatMs: 20 }));
+    await waitFor(async () => Number((await row(uploadId))?.bytes_sent) >= 1, "first progress");
+    await db.ownerPool.query("update uploads set last_progress_at = clock_timestamp() - interval '10 minutes' where id = $1", [uploadId]);
+    await waitFor(async () => (await db.pool.query("select 1 from uploads where id = $1 and last_progress_at > clock_timestamp() - interval '1 minute'", [uploadId])).rowCount === 1, "heartbeat refreshed progress");
+    expect(await markStalled(db.pool, 5 * 60_000)).toEqual([]);
+    release();
+    await pending;
+    expect((await row(uploadId)).status).toBe("uploaded");
+  });
+
+  it("an unclear upload cannot be cleared or re-sent inside the cooldown", async () => {
+    const { uploadId, q } = await approved();
+    await run(uploadId, await upFor(http({ final: () => json({}, 503) })));
+    const actor = await actorFor();
+    expect(await checkOnYoutube(db.pool, ring, http(), uploadId, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/too soon/) });
+    expect(await requestRetry(db.pool, q, uploadId, actor)).toMatchObject({ ok: false });
+    expect(puts).toBe(1);
+  });
+
+  it("Check on YouTube cannot record 'not found' if the row changed while it was looking (double click, re-send, late success)", async () => {
+    const { uploadId } = await approved();
+    await run(uploadId, await upFor(http({ final: () => json({}, 503) })));
+    await aged(uploadId);
+    const actor = await actorFor();
+    const changes = http({ playlist: async () => { await db.ownerPool.query("update uploads set status = 'uploading', attempt = 2, finished_at = null where id = $1", [uploadId]); return { items: [] }; } });
+    expect(await checkOnYoutube(db.pool, ring, changes, uploadId, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/changed while/) });
+    expect(await count(`upload_log where upload_id = '${uploadId}' and event like 'checked_not_found%'`)).toBe(0);
+  });
+
+  it("a second 'not found' for an older attempt does not clear a newer failure", async () => {
+    const { uploadId } = await approved();
+    await run(uploadId, await upFor(http({ final: () => json({}, 503) })));
+    await aged(uploadId);
+    await db.ownerPool.query("insert into upload_log (upload_id, event) values ($1, 'checked_not_found: attempt=7')", [uploadId]);
+    expect((await listUploads(db.pool))[0]).toMatchObject({ unclear: true, checkedNotFound: false });
+  });
+
+  it("a next-day re-send works when the original approving session is long gone, bound to the session that asked", async () => {
+    const { s, uploadId, q } = await approved();
+    await run(uploadId, await upFor(http({ onInit: async () => undefined, final: () => json({}, 503) })));
+    await aged(uploadId);
+    await db.ownerPool.query("update sessions set revoked_at = clock_timestamp() where id = $1", [s.sessionId]);
+    const actor = await actorFor();
+    expect(await checkOnYoutube(db.pool, ring, http(), uploadId, actor)).toMatchObject({ ok: true });
+    expect(await requestRetry(db.pool, q, uploadId, actor)).toMatchObject({ ok: true });
+    expect(await run(uploadId, await upFor(http()))).toEqual({ started: true });
+    expect(await row(uploadId)).toMatchObject({ status: "uploaded", youtube_id: "ytvid1" });
+  });
+
+  it("a re-send is also refused when the original approval was never session-valid, even with a live requester", async () => {
+    const { s, uploadId, q } = await approved();
+    await run(uploadId, await upFor(http({ final: () => json({}, 503) })));
+    await aged(uploadId);
+    const actor = await actorFor();
+    await checkOnYoutube(db.pool, ring, http(), uploadId, actor);
+    expect(await requestRetry(db.pool, q, uploadId, actor)).toMatchObject({ ok: true });
+    // the approving session is made to look revoked BEFORE it decided (what APPROVAL_SESSION_VALID_SQL rejects)
+    await db.ownerPool.query("update sessions set revoked_at = (select min(decided_at) from approvals where session_id = $1) - interval '1 second' where id = $1", [s.sessionId]);
+    expect(await run(uploadId, await upFor(http()))).toEqual({ started: false });
+    expect((await auditOf("upload.retry_refused")).at(-1)?.detail.reason).toBe("approval_session_invalid");
+  });
+
+  it("a re-send is refused when the session that asked is no longer live", async () => {
+    const { uploadId, q } = await approved();
+    await run(uploadId, await upFor(http({ final: () => json({}, 503) })));
+    await aged(uploadId);
+    const actor = await actorFor();
+    expect(await checkOnYoutube(db.pool, ring, http(), uploadId, actor)).toMatchObject({ ok: true });
+    expect(await requestRetry(db.pool, q, uploadId, actor)).toMatchObject({ ok: true });
+    await db.ownerPool.query("update sessions set revoked_at = clock_timestamp() where id = $1", [actor.sessionId]);
+    expect(await run(uploadId, await upFor(http()))).toEqual({ started: false });
+    expect((await auditOf("upload.retry_refused")).at(-1)?.detail.reason).toBe("approval_session_invalid");
+  });
+
+  it("the approval and switches are rechecked right before the final chunk: a kill switch thrown during the upload stops it cleanly", async () => {
+    const { uploadId } = await approved();
+    const f = http({ onInit: async () => { await setSetting(db.pool, "uploads.kill_switch", true, { actor: "session" }); } });
+    await run(uploadId, await upFor(f));
+    expect(puts).toBe(0);
+    expect(await row(uploadId)).toMatchObject({ status: "upload_failed", youtube_id: null });
+    expect((await row(uploadId)).failure_reason).not.toMatch(/^check YouTube Studio first/);
+    expect((await row(uploadId)).failure_reason).toMatch(/switched off|not allowed/);
+  });
+
+  it("the approval changing during the upload stops it before the final chunk", async () => {
+    const { s, uploadId } = await approved();
+    const f = http({ onInit: async () => { await addContent(db.pool, s.videoId, "metadata", { body: metaBody({ title: "edited" }), sha256: sha256Hex("meta3") }); } });
+    await run(uploadId, await upFor(f));
+    expect(puts).toBe(0);
+    expect((await row(uploadId)).failure_reason).toMatch(/approval changed/);
+  });
+
+  it("Check matches the title that was SENT, not the details as they are now", async () => {
+    const { s, uploadId } = await approved();
+    await run(uploadId, await upFor(http({ final: () => json({}, 503) })));
+    await aged(uploadId);
+    await addContent(db.pool, s.videoId, "metadata", { body: metaBody({ title: "renamed later" }), sha256: sha256Hex("meta4") });
+    const hit = { items: [{ snippet: { title: "t", resourceId: { videoId: "found2" }, publishedAt: new Date().toISOString() } }] };
+    expect(await checkOnYoutube(db.pool, ring, http({ playlist: async () => hit }), uploadId, await actorFor())).toMatchObject({ ok: true, message: expect.stringMatching(/Found it/) });
+    expect((await row(uploadId)).youtube_id).toBe("found2");
+  });
+});
+
+describe("savePublishChoice", () => {
+  const choiceFor = async (o: { allowPublic?: boolean } = {}) => {
+    const s = await seed();
+    if (o.allowPublic === false) await db.ownerPool.query("update youtube_channels set allow_public = false");
+    return { s, actor: { kind: "session", sessionId: s.sessionId } as const };
+  };
+  const base = { visibility: "private" as const, publishAt: null, channelId: "UC-test" };
+
+  it("public needs the channel switch, the kill switch off and the typed word", async () => {
+    const { s, actor } = await choiceFor({ allowPublic: false });
+    expect(await savePublishChoice(db.pool, s.videoId, { ...base, visibility: "public", typed: "public" }, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/switched off for this channel/) });
+    await db.ownerPool.query("update youtube_channels set allow_public = true");
+    expect(await savePublishChoice(db.pool, s.videoId, { ...base, visibility: "public", typed: "public" }, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/allow public/) });
+    await allowPublic(true);
+    expect(await savePublishChoice(db.pool, s.videoId, { ...base, visibility: "public" }, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/Type the word/) });
+    await setSetting(db.pool, "uploads.kill_switch", true, { actor: "session" });
+    expect(await savePublishChoice(db.pool, s.videoId, { ...base, visibility: "public", typed: "public" }, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/kill switch/) });
+    await setSetting(db.pool, "uploads.kill_switch", false, { actor: "session" });
+    expect(await savePublishChoice(db.pool, s.videoId, { ...base, visibility: "public", typed: "public" }, actor)).toMatchObject({ ok: true });
+    expect((await auditOf("publish.choice_saved")).at(-1)?.detail).toMatchObject({ visibility: "public", channelId: "UC-test" });
+  });
+
+  it("a schedule needs private and at least 60 minutes of lead; the choice voids an earlier approval", async () => {
+    const { s, actor } = await choiceFor();
+    const at = new Date(Date.now() + 3 * 3600_000).toISOString();
+    expect(await savePublishChoice(db.pool, s.videoId, { ...base, visibility: "unlisted", publishAt: at }, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/only with private/) });
+    expect(await savePublishChoice(db.pool, s.videoId, { ...base, publishAt: new Date(Date.now() + 20 * 60_000).toISOString() }, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/60 minutes/) });
+    const before = (await liveGateHash(db.pool, s.videoId, "publish"))!.hash;
+    expect(await savePublishChoice(db.pool, s.videoId, { ...base, publishAt: at }, actor)).toMatchObject({ ok: true });
+    expect((await liveGateHash(db.pool, s.videoId, "publish"))!.hash).not.toBe(before);
+  });
+
+  it("only a connected channel can be chosen, and only by the owner's session", async () => {
+    const { s, actor } = await choiceFor();
+    expect(await savePublishChoice(db.pool, s.videoId, { ...base, channelId: "UC-nobody" }, actor)).toMatchObject({ ok: false });
+    await db.ownerPool.query("update youtube_channels set status = 'needs_reconnect'");
+    expect(await savePublishChoice(db.pool, s.videoId, base, actor)).toMatchObject({ ok: false });
+    expect(await savePublishChoice(db.pool, s.videoId, base, { kind: "system" } as never)).toMatchObject({ ok: false });
   });
 });

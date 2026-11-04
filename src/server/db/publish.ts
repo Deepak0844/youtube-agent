@@ -2,7 +2,7 @@ import type pg from "pg";
 import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { metadataProblem, publishPolicyProblem, visibilityProblem, type Visibility } from "@/server/core/publish-rules";
 import { channelUploadProblem } from "@/server/core/channel-safety";
-import { approvalDetailsProblem } from "@/server/core/upload-details";
+import { approvalDetailsProblem, validateUploadDetails } from "@/server/core/upload-details";
 import { evidenceVerificationProblem } from "@/server/core/evidence-edit";
 import { uuidv7 } from "@/server/core/ids";
 import { APPROVAL_SESSION_VALID_SQL, approvalState, approveGateWith, readSnapshot, type ContentVersions } from "@/server/db/approvals";
@@ -216,7 +216,7 @@ export type TargetResult = { ok: true; value: VerifiedTarget } | { ok: false; re
  * it covers, the approving session, the policy settings and the metadata; so the hash, version ids and file path all
  * belong to one moment. The real file is then hashed and must equal the stored sha256 of THAT version.
  */
-export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { root?: string } = {}): Promise<TargetResult> {
+export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { root?: string; /** a human-requested retry reads an `upload_failed` row */ status?: "publish_approved" | "upload_failed"; /** a re-send is bound to the session that asked for it (live now), not to the original approving session */ retrySessionId?: string } = {}): Promise<TargetResult> {
   if (typeof uploadId !== "string" || !UUID_RE.test(uploadId)) return { ok: false, reason: "not_found" };
   const root = opts.root ?? storageRoot();
   const client = await db.connect();
@@ -225,7 +225,7 @@ export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { ro
     await client.query("begin isolation level repeatable read read only");
     const up = (await client.query<{ video_id: string; status: string; channel_id: string | null }>("select video_id, status, channel_id from uploads where id = $1", [uploadId])).rows[0];
     if (!up) return { ok: false, reason: "not_found" };
-    if (up.status !== "publish_approved") return { ok: false, reason: "not_publish_approved" };
+    if (up.status !== (opts.status ?? "publish_approved")) return { ok: false, reason: "not_publish_approved" };
     if (up.channel_id === null) return { ok: false, reason: "no_channel" };
     if (!(await videoIsLive(client, up.video_id))) return { ok: false, reason: "policy", detail: CANCELLED };
     const state = await approvalState(client, up.video_id, "publish");
@@ -242,13 +242,19 @@ export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { ro
       [up.video_id],
     )).rows[0];
     if (!ap || ap.content_hash !== state.hash) return { ok: false, reason: "approval_changed" };
+    // APPROVAL_SESSION_VALID_SQL is evaluated as of the approval's decided_at, so it does not go stale the next day: it is kept
+    // for a re-send too. A re-send ALSO needs the session that asked for it to be live now.
     if (!ap.valid) return { ok: false, reason: "approval_session_invalid" };
+    if (opts.retrySessionId !== undefined && !(await sessionIsLive(client, opts.retrySessionId))) return { ok: false, reason: "approval_session_invalid" };
     const body = meta.body as Record<string, unknown>;
     const policy = publishPolicyProblem({ visibility: body.visibility, publishAt: body.publish_at ?? null, ...(await policyFacts(client, up.video_id)), phase: "upload" });
     if (policy) return { ok: false, reason: "policy", detail: policy };
     const safety = await channelSafetyProblem(client, body.visibility, up.channel_id);
     if (safety) return { ok: false, reason: "policy", detail: safety };
-    snap = { up, state, video, body, approvalId: ap.id, channelId: up.channel_id };
+    const details = validateUploadDetails(meta.body);
+    const chRow = (await client.query<{ id: string }>("select id from youtube_channels where channel_id = $1", [up.channel_id])).rows[0];
+    if (!details.ok || !chRow) return { ok: false, reason: "approval_changed" };
+    snap = { up, state, video, body, approvalId: ap.id, channelId: up.channel_id, channelRowId: chRow.id, details: details.value };
     await client.query("commit");
   } finally {
     // Every early return above leaves the read-only snapshot open: end it before the connection goes back to the pool,
@@ -270,9 +276,20 @@ export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { ro
     value: {
       uploadId, approvalId: snap.approvalId, approvalHash: snap.state.hash, fileSha: h.sha256, versions: snap.state.versions,
       target: {
-        videoId: snap.up.video_id, filePath: snap.video.filePath!, fileSha256: h.sha256, bytes: h.bytes, channelId: snap.channelId,
+        videoId: snap.up.video_id, filePath: snap.video.filePath!, fileSha256: h.sha256, bytes: h.bytes, channelId: snap.channelId, channelRowId: snap.channelRowId,
+        details: { title: snap.details.title, description: snap.details.description, tags: snap.details.tags, categoryId: snap.details.category_id, language: snap.details.language, madeForKids: snap.details.made_for_kids, synthetic: snap.details.synthetic_content },
         visibility: snap.body.visibility as Visibility, publishAt: (snap.body.publish_at ?? null) as string | null,
-        open: () => openStoredFile(root, snap.video.filePath!, { sha256: h.sha256, bytes: h.bytes }),
+        // A real upload can take far longer than the 10-minute default read timer: allow hours.
+        open: () => openStoredFile(root, snap.video.filePath!, { sha256: h.sha256, bytes: h.bytes }, { timeoutMs: 6 * 3600_000 }),
+        // Read-only recheck the uploader runs right before the final chunk (the point of no return).
+        preFinal: async () => {
+          const c = await db.connect();
+          try {
+            return await recheckPublishStart(c, { videoId: snap.up.video_id, approvalHash: snap.state.hash });
+          } finally {
+            c.release();
+          }
+        },
       },
     },
   };

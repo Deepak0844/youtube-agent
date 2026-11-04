@@ -5,11 +5,13 @@ import { jobCheckers } from "./job-checkers";
 import { getPool } from "@/server/db/pool";
 import { dryRunRefusal } from "@/worker/stages/guard";
 import { loadQueue } from "@/server/db/queue-data";
+import { listUploads } from "@/server/db/upload-actions";
 import { Pill } from "@/ui/primitives/pill";
 import { DecisionCard } from "./decision-card";
 import { BreakerForm, DryRunForm, RequeueForm } from "./forms";
 import { GateCard, ageLabel } from "./gate-card";
 import { LiveFeed } from "./live-feed";
+import { UploadsSection } from "./uploads-section";
 
 // The decision queue (Doc 4 /queue): everything that waits on the owner, oldest first. Reads the session and live rows, so
 // it sits inside <Suspense> with a static frame. Each card renders the hash and content versions it was built from and posts
@@ -27,6 +29,7 @@ async function Owned() {
   const q = await loadQueue(getPool(), new Set(Object.keys(jobCheckers())));
   // The starter shows only when the opt-in is set AND the database guard agrees (throwaway database, no provider key).
   const dryRun = dryRunAllowed() && (await dryRunRefusal(getPool(), process.env).catch(() => "unchecked")) === null;
+  const uploads = await listUploads(getPool());
   const waiting = q.items.length;
   return (
     <div className="flex min-w-0 flex-col gap-layout">
@@ -74,6 +77,8 @@ async function Owned() {
           q.items.map((item, i) => (item.kind === "gate" ? <GateCard key={`${item.videoId}-${item.gate}`} item={item} index={i} /> : <DecisionCard key={`${item.videoId}-decision`} item={item} />))
         )}
       </section>
+
+      <UploadsSection rows={uploads} />
     </div>
   );
 }

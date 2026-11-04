@@ -19,7 +19,7 @@ import type { StageOutcome } from "@/server/core/stage-runner";
 import type { NotifyEventId } from "@/server/core/notify";
 import { createChildRegistry, holdWorkerLock, sweepOrphans, type WorkerLock } from "@/server/db/child-processes";
 import type { ChildRegistry } from "@/server/render/child";
-import { markStalled } from "@/server/db/uploads";
+import { markStalled, STALL_MS } from "@/server/db/uploads";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { createJobQueue, type IngestQueue, type StageQueue, type UploadQueue } from "@/server/queue/job-queue";
 import type { Uploader } from "@/server/providers/uploader";
@@ -116,7 +116,7 @@ const defaults: WorkerHooks = {
   afterReconcile,
   runStage,
   notify: notifyTransition,
-  markStalled: (pool) => markStalled(pool, 60_000),
+  markStalled: (pool) => markStalled(pool, STALL_MS),
   // Retention for the events table through the owner-granted prune_events() (the app role cannot delete). One indexed
   // DELETE per loop tick.
   prune: async (pool) => { await pruneEvents(pool); await pruneAgentSteps(pool); },

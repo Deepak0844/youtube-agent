@@ -75,7 +75,10 @@ export const channelSecretName = (rowId: string) => `youtube.channel.${rowId}.re
 export const QUOTA_COSTS = {
   "channels.list": 1,
   "videos.list": 1,
-  "videos.insert": 1600, // verify
+  // VERIFY AGAINST THE OWNER'S CLOUD CONSOLE (Quotas page, YouTube Data API v3). Could not be checked offline: older Google docs say
+  // 1600 units, secondary sources say about 100 units plus a separate uploads-per-day bucket. 1600 is the safe (high) value.
+  "videos.insert": 1600,
+  "playlistItems.list": 1,
   "thumbnails.set": 50, // verify
   "videos.update": 50, // verify
   "playlistItems.insert": 50, // verify
