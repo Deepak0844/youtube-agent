@@ -286,7 +286,7 @@ describe("checkTsx: input handling never throws", () => {
     expect(checkTsx(deep).problems.join()).toMatch(/nested too deeply|could not be checked/);
   });
 
-  it("runs under 100 ms on a 24 KB worst case", () => {
+  it("runs under 300 ms on a 24 KB worst case", () => {
     const body = Array.from({ length: 400 }, (_, i) => `const v${i} = interpolate(useCurrentFrame(), [0, ${i + 1}], ["a" + "b", \`c\${i}\`]);`).join("\n");
     const worst = (GOOD + body).slice(0, TSX_MAX_BYTES);
     const flood = ("window.fetch(eval('x'));\n").repeat(Math.floor(TSX_MAX_BYTES / 26));
@@ -301,7 +301,7 @@ describe("checkTsx: input handling never throws", () => {
         checkTsx(s);
         best = Math.min(best, performance.now() - t);
       }
-      expect(best).toBeLessThan(100);
+      expect(best).toBeLessThan(300); // a real blowup takes seconds; 100 ms flaked on loaded CI runners (113 ms seen)
     }
   });
 
