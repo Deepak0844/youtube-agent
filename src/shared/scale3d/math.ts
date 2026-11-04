@@ -18,7 +18,9 @@ export const WIDTH_RATIO: Record<string, number> = {
 };
 /** Where on a tower crane's jib the hook hangs, as fractions of the crane height (x from the mast, y up from the ground). */
 export const HOOK_X = 0.32;
-export const HOOK_Y_TOP = 0.98;
+/** Trolley height on a crane (fraction of its height) and how far under it a load's top hangs. */
+export const HOOK_Y_TOP = 0.92;
+export const LOAD_DROP = 0.3;
 
 // ---- beat timing ----
 /** Start frame and length of each beat. Rounded on the running total so the beats add up to exactly the video length. */
@@ -85,8 +87,8 @@ export function layoutObjects(objects: readonly MObject[]): Placement[] {
     const load = objects.find((x) => x.id === o.carries);
     if (!crane || !load) continue;
     const width = load.height_m * (WIDTH_RATIO[load.kind] ?? 0.5);
-    // The load hangs on slings below the hook; its base is a fifth of the crane's height under the jib.
-    out.push({ id: load.id, x: hookX(crane), z: crane.z, y: HOOK_Y_TOP * crane.height - 0.2 * crane.height - load.height_m, width, height: load.height_m, carriedBy: crane.id });
+    // The load hangs on slings below the hook: its top is LOAD_DROP of the crane's height under the trolley.
+    out.push({ id: load.id, x: hookX(crane), z: crane.z, y: (HOOK_Y_TOP - LOAD_DROP) * crane.height - load.height_m, width, height: load.height_m, carriedBy: crane.id });
   }
   return out;
 }
