@@ -226,11 +226,11 @@ describe("limits on the database clock", () => {
 });
 
 describe("an unclear outcome is never retried", () => {
-  for (const mode of ["throw", "500"] as const) {
-    it(`${mode}: marked failed with 'check YouTube first'; pressing again posts nothing more`, async () => {
+  for (const kind of ["throw", "500"] as const) {
+    it(`${kind}: marked failed with 'check YouTube first'; pressing again posts nothing more`, async () => {
       const { f, ids, seenOf } = await seed();
       await goLive();
-      f.insert = mode;
+      f.insert = kind;
       const seen = await seenOf(0);
       const r = await postReply(db.pool, ring, f.http, { replyId: ids[0]!, seen, expectMode: mode, actor: ACTOR }, { policy: NO_GAP });
       expect(r).toMatchObject({ ok: false, message: expect.stringMatching(/Check YouTube first/i) });

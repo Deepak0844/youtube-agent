@@ -44,3 +44,6 @@ create table if not exists comment_sync_state (
   last_sync_at timestamptz
 );
 insert into comment_sync_state (id) values (1) on conflict do nothing;
+
+-- Safety setting (owner session only): reply posting is a dry run until the owner turns it off.
+insert into settings (key, value, updated_by) values ('comments.dry_run', 'true', 'system') on conflict (key) do nothing;
