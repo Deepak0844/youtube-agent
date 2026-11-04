@@ -277,9 +277,9 @@ describe("manualRetry", () => {
   });
 
   it("no_automatic_retry_function_exists", () => {
-    // Every export that could move a row is on this allow-list; only manualRetry may leave upload_failed.
+    // Every export that could move a row is on this allow-list; only manualRetry may leave upload_failed. Added: constants, a pure reason test, and unclearCleared (a read-only SELECT).
     expect(Object.keys(uploadsModule).sort()).toEqual(
-      ["DUPLICATE_SKIPPED_REASON", "STALLED_REASON", "STUDIO_FIRST_PREFIX", "finishUpload", "manualRetry", "markStalled", "reportProgress", "startUpload"].sort(),
+      ["CHECKED_NOT_FOUND_SQL", "DUPLICATE_SKIPPED_REASON", "STALLED_REASON", "STALL_MS", "STUDIO_FIRST_PREFIX", "UNCLEAR_COOLDOWN_MIN", "finishUpload", "isUnclearReason", "manualRetry", "markStalled", "reportProgress", "startUpload", "unclearCleared"].sort(),
     );
   });
 });
