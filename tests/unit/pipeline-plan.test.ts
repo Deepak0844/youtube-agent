@@ -8,6 +8,7 @@ import {
   ttsRerunProblem,
   nextActions,
   stageInputHash,
+  routeFor,
   stagePlan,
   postStageGates,
   type PipelineView,
@@ -281,5 +282,34 @@ describe("tsx route (slice 3)", () => {
     expect(expectedInputHash(a, "tsx_author", "t")).toBe(stageInputHash("tsx_author", { prev: "t", script: "s", narration: "n" }, {}));
     expect(expectedInputHash(b, "tsx_author", "t")).toBe(expectedInputHash(a, "tsx_author", "t"));
     expect(chainPrev(stagePlan("tsx", "short", f), 1)?.stage).toBe("draft");
+  });
+});
+
+describe("scale3d kind", () => {
+  const f = { requireEvidence: true, paidGeneration: false };
+  it("has_no_pictures_or_generate_and_builds_before_narration", () => {
+    expect(stagePlan("scale3d", "short", f).map((s) => s.stage)).toEqual(["draft", "build", "tts", "render", "voice", "sfx", "qa"]);
+    expect(stagePlan("scale3d", "short", { ...f, paidGeneration: true }).map((s) => s.stage)).not.toContain("generate");
+    expect(stagePlan("scale3d", "short", f)[0]).toMatchObject({ stage: "draft", gateAfter: "script" });
+    expect(stagePlan("scale3d", "short", f).at(-1)).toMatchObject({ stage: "qa", gateAfter: "video" });
+  });
+  it("chain_is_unbroken", () => {
+    const plan = stagePlan("scale3d", "short", f);
+    expect(chainPrev(plan, 1)?.stage).toBe("draft");
+    expect(chainPrev(plan, 3)?.stage).toBe("tts");
+  });
+  it("leaves_the_hashes_of_scene_kit_and_tsx_videos_exactly_as_they_were", () => {
+    const sk = base({ content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
+    expect(expectedInputHash(sk, "draft", null)).toBe(stageInputHash("draft", { params: "p", feedback: "" }, {}));
+    expect(expectedInputHash(sk, "build", "d")).toBe(stageInputHash("build", { prev: "d", script: "s" }, {}));
+    expect(expectedInputHash(sk, "render", "t")).toBe(stageInputHash("render", { prev: "t", beats: "b", narration: "n", scenes: "sc" }, {}));
+    const tsx = base({ kind: "tsx", content: { script: "s", narration: "n" } });
+    expect(expectedInputHash(tsx, "tsx_author", "t")).toBe(stageInputHash("tsx_author", { prev: "t", script: "s", narration: "n" }, {}));
+    // the kind itself is never part of a stage hash, so the new kind cannot move an old one
+    expect(expectedInputHash({ ...sk, kind: "scale3d" }, "build", "d")).toBe(expectedInputHash(sk, "build", "d"));
+  });
+  it("route_for_scale3d_keeps_every_stage", () => {
+    const v = base({ kind: "scale3d", flags: f, runs: { build: { status: "succeeded", inputHash: "x" } } });
+    expect(routeFor(v).map((s) => s.stage)).toEqual(["draft", "build", "tts", "render", "voice", "sfx", "qa"]);
   });
 });

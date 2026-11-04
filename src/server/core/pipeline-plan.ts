@@ -48,6 +48,19 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
       { stage: "qa", gateAfter: "video", resource: "cpu" },
     ];
   }
+  // scale3d: Build asks the model for the 3D scene description (text only, $0 on Claude Code) and Render retimes its beats to the
+  // narration, exactly like the scene kit. No pictures (the 3D models are a fixed library) and nothing to buy, so no generate step.
+  if (kind === "scale3d") {
+    const head: PlanStep[] = flags.imported ? [] : [{ stage: "draft", gateAfter: "script", resource: "net" }, { stage: "build", resource: "cpu" }];
+    return [
+      ...head,
+      { stage: "tts", resource: "net" },
+      { stage: "render", resource: "render" },
+      { stage: "voice", resource: "cpu" },
+      { stage: "sfx", resource: "cpu" },
+      { stage: "qa", gateAfter: "video", resource: "cpu" },
+    ];
+  }
   const steps: PlanStep[] = flags.imported
     ? []
     : [
