@@ -17,7 +17,7 @@ import { createEventBus } from "@/server/queue/event-bus";
 import { createEventStream } from "@/server/queue/event-stream";
 import { withTestDb, type TestDb } from "../support/db";
 import {
-  counts, killAllEngineWorkers, openWorld, ownerStep, prepareEngineTables, runToUploaded, supervise, uploadStatus, violations, waitUntil, dump,
+  counts, killAllEngineWorkers, openWorld, ownerStep, refusalGuard, uploadState, prepareEngineTables, runToUploaded, supervise, uploadStatus, violations, waitUntil, dump,
   type World,
 } from "../support/engine-harness";
 
@@ -444,13 +444,18 @@ describe("load", () => {
     for (let i = 0; i < N_LOAD; i++) ids.push(await w.newVideo(`Fake topic number ${i + 1}`));
     const deadline = Date.now() + 420_000;
     let lastLog = 0;
+    const guards = new Map<string, ReturnType<typeof refusalGuard>>();
     for (;;) {
       if (process.env.ENGINE_DEBUG && Date.now() - lastLog > 10_000) { lastLog = Date.now(); console.error("progress", JSON.stringify((await q("select name, status, count(*)::int n from stage_runs group by 1,2 order by 1,2")).rows.filter((r) => r.status !== "succeeded")), JSON.stringify((await q("select status, count(*)::int n from uploads group by 1")).rows)); }
       const pending = (await q("select v.id from videos v where not exists (select 1 from uploads u where u.video_id = v.id)")).rows.map((r) => r.id as string);
       if (pending.length === 0) break;
-      if (Date.now() > deadline) throw new Error(`${pending.length} of ${N_LOAD} videos unfinished\n${await dump(db.pool, pending[0]!)}`);
+      if (Date.now() > deadline) throw new Error(`${pending.length} of ${N_LOAD} videos unfinished\n${await dump(db.pool, pending[0]!)}\n${await uploadState(db.pool, pending[0]!)}`);
       const steps = [];
-      for (const id of pending) steps.push(await ownerStep(w, id));
+      for (const id of pending) {
+        const st = await ownerStep(w, id);
+        await (guards.get(id) ?? guards.set(id, refusalGuard(db.pool, id)).get(id)!)(st);
+        steps.push(st);
+      }
       if (process.env.ENGINE_DEBUG) for (const st of steps) if (st.kind === "gate" && !st.ok) console.error("owner", JSON.stringify(st));
       await new Promise((r) => setTimeout(r, 250));
     }

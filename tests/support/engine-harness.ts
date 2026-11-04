@@ -220,19 +220,53 @@ export async function ownerStep(w: World, videoId: string, o: OwnerOptions = {})
 /** Plays the owner until the upload is done (or the video ends some other way). Returns every action it took. */
 export async function runToUploaded(w: World, videoId: string, o: OwnerOptions = {}, timeoutMs = 120_000): Promise<OwnerStep[]> {
   const taken: OwnerStep[] = [];
-  const deadline = Date.now() + timeoutMs;
+  // One scenario must never eat the whole CI budget: a deadline above 90 s is capped, and a gate the owner keeps being refused fails at once.
+  const deadline = Date.now() + Math.min(timeoutMs, 90_000);
+  const refusals = refusalGuard(w.db.pool, videoId);
   for (;;) {
     if (o.until && (await o.until())) return taken;
     const s = await ownerStep(w, videoId, o);
+    await refusals(s);
     if (s.kind === "gate" || s.kind === "parked") taken.push(s);
     if (s.kind === "parked" && !s.ok) throw new Error(`owner could not resolve parked stage ${s.stageRunId}: ${s.message}\n${await dump(w.db.pool, videoId)}`);
     if (s.kind === "done" || (await uploadStatus(w.db.pool, videoId)) === "uploaded") {
       if ((await uploadStatus(w.db.pool, videoId)) === "uploaded") return taken;
     }
     if ((await w.db.pool.query("select status from videos where id = $1", [videoId])).rows[0]?.status === "cancelled") return taken;
-    if (Date.now() > deadline) throw new Error(`video ${videoId} did not reach uploaded in time; next=${JSON.stringify(await readNextAction(w.db.pool, videoId, approvalReaders))}\n${await dump(w.db.pool, videoId)}`);
+    if (Date.now() > deadline) throw new Error(`video ${videoId} did not reach uploaded in time; next=${JSON.stringify(await readNextAction(w.db.pool, videoId, approvalReaders))}\n${await dump(w.db.pool, videoId)}\n${await uploadState(w.db.pool, videoId)}`);
     await new Promise((r) => setTimeout(r, 60));
   }
+}
+
+/** The upload rows and the latest upload/publish audit rows for a video: what a stuck publish needs to be understood from the log alone. */
+export async function uploadState(db: pg.Pool, videoId: string): Promise<string> {
+  const u = (await db.query("select id, status, failure_reason, attempt, bytes_sent::text from uploads where video_id = $1 order by created_at", [videoId])).rows;
+  const a = (await db.query("select event, detail from audit_log where event like 'upload.%' or event like 'publish.%' order by id desc limit 8")).rows;
+  return JSON.stringify({ uploads: u, audit: a });
+}
+
+/**
+ * Throws as soon as the owner's gate approval has been refused several times in a row with the same sentence (a refusal that
+ * will not change is a harness or product bug, not something to poll for two minutes). `doubleApprove` and stale-hash races
+ * refuse at most once or twice, so they never reach the limit.
+ */
+export function refusalGuard(db: pg.Pool, videoId: string, limit = 6): (s: OwnerStep) => Promise<void> {
+  let last = "";
+  let n = 0;
+  return async (s) => {
+    if (s.kind !== "gate") {
+      if (s.kind !== "idle") n = 0;
+      return;
+    }
+    if (s.ok) {
+      n = 0;
+      last = "";
+      return;
+    }
+    n = s.message === last ? n + 1 : 1;
+    last = s.message;
+    if (n >= limit) throw new Error(`the ${s.gate} gate was refused ${n} times in a row: "${s.message}"\n${await dump(db, videoId)}\n${await uploadState(db, videoId)}`);
+  };
 }
 
 export async function uploadStatus(db: pg.Pool, videoId: string): Promise<string | null> {
