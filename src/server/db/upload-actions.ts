@@ -89,7 +89,6 @@ export async function checkOnYoutube(db: pg.Pool, ring: Keyring | (() => Keyring
   if (actorProblem(actor)) return no(ACTOR_REASON);
   const r = await failedRow(db, uploadId);
   if (!r || r.status !== "upload_failed" || r.youtube_id !== null || !isUnclearReason(r.failure_reason) || !r.row_id) return no("There is nothing to check for this upload.");
-  if (r.ended_ms === null || Number(r.ended_ms) < UNCLEAR_COOLDOWN_MIN * 60_000) return no(`Too soon. YouTube may still be finishing this upload: check again ${UNCLEAR_COOLDOWN_MIN} minutes after it stopped.`);
   // The title that was actually sent (recorded just before the first byte), not whatever the details say now.
   const sentTitle = (await db.query<{ event: string }>("select event from upload_log where upload_id = $1 and event like 'sent_title: %' order by id desc limit 1", [uploadId])).rows[0]?.event;
   const title = sentTitle ? sentTitle.slice("sent_title: ".length) : null;
@@ -128,6 +127,7 @@ export async function checkOnYoutube(db: pg.Pool, ring: Keyring | (() => Keyring
     await recordAudit(db, "upload.checked", { uploadId, sessionId: actor.sessionId, outcome: done ? "found" : "found_not_recorded", youtubeId: id });
     return done ? { ok: true, message: "Found it on YouTube. The upload is marked as done." } : no("Found a matching video but could not record it. Open YouTube Studio.");
   }
+  if (r.ended_ms === null || Number(r.ended_ms) < UNCLEAR_COOLDOWN_MIN * 60_000) return no(`Not found yet, but it is too soon to say. YouTube may still be finishing this upload: check again ${UNCLEAR_COOLDOWN_MIN} minutes after it stopped.`);
   // Record "not found" only if the row is still the very failure this check started from (same attempt, same end time, still
   // failed): a double click, a re-send or a late success in between must not clear anything. Cooldown: Google may still be finishing a request.
   const ins = await db.query(

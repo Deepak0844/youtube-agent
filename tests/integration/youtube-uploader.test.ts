@@ -4,7 +4,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { makeKeyring } from "@/server/core/vault-crypto";
 import { GOOGLE_SCOPES, quotaDay } from "@/server/core/youtube-oauth";
 import { saveOwnGoogleApp } from "@/server/db/google-app";
-import { getSecret } from "@/server/db/vault";
+import { getSecret, hasSecret } from "@/server/db/vault";
+import { FILE_CHANGED_MESSAGE, StoredFileError } from "@/server/storage/hash-file";
 import { completeConnect, confirmChannel, listAccounts, startConnect, type GoogleHttp } from "@/server/db/youtube-channels";
 import type { UploadTarget } from "@/server/providers/uploader";
 import { createYouTubeUploader, sessionSecretName } from "@/server/providers/uploader/youtube";
@@ -108,8 +109,8 @@ describe("youtube uploader", () => {
     expect(putCalls(s).map((c) => [c.headers["content-range"], c.body])).toEqual([["bytes 0-3/10", "0123"], ["bytes 4-7/10", "4567"], ["bytes 8-9/10", "89"]]);
     expect(p.seen[0]).toBe(1);
     expect(p.seen.at(-1)).toBe(10);
-    expect(await getSecret(db.pool, ring, sessionSecretName(UPLOAD))).toBe(SESSION_URI);
-    expect(await logOf()).toEqual(["readback_ok: private"]);
+    expect(await hasSecret(db.pool, sessionSecretName(UPLOAD))).toBe(false); // a clear end deletes the session address
+    expect(await logOf()).toEqual(["sent_title: My title", "readback_ok: private"]);
     // insert (1600) + read-back (1) are reserved before their calls
     expect(Number((await db.ownerPool.query("select units from quota_usage where day = $1", [quotaDay(new Date())])).rows[0].units)).toBe(1601);
   });
@@ -129,12 +130,14 @@ describe("youtube uploader", () => {
   it("a 4xx on a chunk is a clear failed outcome", async () => {
     const s = server({ chunk: (n) => (n === 2 ? reply({ error: { errors: [{ reason: "invalidMetadata" }] } }, 400) : reply("", 308, { range: "bytes=0-3" })) });
     expect(await go(s, target())).toEqual({ kind: "failed", reason: "YouTube refused the title, description or tags" });
+    expect(await hasSecret(db.pool, sessionSecretName(UPLOAD))).toBe(false);
   });
 
   it("a 5xx after bytes started throws (unclear) after reporting progress, and nothing is sent twice", async () => {
     const s = server({ chunk: (n) => (n === 2 ? reply("boom", 503) : reply("", 308, { range: "bytes=0-3" })) });
     const p = progress();
     await expect(go(s, target(), p)).rejects.toThrow(/did not confirm/);
+    expect(await getSecret(db.pool, ring, sessionSecretName(UPLOAD))).toBe(SESSION_URI); // kept for the human check
     expect(p.seen[0]).toBe(1);
     expect(putCalls(s)).toHaveLength(2);
     expect(insertCalls(s)).toHaveLength(1);
@@ -154,10 +157,51 @@ describe("youtube uploader", () => {
   });
 
   it("swapped file bytes fail the upload and the final chunk is never sent", async () => {
-    const bad = () => new Readable({ read() { this.push(BYTES.subarray(0, 9)); this.destroy(new Error("the file changed after it was approved")); } });
+    const bad = () => new Readable({ read() { this.push(BYTES.subarray(0, 9)); this.destroy(new StoredFileError(FILE_CHANGED_MESSAGE)); } });
     const s = server();
     expect(await go(s, target({ stream: bad }))).toMatchObject({ kind: "failed", reason: expect.stringMatching(/changed after it was approved/) });
     expect(putCalls(s).every((c) => !c.headers["content-range"]!.endsWith("-9/10"))).toBe(true);
+  });
+
+  it("a read problem that is not a hash mismatch is not called 'file changed'", async () => {
+    const slow = () => new Readable({ read() { this.push(BYTES.subarray(0, 9)); this.destroy(new StoredFileError("reading the file took too long")); } });
+    const s = server();
+    const out = await go(s, target({ stream: slow }));
+    expect(out).toMatchObject({ kind: "failed", reason: expect.stringMatching(/could not be read/) });
+    expect(JSON.stringify(out)).not.toMatch(/changed/);
+    expect(putCalls(s).every((c) => !c.headers["content-range"]!.endsWith("-9/10"))).toBe(true);
+  });
+
+  it("any answer to the final PUT other than 200/201 is unclear, a 4xx included", async () => {
+    const s = server({ chunk: (n, range) => (range.includes("8-9") ? reply({ error: { errors: [{ reason: "forbidden" }] } }, 403) : reply("", 308, { range: `bytes=0-${n * 4 - 1}` })) });
+    await expect(go(s, target())).rejects.toThrow(/did not confirm/);
+    expect(await hasSecret(db.pool, sessionSecretName(UPLOAD))).toBe(true);
+  });
+
+  it("stops before the final chunk when the recheck says no (clear failure, nothing finalised, session deleted)", async () => {
+    const s = server();
+    const t = { ...target(), preFinal: async () => "approval_changed" };
+    expect(await go(s, t)).toMatchObject({ kind: "failed", reason: expect.stringMatching(/approval changed/) });
+    expect(putCalls(s).every((c) => !c.headers["content-range"]!.endsWith("-9/10"))).toBe(true);
+    expect(await hasSecret(db.pool, sessionSecretName(UPLOAD))).toBe(false);
+  });
+
+  it("keeps reporting progress while a request is in flight (a long final PUT is not a stall)", async () => {
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    const s = server();
+    const base = s.http;
+    s.http = async (url, init) => {
+      if (init?.method === "PUT" && (init.headers as Record<string, string>)["content-range"]?.includes("8-9")) await hold;
+      return base(url, init);
+    };
+    const p = progress();
+    const pending = createYouTubeUploader({ pool: db.pool, ring, http: s.http, chunkBytes: 4, heartbeatMs: 10 }).upload(UPLOAD, p.fn, new AbortController().signal, target());
+    await new Promise((r) => setTimeout(r, 150));
+    const during = p.seen.length;
+    release();
+    expect(await pending).toEqual({ kind: "uploaded", youtubeId: "vid123" });
+    expect(during).toBeGreaterThan(4); // 1, 4, 8 and several heartbeats
   });
 
   it("refuses without quota: nothing is called at YouTube", async () => {
@@ -170,7 +214,7 @@ describe("youtube uploader", () => {
   it("records what YouTube kept when it is not what was approved (still a success: the video exists)", async () => {
     const s = server({ list: () => reply({ items: [{ status: { privacyStatus: "private" } }] }) });
     expect(await go(s, target({ visibility: "public" }))).toEqual({ kind: "uploaded", youtubeId: "vid123" });
-    expect(await logOf()).toEqual(["privacy_mismatch: approved=public reported=private"]);
+    expect(await logOf()).toEqual(["sent_title: My title", "privacy_mismatch: approved=public reported=private"]);
   });
 
   it("a session address outside googleapis.com is refused and no bytes go there", async () => {
