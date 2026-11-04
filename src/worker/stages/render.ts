@@ -5,6 +5,7 @@ import { approvedScript } from "@/server/db/stage-content";
 import { validateScenes, type SceneDoc } from "@/shared/scene";
 import { retimeScenes } from "@/shared/scene/retime";
 import { retimeScale3d, validateScale3d, type Scale3dScene } from "@/shared/scale3d";
+import type { Renderer } from "@/server/providers/renderer";
 import { openRegular, promotedPath, type AttemptHandler } from "./attempt";
 import { contentBody, loadVideo, SIZE, type StageDeps } from "./deps";
 import { audioSeconds } from "./voice-audio";
@@ -38,6 +39,27 @@ export async function readScenesFile(file: string): Promise<SceneDoc> {
 /** A 3D scene is drawn in software (no graphics card in the container) and takes about 5 minutes; below this the render would be killed half way. */
 export const SCALE3D_MIN_RENDER_TIMEOUT_S = 900;
 
+/**
+ * Which renderer draws a 3D video: the native Mac renderer only when render.native_3d is on AND its preflight says ready;
+ * otherwise the container, exactly as before, with the reason logged. A native render that fails is NOT retried in the
+ * container (the owner decides, by switching the setting off).
+ */
+async function scale3dRenderer(deps: StageDeps, ctx: Parameters<AttemptHandler>[0]): Promise<{ renderer: Renderer; native: boolean }> {
+  const container = { renderer: deps.renderer, native: false };
+  if (!ctx.config.render.native3d) return container;
+  if (!deps.native) {
+    ctx.log("render: native 3D rendering is switched on but this worker has no native renderer; using the Docker renderer");
+    return container;
+  }
+  const ready = await deps.native.ready().catch(() => ({ ready: false, message: "The readiness check failed." }));
+  if (!ready.ready) {
+    ctx.log(`render: native 3D rendering is switched on but not available (${ready.message.slice(0, 300)}) Using the Docker renderer.`);
+    return container;
+  }
+  if (ctx.config.render.nativeTimeoutS > ctx.config.timeoutStageS) ctx.log(`render: the native limit (${ctx.config.render.nativeTimeoutS} s) is longer than the stage limit (${ctx.config.timeoutStageS} s), which stops the render first`);
+  return { renderer: deps.native.renderer, native: true };
+}
+
 /** Reads and validates scale3d.json (same file rules as scenes.json). */
 export async function readScale3dFile(file: string): Promise<Scale3dScene> {
   const fh = await openRegular(file).catch(() => {
@@ -69,7 +91,9 @@ export async function readScale3dFile(file: string): Promise<Scale3dScene> {
 export function renderAttempt(deps: StageDeps): AttemptHandler {
   return async (ctx) => {
     const video = await loadVideo(deps.db, ctx);
-    if (video.kind === "scale3d" && ctx.config.render.timeoutS < SCALE3D_MIN_RENDER_TIMEOUT_S) {
+    const scale3d = video.kind === "scale3d" ? await scale3dRenderer(deps, ctx) : null;
+    // The 900 s minimum is about the container's software drawing; the native Mac render has its own limit (render.native_timeout_s).
+    if (scale3d && !scale3d.native && ctx.config.render.timeoutS < SCALE3D_MIN_RENDER_TIMEOUT_S) {
       throw new KnownFailure(
         `Raise render.timeout_s ("Render time limit, seconds") in Settings to at least ${SCALE3D_MIN_RENDER_TIMEOUT_S}: a 3D scale video needs about 5 minutes to render and the limit is ${ctx.config.render.timeoutS} s, so it would be stopped half way. Nothing was rendered.`,
       );
@@ -79,7 +103,7 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
     const audioFile = await promotedPath(deps.root, video.id, narration.file);
     if (!(await isFile(audioFile))) throw new KnownFailure(`The file ${narration.file} from an earlier stage is missing. Run that stage again.`);
 
-    if (video.kind === "scale3d") return renderScale3d(deps, ctx, video, audioFile);
+    if (video.kind === "scale3d") return renderScale3d(scale3d!.renderer, deps, ctx, video, audioFile);
 
     const scenesFile = await promotedPath(deps.root, video.id, "scenes.json");
     let sceneFile = scenesFile;
@@ -125,7 +149,7 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
 }
 
 /** Render for a scale3d video: the checked description, re-timed to the real word times, through the same renderer and folder rules. */
-async function renderScale3d(deps: StageDeps, ctx: Parameters<AttemptHandler>[0], video: Awaited<ReturnType<typeof loadVideo>>, audioFile: string) {
+async function renderScale3d(renderer: Renderer, deps: StageDeps, ctx: Parameters<AttemptHandler>[0], video: Awaited<ReturnType<typeof loadVideo>>, audioFile: string) {
   const sceneFile = await promotedPath(deps.root, video.id, "scale3d.json");
   let scene = await readScale3dFile(sceneFile);
   const captions = await contentBody<{ words?: unknown }>(deps.db, video.id, "captions").catch(() => null);
@@ -144,7 +168,7 @@ async function renderScale3d(deps: StageDeps, ctx: Parameters<AttemptHandler>[0]
   } catch (e) {
     ctx.log(`render: 3D beats not re-timed, original timing kept (${e instanceof Error ? e.message : "unknown"})`.slice(0, 300));
   }
-  const r = await deps.renderer.render(ctx, {
+  const r = await renderer.render(ctx, {
     sceneFile, scale3d: scene, audioFile, videoId: video.id, style: video.style, captionStyle: video.captionStyle, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: SIZE,
   });
   if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");

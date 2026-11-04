@@ -23,6 +23,8 @@ import { createImageFor } from "@/server/providers/image/wire";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
 import { createContainerRenderer, resolveRenderImage, sweepRenderContainers } from "@/server/providers/renderer/remotion-container";
+import { createNativeRenderer } from "@/server/providers/renderer/remotion-native";
+import { checkNativeRenderReady } from "@/server/providers/renderer/native-preflight";
 import { createTsxRenderer } from "@/server/providers/renderer/tsx-render";
 import { isWorkerAlive } from "@/server/db/child-processes";
 import type { WorkerHooks } from "./runtime";
@@ -144,6 +146,14 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
       assetFile: async (id) => { const a = await getAsset(pool, id); return a && !a.deletedAt && (a.kind === "image" || a.kind === "video") ? a.storageRef : null; },
       probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
     }),
+    // 3D videos on this Mac's GPU, inside sandbox-exec (remotion-native.ts). Used only when render.native_3d is on and the preflight is ready.
+    native: {
+      renderer: createNativeRenderer({
+        root, kitDir: renderKitDir(), runChild: run, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
+        preflight: () => checkNativeRenderReady({ repoRoot: path.resolve(renderKitDir(), "..", ".."), storageRoot: root }),
+      }),
+      ready: () => checkNativeRenderReady({ repoRoot: path.resolve(renderKitDir(), "..", ".."), storageRoot: root }),
+    },
   };
 }
 
