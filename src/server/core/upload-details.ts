@@ -17,10 +17,14 @@ export interface UploadDetails {
   synthetic_content: boolean;
 }
 
-const LANG_RE = /^([a-z]{2,3}(-[A-Za-z0-9]{2,8})?)?$/;
+const LANG_RE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/;
 // NUL and other control characters (tab, line feed and carriage return are fine in a description only).
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const LINE_BREAK = /[\r\n\t]/;
+// Title and tags: also line/paragraph separators, NEL, bidi controls and zero-width characters (they hide or reorder text).
+const HIDDEN = /[\u0085\u2028\u2029\u202a-\u202e\u2066-\u2069\u200b-\u200d\ufeff]/;
+// YouTube counts a tag that contains a space with quotes around it, and the commas between tags.
+const tagChars = (tags: readonly string[]): number => tags.reduce((n, t) => n + chars(t) + (t.includes(" ") ? 2 : 0), 0) + Math.max(0, tags.length - 1);
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const chars = (s: string): number => [...s].length;
 
@@ -34,12 +38,13 @@ export function validateUploadDetails(raw: unknown): { ok: true; value: UploadDe
   else {
     if (chars(title) > TITLE_MAX) problems.push(`the title is over ${TITLE_MAX} characters`);
     if (/[<>]/.test(title)) problems.push("the title cannot contain < or >");
-    if (CONTROL.test(title) || LINE_BREAK.test(title)) problems.push("the title must be one plain line");
+    if (CONTROL.test(title) || LINE_BREAK.test(title) || HIDDEN.test(title)) problems.push("the title must be one plain line");
   }
   if (typeof raw.description !== "string") problems.push("the description is missing");
   else {
     if (Buffer.byteLength(description, "utf8") > DESCRIPTION_MAX_BYTES) problems.push(`the description is over ${DESCRIPTION_MAX_BYTES} bytes`);
     if (CONTROL.test(description)) problems.push("the description has characters that are not allowed");
+    if (/[<>]/.test(description)) problems.push("the description cannot contain < or >");
   }
   const tags: string[] = [];
   if (!Array.isArray(raw.tags)) problems.push("tags must be a list");
@@ -48,10 +53,10 @@ export function validateUploadDetails(raw: unknown): { ok: true; value: UploadDe
       const s = typeof t === "string" ? t.trim() : "";
       if (s === "") continue;
       if (/[<>]/.test(s)) problems.push("tags cannot contain < or >");
-      else if (CONTROL.test(s) || LINE_BREAK.test(s) || s.includes(",")) problems.push("a tag cannot contain a comma, line break or control character");
+      else if (CONTROL.test(s) || LINE_BREAK.test(s) || HIDDEN.test(s) || s.includes(",")) problems.push("a tag cannot contain a comma, line break or control character");
       else tags.push(s);
     }
-    if (tags.join(",").length > TAGS_MAX_CHARS) problems.push(`the tags are over ${TAGS_MAX_CHARS} characters in total`);
+    if (tagChars(tags) > TAGS_MAX_CHARS) problems.push(`the tags are over ${TAGS_MAX_CHARS} characters in total`);
   }
   const cat = raw.category_id;
   if (typeof cat !== "number" || !Number.isInteger(cat) || cat < 1 || cat > 99) problems.push("the category must be a number from 1 to 99");
@@ -64,6 +69,12 @@ export function validateUploadDetails(raw: unknown): { ok: true; value: UploadDe
     ok: true,
     value: { title, description, tags, category_id: cat as number, language: lang as string, made_for_kids: raw.made_for_kids as boolean, synthetic_content: raw.synthetic_content as boolean },
   };
+}
+
+/** Publish approval: the full set of details must be saved and valid (older rows with only a title are refused). */
+export function approvalDetailsProblem(body: unknown): string | null {
+  const r = validateUploadDetails(body);
+  return r.ok ? null : `save the upload details first (Titles tab): ${r.problems[0]}`;
 }
 
 /** The first problem with the upload-detail fields of a stored metadata body, or null. Bodies without any of them (older rows) pass. */

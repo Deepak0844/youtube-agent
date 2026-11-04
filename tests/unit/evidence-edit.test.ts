@@ -37,12 +37,14 @@ describe("evidenceVerified", () => {
     expect(evidenceVerified({ claims: [], verification: { ...good.verification } })).toBe(false);
     expect(evidenceVerified(null)).toBe(false);
   });
-  it("only an explicit false switches the publish check off; file-only bodies are not claim based", () => {
+  it("only an explicit false switches the publish check off; a body that is not an object is refused too", () => {
     expect(evidenceVerificationProblem(true, { claims })).toMatch(/verified/);
     expect(evidenceVerificationProblem(undefined, { claims })).toMatch(/verified/);
     expect(evidenceVerificationProblem(false, { claims })).toBeNull();
     expect(evidenceVerificationProblem(true, good)).toBeNull();
-    expect(evidenceVerificationProblem(true, null)).toBeNull();
+    expect(evidenceVerificationProblem(true, null)).toMatch(/verified/);
+    expect(evidenceVerificationProblem(undefined, null)).toMatch(/verified/);
+    expect(evidenceVerificationProblem(false, null)).toBeNull();
   });
 });
 

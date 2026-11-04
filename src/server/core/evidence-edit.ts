@@ -49,10 +49,10 @@ export function evidenceVerified(body: unknown): boolean {
   return claims !== null && claims.length > 0 && isObj(v) && v.ok === true && v.by === "owner" && v.claims_sha === claimsSha(claims);
 }
 
-/** Does the publish approval have to refuse for lack of verification? Claim-based evidence must be verified; a file-only body is not checked here. */
+/** Does the publish approval have to refuse for lack of verification? Claim-based evidence must be verified; a body that is not claims (a file-only row) is refused too. */
 export function evidenceVerificationProblem(requireEvidence: unknown, body: unknown): string | null {
   if (requireEvidence === false) return null;
-  if (!isObj(body)) return null;
+  if (!isObj(body)) return "the evidence must be claims that are verified (Evidence tab: Save and verify) before publishing";
   return evidenceVerified(body) ? null : "the evidence must be verified (Evidence tab: Save and verify) before publishing";
 }
 

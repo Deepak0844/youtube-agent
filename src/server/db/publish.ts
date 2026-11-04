@@ -2,6 +2,7 @@ import type pg from "pg";
 import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { metadataProblem, publishPolicyProblem, visibilityProblem, type Visibility } from "@/server/core/publish-rules";
 import { channelUploadProblem } from "@/server/core/channel-safety";
+import { approvalDetailsProblem } from "@/server/core/upload-details";
 import { evidenceVerificationProblem } from "@/server/core/evidence-edit";
 import { uuidv7 } from "@/server/core/ids";
 import { APPROVAL_SESSION_VALID_SQL, approvalState, approveGateWith, readSnapshot, type ContentVersions } from "@/server/db/approvals";
@@ -124,7 +125,7 @@ export async function approvePublish(db: pg.Pool, queue: Pick<UploadQueue, "enqu
       const meta = snap.inputs.content.metadata;
       const video = snap.inputs.content.video;
       if (!meta || !video) return "nothing to approve yet";
-      const problem = metadataProblem(meta.body);
+      const problem = metadataProblem(meta.body) ?? approvalDetailsProblem(meta.body);
       if (problem) return problem;
       const body = meta.body as Record<string, unknown>;
       // What the owner saw must be what is stored; the hash already covers these, so a mismatch is a caller bug or a replay.
