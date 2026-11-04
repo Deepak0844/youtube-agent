@@ -1,6 +1,6 @@
 // Camera path across shots: one smooth glide, no stop-and-go. Pure maths.
 // Each shot gives two poses (a start pose and a pushed-in end pose). The camera passes through them as a Hermite spline with
-// Catmull-Rom tangents (so the velocity is continuous at every key, including across shot cuts), starts and ends at rest.
+// monotone (Fritsch-Carlson) tangents: velocity is continuous at every key, including across shot cuts; no overshoot; rest at both ends.
 import type { Scene3d, Scene3dShot } from "../../../src/shared/scene3d/schema";
 import { focusBox } from "./bounds";
 import type { V3 } from "./bounds";
@@ -26,13 +26,13 @@ export function shotPoses(scene: Pick<Scene3d, "world" | "elements">, shot: Scen
   return [base, end];
 }
 
-/** Keys at 15% and 85% of every shot; holds before the first and after the last. */
+/** Keys at 30% and 70% of every shot (the drift inside a shot, then a long glide into the next one); holds before the first and after the last. */
 export function cameraKeys(scene: Pick<Scene3d, "world" | "elements" | "shots">, aspect: number, safe?: Safe): CamKey[] {
   const keys: CamKey[] = [];
   let t0 = 0;
   for (const shot of scene.shots) {
     const [a, b] = shotPoses(scene, shot, aspect, safe);
-    keys.push({ t: t0 + shot.duration_s * 0.15, ...a }, { t: t0 + shot.duration_s * 0.85, ...b });
+    keys.push({ t: t0 + shot.duration_s * 0.3, ...a }, { t: t0 + shot.duration_s * 0.7, ...b });
     t0 += shot.duration_s;
   }
   return keys;
@@ -57,9 +57,16 @@ function sample(keys: readonly CamKey[], t: number, pick: (k: CamKey) => V3): V3
   const u = (t - k0.t) / h;
   const tangent = (j: number, axis: number): number => {
     if (j <= 0 || j >= keys.length - 1) return 0; // at rest at the very ends
-    const a = pick(keys[j - 1]!)[axis]!;
-    const b = pick(keys[j + 1]!)[axis]!;
-    return (b - a) / (keys[j + 1]!.t - keys[j - 1]!.t);
+    // Monotone cubic (Fritsch-Carlson) tangent: the velocity is continuous everywhere, and the path never overshoots a key, so a long
+    // move between shots cannot swing the camera through the scene.
+    const h0 = keys[j]!.t - keys[j - 1]!.t;
+    const h1 = keys[j + 1]!.t - keys[j]!.t;
+    const d0 = (pick(keys[j]!)[axis]! - pick(keys[j - 1]!)[axis]!) / h0;
+    const d1 = (pick(keys[j + 1]!)[axis]! - pick(keys[j]!)[axis]!) / h1;
+    if (d0 * d1 <= 0) return 0;
+    const w0 = 2 * h1 + h0;
+    const w1 = h1 + 2 * h0;
+    return (w0 + w1) / (w0 / d0 + w1 / d1);
   };
   const out = [0, 0, 0] as V3;
   for (let ax = 0; ax < 3; ax++) out[ax] = hermite(pick(k0)[ax]!, pick(k1)[ax]!, tangent(i - 1, ax), tangent(i, ax), u, h);

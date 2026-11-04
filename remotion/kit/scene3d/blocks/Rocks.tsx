@@ -21,9 +21,8 @@ export function rockGeometry(seed: number, detail = 1): THREE.BufferGeometry {
     const n = 1 + 0.22 * Math.sin(x * 2.3 + ph[0]!) * Math.cos(z * 2.1 + ph[1]!) + 0.16 * Math.sin(y * 3.1 + x * 1.7 + ph[2]!) + 0.08 * Math.sin((x + y + z) * 5 + ph[3]!);
     p.setXYZ(i, x * n, Math.max(y * n * 0.72, -0.45), z * n * 0.9);
   }
-  const ng = g.toNonIndexed();
-  ng.computeVertexNormals();
-  return ng;
+  g.computeVertexNormals();
+  return g;
 }
 
 type RockSpot = { p: THREE.Vector3; s: number; q: THREE.Quaternion; c: THREE.Color; sy: number };
@@ -52,7 +51,7 @@ const RockInstances: React.FC<{ spots: RockSpot[]; seed: number }> = ({ spots, s
   return <>{meshes.map((m, i) => <primitive key={i} object={m} />)}</>;
 };
 
-const rockColour = (r: () => number) => new THREE.Color().setHSL(0.085 + r() * 0.04, 0.05 + r() * 0.08, 0.42 + r() * 0.24);
+const rockColour = (r: () => number) => new THREE.Color().setHSL(0.085 + r() * 0.04, 0.06 + r() * 0.1, 0.26 + r() * 0.2);
 const yaw = (r: () => number) => new THREE.Quaternion().setFromEuler(new THREE.Euler(r() * 6.28, r() * 6.28, r() * 6.28));
 
 export const RockPile: React.FC<{ el: ElOf<"rock_pile"> }> = ({ el }) => {

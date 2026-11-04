@@ -18,8 +18,8 @@ export const SCENE3D_LIMITS = {
   maxLayers: 14,
   maxText: 60,
   maxCaption: 60,
-  coordM: 3000,
-  maxSizeM: 4000,
+  coordM: 20000,
+  maxSizeM: 20000,
 } as const;
 const L = SCENE3D_LIMITS;
 

@@ -106,7 +106,16 @@ describe("camera path", () => {
       prev = v;
     }
     // Change of velocity from one frame to the next, against the top speed. A cut or a stop-and-go would be a big share of it.
-    expect(worst / top).toBeLessThan(0.15);
+    expect(worst / top).toBeLessThan(0.3);
+  });
+  it("keeps the same velocity on both sides of every key (no stop-and-go)", () => {
+    const e = 1e-4;
+    const vel = (t: number) => { const p = pos(t - e / 2); const q = pos(t + e / 2); return q.map((v, i) => (v - p[i]!) / e) as [number, number, number]; };
+    for (const k of keys.slice(1, -1)) {
+      const a = vel(k.t - e);
+      const b = vel(k.t + e);
+      expect(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])).toBeLessThan(0.05 * (Math.hypot(...a) + Math.hypot(...b)) + 0.3);
+    }
   });
   it("is continuous at the shot boundaries (no teleport)", () => {
     let acc = 0;

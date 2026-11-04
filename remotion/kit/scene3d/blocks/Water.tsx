@@ -38,7 +38,7 @@ const WAVES = `
   }`;
 
 export const Water: React.FC<{ el: ElOf<"water"> }> = ({ el }) => {
-  const { scene, t, sunDir } = useBlock();
+  const { scene, t, sunDir, fog } = useBlock();
   const [W, D] = el.size_m;
   const sky = SKY[scene.world.sky];
   const key = useRef("");
@@ -84,7 +84,7 @@ export const Water: React.FC<{ el: ElOf<"water"> }> = ({ el }) => {
       uSun: { value: sunDir.clone() },
       uSunCol: { value: new THREE.Color(sky.sun) },
       uFogCol: { value: new THREE.Color(sky.fog) },
-      uFog: { value: new THREE.Vector2(scene.world.fog?.near_m ?? 120, scene.world.fog?.far_m ?? 700) },
+      uFog: { value: new THREE.Vector2(fog.near, fog.far) },
     },
     vertexShader: `${WAVES}
       uniform float uTime; varying vec3 vW; varying vec3 vN;
@@ -108,16 +108,16 @@ export const Water: React.FC<{ el: ElOf<"water"> }> = ({ el }) => {
         vec3 V = normalize(cameraPosition - vW);
         // fine ripples on top of the big waves
         vec2 p = vW.xz;
-        vec2 rip = vec2(vnoise(p*1.6 + uTime*0.35) - 0.5, vnoise(p*1.6 + 7.3 - uTime*0.3) - 0.5) * 0.28
-                 + vec2(vnoise(p*4.1 - uTime*0.6) - 0.5, vnoise(p*4.1 + 3.1 + uTime*0.5) - 0.5) * 0.12;
+        vec2 rip = vec2(vnoise(p*0.7 + uTime*0.25) - 0.5, vnoise(p*0.7 + 7.3 - uTime*0.2) - 0.5) * 0.22
+                 + vec2(vnoise(p*2.0 - uTime*0.4) - 0.5, vnoise(p*2.0 + 3.1 + uTime*0.35) - 0.5) * 0.07;
         vec3 N = normalize(vN + vec3(rip.x, 0.0, rip.y));
         float fres = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
-        vec3 body = mix(uShallow, uDeep, 1.0 - exp(-depth * 0.22));
+        vec3 body = mix(uShallow, uDeep, (1.0 - exp(-depth * 0.12)) * 0.8);
         vec3 R = reflect(-V, N);
         vec3 refl = mix(uHor, uTop, clamp(R.y * 1.4, 0.0, 1.0));
-        vec3 col = mix(body, refl, clamp(fres * 0.85, 0.0, 1.0));
+        vec3 col = mix(body, mix(refl, uHor, 0.5), clamp(fres * 0.5, 0.0, 0.6));
         float sp = pow(max(dot(R, normalize(uSun)), 0.0), 260.0);
-        col += uSunCol * sp * 1.8;
+        col += uSunCol * sp * 0.9;
         // shoreline foam: soft band where the water is thin, with drifting lacy pattern
         float shore = 1.0 - smoothstep(0.0, 1.3, depth);
         float lace = vnoise(p*2.2 + vec2(uTime*0.25, -uTime*0.18)) * 0.6 + vnoise(p*6.0 - uTime*0.3) * 0.4;
@@ -125,13 +125,14 @@ export const Water: React.FC<{ el: ElOf<"water"> }> = ({ el }) => {
         foam += (1.0 - smoothstep(0.0, 0.18, depth)) * 0.9;
         foam = clamp(foam, 0.0, 1.0);
         col = mix(col, vec3(1.0), foam * 0.9);
-        float a = mix(0.42, 0.95, 1.0 - exp(-depth * 0.5)) + fres * 0.25;
+        float a = mix(0.5, 0.9, 1.0 - exp(-depth * 0.5)) + fres * 0.15;
         a = max(a, foam * 0.92) * (1.0 - land);
         float d = length(cameraPosition - vW);
         col = mix(col, uFogCol, smoothstep(uFog.x, uFog.y, d));
         gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
       }`,
-  }), [common, el.shallow_color, el.deep_color, sky, sunDir, scene.world.fog?.near_m, scene.world.fog?.far_m]);
+  }), [common, el.shallow_color, el.deep_color, sky, sunDir]);
+  surface.uniforms.uFog!.value.set(fog.near, fog.far);
 
   // Floor: colour by closeness to shore (sand to teal to blue) and moving caustics that fade with depth.
   const floor = useMemo(() => {

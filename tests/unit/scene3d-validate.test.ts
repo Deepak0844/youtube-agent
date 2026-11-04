@@ -45,6 +45,7 @@ describe("scene format v2 validator", () => {
     expect(errorsOf(s).join(" ")).toContain('"nope", which is not in the element list');
     const t = clone();
     delete t.shots[0].focus;
+    delete t.shots[0].free;
     expect(errorsOf(t).join(" ")).toContain("neither a focus element nor a free camera");
   });
 

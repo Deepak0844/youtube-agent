@@ -10,6 +10,10 @@ export type BlockCtx = {
   /** Loaded glTF roots by model key; null = failed to load (blocks draw a stand-in). */
   models: Record<string, THREE.Object3D | null>;
   sunDir: THREE.Vector3;
+  /** Height of the (first) water surface; -Infinity when the scene has none. */
+  waterY: number;
+  /** Haze distances this frame (they widen with the camera distance so a far shot is not whited out). */
+  fog: { near: number; far: number };
   /** Quality knob for previews: 1 = full. */
   quality: number;
 };

@@ -50,7 +50,7 @@ export const SandPile: React.FC<{ el: ElOf<"sand_pile"> }> = ({ el }) => {
 
 /** `from` is the nozzle in world metres; the stream block lives in the pile's local frame, so the Engine passes the placement offset through `useBlock().scene`. */
 const PourStream: React.FC<{ from: [number, number, number]; top: number; progress: number; color: string }> = ({ from, top, progress, color }) => {
-  const { t } = useBlock();
+  const { t, waterY } = useBlock();
   const pileOrigin = useOrigin();
   const parts = useMemo(() => {
     const g = new THREE.IcosahedronGeometry(0.11, 0);
@@ -89,6 +89,8 @@ const PourStream: React.FC<{ from: [number, number, number]; top: number; progre
     parts.setMatrixAt(i, m4);
   }
   parts.instanceMatrix.needsUpdate = true;
+  const wet = dst.y + pileOrigin[1] < waterY; // the pile is still under the surface: the stream lands in the sea
+  const hit = new THREE.Vector3(dst.x, wet ? waterY - pileOrigin[1] : dst.y, dst.z);
   const puffs = [0, 1, 2, 3].map((k) => {
     const ph = (t * 0.7 + k / 4) % 1;
     return { ph, o: (1 - ph) * 0.5 * fade, sc: 3 + ph * 7 };
@@ -97,9 +99,9 @@ const PourStream: React.FC<{ from: [number, number, number]; top: number; progre
     <group>
       <primitive object={parts} />
       {puffs.map((pf, k) => (
-        <mesh key={k} position={[dst.x + Math.sin(k * 2.1) * 0.8, dst.y + 0.2 + pf.ph * 0.8, dst.z + Math.cos(k * 1.7) * 0.8]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={4} userData={{ noAO: true }}>
+        <mesh key={k} position={[hit.x + Math.sin(k * 2.1) * 0.8, hit.y + 0.2 + pf.ph * 0.8, hit.z + Math.cos(k * 1.7) * 0.8]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={4} userData={{ noAO: true }}>
           <planeGeometry args={[pf.sc, pf.sc]} />
-          <meshBasicMaterial map={dust} color="#d8c08a" transparent opacity={pf.o} depthWrite={false} />
+          <meshBasicMaterial map={dust} color={wet ? "#ffffff" : "#d8c08a"} transparent opacity={pf.o} depthWrite={false} />
         </mesh>
       ))}
     </group>

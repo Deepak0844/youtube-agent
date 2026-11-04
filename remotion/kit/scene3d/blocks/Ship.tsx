@@ -58,6 +58,11 @@ export function hullGeometry(): THREE.BufferGeometry {
     const c = a + M + 1;
     idx.push(a, b, c, b, c + 1, c);
   }
+  // transom: close the stern with a fan from the section's mid-deck point
+  const centre = pos.length / 3;
+  pos.push(STERN, DECK, 0);
+  col.push(1, 1, 1);
+  for (let j = 0; j < M; j++) idx.push(centre, j + 1, j);
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));

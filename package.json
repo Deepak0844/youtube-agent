@@ -35,7 +35,7 @@
     "kit:sheet": "node scripts/kit-sheet.mjs",
     "kit:preview": "tsx scripts/kit-preview.ts",
     "kit:video": "tsx scripts/kit-video.ts",
-    "scene3d:stills": "tsx scripts/scene3d-stills.ts",
+    "scene3d:stills": "tsx scripts/scene3d-stills.mts",
     "image:render": "docker build -f infra/Dockerfile.render -t ytstudio-render:dev .",
     "test:ui": "playwright test --project=ui-desktop --project=ui-phone",
     "image:egress-proxy": "docker build -f infra/Dockerfile.egress-proxy -t ytstudio-egress-proxy:dev ."

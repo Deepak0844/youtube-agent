@@ -39,7 +39,7 @@ export function slabGeometry(w: number, h: number, d: number, ramp: number, tile
     const dx = b[0] - a[0];
     const dy = b[1] - a[1];
     const len = Math.hypot(dx, dy);
-    const n = [dy / len, -dx / len, 0]; // outward for a counter-clockwise polygon is (dy, -dx)
+    const n = [-dy / len, dx / len, 0]; // the polygon runs clockwise seen from +z, so outward is (-dy, dx)
     const top = a[1] === 0 && b[1] === 0;
     const slope = dy !== 0 && dx !== 0;
     const bottom = a[1] === -h && b[1] === -h;

@@ -129,11 +129,13 @@ const Engine: React.FC<{ scene: Scene3d; t: number; models: Record<string, THREE
   cam.updateProjectionMatrix();
   cam.updateMatrixWorld();
   const sunDir = useMemo(() => sunDirection(scene.world.sun.azimuth_deg, scene.world.sun.elevation_deg), [scene.world.sun]);
-  const ctx: BlockCtx = { scene, t, groundAt, models, sunDir, quality: 1 };
+  const camDist = Math.hypot(pose.position[0] - pose.target[0], pose.position[1] - pose.target[1], pose.position[2] - pose.target[2]);
+  const fog = { near: Math.max(scene.world.fog?.near_m ?? 120, camDist * 0.9), far: Math.max(scene.world.fog?.far_m ?? 700, camDist * 4.5) };
+  const ctx: BlockCtx = { scene, t, groundAt, models, sunDir, waterY: water && water.kind === "water" ? water.level_y : -Infinity, fog, quality: 1 };
   const span = Math.hypot(pose.position[0] - pose.target[0], pose.position[1] - pose.target[1], pose.position[2] - pose.target[2]) * 0.75;
   return (
     <BlockContext.Provider value={ctx}>
-      <Atmosphere world={scene.world} focus={pose.target} span={span} />
+      <Atmosphere world={scene.world} focus={pose.target} span={span} fog={fog} />
       {scene.elements.map((el) => <Placed key={el.id} el={el} ctx={ctx} />)}
       <Post settings={post} />
     </BlockContext.Provider>
