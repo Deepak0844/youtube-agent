@@ -39,6 +39,8 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
   "src/server/db/queue-data.ts": ["getSetting"],
   // Reads the assets.* upload limits for the upload route and the ingest job; never writes.
   "src/server/db/ingest-jobs.ts": ["getSetting"],
+  // Reads uploads.kill_switch and comments.dry_run for the reply post checks and the Engagement banner; never writes.
+  "src/server/db/comments.ts": ["getSetting"],
   "src/worker/stages/voice-for.ts": ["getSetting"],
   "src/server/llm/default-deps.ts": ["getSetting"],
 };

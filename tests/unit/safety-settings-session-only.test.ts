@@ -102,6 +102,7 @@ describe("no code path in src writes a safety setting as anything but a session"
       "src/server/db/upload-actions.ts": ["getSetting"],
       "src/server/db/queue-data.ts": ["getSetting"],
       "src/server/db/ingest-jobs.ts": ["getSetting"],
+      "src/server/db/comments.ts": ["getSetting"],
       "src/worker/stages/voice-for.ts": ["getSetting"],
       "src/server/llm/default-deps.ts": ["getSetting"],
     });
