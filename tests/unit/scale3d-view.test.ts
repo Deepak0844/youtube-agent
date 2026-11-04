@@ -21,7 +21,7 @@ describe("scale3dSummary", () => {
     if (!r.ok) throw new Error("expected ok");
     expect(r.summary.beats.map((b) => b.startS)).toEqual([0, 12]);
     expect(r.summary.beats[1]).toMatchObject({ focus: "Tower", rangeLabel: "0 to 828 m" });
-    expect(r.summary.beats[0].rangeLabel).toBe("whole object");
+    expect(r.summary.beats[0]?.rangeLabel).toBe("whole object");
     expect(r.summary.totalS).toBe(22);
     expect(r.summary.loop).toBe(true);
     expect(r.summary.objects.map((o) => o.claimKind)).toEqual(["computed", "sourced"]);
