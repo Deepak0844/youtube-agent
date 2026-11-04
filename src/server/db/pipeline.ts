@@ -324,7 +324,7 @@ export { inTx };
 export async function readNextAction(db: pg.Pool, videoId: string, readers: PipelineReaders = NO_DECISIONS): Promise<Action | null> {
   const c = await db.connect();
   try {
-    const r = await c.query<VideoLocked>("select id, format, kind, kind_origin, language, topic, notes, status, stage_nonces from videos where id = $1", [videoId]);
+    const r = await c.query<VideoLocked>("select id, format, kind, kind_origin, language, topic, notes, style, caption_style, status, stage_nonces from videos where id = $1", [videoId]);
     const v = r.rows[0];
     if (!v || !LIVE_VIDEO.includes(v.status)) return null;
     return nextActions(await buildView(c, v, readers))[0] ?? null;
