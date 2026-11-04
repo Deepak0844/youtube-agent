@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadCatalog } from "@/shared/assets3d/catalog";
-import { checkFile, sha256Hex } from "@/shared/assets3d/files";
+import { acceptPacked, checkFile, judgePacked, sha256Hex, sourceHash } from "@/shared/assets3d/files";
 
 const model = (over: Record<string, unknown> = {}) => ({
   kind: "model",
@@ -19,6 +19,7 @@ const model = (over: Record<string, unknown> = {}) => ({
   license_evidence: 'page shows "Public Domain (CC0)"',
   file: "ship_a.glb",
   sha256: "a".repeat(64),
+  source_sha256: "a".repeat(64),
   bytes: 100,
   bounds_m: { x: 20, y: 30, z: 100 },
   up_axis: "y",
@@ -47,6 +48,10 @@ describe("loadCatalog", () => {
     expect(() => loadCatalog(wrap(model({ license_evidence: "" })))).toThrow();
     expect(() => loadCatalog(wrap(model({ tags: ["Ship"] })))).toThrow();
     expect(() => loadCatalog(wrap(model({ sha256: "xyz" })))).toThrow();
+  });
+
+  it("requires source_sha256", () => {
+    expect(() => loadCatalog(wrap(model({ source_sha256: undefined })))).toThrow();
   });
 
   it("models need real-world bounds; hdri and texture entries do not", () => {
@@ -81,12 +86,46 @@ describe("search", () => {
   });
 });
 
+describe("packed models", () => {
+  const glb = (n: number) => Buffer.concat([Buffer.from("glTF"), Buffer.alloc(n)]);
+  const e = { sha256: sha256Hex(glb(100)), bytes: 104 };
+
+  it("same repack hash is ok", () => {
+    expect(judgePacked(e, glb(100))).toBe("ok");
+  });
+  it("a different repack hash only warns when it is still a GLB of similar size", () => {
+    expect(judgePacked(e, glb(120))).toBe("warn");
+  });
+  it("a repack that is not a GLB or is far off in size fails", () => {
+    expect(judgePacked(e, Buffer.alloc(104))).toBe("bad");
+    expect(judgePacked(e, glb(1000))).toBe("bad");
+  });
+  it("source hash covers the gltf and extra files in path order", () => {
+    const a = Buffer.from("a");
+    const b = Buffer.from("b");
+    expect(sourceHash(a, { x: a, y: b })).toBe(sourceHash(a, { y: b, x: a }));
+    expect(sourceHash(a, { x: a, y: b })).not.toBe(sourceHash(a, { x: b, y: b }));
+  });
+  it("download: repack mismatch warns, source mismatch fails", () => {
+    const m = { ...e, source_sha256: "s".repeat(64) };
+    expect(acceptPacked(m, "s".repeat(64), glb(100))).toBe("ok");
+    expect(acceptPacked(m, "s".repeat(64), glb(120))).toBe("warn");
+    expect(acceptPacked(m, "t".repeat(64), glb(100))).toBe("fail");
+  });
+  it("checkFile warns on a repack mismatch for packed entries", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "a3d-test-"));
+    await writeFile(path.join(dir, "m.glb"), glb(120));
+    expect(await checkFile(dir, { ...e, file: "m.glb", download_url: "https://x.test/m.gltf" })).toBe("warn");
+    expect(await checkFile(dir, { ...e, file: "m.glb", download_url: "https://x.test/m.glb" })).toBe("bad");
+  });
+});
+
 describe("checkFile", () => {
   it("reports ok, missing and bad", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "a3d-test-"));
     const buf = Buffer.from("hello");
     await writeFile(path.join(dir, "a.glb"), buf);
-    const e = { file: "a.glb", bytes: buf.length, sha256: sha256Hex(buf) };
+    const e = { file: "a.glb", bytes: buf.length, sha256: sha256Hex(buf), download_url: "https://x.test/a.glb" };
     expect(await checkFile(dir, e)).toBe("ok");
     expect(await checkFile(dir, { ...e, file: "b.glb" })).toBe("missing");
     expect(await checkFile(dir, { ...e, sha256: "0".repeat(64) })).toBe("bad");

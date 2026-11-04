@@ -29,7 +29,10 @@ const base = {
   license: z.enum(ALLOWED_LICENSES),
   license_evidence: z.string().min(8),
   file: z.string().regex(/^[A-Za-z0-9_.-]+\.(glb|hdr|jpg|png)$/),
+  // sha256 of the file in assets3d/files. source_sha256 is of the original download (authoritative);
+  // for packed models it is over the .gltf plus its extra files, otherwise it equals sha256.
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  source_sha256: z.string().regex(/^[0-9a-f]{64}$/),
   bytes: z.number().int().positive(),
 };
 
