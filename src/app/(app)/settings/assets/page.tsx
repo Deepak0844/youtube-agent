@@ -26,6 +26,10 @@ async function Owned() {
           Uploads are removed some days after the last video that uses them is finished. Files marked Keep and files pinned to a
           series are never removed. Raising a limit lets bigger files in, so every change is written to the audit log.
         </p>
+        <p role="note" className="mb-5 max-w-[60ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">
+          Removing unused library files after the days below is not scheduled yet; nothing in your library is deleted on that
+          day. Only the working files of videos already uploaded to YouTube are cleaned up (see the next section).
+        </p>
         <AssetSettingsForm view={view} />
       </section>
       <section aria-labelledby="retention-h" className="flex flex-col gap-3 rounded-card bg-surface p-pad">
