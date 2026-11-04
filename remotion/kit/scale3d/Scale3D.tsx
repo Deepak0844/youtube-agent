@@ -20,7 +20,7 @@ const fade = (v: number, a: number, b: number) => interpolate(v, [a, b], [0, 1],
 
 /** The ruler on the left: ticks from 0 to its top, a filled bar and a black chip that read the CAMERA's height. */
 const Ruler: React.FC<{ value: number; max: number; step: number; ticks: boolean }> = ({ value, max, step, ticks }) => {
-  const top = theme.safe.top + 40;
+  const top = theme.safe.top + 300;
   const bottom = theme.height - theme.safe.bottom - 20;
   const track = bottom - top;
   const y = (v: number) => bottom - (Math.min(v, max) / max) * track;
@@ -73,7 +73,7 @@ export const Scale3D: React.FC<Scale3DProps> = ({ scene, captions, style, captio
       </ThreeCanvas>
       <AbsoluteFill style={{ opacity: ends }}>
         <Ruler value={rulerValue(pose)} max={max} step={rulerStep(max)} ticks={scene.ruler?.show_ticks !== false} />
-        <div style={{ position: "absolute", left: theme.safe.side, right: theme.safe.side, bottom: theme.safe.bottom + 10, textAlign: "center", opacity: lab, transform: `scale(${0.9 + 0.1 * lab})` }}>
+        <div style={{ position: "absolute", left: theme.safe.side, right: theme.safe.side, top: theme.safe.top - 30, textAlign: "center", opacity: lab, transform: `scale(${0.9 + 0.1 * lab})` }}>
           <span style={{ fontFamily: FONT, fontSize: 104, lineHeight: "112px", color: "#fff", textTransform: "uppercase", WebkitTextStroke: "10px #000", paintOrder: "stroke fill", letterSpacing: 2, textShadow: "0 8px 0 #000" }}>{beat.label}</span>
         </div>
       </AbsoluteFill>

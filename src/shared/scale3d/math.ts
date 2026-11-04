@@ -104,7 +104,8 @@ export const distForSpan = (span: number): number => span / (2 * TAN_HALF_FOV);
 export function beatSpan(o: MObject, range?: [number, number]): number {
   const w = o.height_m * (WIDTH_RATIO[o.kind] ?? 0.5);
   if (range) return Math.max((Math.abs(range[1] - range[0])) * 0.55, o.height_m * 0.12, 3);
-  return Math.max(o.height_m * 1.35, (w * 1.15) / ASPECT);
+  // Wide things (a ship, a house row) may be cropped a little at the sides rather than shrunk to fit the narrow frame.
+  return Math.max(o.height_m * 1.35, (w * 0.6) / ASPECT);
 }
 
 /**
@@ -117,7 +118,7 @@ export function cameraKeys(scene: MScene, placements: readonly Placement[]): Cam
   let t0 = 0;
   const make = (p: Placement, y: number, span: number, t: number): CamKey => {
     // A load on a hook floats, so the camera follows it up there instead of keeping the ground in view.
-    return { t, x: p.x, y: p.carriedBy ? p.y + y : Math.max(y, span * 0.42), z: p.z, dist: distForSpan(span) };
+    return { t, x: p.x, y: p.carriedBy ? p.y + y : y, z: p.z, dist: distForSpan(span) };
   };
   for (const b of scene.beats) {
     const o = scene.objects.find((x) => x.id === b.focus);
@@ -126,9 +127,11 @@ export function cameraKeys(scene: MScene, placements: readonly Placement[]): Cam
     const span = beatSpan(o, b.range_m);
     if (b.range_m) {
       const [lo, hi] = b.range_m[0] <= b.range_m[1] ? b.range_m : [b.range_m[1], b.range_m[0]];
-      keys.push(make(p, lo, span, t0 + b.duration_s * 0.12), make(p, hi, span, t0 + b.duration_s * 0.88));
+      // a climb never lets the ground rise above the lower part of the frame
+      keys.push(make(p, Math.max(lo, span * 0.42), span, t0 + b.duration_s * 0.12), make(p, hi, span, t0 + b.duration_s * 0.88));
     } else {
-      keys.push(make(p, p.carriedBy ? o.height_m / 2 : span * 0.42, span, t0 + b.duration_s * 0.5));
+      // the object sits a little below the middle of the frame
+      keys.push(make(p, o.height_m / 2 + span * 0.1, span, t0 + b.duration_s * 0.5));
     }
     t0 += b.duration_s;
   }
@@ -191,8 +194,8 @@ export const cameraPosition = (c: CamPose): { x: number; y: number; z: number } 
 /** The ruler shows the camera's real height, not the time. */
 export const rulerValue = (c: CamPose): number => cameraPosition(c).y;
 
-const NICE = [1, 2, 2.5, 5, 10];
-/** Round up to 1, 2, 2.5, 5 times a power of ten. */
+const NICE = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+/** Round up to a tidy 1, 1.5, 2, 2.5, 3, 4, 5, 6 or 8 times a power of ten. */
 export function niceCeil(v: number): number {
   const p = 10 ** Math.floor(Math.log10(Math.max(v, 1e-9)));
   return (NICE.find((n) => n * p >= v - 1e-9) ?? 10) * p;

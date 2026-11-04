@@ -14,8 +14,8 @@ const tiers = (H: number) => {
 /** Glass tower with three setbacks, a crown with plant rooms and a spire. Height is exact (spire included). */
 export const Skyscraper: React.FC<{ height: number }> = ({ height: H }) => {
   const ts = tiers(H);
-  let y = 0;
-  const stack = ts.map((t) => { const r = { ...t, y0: y }; y += t.h; return r; });
+  const stack = ts.map((t, i) => ({ ...t, y0: ts.slice(0, i).reduce((a, q) => a + q.h, 0) }));
+  const y = ts.reduce((a, q) => a + q.h, 0);
   const crown = H - y; // what is left for the plant room and spire
   const base = H * 0.012;
   return (

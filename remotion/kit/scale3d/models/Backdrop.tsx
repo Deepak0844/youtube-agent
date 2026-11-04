@@ -90,21 +90,20 @@ export const Surroundings: React.FC<{ width: number; depth: number; height: numb
   );
 };
 
-/** A few flat, soft clouds well above the scene. */
-export const Clouds: React.FC<{ reach: number }> = ({ reach }) => (
+/** A few flat, soft clouds in unit space (scaled by the caller to the shot): they ride with the camera like a sky, far behind the subject. */
+export const Clouds: React.FC = () => (
   <Built
-    deps={[reach]}
+    deps={[]}
     cast={false}
     receive={false}
+    glow
     build={(m) => {
-      for (let i = 0; i < 14; i++) {
-        const a = i * 2.399;
-        const r = reach * (0.5 + 0.9 * ((i * 0.37) % 1));
-        const x = Math.cos(a) * r;
-        const z = -Math.abs(Math.sin(a)) * r - reach * 0.4;
-        const y = reach * (0.28 + 0.2 * ((i * 0.61) % 1));
-        const s = reach * (0.06 + 0.05 * ((i * 0.53) % 1));
-        for (let k = 0; k < 4; k++) m.blob(x + (k - 1.5) * s * 0.9, y + (k % 2) * s * 0.15, z, s, s * 0.45, s * 0.6, "#ffffff", 1);
+      for (let i = 0; i < 9; i++) {
+        const x = ((i * 0.37) % 1 - 0.5) * 7;
+        const y = 0.7 + ((i * 0.61) % 1) * 1.6;
+        const z = -9 - ((i * 0.43) % 1) * 4;
+        const s = 0.35 + ((i * 0.53) % 1) * 0.3;
+        for (let k = 0; k < 4; k++) m.blob(x + (k - 1.5) * s * 0.9, y + (k % 2) * s * 0.15, z, s, s * 0.42, s * 0.6, "#ffffff", 1);
       }
     }}
   />

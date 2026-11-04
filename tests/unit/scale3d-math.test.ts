@@ -28,9 +28,9 @@ describe("labels", () => {
   });
   it("rounds a ruler top to a tidy number", () => {
     expect(niceCeil(87)).toBe(100);
-    expect(niceCeil(260)).toBe(500);
+    expect(niceCeil(260)).toBe(300);
     expect(niceCeil(200)).toBe(200);
-    expect(niceCeil(1.2)).toBe(2);
+    expect(niceCeil(1.2)).toBe(1.5);
   });
 });
 
@@ -118,7 +118,7 @@ describe("ruler", () => {
   it("tops out just above the highest camera height", () => {
     const max = rulerMax(S, keys);
     expect(max).toBeGreaterThanOrEqual(Math.max(...keys.map((k) => k.y)));
-    expect(max).toBeLessThanOrEqual(500);
+    expect(max).toBeLessThanOrEqual(400);
     expect(rulerMax({ ...S, ruler: { max_m: 400 } }, keys)).toBe(400);
   });
 });

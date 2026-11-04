@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/immutability -- three.js camera and light objects are mutated by design */
 import React, { useLayoutEffect, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
@@ -49,7 +50,7 @@ export const World: React.FC<{ scene: Scale3dScene; placements: Placement[]; pos
     <>
       <Rig pose={pose} />
       <Ground size={reach * 8 + 4000} />
-      <Clouds reach={Math.max(600, reach * 0.8)} />
+      <group position={[pose.x, pose.y, pose.z]} scale={pose.dist}><Clouds /></group>
       {placements.map((p) => {
         const o = scene.objects.find((x) => x.id === p.id)!;
         const load = o.carries ? scene.objects.find((x) => x.id === o.carries)?.height_m : undefined;

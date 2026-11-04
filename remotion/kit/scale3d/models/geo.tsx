@@ -98,12 +98,14 @@ export class Merger {
 export const LIFT_A = 0.05;
 
 /** One merged, flat-shaded, shadow-casting mesh from a builder. The builder runs once per input change. */
-export const Built: React.FC<{ build: (m: Merger) => void; deps: readonly unknown[]; cast?: boolean; receive?: boolean; position?: V }> = ({ build, deps, cast = true, receive = true, position }) => {
+export const Built: React.FC<{ build: (m: Merger) => void; deps: readonly unknown[]; cast?: boolean; receive?: boolean; position?: V; glow?: boolean }> = ({ build, deps, cast = true, receive = true, position, glow }) => {
+  const key = JSON.stringify(deps);
+  // Built once per set of inputs (not once per frame): `build` only reads what is in `deps`.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const geo = useMemo(() => { const m = new Merger(); build(m); return m.build(); }, deps);
+  const geo = useMemo(() => { const m = new Merger(); build(m); return m.build(); }, [key]);
   return (
     <mesh geometry={geo} castShadow={cast} receiveShadow={receive} position={position}>
-      <meshStandardMaterial vertexColors flatShading roughness={0.85} metalness={0} />
+      <meshStandardMaterial vertexColors flatShading roughness={0.85} metalness={0} emissive={glow ? "#ffffff" : "#000000"} emissiveIntensity={glow ? 0.55 : 0} />
     </mesh>
   );
 };
