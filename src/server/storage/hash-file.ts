@@ -17,6 +17,8 @@ export class StoredFileError extends Error {
   }
 }
 
+/** The one message that means the bytes really differ from what was approved (callers tell it apart from read trouble). */
+export const FILE_CHANGED_MESSAGE = "the file changed after it was approved";
 export const MAX_FILE_BYTES = 8 * 1024 ** 3;
 export const READ_TIMEOUT_MS = 10 * 60_000;
 export interface ReadLimits {
@@ -94,12 +96,12 @@ export async function openStoredFile(root: string, relPath: string, expect: { sh
   const check = new Transform({
     transform(chunk: Buffer, _enc, cb) {
       bytes += chunk.length;
-      if (bytes > maxBytes || bytes > expect.bytes) return cb(new StoredFileError("the file changed after it was approved"));
+      if (bytes > maxBytes || bytes > expect.bytes) return cb(new StoredFileError(FILE_CHANGED_MESSAGE));
       h.update(chunk);
       cb(null, chunk);
     },
     flush(cb) {
-      cb(bytes === expect.bytes && h.digest("hex") === expect.sha256 ? null : new StoredFileError("the file changed after it was approved"));
+      cb(bytes === expect.bytes && h.digest("hex") === expect.sha256 ? null : new StoredFileError(FILE_CHANGED_MESSAGE));
     },
   });
   const source = fh.createReadStream({ autoClose: true });

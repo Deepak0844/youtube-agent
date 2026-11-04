@@ -6,7 +6,7 @@ import type { Keyring } from "@/server/core/vault-crypto";
 import type { UploadQueue } from "@/server/queue/job-queue";
 import { recordAudit } from "./audit";
 import { getSetting } from "./settings";
-import { finishUpload, isUnclearReason } from "./uploads";
+import { CHECKED_NOT_FOUND_SQL, finishUpload, isUnclearReason, UNCLEAR_COOLDOWN_MIN, unclearCleared } from "./uploads";
 import { addContent, latestContent } from "./videos";
 import { getAccessToken, reserveQuota, type GoogleHttp } from "./youtube-channels";
 
@@ -71,11 +71,11 @@ export async function savePublishChoice(db: pg.Pool, videoId: string, c: Publish
   return { ok: true, message: same ? "Nothing changed." : "Saved. A publish approval you gave earlier no longer counts: approve again." };
 }
 
-interface FailedRow { id: string; video_id: string; channel_id: string | null; status: string; youtube_id: string | null; failure_reason: string | null; attempt: number; started_ms: string | null; row_id: string | null }
+interface FailedRow { id: string; video_id: string; channel_id: string | null; status: string; youtube_id: string | null; failure_reason: string | null; attempt: number; started_ms: string | null; finished_text: string | null; ended_ms: string | null; row_id: string | null }
 async function failedRow(db: pg.Pool, uploadId: string): Promise<FailedRow | undefined> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uploadId)) return undefined;
   return (await db.query<FailedRow>(
-    `select u.id, u.video_id, u.channel_id, u.status, u.youtube_id, u.failure_reason, u.attempt, (extract(epoch from u.started_at) * 1000)::bigint::text as started_ms,
+    `select u.id, u.video_id, u.channel_id, u.status, u.youtube_id, u.failure_reason, u.attempt, (extract(epoch from u.started_at) * 1000)::bigint::text as started_ms, u.finished_at::text as finished_text, (extract(epoch from clock_timestamp() - u.finished_at) * 1000)::bigint::text as ended_ms,
             (select c.id from youtube_channels c where c.channel_id = u.channel_id) as row_id
        from uploads u where u.id = $1`, [uploadId])).rows[0];
 }
@@ -89,9 +89,11 @@ export async function checkOnYoutube(db: pg.Pool, ring: Keyring | (() => Keyring
   if (actorProblem(actor)) return no(ACTOR_REASON);
   const r = await failedRow(db, uploadId);
   if (!r || r.status !== "upload_failed" || r.youtube_id !== null || !isUnclearReason(r.failure_reason) || !r.row_id) return no("There is nothing to check for this upload.");
-  const meta = await latestContent(db, r.video_id, "metadata");
-  const title = isObj(meta?.body) && typeof meta.body.title === "string" ? meta.body.title : null;
-  if (!title) return no("The upload title is missing.");
+  if (r.ended_ms === null || Number(r.ended_ms) < UNCLEAR_COOLDOWN_MIN * 60_000) return no(`Too soon. YouTube may still be finishing this upload: check again ${UNCLEAR_COOLDOWN_MIN} minutes after it stopped.`);
+  // The title that was actually sent (recorded just before the first byte), not whatever the details say now.
+  const sentTitle = (await db.query<{ event: string }>("select event from upload_log where upload_id = $1 and event like 'sent_title: %' order by id desc limit 1", [uploadId])).rows[0]?.event;
+  const title = sentTitle ? sentTitle.slice("sent_title: ".length) : null;
+  if (!title) return no("This upload never got as far as sending a title, so there is nothing to look for.");
   const tok = await getAccessToken(db, ring, http, r.row_id);
   if (!tok.ok) return no("Could not sign in to YouTube for this channel. Reconnect it, or look in YouTube Studio yourself.");
   const auth = { headers: { authorization: `Bearer ${tok.accessToken}` } };
@@ -105,7 +107,16 @@ export async function checkOnYoutube(db: pg.Pool, ring: Keyring | (() => Keyring
     if (typeof list !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(list)) return no("YouTube did not show this channel's uploads. Look in YouTube Studio yourself.");
     const pl = await http(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${encodeURIComponent(list)}`, auth);
     if (!pl.ok) return no("YouTube did not answer. Look in YouTube Studio yourself.");
-    items = ((await pl.json()) as { items?: typeof items }).items ?? [];
+    let page = (await pl.json()) as { items?: typeof items; nextPageToken?: unknown };
+    items = page.items ?? [];
+    // up to three more pages (200 newest uploads in all), each reserved before it is asked for
+    for (let n = 0; n < 3 && typeof page.nextPageToken === "string" && /^[A-Za-z0-9_-]{1,200}$/.test(page.nextPageToken); n++) {
+      if (!(await reserveQuota(db, "playlistItems.list"))) break;
+      const more = await http(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&playlistId=${encodeURIComponent(list)}&pageToken=${encodeURIComponent(page.nextPageToken)}`, auth);
+      if (!more.ok) break;
+      page = (await more.json()) as typeof page;
+      items = items.concat(page.items ?? []);
+    }
   } catch {
     return no("Could not reach YouTube. Look in YouTube Studio yourself.");
   }
@@ -117,7 +128,16 @@ export async function checkOnYoutube(db: pg.Pool, ring: Keyring | (() => Keyring
     await recordAudit(db, "upload.checked", { uploadId, sessionId: actor.sessionId, outcome: done ? "found" : "found_not_recorded", youtubeId: id });
     return done ? { ok: true, message: "Found it on YouTube. The upload is marked as done." } : no("Found a matching video but could not record it. Open YouTube Studio.");
   }
-  await db.query("insert into upload_log (upload_id, event) values ($1, 'checked_not_found')", [uploadId]);
+  // Record "not found" only if the row is still the very failure this check started from (same attempt, same end time, still
+  // failed): a double click, a re-send or a late success in between must not clear anything. Cooldown: Google may still be finishing a request.
+  const ins = await db.query(
+    `insert into upload_log (upload_id, event, at)
+     select id, 'checked_not_found: attempt=' || attempt::text, clock_timestamp() from uploads
+      where id = $1 and status = 'upload_failed' and attempt = $2 and youtube_id is null and finished_at::text = $3
+        and finished_at <= clock_timestamp() - interval '${UNCLEAR_COOLDOWN_MIN} minutes'`,
+    [uploadId, r.attempt, r.finished_text],
+  );
+  if (ins.rowCount !== 1) return no("This upload changed while it was being checked. Look at the Uploads list again.");
   await recordAudit(db, "upload.checked", { uploadId, sessionId: actor.sessionId, outcome: "not_found" });
   return { ok: true, message: "No matching video in the channel's recent uploads. Look in YouTube Studio too; if it is not there, you can send it again." };
 }
@@ -131,10 +151,9 @@ export async function requestRetry(db: pg.Pool, queue: Pick<UploadQueue, "enqueu
   const r = await failedRow(db, uploadId);
   if (!r || r.status !== "upload_failed" || r.youtube_id !== null) return no("This upload cannot be sent again.");
   if (isUnclearReason(r.failure_reason)) {
-    const checked = await db.query("select 1 from upload_log l join uploads u on u.id = l.upload_id where l.upload_id = $1 and l.event = 'checked_not_found' and l.at > u.finished_at limit 1", [uploadId]);
-    if (checked.rowCount !== 1) return no("Check on YouTube first. This upload may already be live.");
+    if (!(await unclearCleared(db, uploadId))) return no("Check on YouTube first (at least 15 minutes after it stopped). This upload may already be live.");
   }
-  await db.query("insert into upload_log (upload_id, event) values ($1, 'retry_requested')", [uploadId]);
+  await db.query("insert into upload_log (upload_id, event) values ($1, $2)", [uploadId, `retry_requested: session=${actor.sessionId}`]);
   await recordAudit(db, "upload.retry_requested", { uploadId, sessionId: actor.sessionId, unclear: isUnclearReason(r.failure_reason) });
   try {
     await queue.enqueueUpload(uploadId);
@@ -171,7 +190,7 @@ export async function listUploads(db: pg.Pool, limit = 50): Promise<UploadListRo
             c.title as channel_title,
             (select m.body from video_content m where m.video_id = u.video_id and m.kind = 'metadata' order by m.version desc limit 1) as meta,
             exists (select 1 from upload_log l where l.upload_id = u.id and l.event like 'privacy_mismatch:%') as kept_private,
-            exists (select 1 from upload_log l where l.upload_id = u.id and l.event = 'checked_not_found' and l.at > coalesce(u.finished_at, 'epoch')) as checked
+            exists (select 1 from upload_log l where l.upload_id = u.id and ${CHECKED_NOT_FOUND_SQL}) as checked
        from uploads u join videos v on v.id = u.video_id left join youtube_channels c on c.channel_id = u.channel_id
       order by u.created_at desc, u.id limit $1`,
     [limit],

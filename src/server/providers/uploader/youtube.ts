@@ -12,7 +12,8 @@ import type pg from "pg";
 import type { Keyring } from "@/server/core/vault-crypto";
 import { quotaCost } from "@/server/core/youtube-oauth";
 import { getAccessToken, reserveQuota, type GoogleHttp } from "@/server/db/youtube-channels";
-import { putSecret } from "@/server/db/vault";
+import { deleteSecret, putSecret } from "@/server/db/vault";
+import { FILE_CHANGED_MESSAGE, StoredFileError } from "@/server/storage/hash-file";
 import { safeFetch } from "@/server/providers/net/safe-fetch";
 import type { Uploader, UploadOutcome, UploadTarget } from "./index";
 
@@ -30,6 +31,8 @@ export interface YouTubeUploaderDeps {
   ring: Keyring | (() => Keyring);
   http?: GoogleHttp;
   chunkBytes?: number;
+  /** How often progress is re-reported while a request is in flight, so a long final PUT is never swept as stalled. */
+  heartbeatMs?: number;
 }
 
 /** Thrown for any end we cannot call clear. The message is fixed text: it ends up in the owner's screen and the audit log. */
@@ -83,6 +86,8 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
     async upload(uploadId, onProgress, signal, target?: UploadTarget): Promise<UploadOutcome> {
       if (!target) return { kind: "failed", reason: "no approved file was handed to the uploader" };
       if (!Number.isSafeInteger(target.bytes) || target.bytes < 1) return { kind: "failed", reason: "the approved video file is empty" };
+      // The session address is a bearer-style capability: delete it once the upload ended clearly. An unclear end keeps it for the check.
+      const dropSession = async () => void (await deleteSecret(deps.pool, sessionSecretName(uploadId)).catch(() => false));
       try {
         // 1. token (not a YouTube call), then the quota reservation, BEFORE the insert call
         const tok = await getAccessToken(deps.pool, deps.ring, http, target.channelRowId);
@@ -110,8 +115,19 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
           return { kind: "failed", reason: "could not store the upload session safely; nothing was sent" };
         }
 
+        // The title we sent, so "Check on YouTube" matches what YouTube was given even if the details change later.
+        try {
+          await deps.pool.query("insert into upload_log (upload_id, event) values ($1, $2)", [uploadId, `sent_title: ${d.title}`]);
+        } catch {
+          await dropSession();
+          return { kind: "failed", reason: "could not record the upload title; nothing was sent" };
+        }
+
         // 3. From here a failure may leave a live video. 1 byte of progress now makes the job treat any throw as "check Studio first".
         await onProgress(1);
+        let sent = 0;
+        const beat = setInterval(() => void onProgress(Math.max(1, sent)).catch(() => undefined), deps.heartbeatMs ?? 60_000);
+        try {
         const put = async (data: Buffer, start: number, last: boolean): Promise<string | null> => {
           const end = start + data.length - 1;
           const res = await send(session, {
@@ -120,12 +136,16 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
             body: data as unknown as BodyInit,
           }, signal);
           if (last) {
+            // The final answer decides whether a video exists, so ONLY a 200/201 with an id is a result. Anything else (4xx
+            // included) could be a lost, late or misrouted answer for a video that was created: unclear.
             if (res.status === 200 || res.status === 201) {
               const id = ((await res.json().catch(() => null)) as { id?: unknown } | null)?.id;
               if (typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id)) return id;
               throw new Unclear("YouTube accepted the upload but its answer had no video id");
             }
-          } else if (res.status === 308) {
+            throw new Unclear();
+          }
+          if (res.status === 308) {
             const m = /^bytes=0-(\d+)$/.exec(res.headers.get("range") ?? "");
             if (!m || Number(m[1]) !== end) throw new Unclear("YouTube kept less data than was sent");
             return null;
@@ -138,7 +158,6 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
         //    final chunk is always sent after the stream ended cleanly (hash and length matched).
         const src = await target.open();
         let held: Buffer = Buffer.alloc(0);
-        let sent = 0;
         let youtubeId: string | null = null;
         try {
           for await (const c of src) {
@@ -154,9 +173,21 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
           if (e instanceof Unclear || e instanceof Rejected || signal.aborted) throw e;
           // the file stream itself failed or its hash/length check failed: the last chunk was never sent, so no video exists
           src.destroy();
+          await dropSession();
+          return e instanceof StoredFileError && e.message === FILE_CHANGED_MESSAGE
+            ? { kind: "failed", reason: "the video file changed after it was approved; nothing was published" }
+            : { kind: "failed", reason: "the video file could not be read to the end; nothing was published" };
+        }
+        if (sent + held.length !== target.bytes) {
+          await dropSession();
           return { kind: "failed", reason: "the video file changed after it was approved; nothing was published" };
         }
-        if (sent + held.length !== target.bytes) return { kind: "failed", reason: "the video file changed after it was approved; nothing was published" };
+        // Point of no return: re-check the approval and switches right before the final chunk. Stopping here is clean (no video yet).
+        const stop = await target.preFinal?.().catch(() => "the check before the last piece could not run");
+        if (stop) {
+          await dropSession();
+          return { kind: "failed", reason: stop === "approval_changed" ? "the approval changed before the last piece was sent; nothing was published" : stop === "policy" ? "publishing was switched off or not allowed before the last piece was sent; nothing was published" : `stopped before the last piece was sent: ${stop}` };
+        }
         youtubeId = await put(held, sent, true);
         if (youtubeId === null) throw new Unclear();
         await onProgress(target.bytes).catch(() => undefined);
@@ -164,9 +195,16 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
         // 5. read back what YouTube actually kept (an unaudited project may be forced to private). A failed read-back never
         //    undoes the success: the video exists.
         await readBack(deps.pool, http, auth, signal, uploadId, youtubeId, target.visibility);
+        await dropSession();
         return { kind: "uploaded", youtubeId };
+        } finally {
+          clearInterval(beat);
+        }
       } catch (e) {
-        if (e instanceof Rejected) return { kind: "failed", reason: e.message };
+        if (e instanceof Rejected) {
+          await dropSession();
+          return { kind: "failed", reason: e.message };
+        }
         throw e;
       }
     },

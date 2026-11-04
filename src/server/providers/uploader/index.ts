@@ -21,6 +21,11 @@ export interface UploadTarget {
    * a failed upload and, if bytes already left, as "check YouTube Studio first". It must never open `filePath` itself.
    */
   open(): Promise<Readable>;
+  /**
+   * Read-only check the uploader runs right before the FINAL chunk: returns a reason to stop (approval changed, kill switch,
+   * channel not connected, public not allowed) or null. A stop here is a clear failure: no video exists yet.
+   */
+  preFinal?(): Promise<string | null>;
 }
 
 // One-shot upload of an approved file. Same shape the upload job already takes (db/upload-job.ts); `target` is added

@@ -4,7 +4,7 @@ import { UPLOAD_CAPS } from "@/server/core/publish-rules";
 import { recordAudit } from "@/server/db/audit";
 import { channelCaps, readUploadTarget, recheckPublishStart } from "@/server/db/publish";
 import { runUpload } from "@/server/db/upload-job";
-import { isUnclearReason, manualRetry, startUpload } from "@/server/db/uploads";
+import { isUnclearReason, manualRetry, startUpload, unclearCleared } from "@/server/db/uploads";
 import type { Uploader } from "@/server/providers/uploader";
 
 // The `uploads` queue consumer's handler (Task 21). The job payload is ONLY an upload id. Everything that decides whether
@@ -30,12 +30,18 @@ async function handleRetry(pool: pg.Pool, deps: PublishUploadDeps, uploadId: str
     await recordAudit(pool, "upload.retry_refused", { uploadId, reason }).catch(() => undefined);
     return { started: false };
   };
-  const asked = await pool.query(
-    "select 1 from upload_log l join uploads u on u.id = l.upload_id where l.upload_id = $1 and u.status = 'upload_failed' and l.event = 'retry_requested' and l.at > u.finished_at limit 1",
+  const asked = await pool.query<{ event: string; failure_reason: string | null }>(
+    `select l.event, u.failure_reason from upload_log l join uploads u on u.id = l.upload_id
+      where l.upload_id = $1 and u.status = 'upload_failed' and l.event like 'retry_requested: session=%' and l.at > u.finished_at order by l.id desc limit 1`,
     [uploadId],
   );
-  if (asked.rowCount !== 1) return refused("no_human_request");
-  const t = await readUploadTarget(pool, uploadId, { root: deps.root, status: "upload_failed" });
+  const req = asked.rows[0];
+  const requester = /session=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(req?.event ?? "")?.[1];
+  if (!req || !requester) return refused("no_human_request");
+  // An unclear failure may be live on YouTube: the check (same attempt, after the cooldown) is re-proved here, not trusted from the UI.
+  if (isUnclearReason(req.failure_reason) && !(await unclearCleared(pool, uploadId))) return refused("not_checked_on_youtube");
+  // The re-send is bound to the session that asked for it, which must be live now (the original approving session may be long gone).
+  const t = await readUploadTarget(pool, uploadId, { root: deps.root, status: "upload_failed", retrySessionId: requester });
   if (!t.ok) return refused(t.reason);
   const { value } = t;
   const base = deps.caps ?? { ...UPLOAD_CAPS };
