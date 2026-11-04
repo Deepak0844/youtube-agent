@@ -2,6 +2,7 @@
 // non-root user, --network none, read-only root, this kit mounted read-only at /opt/render/kit.
 // usage: node /opt/render/kit/render-entry.mjs <inDir> <outFile>                 the scene kit (props.json)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --scale3d       the 3D scale composition (props.json: scene, captions)
+//        node <repo>/remotion/kit/render-entry.mjs <inDir> <outFile> --scale3d --native   the same on the host Mac's GPU (remotion-native.ts, inside sandbox-exec)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --tsx           one checked TSX file (video.tsx)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outDir> --tsx-stills     its preflight stills (still-<n>.png)
 // Kit mode: <inDir> (read-only) holds props.json (built and validated on the host) plus the staged narration and asset
@@ -11,6 +12,7 @@
 // Prints "PROGRESS <0-100>" lines; the host turns them into stage log lines.
 // ESM import ignores NODE_PATH; createRequire honours it (/opt/render/node_modules in the image).
 import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -19,7 +21,10 @@ const { bundle } = require("@remotion/bundler");
 const { renderMedia, renderStill, selectComposition } = require("@remotion/renderer");
 
 const [inDir, outArg, mode = "kit", ...extra] = process.argv.slice(2);
-if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || extra.length > 0 || !["kit", "--scale3d", "--tsx", "--tsx-stills"].includes(mode)) {
+// "--native" (render on the host Mac's GPU, see remotion-native.ts) is accepted ONLY together with --scale3d. The container
+// never passes it, so the container keeps software GL, its own paths and the default concurrency. Nothing else may follow the mode.
+const native = mode === "--scale3d" && extra.length === 1 && extra[0] === "--native";
+if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || (extra.length > 0 && !native) || !["kit", "--scale3d", "--tsx", "--tsx-stills"].includes(mode)) {
   throw new Error("usage: render-entry.mjs <abs inDir> <abs out> [--tsx | --tsx-stills]");
 }
 // Only the two TSX modes use meta.json, video.tsx and the TSX bundle. "--scale3d" is a kit-style mode (props.json, the kit's index.ts, public dir = inDir) that renders another composition.
@@ -61,8 +66,9 @@ const withScene = (r) => {
 };
 const serveUrl = await bundle({
   entryPoint: path.join(import.meta.dirname, tsx ? "tsx-index.ts" : "index.ts"),
-  rootDir: "/opt/render",
-  outDir: "/tmp/bundle", // the only writable places are /tmp (tmpfs) and the out dir
+  rootDir: native ? path.resolve(import.meta.dirname, "..", "..") : "/opt/render",
+  // the only writable places are /tmp (tmpfs) and the out dir; native: the private TMPDIR the host sandbox allows
+  outDir: native ? path.join(tmpdir(), `bundle-${process.pid}`) : "/tmp/bundle",
   publicDir: tsx ? path.join(inDir, "public") : inDir,
   enableCaching: false,
   webpackOverride: (c) => ({
@@ -73,7 +79,7 @@ const serveUrl = await bundle({
 });
 
 const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE;
-const chromiumOptions = { gl: "swangle", disableWebSecurity: false, ignoreCertificateErrors: false };
+const chromiumOptions = { gl: native ? "angle" : "swangle", disableWebSecurity: false, ignoreCertificateErrors: false };
 const composition = await selectComposition({ serveUrl, id: tsx ? "tsx-video" : mode === "--scale3d" ? "scale3d" : "kit-video", inputProps, browserExecutable, chromiumOptions });
 if (tsx && (composition.durationInFrames !== meta.durationInFrames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) {
   throw new Error("the TSX composition does not match meta.json");
@@ -98,6 +104,7 @@ if (mode === "--tsx-stills") {
     browserExecutable,
     chromiumOptions,
     overwrite: true,
+    ...(native ? { concurrency: 1 } : {}),
     onProgress: ({ progress }) => {
       const p = Math.floor(progress * 100);
       if (p !== last) {
