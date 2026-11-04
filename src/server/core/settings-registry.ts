@@ -104,7 +104,7 @@ export const SETTINGS = {
   // The routes the "AI source" switch replaced (stage -> model id, or null for none); null = the switch is off. Safety:
   // turning the switch off writes these back as routes.
   "ai.previous_routes": {
-    schema: z.record(z.string().regex(/^[a-z_]{1,40}$/), z.string().uuid().nullable()).nullable(),
+    schema: z.record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.string().uuid().nullable()).nullable(),
     default: null,
     safety: true,
     label: "Routes to restore when Claude Code is switched off",

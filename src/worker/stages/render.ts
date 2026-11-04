@@ -71,7 +71,7 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
     const video = await loadVideo(deps.db, ctx);
     if (video.kind === "scale3d" && ctx.config.render.timeoutS < SCALE3D_MIN_RENDER_TIMEOUT_S) {
       throw new KnownFailure(
-        `A 3D scale video needs about 5 minutes to render, but the render time limit is ${ctx.config.render.timeoutS} seconds, so it would be stopped half way. Nothing was rendered. Raise "Render time limit, seconds" (render.timeout_s) in Settings to at least ${SCALE3D_MIN_RENDER_TIMEOUT_S}, then run this step again.`,
+        `Raise render.timeout_s ("Render time limit, seconds") in Settings to at least ${SCALE3D_MIN_RENDER_TIMEOUT_S}: a 3D scale video needs about 5 minutes to render and the limit is ${ctx.config.render.timeoutS} s, so it would be stopped half way. Nothing was rendered.`,
       );
     }
     const narration = await contentBody<{ file?: unknown }>(deps.db, video.id, "narration");
