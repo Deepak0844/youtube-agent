@@ -2,7 +2,7 @@ import type pg from "pg";
 import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { metadataProblem, publishPolicyProblem, visibilityProblem, type Visibility } from "@/server/core/publish-rules";
 import { channelUploadProblem } from "@/server/core/channel-safety";
-import { approvalDetailsProblem } from "@/server/core/upload-details";
+import { approvalDetailsProblem, validateUploadDetails } from "@/server/core/upload-details";
 import { evidenceVerificationProblem } from "@/server/core/evidence-edit";
 import { uuidv7 } from "@/server/core/ids";
 import { APPROVAL_SESSION_VALID_SQL, approvalState, approveGateWith, readSnapshot, type ContentVersions } from "@/server/db/approvals";
@@ -248,7 +248,10 @@ export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { ro
     if (policy) return { ok: false, reason: "policy", detail: policy };
     const safety = await channelSafetyProblem(client, body.visibility, up.channel_id);
     if (safety) return { ok: false, reason: "policy", detail: safety };
-    snap = { up, state, video, body, approvalId: ap.id, channelId: up.channel_id };
+    const details = validateUploadDetails(meta.body);
+    const chRow = (await client.query<{ id: string }>("select id from youtube_channels where channel_id = $1", [up.channel_id])).rows[0];
+    if (!details.ok || !chRow) return { ok: false, reason: "approval_changed" };
+    snap = { up, state, video, body, approvalId: ap.id, channelId: up.channel_id, channelRowId: chRow.id, details: details.value };
     await client.query("commit");
   } finally {
     // Every early return above leaves the read-only snapshot open: end it before the connection goes back to the pool,
@@ -270,7 +273,8 @@ export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { ro
     value: {
       uploadId, approvalId: snap.approvalId, approvalHash: snap.state.hash, fileSha: h.sha256, versions: snap.state.versions,
       target: {
-        videoId: snap.up.video_id, filePath: snap.video.filePath!, fileSha256: h.sha256, bytes: h.bytes, channelId: snap.channelId,
+        videoId: snap.up.video_id, filePath: snap.video.filePath!, fileSha256: h.sha256, bytes: h.bytes, channelId: snap.channelId, channelRowId: snap.channelRowId,
+        details: { title: snap.details.title, description: snap.details.description, tags: snap.details.tags, categoryId: snap.details.category_id, language: snap.details.language, madeForKids: snap.details.made_for_kids, synthetic: snap.details.synthetic_content },
         visibility: snap.body.visibility as Visibility, publishAt: (snap.body.publish_at ?? null) as string | null,
         open: () => openStoredFile(root, snap.video.filePath!, { sha256: h.sha256, bytes: h.bytes }),
       },

@@ -9,6 +9,10 @@ export interface UploadTarget {
   fileSha256: string;
   bytes: number;
   channelId: string;
+  /** youtube_channels.id (the row that owns the vault token); `channelId` above is YouTube's own channel id. */
+  channelRowId: string;
+  /** The approved upload details (they are inside the approval hash). */
+  details: { title: string; description: string; tags: string[]; categoryId: number; language: string; madeForKids: boolean; synthetic: boolean };
   visibility: "private" | "unlisted" | "public";
   publishAt: string | null;
   /**
