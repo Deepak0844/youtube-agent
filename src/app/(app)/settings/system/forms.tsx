@@ -57,7 +57,7 @@ export function LimitsForm(props: { renders: number; jobs: number; warnGb: numbe
         <div className={field}>
           <Label htmlFor="native_timeout_s">3D Mac render limit (seconds)</Label>
           <Input id="native_timeout_s" name="native_timeout_s" type="number" inputMode="numeric" min={60} max={7200} step={1} required aria-describedby="native-help" defaultValue={props.nativeTimeoutS} />
-          <p id="native-help" className="text-small text-faint">Used only when 3D videos render on this Mac (below). Default 1800, maximum 7200.</p>
+          <p id="native-help" className="text-small text-faint">Used only when 3D videos render on this Mac (below). Default 1800, maximum 7200. The studio&apos;s stage time limit (1800 by default) also applies.</p>
         </div>
       </div>
       <fieldset className="flex flex-col gap-2">
