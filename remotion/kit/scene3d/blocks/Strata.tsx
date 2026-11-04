@@ -11,7 +11,9 @@ type P2 = [number, number];
 /** Builds the slab: front/back caps (strata), top (surface), slope (pebbles), ends and bottom. UVs are metres / tile size. */
 export function slabGeometry(w: number, h: number, d: number, ramp: number, tile: { strata: number; surface: number; pebble: number }): THREE.BufferGeometry {
   const flat = ramp > 0 ? w - ramp : w;
-  const poly: P2[] = ramp > 0 ? [[0, 0], [flat, 0], [w, -h], [0, -h]] : [[0, 0], [w, 0], [w, -h], [0, -h]];
+  // The ramp drops at most 95% of its run (about 43 degrees); a deeper slab continues with a vertical end below it.
+  const drop = Math.min(h, ramp * 0.95);
+  const poly: P2[] = ramp > 0 ? (drop < h ? [[0, 0], [flat, 0], [w, -drop], [w, -h], [0, -h]] : [[0, 0], [flat, 0], [w, -h], [0, -h]]) : [[0, 0], [w, 0], [w, -h], [0, -h]];
   const pos: number[] = [];
   const nor: number[] = [];
   const uv: number[] = [];

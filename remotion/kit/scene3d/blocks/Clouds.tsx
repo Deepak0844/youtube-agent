@@ -13,12 +13,12 @@ export const Clouds: React.FC<{ el: ElOf<"clouds"> }> = ({ el }) => {
       x: (r() - 0.5) * el.area_m,
       z: (r() - 0.5) * el.area_m,
       y: el.altitude_m * (0.85 + r() * 0.3),
-      s: 24 + r() * 40,
+      s: 14 + r() * 24,
       puffs: Array.from({ length: 6 + Math.floor(r() * 4) }, () => [(r() - 0.5) * 2.2, (r() - 0.3) * 0.5, (r() - 0.5) * 1.1, 0.5 + r() * 0.6] as const),
     }));
   }, [el.seed, el.count, el.area_m, el.altitude_m]);
   const geo = useMemo(() => new THREE.IcosahedronGeometry(1, 2), []);
-  const mat = useMemo(() => new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 1, emissive: "#dfe9f2", emissiveIntensity: 0.35, fog: true }), []);
+  const mat = useMemo(() => new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 1, emissive: "#dfe9f2", emissiveIntensity: 0.12, fog: true }), []);
   return (
     <group userData={{ noAO: true }}>
       {clusters.map((c, i) => (

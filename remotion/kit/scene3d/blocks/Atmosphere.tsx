@@ -92,7 +92,7 @@ export const Atmosphere: React.FC<AtmosphereProps> = ({ world, focus, span, fog 
 
   return (
     <>
-      <mesh material={dome} renderOrder={-10} frustumCulled={false} scale={[1, 1, 1]}><sphereGeometry args={[3000, 32, 16]} /></mesh>
+      <mesh material={dome} renderOrder={-10} frustumCulled={false} userData={{ noAO: true }}><sphereGeometry args={[3000, 32, 16]} /></mesh>
       <hemisphereLight args={[preset.hemiSky, preset.hemiGround, preset.hemiK]} />
       <directionalLight ref={light} color={preset.sun} intensity={world.sun.intensity * preset.sunK} castShadow
         shadow-mapSize-width={4096} shadow-mapSize-height={4096} shadow-bias={-0.0004} shadow-normalBias={0.06} shadow-radius={3} />

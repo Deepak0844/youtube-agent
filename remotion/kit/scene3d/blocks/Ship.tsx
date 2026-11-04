@@ -84,8 +84,8 @@ export const Ship: React.FC<{ el: ElOf<"ship"> }> = ({ el }) => {
     m.onBeforeCompile = (sh) => {
       sh.uniforms.uLow = { value: new THREE.Color(el.hull_color) };
       sh.uniforms.uTop = { value: new THREE.Color(WHITE) };
-      sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nattribute vec3 color; varying float vTone;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvTone = color.r;");
-      sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying float vTone; uniform vec3 uLow, uTop;").replace("#include <color_fragment>", "#include <color_fragment>\ndiffuseColor.rgb = mix(uLow, uTop, smoothstep(0.35, 0.65, vTone));");
+      sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying float vTone;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvTone = position.y;");
+      sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying float vTone; uniform vec3 uLow, uTop;").replace("#include <color_fragment>", "#include <color_fragment>\ndiffuseColor.rgb = mix(uLow, uTop, smoothstep(0.42, 0.58, vTone));");
     };
     return m;
   }, [el.hull_color]);

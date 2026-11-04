@@ -7,6 +7,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { BokehPass } from "three/examples/jsm/postprocessing/BokehPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 
@@ -26,12 +27,13 @@ const FINISH = {
     }`,
 };
 
-export type PostSettings = { ao: boolean; bloom: number; vignette: number };
-export const POST_DEFAULT: PostSettings = { ao: true, bloom: 0.2, vignette: 0.22 };
+export type PostSettings = { ao: boolean; bloom: number; vignette: number; /** Depth of field strength, 0 = off. */ dof?: number };
+export const POST_DEFAULT: PostSettings = { ao: true, bloom: 0.2, vignette: 0.22, dof: 1 };
 
-export const Post: React.FC<{ settings?: PostSettings }> = ({ settings = POST_DEFAULT }) => {
+export const Post: React.FC<{ settings?: PostSettings; /** Distance from the camera to what is in focus (metres). */ focus?: number }> = ({ settings = POST_DEFAULT, focus = 60 }) => {
   const { gl, scene, camera, size } = useThree();
-  const composer = useMemo(() => {
+  const { composer, dof } = useMemo(() => {
+    let dofPass: BokehPass | null = null;
     const rt = new THREE.WebGLRenderTarget(size.width, size.height, { type: THREE.HalfFloatType, samples: 4 });
     const c = new EffectComposer(gl, rt);
     c.addPass(new RenderPass(scene, camera));
@@ -50,15 +52,31 @@ export const Post: React.FC<{ settings?: PostSettings }> = ({ settings = POST_DE
       };
       c.addPass(ao);
     }
+    if ((settings.dof ?? 0) > 0) {
+      // Gentle depth of field: the blur grows with distance from the focus plane (scene units are metres) and is capped.
+      const b = new BokehPass(scene, camera, { focus, aperture: 0.00008 * (settings.dof ?? 1), maxblur: 0.006 });
+      const render = b.render.bind(b);
+      b.render = (...args: Parameters<BokehPass["render"]>) => {
+        const hidden: THREE.Object3D[] = [];
+        scene.traverse((o) => { if (o.userData.noAO && o.visible) { o.visible = false; hidden.push(o); } });
+        render(...args);
+        hidden.forEach((o) => { o.visible = true; });
+      };
+      dofPass = b;
+      c.addPass(b);
+    }
     if (settings.bloom > 0) c.addPass(new UnrealBloomPass(new THREE.Vector2(size.width, size.height), settings.bloom, 0.55, 0.88));
     c.addPass(new OutputPass());
     const fin = new ShaderPass(FINISH);
     fin.uniforms.uVig!.value = settings.vignette;
     c.addPass(fin);
-    return c;
+    return { composer: c, dof: dofPass };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, scene, camera, settings.ao, settings.bloom, settings.vignette]);
+  }, [gl, scene, camera, settings.ao, settings.bloom, settings.vignette, settings.dof]);
   useLayoutEffect(() => { composer.setSize(size.width, size.height); }, [composer, size.width, size.height]);
-  useFrame(() => { composer.render(); }, 1);
+  useFrame(() => {
+    if (dof) (dof.uniforms as unknown as { focus: { value: number } }).focus.value = focus;
+    composer.render();
+  }, 1);
   return null;
 };

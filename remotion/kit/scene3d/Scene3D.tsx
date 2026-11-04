@@ -137,7 +137,7 @@ const Engine: React.FC<{ scene: Scene3d; t: number; models: Record<string, THREE
     <BlockContext.Provider value={ctx}>
       <Atmosphere world={scene.world} focus={pose.target} span={span} fog={fog} />
       {scene.elements.map((el) => <Placed key={el.id} el={el} ctx={ctx} />)}
-      <Post settings={post} />
+      <Post settings={post} focus={camDist} />
     </BlockContext.Provider>
   );
 };

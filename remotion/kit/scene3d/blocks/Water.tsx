@@ -165,8 +165,8 @@ export const Water: React.FC<{ el: ElOf<"water"> }> = ({ el }) => {
       <mesh position={[0, el.level_y - el.depth_m, 0]} rotation={[-Math.PI / 2, 0, 0]} material={floor} receiveShadow>
         <planeGeometry args={[W, D]} />
       </mesh>
-      <mesh geometry={surfaceGeo} material={surface} position={[0, el.level_y, 0]} renderOrder={2} frustumCulled={false} />
-      <mesh position={[0, el.level_y - el.depth_m / 2, zFront + 0.02]} renderOrder={3}>
+      <mesh geometry={surfaceGeo} material={surface} position={[0, el.level_y, 0]} renderOrder={2} frustumCulled={false} userData={{ noAO: true }} />
+      <mesh position={[0, el.level_y - el.depth_m / 2, zFront + 0.02]} renderOrder={3} userData={{ noAO: true }}>
         <planeGeometry args={[W, el.depth_m]} />
         <meshBasicMaterial map={glassTex} transparent opacity={0.78} depthWrite={false} />
       </mesh>

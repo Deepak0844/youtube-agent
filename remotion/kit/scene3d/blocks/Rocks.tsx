@@ -51,7 +51,7 @@ const RockInstances: React.FC<{ spots: RockSpot[]; seed: number }> = ({ spots, s
   return <>{meshes.map((m, i) => <primitive key={i} object={m} />)}</>;
 };
 
-const rockColour = (r: () => number) => new THREE.Color().setHSL(0.085 + r() * 0.04, 0.06 + r() * 0.1, 0.26 + r() * 0.2);
+const rockColour = (r: () => number) => new THREE.Color().setHSL(0.085 + r() * 0.04, 0.06 + r() * 0.1, 0.2 + r() * 0.2);
 const yaw = (r: () => number) => new THREE.Quaternion().setFromEuler(new THREE.Euler(r() * 6.28, r() * 6.28, r() * 6.28));
 
 export const RockPile: React.FC<{ el: ElOf<"rock_pile"> }> = ({ el }) => {

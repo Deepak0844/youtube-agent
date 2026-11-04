@@ -6,6 +6,7 @@
 //   --out <dir>           scratch folder (default: $TMPDIR/scene3d-stills)
 //   --scale <x>           1 = 1080x1920, 0.5 = 540x960 (default 0.5)
 //   --models <dir>        folder of .glb files served to the scene as models/<name>.glb
+//   --post ao,bloom       switch these post-processing parts off
 //   --video <file.mp4>    render a video instead of stills; --range a-b limits the frames
 // Needs @remotion/bundler and @remotion/renderer 4.0.538: from node_modules, or from the folder named in REMOTION_TOOLS.
 import { createRequire } from "node:module";
@@ -39,7 +40,9 @@ const files = path.join(root, "assets3d", "files");
 if (existsSync(files)) { mkdirSync(path.join(publicDir, "assets3d")); symlinkSync(files, path.join(publicDir, "assets3d", "files")); }
 
 const serveUrl = await bundle({ entryPoint: path.join(root, "remotion", "kit", "index.ts"), publicDir });
-const inputProps = { scene };
+// --post none|ao|bloom: switch post-processing parts off for timing and look comparisons.
+const off = opt("post") ?? "";
+const inputProps = { scene, post: { ao: !off.includes("ao"), bloom: off.includes("bloom") ? 0 : 0.2, vignette: 0.22, dof: off.includes("dof") ? 0 : 1 } };
 const composition = await selectComposition({ serveUrl, id: "scene3d", inputProps });
 const chromiumOptions = { gl: "angle" as const };
 

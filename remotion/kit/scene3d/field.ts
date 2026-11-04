@@ -36,7 +36,7 @@ export function solidTop(e: El, x: number, z: number, pour: number | null): numb
       if (lx < 0 || lx > w || Math.abs(lz) > d / 2) return -Infinity;
       const flat = w - e.ramp_m;
       if (lx <= flat || e.ramp_m <= 0) return y0;
-      return y0 - h * ((lx - flat) / e.ramp_m);
+      return y0 - Math.min(h, e.ramp_m * 0.95) * ((lx - flat) / e.ramp_m);
     }
     case "terrain":
       return Math.abs(lx) <= e.size_m[0] / 2 && Math.abs(lz) <= e.size_m[1] / 2 ? y0 + e.height_m : -Infinity;
@@ -79,7 +79,7 @@ export function footprintDist(e: El, x: number, z: number): number {
   }
 }
 
-export type WaterField = { w: number; h: number; data: Uint8Array };
+export type WaterField = { w: number; h: number; data: Uint8Array<ArrayBuffer> };
 
 /** RGBA8 field over the water's footprint: R = shore closeness 0..1, G = 255 where something dry/solid reaches the surface, B = depth / depth_m (to the highest solid under the point), A = 255. */
 export function buildWaterField(scene: Pick<Scene3d, "elements">, water: Extract<El, { kind: "water" }>, t: number, w = 1024, h = 256): WaterField {
