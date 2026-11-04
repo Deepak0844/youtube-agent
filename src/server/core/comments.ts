@@ -10,6 +10,8 @@ export const REPLY_INSERT_URL = "https://www.googleapis.com/youtube/v3/comments?
 export const MAX_COMMENT_CHARS = 1000;
 export const MAX_AUTHOR_CHARS = 100;
 export const MAX_REPLY_CHARS = 500;
+/** Typed by the owner to turn dry run off. */
+export const LIVE_PHRASE = "POST FOR REAL";
 
 // Control characters (NUL included; tab, newline and CR become spaces), bidi overrides and zero-width characters.
 const STRIP = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/gu;

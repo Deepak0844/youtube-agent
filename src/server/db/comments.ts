@@ -86,7 +86,7 @@ export async function syncComments(
         break;
       }
       out.videos++;
-      let items;
+      let items: ReturnType<typeof parseThreads>;
       try {
         const res = await http(threadsUrl(t.youtubeId), auth);
         if (!res.ok) {
