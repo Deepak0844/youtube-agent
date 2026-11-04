@@ -121,6 +121,36 @@ describe("save and verify", () => {
     expect((await latestContent(db.pool, id, "evidence"))!.version).toBe(v);
   });
 
+  it("checks at most 4 links at a time, and each only once", async () => {
+    const { id, actor } = await seed();
+    const claims = Array.from({ length: 10 }, (_, i) => ({ ...SRC, source_url: `https://example.com/${i}` }));
+    let running = 0;
+    let peak = 0;
+    const calls: string[] = [];
+    const head = async (u: string) => {
+      calls.push(u);
+      peak = Math.max(peak, ++running);
+      await new Promise((r) => setTimeout(r, 10));
+      running--;
+      return 200;
+    };
+    expect(await saveAndVerifyEvidence(db.pool, id, claims, actor, head)).toMatchObject({ ok: true, verified: true });
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(4);
+    expect(new Set(calls).size).toBe(10);
+    expect(calls).toHaveLength(10);
+  });
+
+  it("stops at the total time budget and marks the rest as not checked", async () => {
+    const { id, actor } = await seed();
+    const claims = Array.from({ length: 3 }, (_, i) => ({ ...SRC, source_url: `https://example.com/${i}` }));
+    const head = vi.fn(() => new Promise<number>(() => undefined)); // never answers
+    const r = await saveAndVerifyEvidence(db.pool, id, claims, actor, head, { concurrency: 1, budgetMs: 40 });
+    expect(r).toMatchObject({ ok: true, verified: false });
+    expect(head).toHaveBeenCalledTimes(1); // the budget ran out before the others started
+    expect((await loadEvidence(db.pool, id)).verification?.problems.join(" ")).toMatch(/budget/);
+  });
+
   it("the real HEAD check refuses local and private addresses (safeFetch)", async () => {
     await expect(defaultHead("http://127.0.0.1:9/x")).rejects.toThrow();
     await expect(defaultHead("http://169.254.169.254/latest")).rejects.toThrow();

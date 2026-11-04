@@ -13,8 +13,19 @@ import { addContent, latestContent } from "./videos";
 
 /** One HEAD request, no retries. Returns the HTTP status, or throws (blocked address, timeout, bad host). */
 export type HeadCheck = (url: string) => Promise<number>;
+const CONCURRENCY = 4;
+const TOTAL_BUDGET_MS = 30_000;
+/** The app's own search service (the same list web-tools.ts gives safeFetch), so a "source" pointing at it is refused. */
+function ownServices(): Array<{ host: string; port: number }> {
+  try {
+    const u = new URL(process.env.SEARXNG_URL ?? "");
+    return [{ host: u.hostname, port: Number(u.port || (u.protocol === "https:" ? 443 : 80)) }];
+  } catch {
+    return [];
+  }
+}
 export const defaultHead: HeadCheck = async (url) => {
-  const res = await safeFetch(url, { method: "HEAD" }, { mode: "indirect", timeoutMs: HEAD_TIMEOUT_MS, maxRedirects: 3 });
+  const res = await safeFetch(url, { method: "HEAD" }, { mode: "indirect", ownServices: ownServices(), timeoutMs: HEAD_TIMEOUT_MS, maxRedirects: 3 });
   await res.body?.cancel().catch(() => undefined);
   return res.status;
 };
@@ -30,6 +41,31 @@ async function checkUrl(head: HeadCheck, url: string): Promise<UrlResult> {
     const m = e instanceof Error ? e.message : "";
     return { url, ok: false, status: null, note: /abort|timeout/i.test(m) ? "no answer in time" : "could not be reached or is not allowed" };
   }
+}
+
+const OUT_OF_TIME: Omit<UrlResult, "url"> = { ok: false, status: null, note: "not checked: the 30 second check budget ran out" };
+
+/** Checks the links with at most `concurrency` in flight and one overall deadline. Order of the results follows `urls`. One try each. */
+async function checkAll(head: HeadCheck, urls: string[], o: { concurrency?: number; budgetMs?: number } = {}): Promise<UrlResult[]> {
+  const deadline = Date.now() + (o.budgetMs ?? TOTAL_BUDGET_MS);
+  const out: UrlResult[] = new Array(urls.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < urls.length) {
+      const i = next++;
+      const left = deadline - Date.now();
+      if (left <= 0) {
+        out[i] = { url: urls[i]!, ...OUT_OF_TIME };
+        continue;
+      }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<UrlResult>((resolve) => { timer = setTimeout(() => resolve({ url: urls[i]!, ...OUT_OF_TIME }), left); });
+      out[i] = await Promise.race([checkUrl(head, urls[i]!), late]);
+      clearTimeout(timer);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(o.concurrency ?? CONCURRENCY, urls.length) }, worker));
+  return out;
 }
 
 export interface EvidenceView {
@@ -74,7 +110,7 @@ async function liveVideo(db: pg.Pool, videoId: string): Promise<string | null> {
  * request through safeFetch (public addresses only, 8 s timeout, at most 10 links, one try each). The result is stored with
  * the claims; a failed check is still saved (with the reasons) so the owner can see and fix it.
  */
-export async function saveAndVerifyEvidence(db: pg.Pool, videoId: string, rawClaims: unknown, actor: GateActor, head: HeadCheck = defaultHead): Promise<EvidenceResult> {
+export async function saveAndVerifyEvidence(db: pg.Pool, videoId: string, rawClaims: unknown, actor: GateActor, head: HeadCheck = defaultHead, opts: { concurrency?: number; budgetMs?: number } = {}): Promise<EvidenceResult> {
   if (actorProblem(actor)) return { ok: false, message: ACTOR_REASON };
   const parsed = parseClaims(rawClaims);
   if (!parsed.ok) return { ok: false, message: parsed.problems.join("; ") };
@@ -86,7 +122,7 @@ export async function saveAndVerifyEvidence(db: pg.Pool, videoId: string, rawCla
   const urls = sourceUrls(claims);
   const results: UrlResult[] = [];
   if (urls.length > MAX_SOURCE_URLS) problems.push(`too many different sources to check (${urls.length}; the most is ${MAX_SOURCE_URLS})`);
-  else for (const u of urls) results.push(await checkUrl(head, u)); // one at a time, no retry
+  else results.push(...(await checkAll(head, urls, opts)));
   for (const r of results) if (!r.ok) problems.push(`${r.url}: ${r.note}`);
   const verification: Verification = { at: new Date().toISOString(), by: "owner", claims_sha: claimsSha(claims), ok: problems.length === 0, problems, results };
   await writeEvidence(db, videoId, claims, verification);
