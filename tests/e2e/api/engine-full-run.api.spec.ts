@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { addVerifiedEvidence, metaBody } from "../../support/publishable";
 import path from "node:path";
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { sha256Hex } from "@/server/core/content-hash";
@@ -58,9 +59,9 @@ test("the owner advances one new short through every gate and publish approval o
   mkdirSync(path.join(root, "engine-e2e"), { recursive: true });
   writeFileSync(path.join(root, relativeVideo), videoBytes);
   await addContent(db(), videoId, "video", { filePath: relativeVideo, sha256: sha256Hex(videoBytes) });
-  await addContent(db(), videoId, "evidence", { filePath: `engine-e2e/${videoId}.pdf`, sha256: sha256Hex(`evidence-${videoId}`) });
+  await addVerifiedEvidence(db(), videoId, `evidence-${videoId}`);
   await addContent(db(), videoId, "metadata", {
-    body: { title: topic, description: "A full API journey", visibility: "private", publish_at: null },
+    body: { ...metaBody({ title: topic }), description: "A full API journey" },
     sha256: sha256Hex(`metadata-${videoId}`),
   });
   expect(await workerFinishes(videoId, "qa")).toBe(true);

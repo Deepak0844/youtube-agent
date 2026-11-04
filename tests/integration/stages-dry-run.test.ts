@@ -1,4 +1,5 @@
 import type { LanguageModel } from "ai";
+import { addVerifiedEvidence, metaBody } from "../support/publishable";
 import { BudgetRefusedError, NeedsDecisionError } from "@/server/core/paid-call";
 import { createLlmClient } from "@/server/llm/client";
 import type { ModelRow } from "@/server/core/llm-catalog";
@@ -676,8 +677,8 @@ describe("provider file names and video files", () => {
     const v = await newVideo();
     await chain(v.id, "qa");
     await db.pool.query("update videos set channel_id = 'UC-test' where id = $1", [v.id]);
-    await addContent(db.pool, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence") });
-    await addContent(db.pool, v.id, "metadata", { body: { title: "t", visibility: "private", publish_at: null }, sha256: sha256Hex("meta") });
+    await addVerifiedEvidence(db.pool, v.id);
+    await addContent(db.pool, v.id, "metadata", { body: metaBody(), sha256: sha256Hex("meta") });
     const sid = uuidv7();
     await db.pool.query(
       "insert into sessions (id, token_hash, expires_at, absolute_expires_at) values ($1, $2, clock_timestamp() + interval '1 hour', clock_timestamp() + interval '7 days')",

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { addVerifiedEvidence, metaBody } from "./publishable";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -163,8 +164,8 @@ export async function openWorld(db: TestDb): Promise<World> {
 /** What a Phase 4/5 producer would have saved by the time the owner reaches the evidence and publish gates. */
 export async function ensureLaterContent(db: pg.Pool, videoId: string): Promise<void> {
   const have = (await db.query<{ kind: string }>("select distinct kind from video_content where video_id = $1", [videoId])).rows.map((r) => r.kind);
-  if (!have.includes("evidence")) await addContent(db, videoId, "evidence", { filePath: `evidence/${videoId}.pdf`, sha256: sha256Hex(`evidence-${videoId}`) });
-  if (!have.includes("metadata")) await addContent(db, videoId, "metadata", { body: { title: "Octopus hearts", visibility: "private", publish_at: null }, sha256: sha256Hex(`metadata-${videoId}`) });
+  if (!have.includes("evidence")) await addVerifiedEvidence(db, videoId, `evidence-${videoId}`);
+  if (!have.includes("metadata")) await addContent(db, videoId, "metadata", { body: metaBody({ title: "Octopus hearts" }), sha256: sha256Hex(`metadata-${videoId}`) });
   await db.query("update videos set channel_id = coalesce(channel_id, 'UC-test') where id = $1", [videoId]);
   await ensureChannel(db, "UC-test");
 }

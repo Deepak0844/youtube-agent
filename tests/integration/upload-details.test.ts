@@ -9,6 +9,7 @@ import { approvePublish } from "@/server/db/publish";
 import { autoSeoSweep } from "@/server/db/seo";
 import { loadUploadDetails, saveUploadDetails } from "@/server/db/upload-details";
 import { addContent, createVideoRow, latestContent } from "@/server/db/videos";
+import { addVerifiedEvidence } from "../support/publishable";
 import { ensureChannel } from "../support/channel-fixture";
 import { withTestDb, type TestDb } from "../support/db";
 
@@ -78,7 +79,7 @@ describe("upload details", () => {
       mkdirSync(path.join(root, "videos", v.id), { recursive: true });
       writeFileSync(path.join(root, "videos", v.id, "final.mp4"), bytes);
       await addContent(db.pool, v.id, "video", { filePath: `videos/${v.id}/final.mp4`, sha256: sha256Hex(bytes) });
-      await addContent(db.pool, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence") });
+      await addVerifiedEvidence(db.pool, v.id); // the publish approval needs claim-based, verified evidence
       const s = await session();
       expect(await saveUploadDetails(db.pool, v.id, GOOD, s)).toEqual({ ok: true });
       for (const gate of ["video", "evidence"] as const) await approveGate(db.pool, { videoId: v.id, gate, seenHash: (await liveGateHash(db.pool, v.id, gate))!.hash, actor: s });

@@ -13,6 +13,7 @@ import { addContent, createVideoRow, latestContent } from "@/server/db/videos";
 import { createFakeUploader } from "@/server/providers/uploader/fake";
 import type { UploadQueue } from "@/server/queue/job-queue";
 import { handlePublishUpload } from "@/worker/stages/publish-upload";
+import { metaBody } from "../support/publishable";
 import { ensureChannel } from "../support/channel-fixture";
 import { withTestDb, type TestDb } from "../support/db";
 
@@ -53,7 +54,7 @@ async function seed() {
   await addContent(db.pool, v.id, "script", { body: { narration: "Light moves 300000 km a second.", title: "T", beats: [], evidence: [SRC] }, sha256: sha256Hex(`s-${v.id}`) });
   await addContent(db.pool, v.id, "video", { filePath: `videos/${v.id}/final.mp4`, sha256: sha256Hex(bytes) });
   await addContent(db.pool, v.id, "evidence", { body: { claims: [SRC] }, sha256: sha256Hex(`e-${v.id}`) });
-  await addContent(db.pool, v.id, "metadata", { body: { title: "t", visibility: "private", publish_at: null }, sha256: sha256Hex("m") });
+  await addContent(db.pool, v.id, "metadata", { body: metaBody(), sha256: sha256Hex("m") });
   const actor = await session();
   await approveGate(db.pool, { videoId: v.id, gate: "video", seenHash: (await liveGateHash(db.pool, v.id, "video"))!.hash, actor });
   return { id: v.id, actor };
@@ -163,6 +164,24 @@ describe("require_evidence at publish approval (fake uploader)", () => {
     await saveAndVerifyEvidence(db.pool, id, [SRC], actor, async () => 500);
     await signOff(id, actor);
     expect(await publish(id, actor)).toMatchObject({ ok: false, reason: expect.stringMatching(/verified/i) });
+  });
+
+  it("file-only evidence (no claims) is refused while require_evidence is on, and allowed when it is off", async () => {
+    const { id, actor } = await seed();
+    await addContent(db.pool, id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("file-evidence") });
+    await signOff(id, actor);
+    expect(await publish(id, actor)).toMatchObject({ ok: false, reason: expect.stringMatching(/verified/i) });
+    await setSetting(db.pool, "policy.require_evidence", false, { actor: "session" });
+    expect((await publish(id, actor)).ok).toBe(true);
+  });
+
+  it("legacy metadata with only a title is refused at approval until the details are saved", async () => {
+    const { id, actor } = await seed();
+    await addContent(db.pool, id, "metadata", { body: { title: "t", visibility: "private", publish_at: null }, sha256: sha256Hex("legacy") });
+    await saveAndVerifyEvidence(db.pool, id, [SRC], actor, async () => 200);
+    await signOff(id, actor);
+    expect(await publish(id, actor)).toMatchObject({ ok: false, reason: expect.stringMatching(/save the upload details/i) });
+    expect(await count("uploads")).toBe(0);
   });
 
   it("with require_evidence off, unverified evidence does not block", async () => {
