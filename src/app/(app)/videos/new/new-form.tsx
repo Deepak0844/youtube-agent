@@ -13,7 +13,7 @@ import { createVideoAction, type NewVideoState } from "./actions";
 
 const selectClass = cn("w-full rounded-control border border-control bg-surface px-4 text-body text-text disabled:opacity-50", control, fade, focusRing);
 
-export function NewForm() {
+export function NewForm({ scaleLimitNote }: { scaleLimitNote: string | null }) {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
   const [kind, setKind] = useState<"scene_kit" | "tsx" | "scale3d">("scene_kit");
   const custom = kind === "tsx";
@@ -65,6 +65,7 @@ export function NewForm() {
           </label>
         ))}
       </fieldset>
+      {scale && scaleLimitNote ? <p role="note" data-testid="render-limit-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{scaleLimitNote}</p> : null}
       {scale ? null : (
       <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
         <legend className="mb-1 text-body font-medium">Style</legend>
