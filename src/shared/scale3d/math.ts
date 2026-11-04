@@ -94,7 +94,8 @@ export function layoutObjects(objects: readonly MObject[]): Placement[] {
 }
 
 // ---- camera path ----
-export type CamKey = { t: number; x: number; y: number; z: number; dist: number };
+/** `top` is the highest height this shot cares about: the ruler's visible range follows it. */
+export type CamKey = { t: number; x: number; y: number; z: number; dist: number; top: number };
 export type CamPose = { x: number; y: number; z: number; dist: number };
 
 /** Distance from the focus plane at which `span` metres fill the screen's height. */
@@ -116,9 +117,10 @@ export function beatSpan(o: MObject, range?: [number, number]): number {
 export function cameraKeys(scene: MScene, placements: readonly Placement[]): CamKey[] {
   const keys: CamKey[] = [];
   let t0 = 0;
-  const make = (p: Placement, y: number, span: number, t: number): CamKey => {
+  const make = (p: Placement, y: number, span: number, t: number, top: number): CamKey => {
     // A load on a hook floats, so the camera follows it up there instead of keeping the ground in view.
-    return { t, x: p.x, y: p.carriedBy ? p.y + y : y, z: p.z, dist: distForSpan(span) };
+    const cy = p.carriedBy ? p.y + y : y;
+    return { t, x: p.x, y: cy, z: p.z, dist: distForSpan(span), top: Math.max(top + (p.carriedBy ? p.y : 0), cy * 1.15) };
   };
   for (const b of scene.beats) {
     const o = scene.objects.find((x) => x.id === b.focus);
@@ -128,10 +130,10 @@ export function cameraKeys(scene: MScene, placements: readonly Placement[]): Cam
     if (b.range_m) {
       const [lo, hi] = b.range_m[0] <= b.range_m[1] ? b.range_m : [b.range_m[1], b.range_m[0]];
       // a climb never lets the ground rise above the lower part of the frame
-      keys.push(make(p, Math.max(lo, span * 0.42), span, t0 + b.duration_s * 0.12), make(p, hi, span, t0 + b.duration_s * 0.88));
+      keys.push(make(p, Math.max(lo, span * 0.42), span, t0 + b.duration_s * 0.12, hi * 1.2), make(p, hi, span, t0 + b.duration_s * 0.88, hi * 1.2));
     } else {
       // the object sits a little below the middle of the frame
-      keys.push(make(p, o.height_m / 2 + span * 0.1, span, t0 + b.duration_s * 0.5));
+      keys.push(make(p, o.height_m / 2 + span * 0.1, span, t0 + b.duration_s * 0.5, o.height_m * 1.6));
     }
     t0 += b.duration_s;
   }
@@ -200,12 +202,19 @@ export function niceCeil(v: number): number {
   const p = 10 ** Math.floor(Math.log10(Math.max(v, 1e-9)));
   return (NICE.find((n) => n * p >= v - 1e-9) ?? 10) * p;
 }
-/** Top of the ruler: the setting, else just above the highest camera height of the whole path. */
-export function rulerMax(scene: MScene, keys: readonly CamKey[]): number {
+/**
+ * The ruler's visible range (0 to this many metres) at time `tS`: follows the focus, so a street shows 0 to about 15 m and a
+ * tower 0 to about 500 m. Blended in log space, so it zooms smoothly across beats. `ruler.max_m` fixes it instead.
+ */
+export function rulerRangeAt(scene: MScene, keys: readonly CamKey[], tS: number): number {
   if (scene.ruler?.max_m) return scene.ruler.max_m;
-  let top = 1;
-  for (let i = 0; i <= 200; i++) top = Math.max(top, cameraAt(keys, (keys[keys.length - 1]!.t * i) / 200).y);
-  return niceCeil(top * 1.08);
+  const ks = keys.filter((k, i) => i === 0 || k.t > keys[i - 1]!.t);
+  const r = Math.exp(monotone(ks.map((k) => k.t), ks.map((k) => Math.log(Math.max(1, k.top))), tS));
+  return Math.max(1, r, cameraAt(keys, tS).y * 1.1); // the marker is always on the ruler
 }
-/** Ruler tick spacing: about 6 to 12 major ticks. */
-export const rulerStep = (max: number): number => niceCeil(max / 8);
+/** Tick spacing for a visible range: tidy steps (1, 2, 5, 10, 20 ... m), about 4 to 8 ticks. */
+export function rulerStep(range: number): number {
+  const x = range / 8;
+  const p = 10 ** Math.floor(Math.log10(Math.max(x, 1e-9)));
+  return ([1, 2, 5, 10].find((n) => n * p >= x - 1e-9) ?? 10) * p;
+}

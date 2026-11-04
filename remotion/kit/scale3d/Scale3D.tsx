@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { ThreeCanvas } from "@remotion/three";
 import * as THREE from "three";
-import { beatFrames, beatIndexAt, cameraAt, cameraKeys, formatHeight, layoutObjects, rulerMax, rulerStep, rulerValue, totalFrames } from "../../../src/shared/scale3d/math";
+import { beatFrames, beatIndexAt, cameraAt, cameraKeys, formatHeight, layoutObjects, rulerRangeAt, rulerStep, rulerValue, totalFrames } from "../../../src/shared/scale3d/math";
 import type { Scale3dScene } from "../../../src/shared/scale3d";
 import { Captions } from "../Captions";
 import { captionStyleOf, presetOf } from "../presets";
@@ -57,8 +57,8 @@ export const Scale3D: React.FC<Scale3DProps> = ({ scene, captions, style, captio
   const beats = useMemo(() => beatFrames(durations, fps), [durations, fps]);
   const placements = useMemo(() => layoutObjects(scene.objects), [scene]);
   const keys = useMemo(() => cameraKeys(scene, placements), [scene, placements]);
-  const max = useMemo(() => rulerMax(scene, keys), [scene, keys]);
   const pose = cameraAt(keys, frame / fps);
+  const max = rulerRangeAt(scene, keys, frame / fps);
   const bi = beatIndexAt(beats, frame);
   const beat = scene.beats[bi]!;
   const local = frame - beats[bi]!.from;

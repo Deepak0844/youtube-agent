@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SCALE3D_SAMPLE as S, beatFrames, beatIndexAt, cameraAt, cameraKeys, cameraPosition, formatHeight, layoutObjects, niceCeil, rulerMax, rulerValue, totalFrames } from "../../src/shared/scale3d";
+import { SCALE3D_SAMPLE as S, beatFrames, beatIndexAt, cameraAt, cameraKeys, cameraPosition, formatHeight, layoutObjects, niceCeil, rulerRangeAt, rulerStep, rulerValue, totalFrames } from "../../src/shared/scale3d";
 
 const placements = layoutObjects(S.objects);
 const keys = cameraKeys(S, placements);
@@ -115,10 +115,35 @@ describe("ruler", () => {
     expect(rulerValue(mid)).toBeGreaterThan(5);
     expect(rulerValue(mid)).toBeLessThanOrEqual(crane.height + 1);
   });
-  it("tops out just above the highest camera height", () => {
-    const max = rulerMax(S, keys);
-    expect(max).toBeGreaterThanOrEqual(Math.max(...keys.map((k) => k.y)));
-    expect(max).toBeLessThanOrEqual(400);
-    expect(rulerMax({ ...S, ruler: { max_m: 400 } }, keys)).toBe(400);
+  it("follows the focus: small for the street, large for the tower", () => {
+    const street = rulerRangeAt(S, keys, 2);
+    const tower = rulerRangeAt(S, keys, 26);
+    expect(street).toBeLessThan(20);
+    expect(tower).toBeGreaterThan(300);
+    expect(rulerRangeAt(S, keys, 0)).toBeCloseTo(rulerRangeAt(S, keys, total), 6);
+  });
+  it("changes smoothly across beats (no jumps) and never leaves the camera outside it", () => {
+    let prev = rulerRangeAt(S, keys, 0);
+    for (let f = 1; f <= total * 30; f++) {
+      const r = rulerRangeAt(S, keys, f / 30);
+      expect(r / prev).toBeLessThan(1.15);
+      expect(prev / r).toBeLessThan(1.15);
+      expect(rulerValue(cameraAt(keys, f / 30))).toBeLessThanOrEqual(r * 1.05);
+      prev = r;
+    }
+  });
+  it("is monotone between the street view and the tower view", () => {
+    // beat 4 (mini crane, ends at 21 s) to the tower climb: the range only grows from the last crane shot to the tower shot
+    let prev = rulerRangeAt(S, keys, 18);
+    for (let t = 18.1; t <= 28; t += 0.1) {
+      const r = rulerRangeAt(S, keys, t);
+      expect(r).toBeGreaterThanOrEqual(prev - 1e-9);
+      prev = r;
+    }
+  });
+  it("uses a fixed range when asked, and tidy tick steps", () => {
+    expect(rulerRangeAt({ ...S, ruler: { max_m: 400 } }, keys, 3)).toBe(400);
+    expect(rulerStep(15)).toBe(2);
+    expect(rulerStep(500)).toBe(100);
   });
 });
