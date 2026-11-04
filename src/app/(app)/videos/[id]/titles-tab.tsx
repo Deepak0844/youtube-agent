@@ -1,8 +1,10 @@
 import type { Check } from "@/server/core/seo";
 import { getPool } from "@/server/db/pool";
 import { loadSeoTab } from "@/server/db/seo";
+import { loadUploadDetails } from "@/server/db/upload-details";
 import type { VideoPage } from "@/server/db/video-page";
 import { Pill } from "@/ui/primitives/pill";
+import { UploadDetailsForm } from "./details-form";
 import { CopyField, WriteTitlesForm } from "./titles-forms";
 
 const H = ({ children }: { children: React.ReactNode }) => <h3 className="m-0 text-section font-medium">{children}</h3>;
@@ -17,9 +19,10 @@ function Marks({ checks }: { checks: Check[] }) {
 }
 
 // The Titles tab: three title options, the description, tags and a pinned-comment idea for the approved script. Read only
-// except the Regenerate button. Nothing is uploaded from here.
+// except the Regenerate button and the upload details form. Nothing is uploaded from here.
 export async function TitlesTabPanel({ p }: { p: VideoPage }) {
   const t = await loadSeoTab(getPool(), p.head.id);
+  const details = await loadUploadDetails(getPool(), p.head.id);
   const lang = p.head.language;
   const b = t.body;
   return (
@@ -58,7 +61,13 @@ export async function TitlesTabPanel({ p }: { p: VideoPage }) {
           <div><CopyField value={b.pinnedComment} label="Copy pinned comment" /></div>
         </>
       )}
-      <p className="m-0 text-small text-muted">Uploading to YouTube comes later (Phase 5).</p>
+      {details ? (
+        <>
+          <H>Upload details</H>
+          <UploadDetailsForm key={JSON.stringify(details.saved ?? details.draft)} videoId={p.head.id} details={details.saved ?? details.draft} saved={details.saved !== null} channelTitle={details.channelTitle} />
+        </>
+      ) : null}
+      <p className="m-0 text-small text-muted">Nothing is uploaded from here. Uploading arrives in the next step of Phase 5; saving these details only stores them with the video.</p>
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { addVerifiedEvidence, metaBody } from "../../support/publishable";
 import path from "node:path";
 import pg from "pg";
 import { hashToken } from "@/server/core/auth-crypto";
@@ -89,8 +90,8 @@ export async function seedPublishGate(topic: string, visibility: "private" | "un
   writeFileSync(path.join(root, rel), bytes);
   await addContent(db(), v.id, "script", { body: script(topic), sha256: sha256Hex(`script-${v.id}`) });
   await addContent(db(), v.id, "video", { filePath: rel, sha256: sha256Hex(bytes) });
-  await addContent(db(), v.id, "evidence", { filePath: `queue-e2e/${v.id}.pdf`, sha256: sha256Hex(`evidence-${v.id}`) });
-  await addContent(db(), v.id, "metadata", { body: { title: topic, description: "Watch this", visibility, publish_at: null }, sha256: sha256Hex(`meta-${v.id}`) });
+  await addVerifiedEvidence(db(), v.id, `evidence-${v.id}`);
+  await addContent(db(), v.id, "metadata", { body: { ...metaBody({ title: topic, visibility }), description: "Watch this" }, sha256: sha256Hex(`meta-${v.id}`) });
   const token = await mintSession();
   const s = await db().query<{ id: string }>("select id from sessions where token_hash = $1", [hashToken(token)]);
   const actor = { kind: "session", sessionId: s.rows[0]!.id } as const;

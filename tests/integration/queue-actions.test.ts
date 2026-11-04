@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { addVerifiedEvidence, metaBody } from "../support/publishable";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -247,8 +248,8 @@ describe("decideGate: publish", () => {
     await ensureChannel(db.pool, "UC1");
     await addContent(db.pool, v.id, "script", { body: script(), sha256: sha256Hex("script-1") });
     await addContent(db.pool, v.id, "video", { filePath: "v/1.mp4", sha256: sha256Hex("video-1") });
-    await addContent(db.pool, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence-1") });
-    await addContent(db.pool, v.id, "metadata", { body: { title: "Publish me", visibility: "private", publish_at: null }, sha256: sha256Hex("meta-1") });
+    await addVerifiedEvidence(db.pool, v.id, "evidence-1");
+    await addContent(db.pool, v.id, "metadata", { body: metaBody({ title: "Publish me" }), sha256: sha256Hex("meta-1") });
     for (const g of ["video", "evidence"] as const) await approveGate(db.pool, { videoId: v.id, gate: g, seenHash: (await liveGateHash(db.pool, v.id, g))!.hash, actor });
     // Every stage ran (as a worker would) and the script was approved: the pipeline now waits at the publish gate.
     for (const stage of ["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]) {
@@ -281,7 +282,7 @@ describe("decideGate: publish", () => {
   });
   it("public stays refused while allow_public is off, with a sentence", async () => {
     const { q, root, videoId } = await publishReady();
-    await addContent(db.pool, videoId, "metadata", { body: { title: "Publish me", visibility: "public", publish_at: null }, sha256: sha256Hex("meta-2") });
+    await addContent(db.pool, videoId, "metadata", { body: metaBody({ title: "Publish me", visibility: "public" }), sha256: sha256Hex("meta-2") });
     const r = await decideGate(db.pool, q, actor, await inputFor(videoId, "publish"), "approve", { root });
     expect(r.ok).toBe(false);
     expect(r.message.length).toBeGreaterThan(10);
@@ -464,8 +465,8 @@ describe("a cancelled video does nothing more", () => {
     await ensureChannel(db.pool, "UC1");
     await addContent(db.pool, v.id, "script", { body: script(), sha256: sha256Hex("script-1") });
     await addContent(db.pool, v.id, "video", { filePath: "v/1.mp4", sha256: sha256Hex("video-1") });
-    await addContent(db.pool, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence-1") });
-    await addContent(db.pool, v.id, "metadata", { body: { title: "Cancel me", visibility: "private", publish_at: null }, sha256: sha256Hex("meta-1") });
+    await addVerifiedEvidence(db.pool, v.id, "evidence-1");
+    await addContent(db.pool, v.id, "metadata", { body: metaBody({ title: "Cancel me" }), sha256: sha256Hex("meta-1") });
     for (const g of ["video", "evidence"] as const) await approveGate(db.pool, { videoId: v.id, gate: g, seenHash: (await liveGateHash(db.pool, v.id, g))!.hash, actor });
     return { q, root, videoId: v.id };
   }

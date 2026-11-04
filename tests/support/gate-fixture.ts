@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { addVerifiedEvidence, metaBody } from "./publishable";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type pg from "pg";
@@ -11,7 +12,7 @@ import { addContent, createVideoRow, type ContentKind } from "@/server/db/videos
 import type { GateAct, GateAttempt, GateResult } from "./gate-invariants";
 
 // Real-database fixture shared by the per-gate suites in tests/integration/gates/. One fresh video per call.
-const meta = { visibility: "private", publish_at: null };
+const meta = metaBody();
 const plan = { providers_models: { llm: "m1" }, path: "scene_kit", library_scene_versions: { a: 1 }, quote: { micro_usd: "5" } };
 
 export async function seedVideo(db: pg.Pool): Promise<string> {
@@ -19,7 +20,7 @@ export async function seedVideo(db: pg.Pool): Promise<string> {
   await addContent(db, v.id, "script", { body: { text: "v1" }, sha256: sha256Hex("script-1") });
   await addContent(db, v.id, "cost_plan", { body: plan, sha256: sha256Hex("plan-1") });
   await addContent(db, v.id, "video", { filePath: "v/1.mp4", sha256: sha256Hex("video-1") });
-  await addContent(db, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence-1") });
+  await addVerifiedEvidence(db, v.id, "evidence-1");
   await addContent(db, v.id, "metadata", { body: meta, sha256: sha256Hex("meta-1") });
   return v.id;
 }

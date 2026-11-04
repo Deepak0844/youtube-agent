@@ -1,6 +1,8 @@
 // Pure rules for the publish approval (Doc 02 4.4, ADR 0004). No IO. Everything fails closed: an unknown, missing or
 // oddly typed value is a refusal, never a default. Public is off unless the global kill switch is exactly `true`.
 
+import { storedDetailsProblem } from "./upload-details";
+
 export const VISIBILITIES = ["private", "unlisted", "public"] as const;
 export type Visibility = (typeof VISIBILITIES)[number];
 export const MIN_PUBLISH_LEAD_MS = 60 * 60 * 1000;
@@ -47,7 +49,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 /** The metadata fields the publish hash and the upload rely on. */
 export function metadataProblem(body: unknown): string | null {
   if (!isObj(body)) return "the title and description are missing or unreadable";
-  return visibilityProblem(body.visibility) ?? publishAtProblem(body.publish_at ?? null);
+  return visibilityProblem(body.visibility) ?? publishAtProblem(body.publish_at ?? null) ?? storedDetailsProblem(body);
 }
 
 export interface PublishPolicyInput {

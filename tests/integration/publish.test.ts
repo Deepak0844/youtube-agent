@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { addVerifiedEvidence, metaBody } from "../support/publishable";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -64,8 +65,8 @@ async function seed(o: { visibility?: string; publishAt?: string | null; approve
   mkdirSync(path.join(root, "videos", v.id), { recursive: true });
   writeFileSync(path.join(root, videoPath), videoBytes);
   await addContent(db.pool, v.id, "video", { filePath: videoPath, sha256: sha(videoBytes) });
-  await addContent(db.pool, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence") });
-  await addContent(db.pool, v.id, "metadata", { body: { title: "t", visibility: o.visibility ?? "private", publish_at: o.publishAt ?? null }, sha256: sha256Hex("meta") });
+  await addVerifiedEvidence(db.pool, v.id);
+  await addContent(db.pool, v.id, "metadata", { body: metaBody({ visibility: o.visibility, publishAt: o.publishAt }), sha256: sha256Hex("meta") });
   const sessionId = await newSession();
   const actor = { kind: "session", sessionId } as const;
   if (o.approveVideo !== false) await approveGate(db.pool, { videoId: v.id, gate: "video", seenHash: (await liveGateHash(db.pool, v.id, "video"))!.hash, actor });

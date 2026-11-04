@@ -1,3 +1,4 @@
+import { claimsOf as evidenceClaims } from "@/server/core/evidence-edit";
 import type pg from "pg";
 import { STAGE_NAMES, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
 import { BREAKER_STAGES, versionsKey, type BreakerStage, type QueueGate, QUEUE_GATES } from "@/server/core/queue-input";
@@ -141,7 +142,10 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
     return { kind: "video", src: src(c.video?.filePath), shaPrefix: (c.video?.sha256 ?? "").slice(0, 12), captions, rewriteLines: Array.isArray(cap.rewrite_lines) ? cap.rewrite_lines.filter((n): n is number => Number.isInteger(n)) : [] };
   }
   const script = await latestContent(db, videoId, "script");
-  const claims = claimsOf(script?.body).claims;
+  const scriptClaims = claimsOf(script?.body).claims;
+  // The sign-off shows the claims the owner edited and verified (the evidence content), not only the script's first list.
+  const edited = evidenceClaims(c.evidence?.body);
+  const claims = gate === "evidence" && edited ? edited.map((e) => ({ text: e.text, kind: e.kind, detail: e.kind === "sourced" ? e.source_url + ' - "' + e.quote + '"' : e.method })) : scriptClaims;
   if (gate === "evidence") return { kind: "evidence", claims, fileSrc: src(c.evidence?.filePath), shaPrefix: (c.evidence?.sha256 ?? "").slice(0, 12) };
   const meta = asObj(c.metadata?.body);
   return {
