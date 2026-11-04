@@ -37,6 +37,7 @@ import { withAttempt } from "./stages/attempt";
 import { buildAttempt } from "./stages/build";
 import { repairScenesAttempt } from "./stages/repair-scenes";
 import { reframeAttempt } from "./stages/reframe";
+import { replyDraftsAttempt } from "./stages/reply-drafts";
 import { seoAttempt } from "./stages/seo";
 import type { StageDeps } from "./stages/deps";
 import { dryRunDraftHandler } from "./stages/draft";
@@ -183,6 +184,11 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     const models = await defaultModelDeps(pool, () => loadKeyring());
     return withAttempt(fin, seoAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
   };
+  // On demand only: the 'comment_replies' model route. Saves HELD drafts; it never posts anything.
+  const replyDrafts: StageHandler = async (ctx) => {
+    const models = await defaultModelDeps(pool, () => loadKeyring());
+    return withAttempt(fin, replyDraftsAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
+  };
   return {
     draft: refuseDryRunVideos(pool, draft),
     pictures: refuseDryRunVideos(pool, picturesHandler({
@@ -201,6 +207,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     repair_scenes: refuseDryRunVideos(pool, repair),
     reframe: refuseDryRunVideos(pool, withAttempt(fin, reframeAttempt(deps))),
     seo: refuseDryRunVideos(pool, seo),
+    reply_drafts: refuseDryRunVideos(pool, replyDrafts),
     build: refuseDryRunVideos(pool, build),
     tts: refuseDryRunVideos(pool, withAttempt(fin, ttsAttempt(deps))),
     render: refuseDryRunVideos(pool, withAttempt(fin, renderAttempt(deps))),

@@ -9,6 +9,8 @@ import { defaultDryRunDeps, dryRunHandlers, productionHandlers, workerHooksFor, 
 import { loadKeyring } from "@/server/db/master-key";
 import { createFakeUploader } from "@/server/providers/uploader/fake";
 import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
+import { throttledCommentSync } from "@/server/db/comments";
+import { defaultGoogleHttp } from "@/server/db/youtube-channels";
 import { throttledRetention } from "@/server/db/retention";
 import { storageRoot } from "@/server/storage/paths";
 import { startRuntime, type WorkerOptions } from "./runtime";
@@ -46,10 +48,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       if (process.env.ENGINE_DRY_RUN !== "1") {
         // Asset retention: at most once every 6 h, in the background (it never throws and never blocks the loop).
         const retentionTick = throttledRetention(pool, storageRoot());
+        // Comment sync: read only, at most once every 6 h; drafts it queues wait held for the owner. Posting is never done here.
+        let syncTick: (() => Promise<void>) | undefined;
         hooks.advanceAll = async (p, queue, readers) => {
           const r = await advanceAll(p, queue, readers);
           await autoSeoSweep(p, queue).catch(() => undefined);
           void retentionTick();
+          syncTick ??= throttledCommentSync(p, loadKeyring, defaultGoogleHttp, queue);
+          void syncTick();
           return r;
         };
       }

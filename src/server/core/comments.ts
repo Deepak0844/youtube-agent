@@ -1,5 +1,6 @@
 // Pure helpers for comment sync and replies. No IO. A comment is written by a stranger: everything from YouTube is cleaned,
 // capped and kept as plain text, and is never rendered as HTML or a link.
+import type { Message } from "@/server/core/agent-loop";
 import { YT_ID } from "@/server/core/analytics";
 import { sha256Hex } from "@/server/core/content-hash";
 import type { Lang } from "@/server/core/lang";
@@ -91,7 +92,7 @@ export interface DraftComment {
 const fence = (label: string, t: string) => `<<<DATA ${label}\n${t.replaceAll("<<<", "< < <").replaceAll(">>>", "> > >").trim()}\n>>>`;
 
 /** The comment text goes in only as fenced, quoted data. No secret, key, token or setting is ever part of this prompt. */
-export function replyMessages(a: { langName: string; topic: string; comments: DraftComment[] }): Array<{ role: "system" | "user"; content: string }> {
+export function replyMessages(a: { langName: string; topic: string; comments: DraftComment[] }): Message[] {
   return [
     {
       role: "system",
