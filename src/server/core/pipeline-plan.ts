@@ -7,7 +7,7 @@ import type { GateId } from "@/server/core/gates";
 // covers the hash of the stage before it, so rerunning an early stage makes every later one stale automatically.
 
 export type VideoFormat = "short" | "long";
-export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai";
+export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai" | "scale3d";
 export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.

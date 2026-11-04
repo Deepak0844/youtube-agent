@@ -7,15 +7,15 @@ const api: ModelRow = { id: "00000000-0000-4000-8000-0000000000a1", provider: "a
 const other: ModelRow = { ...api, id: "00000000-0000-4000-8000-0000000000a2", label: "Other" };
 const cc: ModelRow = { id: "00000000-0000-4000-8000-0000000000c1", provider: "claude_code", modelId: "default", label: "Claude Code", baseUrl: null, prices: null, isFree: true, capabilities: { structuredOutput: true, toolUse: false, vision: false, nativeWebSearch: false, contextWindow: 200000 }, enabled: true, endpointKind: "local" };
 
-const everyStageOnApi = { outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, qa_vision: api.id, review_frames: api.id, research: api.id, titles: api.id };
+const everyStageOnApi = { outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, build_scale3d: api.id, qa_vision: api.id, review_frames: api.id, research: api.id, titles: api.id };
 const base: SwitchInput = { on: true, routes: everyStageOnApi, models: [api, other, cc], local: [], previous: null, claudeCodeId: cc.id };
 
 describe("AI source switch (pure)", () => {
   it("ON routes only the text stages Claude Code can do and remembers what they had", () => {
     const p = planAiSource(base);
     if (!p.ok) throw new Error(p.reason);
-    expect(p.routes).toEqual({ ...everyStageOnApi, outline: cc.id, draft: cc.id, build_scene_kit: cc.id, build_tsx: cc.id, titles: cc.id, comment_replies: cc.id });
-    expect(p.previous).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, titles: api.id, comment_replies: null });
+    expect(p.routes).toEqual({ ...everyStageOnApi, outline: cc.id, draft: cc.id, build_scene_kit: cc.id, build_tsx: cc.id, build_scale3d: cc.id, titles: cc.id, comment_replies: cc.id });
+    expect(p.previous).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, build_scale3d: api.id, titles: api.id, comment_replies: null });
     const text = p.notes.join("\n");
     expect(text).toMatch(/QA, vision review stays on its current model: it needs image input/);
     expect(text).toMatch(/Research and ideas stays on its current model/);
@@ -77,7 +77,7 @@ describe("AI source switch (pure)", () => {
     const hostile = JSON.parse(`{"constructor":"${api.id}","__proto__":"${api.id}","outline":null}`) as Record<string, string | null>;
     const off = planAiSource({ ...base, on: false, routes: { outline: cc.id }, previous: hostile });
     if (!off.ok) throw new Error(off.reason);
-    expect(Object.keys(off.routes).sort()).toEqual(["build_scene_kit", "build_tsx", "comment_replies", "draft", "outline", "qa_vision", "research", "review_frames", "titles"]);
+    expect(Object.keys(off.routes).sort()).toEqual(["build_scale3d", "build_scene_kit", "build_tsx", "comment_replies", "draft", "outline", "qa_vision", "research", "review_frames", "titles"]);
     expect(off.routes.outline).toBeNull();
   });
 });

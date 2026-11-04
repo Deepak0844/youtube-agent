@@ -120,6 +120,7 @@ export const SAFETY_KEYS = (Object.keys(SETTINGS) as SettingKey[]).filter((k) =>
 export const BUDGET_DEFAULTS: Record<string, number> = {
   "video:scene_kit": 2_000_000,
   "video:tsx": 5_000_000,
+  "video:scale3d": 5_000_000,
   "video:collage": 5_000_000,
   "video:ai": 15_000_000,
   "video:long": 8_000_000,
@@ -132,6 +133,7 @@ export const BUDGET_DEFAULTS: Record<string, number> = {
 export const BUDGET_LABELS: Record<string, { title: string; note: string }> = {
   "video:scene_kit": { title: "Scene-kit video", note: "The most one scene-kit video may spend." },
   "video:tsx": { title: "Code-scene video", note: "The most one code-scene video may spend." },
+  "video:scale3d": { title: "3D scale video", note: "The most one 3D scale-comparison video may spend." },
   "video:collage": { title: "Collage video", note: "The most one collage video may spend." },
   "video:ai": { title: "AI video", note: "The most one AI-generated video may spend." },
   "video:long": { title: "Long video", note: "The most one long-form video may spend." },
