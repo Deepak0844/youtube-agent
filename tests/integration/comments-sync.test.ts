@@ -75,17 +75,17 @@ describe("comment sync", () => {
     expect(f.calls.filter((c) => c.url.includes("commentThreads"))).toHaveLength(0);
   });
 
-  it("the worker hook is throttled by an injected clock", async () => {
+  it("the worker hook is throttled by the database (last_sync_at)", async () => {
     const f = fakeGoogle();
     await connectChannel(db, f, true);
     await uploadedVideo(db);
-    let t = 1_000_000;
     const queue = { enqueue: async () => undefined } as never;
-    const tick = throttledCommentSync(db.pool, ring, f.http, queue, { everyMs: 1000, now: () => t });
+    const tick = throttledCommentSync(db.pool, ring, f.http, queue, { everyMs: 6 * 3600_000 });
     await tick();
+    await throttledCommentSync(db.pool, ring, f.http, queue)(); // a fresh worker object (restart) is held back by the database too
     await tick();
     expect(f.calls.filter((c) => c.url.includes("commentThreads"))).toHaveLength(1);
-    t += 1001;
+    await db.ownerPool.query("update comment_sync_state set last_sync_at = now() - interval '7 hours'");
     await tick();
     expect(f.calls.filter((c) => c.url.includes("commentThreads"))).toHaveLength(2);
   });

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import { z } from "zod";
+import { LIVE_PHRASE } from "@/server/core/comments";
 import { CUTOVER_PHRASE } from "@/server/core/channel-safety";
 import { redactDetail } from "@/server/core/audit-events";
 import { ownServicePorts, parseLocalServicesInput, validateLocalService } from "@/server/core/local-services";
@@ -78,9 +79,10 @@ export async function saveSystemSettings(db: pg.Pool, input: unknown): Promise<S
 }
 
 /** The two global upload switches. Turning the kill switch ON or the cutover OFF needs nothing more; turning the cutover ON needs the typed phrase. */
-export async function saveUploadSwitches(db: pg.Pool, input: { killSwitch?: boolean; cutover?: boolean; typed?: string; commentsDryRun?: boolean }): Promise<SaveResult> {
+export async function saveUploadSwitches(db: pg.Pool, input: { killSwitch?: boolean; cutover?: boolean; typed?: string; commentsDryRun?: boolean; typedLive?: string }): Promise<SaveResult> {
   const writes: Array<{ key: string; value: unknown }> = [];
   // Comment replies: dry run is the default; false lets the owner's "Approve and post" really post. Session only, audited as setting.changed.
+  if (input.commentsDryRun === false && input.typedLive !== LIVE_PHRASE) return { ok: false, error: `Type ${LIVE_PHRASE} exactly to turn dry run off. Nothing was saved.` };
   if (typeof input.commentsDryRun === "boolean") writes.push({ key: "comments.dry_run", value: input.commentsDryRun });
   if (typeof input.killSwitch === "boolean") writes.push({ key: "uploads.kill_switch", value: input.killSwitch });
   if (typeof input.cutover === "boolean") {

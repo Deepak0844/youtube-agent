@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
 import { Label } from "@/ui/primitives/label";
-import { approveAndPostAction, draftRepliesAction, editReplyAction, ignoreCommentAction, setDryRunAction, syncCommentsAction, type EngagementState } from "./actions";
+import { approveAndPostAction, draftRepliesAction, editReplyAction, ignoreCommentAction, resolveReplyAction, setDryRunAction, syncCommentsAction, type EngagementState } from "./actions";
 
 function Result({ state }: { state: EngagementState }) {
   if (!state.message) return null;
@@ -41,12 +41,13 @@ export function DraftForm({ videoId }: { videoId: string }) {
 }
 
 /** Approve and post: ONE reply. `seen` is the hash of the comment and reply text this page shows; the server refuses if either changed. */
-export function ApproveForm({ replyId, seen, needsEyes }: { replyId: string; seen: string; needsEyes: boolean }) {
+export function ApproveForm({ replyId, seen, needsEyes, dryRun }: { replyId: string; seen: string; needsEyes: boolean; dryRun: boolean }) {
   const [state, run, pending] = useActionState<EngagementState, FormData>(approveAndPostAction, {});
   return (
     <form action={run} className="flex flex-col gap-2">
       <input type="hidden" name="replyId" value={replyId} />
       <input type="hidden" name="seen" value={seen} />
+      <input type="hidden" name="expectMode" value={dryRun ? "dry" : "live"} />
       {needsEyes ? (
         <label className="flex min-h-11 items-center gap-3 text-body">
           <input type="checkbox" name="ack" className="size-5 accent-[var(--text)]" />
@@ -80,6 +81,23 @@ export function EditForm({ replyId, text }: { replyId: string; text: string }) {
         </div>
       </form>
     </details>
+  );
+}
+
+/** For a failed (unclear) or stuck reply: the owner looked at YouTube and says what is there. Sends nothing. */
+export function ResolveForm({ replyId }: { replyId: string }) {
+  const [state, run, pending] = useActionState<EngagementState, FormData>(resolveReplyAction, {});
+  return (
+    <form action={run} className="flex flex-wrap items-center gap-3">
+      <input type="hidden" name="replyId" value={replyId} />
+      <Button type="submit" name="outcome" value="posted" variant="secondary" disabled={pending}>
+        I checked YouTube: it is posted
+      </Button>
+      <Button type="submit" name="outcome" value="ignored" variant="secondary" disabled={pending}>
+        I checked YouTube: not posted, drop it
+      </Button>
+      <Result state={state} />
+    </form>
   );
 }
 

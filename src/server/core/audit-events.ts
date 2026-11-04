@@ -30,6 +30,7 @@ export const AUDIT_EVENTS = {
   "comment.reply_dry_run": "A reply was approved in dry-run mode: the request that would be sent was recorded and nothing was sent to YouTube (detail: reply id, session id, text hash)",
   "comment.reply_posted": "A reply was approved by the owner and posted to YouTube (detail: reply id, YouTube comment id, session id, text hash)",
   "comment.reply_failed": "A reply post failed or its outcome is unclear, so it is never retried automatically (detail: reply id, reason class)",
+  "comment.reply_resolved": "The owner checked YouTube and settled an unclear or stuck reply by hand; nothing was sent (detail: reply id, outcome, session id)",
   "retention.cleaned": "Old working files of an uploaded video were deleted (detail: video id, who asked, counts and bytes only; never a path)",
   "youtube.refresh_failed": "Google refused a saved channel token, so the channel needs reconnecting (detail: channel id, reason)",
   "vault.init": "The vault master key was initialised",

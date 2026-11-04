@@ -140,22 +140,32 @@ export function syncMessage(r: SyncResult): string {
   return parts.join(". ") + ".";
 }
 
-/** Worker hook: a sync at most every `everyMs` (default 6 h) by the injected clock. Read only; errors never reach the caller. */
+/**
+ * Worker hook: a sync at most every `everyMs` (default 6 h), decided by comment_sync_state.last_sync_at on the DATABASE clock, so
+ * a restart or a second worker cannot sync early. Read only; errors never reach the caller.
+ */
 export function throttledCommentSync(
   db: pg.Pool,
   ring: Keyring | (() => Keyring),
   http: GoogleHttp,
   queue: EnqueueOnly,
-  opts: { everyMs?: number; now?: () => number } = {},
+  opts: { everyMs?: number } = {},
 ): () => Promise<void> {
   const every = opts.everyMs ?? 6 * 3600_000;
-  const now = opts.now ?? Date.now;
-  let last = -Infinity;
   return async () => {
-    const t = now();
-    if (t - last < every) return;
-    last = t;
-    await syncComments(db, ring, http, { kind: "worker" }, { queue }).catch(() => undefined);
+    try {
+      const claim = await db.query(
+        `insert into comment_sync_state (id, last_sync_at) values (1, now())
+         on conflict (id) do update set last_sync_at = now()
+           where comment_sync_state.last_sync_at is null or comment_sync_state.last_sync_at < now() - $1::double precision * interval '1 millisecond'
+         returning 1`,
+        [every],
+      );
+      if (!claim.rowCount) return;
+      await syncComments(db, ring, http, { kind: "worker" }, { queue });
+    } catch {
+      // never reaches the worker loop
+    }
   };
 }
 
@@ -227,25 +237,61 @@ export async function editReply(db: pg.Pool, replyId: string, text: unknown, act
   if (actorProblem(actor)) return { ok: false, message: ACTOR_REASON };
   const t = replyTextProblem(text);
   if (!t.ok) return { ok: false, message: t.reason };
-  const r = await db.query(
-    `update comment_replies set draft_text = $2, status = 'held', approved_by_session = null, approved_hash = null, approved_at = null,
-            attempted_at = null, mode = null, would_send = null, error = null, updated_at = now()
-      where id = $1 and status in ('held', 'draft', 'dry_run')`,
-    [replyId, t.text],
-  );
-  if (!r.rowCount) return { ok: false, message: "That reply can no longer be edited." };
-  await recordAudit(db, "comment.reply_edited", { replyId, sessionId: actor.sessionId, textHash: sha256Hex(t.text).slice(0, 16) });
-  return { ok: true };
+  return inTx(db, async (c): Promise<EditResult> => {
+    const r = await c.query<{ comment_id: string; language: string }>(
+      `update comment_replies set draft_text = $2, status = 'held', approved_by_session = null, approved_hash = null, approved_at = null,
+              attempted_at = null, mode = null, would_send = null, error = null, updated_at = now()
+        where id = $1 and status in ('held', 'draft', 'dry_run')
+        returning comment_id, (select v.language from comments cm join videos v on v.id = cm.video_id where cm.id = comment_id) as language`,
+      [replyId, t.text],
+    );
+    const row = r.rows[0];
+    if (!row) return { ok: false, message: "That reply can no longer be edited." };
+    // An edited reply that trips the moderation rule must be read again by the owner at approval: the comment becomes "needs your eyes".
+    const risky = riskReasons(t.text, isLang(row.language) ? row.language : "en").map((x) => `your reply ${x}`);
+    if (risky.length > 0) {
+      await c.query("update comments set needs_eyes = true, risk_reasons = array(select distinct x from unnest(risk_reasons || $2::text[]) x), updated_at = now() where id = $1", [row.comment_id, risky]);
+    }
+    await recordAudit(c, "comment.reply_edited", { replyId, sessionId: actor.sessionId, textHash: sha256Hex(t.text).slice(0, 16), flagged: risky.length > 0 });
+    return { ok: true };
+  });
 }
 
 /** Owner session only. "Ignore": no reply will be written or posted for this comment. */
 export async function ignoreComment(db: pg.Pool, commentId: string, actor: GateActor): Promise<EditResult> {
   if (actorProblem(actor)) return { ok: false, message: ACTOR_REASON };
-  const r = await db.query("update comments set status = 'ignored', updated_at = now() where id = $1 and status in ('new', 'held', 'drafted')", [commentId]);
-  if (!r.rowCount) return { ok: false, message: "That comment can no longer be ignored." };
-  await db.query("update comment_replies set status = 'ignored', updated_at = now() where comment_id = $1 and status in ('held', 'draft', 'dry_run')", [commentId]);
-  await recordAudit(db, "comment.ignored", { commentId, sessionId: actor.sessionId });
-  return { ok: true };
+  // Lock order everywhere: the reply row first, then the comment row (postReply does the same).
+  const out = await inTx(db, async (c): Promise<EditResult> => {
+    await c.query("select 1 from comment_replies where comment_id = $1 order by id for update", [commentId]);
+    const r = await c.query("update comments set status = 'ignored', updated_at = now() where id = $1 and status in ('new', 'held', 'drafted')", [commentId]);
+    if (!r.rowCount) return { ok: false, message: "That comment can no longer be ignored." };
+    await c.query("update comment_replies set status = 'ignored', updated_at = now() where comment_id = $1 and status in ('held', 'draft', 'dry_run')", [commentId]);
+    await recordAudit(c, "comment.ignored", { commentId, sessionId: actor.sessionId });
+    return { ok: true };
+  });
+  return out;
+}
+
+/**
+ * Owner session only: "I checked YouTube". For a reply whose outcome is unclear (failed) or that has been stuck 'approved' for more than
+ * 15 minutes (a crash between approval and answer, DB clock). The owner says whether it is on YouTube or not; nothing is sent either way.
+ */
+export async function resolveReply(db: pg.Pool, replyId: string, outcome: "posted" | "ignored", actor: GateActor): Promise<EditResult> {
+  if (actorProblem(actor)) return { ok: false, message: ACTOR_REASON };
+  return inTx(db, async (c): Promise<EditResult> => {
+    const lock = await c.query<{ comment_id: string }>("select comment_id from comment_replies where id = $1 for update", [replyId]);
+    if (!lock.rows[0]) return { ok: false, message: "That reply was not found." };
+    await c.query("select 1 from comments where id = $1 for update", [lock.rows[0].comment_id]);
+    const r = await c.query(
+      `update comment_replies set status = $2, error = 'The owner checked YouTube and settled this by hand.', updated_at = now()
+        where id = $1 and mode = 'live' and (status = 'failed' or (status = 'approved' and attempted_at < now() - interval '15 minutes'))`,
+      [replyId, outcome],
+    );
+    if (!r.rowCount) return { ok: false, message: "That reply is not waiting for a check (it must be failed, or approved for over 15 minutes)." };
+    await c.query("update comments set status = $2, updated_at = now() where id = $1", [lock.rows[0].comment_id, outcome]);
+    await recordAudit(c, "comment.reply_resolved", { replyId, outcome, sessionId: actor.sessionId });
+    return { ok: true };
+  });
 }
 
 // ---- posting ----
@@ -266,8 +312,8 @@ export async function postReply(
   db: pg.Pool,
   ring: Keyring | (() => Keyring),
   http: GoogleHttp,
-  a: { replyId: string; seen: string; ack?: boolean; actor: GateActor },
-  opts: { policy?: Pick<Policy, "repliesPerDay" | "secondsBetweenReplies"> } = {},
+  a: { replyId: string; seen: string; ack?: boolean; expectMode: "dry" | "live"; actor: GateActor },
+  opts: { policy?: Pick<Policy, "repliesPerDay" | "secondsBetweenReplies">; quotaBudget?: number } = {},
 ): Promise<PostResult> {
   if (actorProblem(a.actor)) return { ok: false, message: ACTOR_REASON };
   const policy = opts.policy ?? (() => { const p = loadPolicy(); return { repliesPerDay: p.repliesPerDay, secondsBetweenReplies: p.secondsBetweenReplies }; })();
@@ -278,12 +324,15 @@ export async function postReply(
   try {
     await client.query("begin");
     await client.query("select pg_advisory_xact_lock(hashtext('ytstudio.comments.post'))");
+    // Lock order: the reply row, then its comment row (ignoreComment does the same), then the comment is read.
+    const lockedReply = await client.query<{ comment_id: string }>("select comment_id from comment_replies where id = $1 for update", [a.replyId]);
+    if (lockedReply.rows[0]) await client.query("select 1 from comments where id = $1 for update", [lockedReply.rows[0].comment_id]);
     const q = await client.query<{
       status: string; draft_text: string; cid: string; ctext: string; needs_eyes: boolean; yt: string; channel_id: string; row_id: string | null; ch_status: string | null; cstatus: string;
     }>(
       `select r.status, r.draft_text, c.id as cid, c.text as ctext, c.needs_eyes, c.youtube_comment_id as yt, c.channel_id, c.status as cstatus, ch.id as row_id, ch.status as ch_status
          from comment_replies r join comments c on c.id = r.comment_id left join youtube_channels ch on ch.channel_id = c.channel_id
-        where r.id = $1 for update of r, c`,
+        where r.id = $1`,
       [a.replyId],
     );
     const row = q.rows[0];
@@ -300,6 +349,7 @@ export async function postReply(
     if (!row.row_id || row.ch_status !== "connected") return await refuse("The channel is not connected and confirmed as yours (Settings, Channels).");
     const dry = (await getSetting(client, "comments.dry_run")) !== false;
     const mode = dry ? "dry" : "live";
+    if (a.expectMode !== mode) return await refuse("Dry run changed since you opened this page. Reload the page, check it, and approve again.");
     const today = await client.query<{ n: number }>(
       `select count(*)::int as n from comment_replies r join comments c on c.id = r.comment_id
         where c.channel_id = $1 and r.mode = $2 and r.attempted_at is not null and r.id <> $3 and ${PACIFIC_TODAY}`,
@@ -340,13 +390,29 @@ export async function postReply(
   }
   if (!live) return { ok: false, message: "Nothing was posted." };
   const l = live;
+  // From here the reply is 'approved' and may be sent. ANY throw below (database, token, network) marks it failed with an unclear outcome and
+  // is never re-queued: the owner checks YouTube first.
+  try {
+    return await sendApproved(db, ring, http, a, l, opts.quotaBudget);
+  } catch (e) {
+    const error = `Something went wrong after approval (${safeReason(e)}), so the outcome is unclear. Check YouTube first; it is not retried.`;
+    await db.query("update comment_replies set status = 'failed', error = $2, updated_at = now() where id = $1 and status = 'approved'", [a.replyId, error]).catch(() => undefined);
+    await db.query("update comments set status = 'failed', updated_at = now() where id = $1 and status = 'approved'", [l.commentId]).catch(() => undefined);
+    await recordAudit(db, "comment.reply_failed", { replyId: a.replyId, reason: "unclear", sessionId: a.actor.sessionId }).catch(() => undefined);
+    return { ok: false, message: error };
+  }
+}
+
+interface Approved { ytParent: string; text: string; rowId: string; commentId: string; needsEyes: boolean }
+
+async function sendApproved(db: pg.Pool, ring: Keyring | (() => Keyring), http: GoogleHttp, a: { replyId: string; actor: GateActor }, l: Approved, quotaBudget?: number): Promise<PostResult> {
   // Nothing has left this machine yet, so the next three failures put the reply back to held (still one click away from trying again).
   const back = async (message: string): Promise<PostResult> => {
     await db.query("update comment_replies set status = 'held', mode = null, attempted_at = null, approved_by_session = null, approved_hash = null, approved_at = null, updated_at = now() where id = $1 and status = 'approved'", [a.replyId]);
     await db.query("update comments set status = $2, updated_at = now() where id = $1 and status = 'approved'", [l.commentId, prior(l.needsEyes)]);
     return { ok: false, message: `${message} Nothing was posted.` };
   };
-  if (!(await reserveQuota(db, "comments.insert"))) return back("Not enough YouTube quota is left today.");
+  if (!(await reserveQuota(db, "comments.insert", { budget: quotaBudget }))) return back("Not enough YouTube quota is left today.");
   const tok = await getAccessToken(db, ring, http, l.rowId);
   if (!tok.ok) return back(`Could not sign in to the channel (${SKIP_REASON[tok.reason]}).`);
 

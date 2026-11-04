@@ -4,7 +4,7 @@ import { LIVE_PHRASE } from "@/server/core/comments";
 import { loadEngagement, type CommentView, type EngagementView } from "@/server/db/comments";
 import { getPool } from "@/server/db/pool";
 import { Pill } from "@/ui/primitives/pill";
-import { ApproveForm, DraftForm, DryRunForm, EditForm, IgnoreForm, SyncForm } from "./forms";
+import { ApproveForm, DraftForm, DryRunForm, EditForm, IgnoreForm, ResolveForm, SyncForm } from "./forms";
 
 export default function EngagementPage() {
   return (
@@ -30,7 +30,7 @@ const STATUS: Record<string, { label: string; tone: "positive" | "negative" | "w
 
 const waiting = (c: CommentView) => c.reply !== null && (c.reply.status === "held" || c.reply.status === "dry_run") && c.status !== "ignored";
 
-function Waiting({ c, video }: { c: CommentView; video: string }) {
+function Waiting({ c, video, dryRun }: { c: CommentView; video: string; dryRun: boolean }) {
   const r = c.reply!;
   return (
     <li data-testid="held-reply" className="flex min-w-0 flex-col gap-3 rounded-card bg-surface p-pad">
@@ -51,7 +51,7 @@ function Waiting({ c, video }: { c: CommentView; video: string }) {
         <p className={plain}>{r.text}</p>
       </div>
       {r.status === "dry_run" && r.wouldSend ? <p className="m-0 text-small text-faint">Dry run: this would have been sent as a reply to comment {r.wouldSend.parentId ?? "?"}. Nothing was sent.</p> : null}
-      <ApproveForm replyId={r.id} seen={r.seen} needsEyes={c.needsEyes} />
+      <ApproveForm replyId={r.id} seen={r.seen} needsEyes={c.needsEyes} dryRun={dryRun} />
       <div className="flex flex-wrap items-start gap-4">
         <EditForm replyId={r.id} text={r.text} />
         <IgnoreForm commentId={c.id} />
@@ -71,6 +71,7 @@ function CommentRow({ c }: { c: CommentView }) {
       </div>
       <p className={plain}>{c.text}</p>
       {c.reply && !waiting(c) ? <p className={`${plain} text-muted`}>Reply: {c.reply.text}</p> : null}
+      {c.reply && (c.reply.status === "failed" || c.reply.status === "approved") ? <ResolveForm replyId={c.reply.id} /> : null}
       {c.reply?.error ? <p role="note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-3 text-body text-pill-warning-ink [overflow-wrap:anywhere]">{c.reply.error}</p> : null}
     </li>
   );
@@ -128,7 +129,7 @@ async function Owned() {
         ) : (
           <ul className="m-0 flex list-none flex-col gap-3 p-0">
             {queue.map(({ c, topic }) => (
-              <Waiting key={c.id} c={c} video={topic} />
+              <Waiting key={c.id} c={c} video={topic} dryRun={view.dryRun} />
             ))}
           </ul>
         )}
