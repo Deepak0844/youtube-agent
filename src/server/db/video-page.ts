@@ -40,6 +40,10 @@ export interface VideoPage {
   /** The frame check of a code scene as one plain sentence (a warning when it found problems or did not run), or null. */
   frameReviewNote: { text: string; warn: boolean } | null;
   stages: StageView[];
+  /** 3D scale videos only: the stored scenes body ({kind: "scale3d", scene}), or null. */
+  scale3dBody: unknown;
+  /** The render time limit now in force (read only), for the 3D scale note. */
+  renderTimeoutS: number;
   /** The newest run status per stage, for the re-run buttons. */
   runStatus: Partial<Record<StageName, RunStatus>>;
   /** an upload row exists that is not a failed one: the file is spoken for */
@@ -207,7 +211,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   return {
-    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
+    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, scale3dBody: head.kind === "scale3d" ? ((await latestContent(db, videoId, "scenes"))?.body ?? null) : null, renderTimeoutS: cfg.render.timeoutS, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
     beats: beats?.body ?? null,
     evidence: evidence ? { body: evidence.body, fileSrc: sign?.(evidence.filePath) ?? null } : null,
     titles: titles?.body ?? null,

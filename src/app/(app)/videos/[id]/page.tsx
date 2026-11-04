@@ -7,6 +7,7 @@ import { requireOwner } from "@/lib/auth/require-owner";
 import { describeDetail } from "@/server/core/audit-view";
 import { microToUsd } from "@/server/core/llm-catalog";
 import { ttsRerunProblem, type StageName } from "@/server/core/pipeline-plan";
+import { renderLimitNote, scale3dSummary } from "@/server/core/scale3d-view";
 import { scriptSchema } from "@/server/core/script-contract";
 import { estimateLabel, parseTab, forceRerunOffered, voiceChanged, rerunCostNote, rerunOffered, SEVERITY_WORDS, STAGE_LABELS, STATE_WORDS, TABS, type StageView, type TabId, type UiState } from "@/server/core/video-page-view";
 import { FORMAT_WORDS, KIND_WORDS, LANGUAGE_WORDS, STATUS_WORDS } from "@/server/core/videos-view";
@@ -151,6 +152,55 @@ function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
 const Empty = ({ children }: { children: React.ReactNode }) => <p data-testid="empty" className="m-0 max-w-[60ch] rounded-card bg-surface p-pad text-body text-muted">{children}</p>;
 const H = ({ children }: { children: React.ReactNode }) => <h2 className="m-0 text-title font-semibold">{children}</h2>;
 
+function Scale3dPreview({ p }: { p: VideoPage }) {
+  const rendered = p.stages.some((s) => s.stage === "render" && s.state === "done");
+  const limit = renderLimitNote(p.renderTimeoutS);
+  if (!p.scale3dBody) return <Empty>No 3D scene yet. It appears once the build step has made it.</Empty>;
+  const v = scale3dSummary(p.scale3dBody);
+  if (!v.ok) return <Empty>{v.message}</Empty>;
+  const { beats, objects, totalS, loop } = v.summary;
+  const th = "px-2 py-2 text-small font-normal text-faint first:pl-0";
+  const td = "px-2 py-3 align-top first:pl-0 [overflow-wrap:anywhere]";
+  return (
+    <>
+      <p data-testid="preview-note" className="m-0 max-w-[68ch] text-body text-muted">A 3D scale video has no live preview: this is its plan, in order. {rendered ? "The final video is on the Review step." : "The final video is made by Render."}</p>
+      {limit ? <p role="note" data-testid="render-limit-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{limit}</p> : null}
+      <p className="m-0 text-body tabular-nums">Total length {totalS} s. Loops back to the start: {loop ? "yes" : "no"}.</p>
+      <H>Beats</H>
+      <div className="min-w-0 overflow-x-auto">
+        <table className="w-full border-collapse text-left text-body">
+          <caption className="sr-only">Beats of the 3D scale video, in order</caption>
+          <thead><tr className="border-b border-rule"><th scope="col" className={th}>#</th><th scope="col" className={th}>Starts (s)</th><th scope="col" className={th}>Length (s)</th><th scope="col" className={th}>On screen and spoken</th><th scope="col" className={th}>Focus</th><th scope="col" className={th}>Ruler range</th></tr></thead>
+          <tbody>
+            {beats.map((b) => (
+              <tr key={b.n} className="border-b border-rule">
+                <td className={`${td} tabular-nums`}>{b.n}</td><td className={`${td} tabular-nums`}>{b.startS}</td><td className={`${td} tabular-nums`}>{b.durationS}</td>
+                <td className={td}><span className="font-medium">{b.label}</span><span className="block text-muted">{b.caption}</span></td>
+                <td className={td}>{b.focus}</td><td className={`${td} tabular-nums`}>{b.rangeLabel}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <H>Objects and heights</H>
+      <div className="min-w-0 overflow-x-auto">
+        <table className="w-full border-collapse text-left text-body">
+          <caption className="sr-only">Objects, real heights and how each height is backed</caption>
+          <thead><tr className="border-b border-rule"><th scope="col" className={th}>Object</th><th scope="col" className={th}>Height (m)</th><th scope="col" className={th}>How it is backed</th><th scope="col" className={th}>Source or method</th></tr></thead>
+          <tbody>
+            {objects.map((o) => (
+              <tr key={o.id} className="border-b border-rule">
+                <td className={td}>{o.label}<span className="block text-small text-muted">{o.kindWord}</span></td><td className={`${td} tabular-nums`}>{o.heightM}</td>
+                <td className={td}>{o.claimKind === "sourced" ? "Sourced" : "Calculated"}</td><td className={`${td} text-muted`}>{o.detail}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: PreviewData | null }) {
   const lang = p.head.language;
   switch (tab) {
@@ -188,6 +238,7 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
     }
     case "preview":
       if (p.head.kind === "tsx") return <Empty>Preview is not available for custom animation; use the final render.</Empty>;
+      if (p.head.kind === "scale3d") return <Scale3dPreview p={p} />;
       return !preview ? <Empty>No scenes yet. The preview appears once the build step has made them.</Empty> : (
         <>
           <p data-testid="preview-note" className="m-0 max-w-[68ch] text-body text-muted">Preview only. The final video is made by Render.</p>
