@@ -33,7 +33,9 @@
     "test:api": "playwright test --project=api",
     "kit:studio": "node scripts/kit-studio.mjs",
     "kit:sheet": "node scripts/kit-sheet.mjs",
-    "kit:preview": "tsx scripts/kit-preview.ts",
+    "assets3d:fetch": "tsx scripts/assets3d-fetch.ts",
+    "assets3d:verify": "tsx scripts/assets3d-fetch.ts --verify",
+    "kit:preview":"tsx scripts/kit-preview.ts",
     "kit:video": "tsx scripts/kit-video.ts",
     "image:render": "docker build -f infra/Dockerfile.render -t ytstudio-render:dev .",
     "test:ui": "playwright test --project=ui-desktop --project=ui-phone",
@@ -79,6 +81,8 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
     "@playwright/test": "^1.64.1",
     "@tailwindcss/turbopack": "^4",
     "@testcontainers/postgresql": "^12.2.1",
