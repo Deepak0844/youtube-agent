@@ -6,6 +6,9 @@ import { approvalReaders } from "@/server/db/approval-readers";
 import { dryRunRefusal } from "./stages/guard";
 import type { ChildRegistry } from "@/server/render/child";
 import { defaultDryRunDeps, dryRunHandlers, productionHandlers, workerHooksFor, type StageHandlers } from "./handlers";
+import { loadKeyring } from "@/server/db/master-key";
+import { createFakeUploader } from "@/server/providers/uploader/fake";
+import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
 import { startRuntime, type WorkerOptions } from "./runtime";
 
 // Retain startWorker(log) for existing callers, alongside the runtime options interface.
@@ -45,7 +48,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           return r;
         };
       }
-      const worker = startWorker({ log, pool, handlers, readers: approvalReaders, ingest: true, hooks });
+      // Approved uploads: the fake only in a guarded dry run. Otherwise the real YouTube uploader, which still sends nothing unless the
+      // job-time checks pass (kill switch off, channel connected and confirmed, approval and file hash intact).
+      const uploader = process.env.ENGINE_DRY_RUN === "1" ? createFakeUploader({ pool }) : createYouTubeUploader({ pool, ring: loadKeyring });
+      const worker = startWorker({ log, pool, handlers, readers: approvalReaders, ingest: true, hooks, uploader });
       let exiting = false;
       const shutdown = () => {
         if (exiting) return;

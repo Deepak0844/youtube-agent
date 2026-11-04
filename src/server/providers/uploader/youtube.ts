@@ -69,7 +69,6 @@ async function rejectionOf(res: Response): Promise<Rejected> {
 export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
   const http = deps.http ?? uploadHttp;
   const chunkBytes = deps.chunkBytes ?? CHUNK_BYTES;
-  const ring = typeof deps.ring === "function" ? deps.ring() : deps.ring;
 
   async function send(url: string, init: RequestInit, signal: AbortSignal): Promise<Response> {
     try {
@@ -106,7 +105,7 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
         const session = init.headers.get("location");
         if (!init.ok || !session || !session.startsWith(SESSION_PREFIX)) return { kind: "failed", reason: "YouTube did not open an upload session; nothing was sent" };
         try {
-          await putSecret(deps.pool, ring, sessionSecretName(uploadId), session, { hint: false });
+          await putSecret(deps.pool, typeof deps.ring === "function" ? deps.ring() : deps.ring, sessionSecretName(uploadId), session, { hint: false });
         } catch {
           return { kind: "failed", reason: "could not store the upload session safely; nothing was sent" };
         }
