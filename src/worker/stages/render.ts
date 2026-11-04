@@ -4,6 +4,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { approvedScript } from "@/server/db/stage-content";
 import { validateScenes, type SceneDoc } from "@/shared/scene";
 import { retimeScenes } from "@/shared/scene/retime";
+import { retimeScale3d, validateScale3d, type Scale3dScene } from "@/shared/scale3d";
 import { openRegular, promotedPath, type AttemptHandler } from "./attempt";
 import { contentBody, loadVideo, SIZE, type StageDeps } from "./deps";
 import { audioSeconds } from "./voice-audio";
@@ -34,6 +35,29 @@ export async function readScenesFile(file: string): Promise<SceneDoc> {
   return v.doc;
 }
 
+/** A 3D scene is drawn in software (no graphics card in the container) and takes about 5 minutes; below this the render would be killed half way. */
+export const SCALE3D_MIN_RENDER_TIMEOUT_S = 900;
+
+/** Reads and validates scale3d.json (same file rules as scenes.json). */
+export async function readScale3dFile(file: string): Promise<Scale3dScene> {
+  const fh = await openRegular(file).catch(() => {
+    throw new KnownFailure("scale3d.json is missing or not a plain file. Run the build step again.");
+  });
+  let json: unknown;
+  try {
+    if ((await fh.stat()).size > MAX_SCENES_BYTES) throw new KnownFailure("scale3d.json is too big (over 1 MB). Run the build step again.");
+    json = JSON.parse(await fh.readFile("utf8"));
+  } catch (e) {
+    if (e instanceof KnownFailure) throw e;
+    throw new KnownFailure("scale3d.json is not valid JSON. Run the build step again.");
+  } finally {
+    await fh.close();
+  }
+  const v = validateScale3d(json);
+  if (!v.ok) throw new KnownFailure(`scale3d_invalid: ${v.errors.slice(0, 3).join("; ")}. Run the build step again.`.slice(0, 600));
+  return v.scene;
+}
+
 /**
  * Render: the renderer turns the scenes into render.mp4. It reads only promoted files and writes only into its attempt
  * folder. A slot in the render semaphore is taken by the dispatcher (handlers.ts), not here.
@@ -45,10 +69,17 @@ export async function readScenesFile(file: string): Promise<SceneDoc> {
 export function renderAttempt(deps: StageDeps): AttemptHandler {
   return async (ctx) => {
     const video = await loadVideo(deps.db, ctx);
+    if (video.kind === "scale3d" && ctx.config.render.timeoutS < SCALE3D_MIN_RENDER_TIMEOUT_S) {
+      throw new KnownFailure(
+        `Raise render.timeout_s ("Render time limit, seconds") in Settings to at least ${SCALE3D_MIN_RENDER_TIMEOUT_S}: a 3D scale video needs about 5 minutes to render and the limit is ${ctx.config.render.timeoutS} s, so it would be stopped half way. Nothing was rendered.`,
+      );
+    }
     const narration = await contentBody<{ file?: unknown }>(deps.db, video.id, "narration");
     if (typeof narration.file !== "string") throw new KnownFailure("The narration record has no audio file. Run the voice step again.");
     const audioFile = await promotedPath(deps.root, video.id, narration.file);
     if (!(await isFile(audioFile))) throw new KnownFailure(`The file ${narration.file} from an earlier stage is missing. Run that stage again.`);
+
+    if (video.kind === "scale3d") return renderScale3d(deps, ctx, video, audioFile);
 
     const scenesFile = await promotedPath(deps.root, video.id, "scenes.json");
     let sceneFile = scenesFile;
@@ -91,4 +122,31 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
     if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
     return { files: ["render.mp4"], result: { rendered: "render.mp4", scenes: doc ? doc.scenes.length : null, image: r.image ?? null, ...retime } };
   };
+}
+
+/** Render for a scale3d video: the checked description, re-timed to the real word times, through the same renderer and folder rules. */
+async function renderScale3d(deps: StageDeps, ctx: Parameters<AttemptHandler>[0], video: Awaited<ReturnType<typeof loadVideo>>, audioFile: string) {
+  const sceneFile = await promotedPath(deps.root, video.id, "scale3d.json");
+  let scene = await readScale3dFile(sceneFile);
+  const captions = await contentBody<{ words?: unknown }>(deps.db, video.id, "captions").catch(() => null);
+  const fromS = scene.beats.reduce((a, b) => a + b.duration_s, 0);
+  let retime: { retimed: boolean; fromS: number | null; toS: number | null } = { retimed: false, fromS: null, toS: null };
+  try {
+    const words = (Array.isArray(captions?.words) ? captions.words : []).filter(
+      (w): w is { startS: number; endS: number } => typeof (w as { startS?: unknown })?.startS === "number" && typeof (w as { endS?: unknown })?.endS === "number",
+    );
+    const lastEnd = words.length > 0 ? Math.max(...words.map((w) => w.endS)) + 0.3 : 0;
+    const narrationDurationS = await audioSeconds(deps.mix, ctx, audioFile).catch(() => lastEnd);
+    const res = retimeScale3d(scene, { words, narrationDurationS });
+    if (!res.ok) throw new Error(res.reason);
+    scene = res.scene;
+    retime = { retimed: true, fromS, toS: res.totalS };
+  } catch (e) {
+    ctx.log(`render: 3D beats not re-timed, original timing kept (${e instanceof Error ? e.message : "unknown"})`.slice(0, 300));
+  }
+  const r = await deps.renderer.render(ctx, {
+    sceneFile, scale3d: scene, audioFile, videoId: video.id, style: video.style, captionStyle: video.captionStyle, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: SIZE,
+  });
+  if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
+  return { files: ["render.mp4"], result: { rendered: "render.mp4", kind: "scale3d", beats: scene.beats.length, image: r.image ?? null, ...retime } };
 }

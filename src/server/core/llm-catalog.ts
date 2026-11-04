@@ -281,6 +281,15 @@ export const STAGES: readonly StageDef[] = [
     prefers: [],
     localWarning: "Small local models are not recommended for custom animation.",
   },
+  // Free-form text (one JSON description back), no tools sent: needs neither structured output nor tool use, so Claude Code works too.
+  {
+    id: "build_scale3d",
+    label: "Build, 3D scale comparison",
+    hint: "Writes the scene description of a 3D scale video as plain JSON text. Used only for 3D scale videos.",
+    requires: [],
+    requiresAny: [],
+    prefers: [],
+  },
   { id: "qa_vision", label: "QA, vision review", hint: "Optional review of frames. Leave unset to skip.", requires: ["vision"], requiresAny: [], prefers: [], optional: true },
   // Reads rendered key frames of a code scene (images in, strict JSON out). Unrouted = the review is skipped, never the video.
   { id: "review_frames", label: "Frame check, code scenes", hint: "Reads key frames of a custom animation and says what looks wrong. Leave unset to skip.", requires: ["vision"], requiresAny: [], prefers: [], optional: true },

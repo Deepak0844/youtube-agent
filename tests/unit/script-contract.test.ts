@@ -60,3 +60,35 @@ describe("validateScript", () => {
     expect(validateScript({ ...good(), shown_for_real: "x".repeat(201) }, "en", "short").ok).toBe(false);
   });
 });
+
+describe("validateScript, scale3d", () => {
+  const item = (over: Record<string, unknown> = {}) => ({ label: "Tower crane", kind: "tower_crane", height_m: 80, source_url: "https://example.com/c", quote: "a tower crane is about 80 m tall", ...over });
+  const s3 = (scale: unknown) => ({ ...good(), evidence: [], scale });
+  const run = (scale: unknown, requireEvidence = true) => validateScript(s3(scale), "en", "short", { kind: "scale3d", requireEvidence });
+  it("turns_each_height_into_an_evidence_claim", () => {
+    const r = run([item(), item({ label: "Person", kind: "person", height_m: 1.8, source_url: undefined, quote: undefined, method: "average adult" })]);
+    if (!r.ok) throw new Error(r.problems.join());
+    expect(r.script.evidence).toEqual([
+      { text: "Tower crane is about 80 m tall", kind: "sourced", source_url: "https://example.com/c", quote: "a tower crane is about 80 m tall" },
+      { text: "Person is about 1.8 m tall", kind: "computed", method: "average adult" },
+    ]);
+    expect(r.script.scale).toHaveLength(2);
+  });
+  it("needs_a_scale_list_of_two_or_more", () => {
+    expect(problems(validateScript(good(), "en", "short", { kind: "scale3d" })).join()).toMatch(/scale list/);
+    expect(problems(run([item()])).join()).toMatch(/at least 2/);
+  });
+  it("rejects_unknown_kinds_impossible_heights_and_too_many_objects", () => {
+    expect(run([item(), item({ label: "Dragon", kind: "dragon" })]).ok).toBe(false);
+    expect(problems(run([item(), item({ label: "Giant", kind: "person", height_m: 40 })])).join()).toMatch(/person cannot be 40 m/);
+    expect(run([item(), item({ label: "Zero", height_m: 0 })]).ok).toBe(false);
+    expect(run(Array.from({ length: 13 }, (_, i) => item({ label: `Crane ${i}` }))).ok).toBe(false);
+    expect(run(Array.from({ length: 12 }, (_, i) => item({ label: `Crane ${i}` }))).ok).toBe(true);
+  });
+  it("a_height_with_no_source_or_method_is_rejected", () => {
+    expect(problems(run([item(), item({ label: "Bare", source_url: undefined, quote: undefined })])).join()).toMatch(/source_url with a quote, or a method/);
+  });
+  it("scale_is_refused_on_other_kinds", () => {
+    expect(problems(validateScript({ ...good(), scale: [item(), item({ label: "B" })] }, "en", "short", { kind: "scene_kit" })).join()).toMatch(/only for 3D/);
+  });
+});

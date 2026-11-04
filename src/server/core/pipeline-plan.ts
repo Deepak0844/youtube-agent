@@ -7,7 +7,7 @@ import type { GateId } from "@/server/core/gates";
 // covers the hash of the stage before it, so rerunning an early stage makes every later one stale automatically.
 
 export type VideoFormat = "short" | "long";
-export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai";
+export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai" | "scale3d";
 export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
@@ -43,6 +43,19 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
       ...head,
       { stage: "tts", resource: "net" },
       { stage: "tsx_author", resource: "render" },
+      { stage: "voice", resource: "cpu" },
+      { stage: "sfx", resource: "cpu" },
+      { stage: "qa", gateAfter: "video", resource: "cpu" },
+    ];
+  }
+  // scale3d: Build asks the model for the 3D scene description (text only, $0 on Claude Code) and Render retimes its beats to the
+  // narration, exactly like the scene kit. No pictures (the 3D models are a fixed library) and nothing to buy, so no generate step.
+  if (kind === "scale3d") {
+    const head: PlanStep[] = flags.imported ? [] : [{ stage: "draft", gateAfter: "script", resource: "net" }, { stage: "build", resource: "cpu" }];
+    return [
+      ...head,
+      { stage: "tts", resource: "net" },
+      { stage: "render", resource: "render" },
       { stage: "voice", resource: "cpu" },
       { stage: "sfx", resource: "cpu" },
       { stage: "qa", gateAfter: "video", resource: "cpu" },

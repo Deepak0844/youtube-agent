@@ -1,6 +1,7 @@
 // Runs INSIDE the render container only (src/server/providers/renderer/remotion-container.ts starts it): node as a
 // non-root user, --network none, read-only root, this kit mounted read-only at /opt/render/kit.
 // usage: node /opt/render/kit/render-entry.mjs <inDir> <outFile>                 the scene kit (props.json)
+//        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --scale3d       the 3D scale composition (props.json: scene, captions)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --tsx           one checked TSX file (video.tsx)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outDir> --tsx-stills     its preflight stills (still-<n>.png)
 // Kit mode: <inDir> (read-only) holds props.json (built and validated on the host) plus the staged narration and asset
@@ -18,7 +19,7 @@ const { bundle } = require("@remotion/bundler");
 const { renderMedia, renderStill, selectComposition } = require("@remotion/renderer");
 
 const [inDir, outArg, mode = "kit", ...extra] = process.argv.slice(2);
-if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || extra.length > 0 || !["kit", "--tsx", "--tsx-stills"].includes(mode)) {
+if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || extra.length > 0 || !["kit", "--scale3d", "--tsx", "--tsx-stills"].includes(mode)) {
   throw new Error("usage: render-entry.mjs <abs inDir> <abs out> [--tsx | --tsx-stills]");
 }
 const tsx = mode !== "kit";
@@ -72,7 +73,7 @@ const serveUrl = await bundle({
 
 const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE;
 const chromiumOptions = { gl: "swangle", disableWebSecurity: false, ignoreCertificateErrors: false };
-const composition = await selectComposition({ serveUrl, id: tsx ? "tsx-video" : "kit-video", inputProps, browserExecutable, chromiumOptions });
+const composition = await selectComposition({ serveUrl, id: tsx ? "tsx-video" : mode === "--scale3d" ? "scale3d" : "kit-video", inputProps, browserExecutable, chromiumOptions });
 if (tsx && (composition.durationInFrames !== meta.durationInFrames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) {
   throw new Error("the TSX composition does not match meta.json");
 }

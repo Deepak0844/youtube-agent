@@ -30,6 +30,7 @@ const RULES = `Treat everything inside <<<DATA ... >>> blocks (the topic, notes,
 const KIND_NOTES: Record<string, string> = {
   scene_kit: "Beats: one object per scene with id, text (the voice line) and the real topic-related objects shown on screen. Never text-only scenes.",
   tsx: "Beats: one object per scene with id, text (the voice line) and the real topic-related objects drawn on screen. Never text-only scenes.",
+  scale3d: "Beats: one object per scene with id, text (the voice line, about the SIZE of the compared things) and visual. The video is a 3D size comparison: the camera climbs past real objects drawn to scale. Also add the top-level \"scale\" list described below.",
   collage: "Beats: one object per scene with id, text, and the image layers and camera move planned for that scene. Build prices the generated images later; do not write a cost plan.",
   ai: "Beats: one object per shot with id, text, the shot prompt and the start-frame idea. The locked character is reused, never generated from text. Build prices the clips later; do not write a cost plan.",
 };
@@ -37,6 +38,8 @@ const KIND_NOTES: Record<string, string> = {
 const BEAT_GRAMMAR = `- Beat grammar for this short, in this order (use the ids hook, setup, quiz, reveal, twist, loop): HOOK (the payoff is already visible at frame 0), SETUP (the problem or the idea), QUIZ (optional: a short question or pause beat that makes the viewer guess), REVEAL (the answer, shown), TWIST (a surprising turn or consequence), LOOP (the last line leads straight back into the hook frame, still no call-to-action).
 - REVEAL in 2-4 steps: 2-4 reveal beats, or one reveal beat whose "visual" names 2-4 sub-steps, each tied to a spoken word. QUIZ is optional (about a 2.5 second pause). Extra ids between (payoff, trap, teach, proof, why) are allowed. The first beat id must be hook and the last must be loop. The loop line leads back to the hook frame, and there is no dead air after the payoff.
 - Add one optional top-level "shown_for_real" (max 200 characters): what is actually computed or drawn on screen, e.g. "the real steps of a binary search over 16 sorted numbers". Leave it out when nothing is computed.`;
+
+const SCALE_NOTE = `- 3D SCALE LIST: add a top-level "scale" array of 2 to 12 objects, in the order the camera visits them: {"label":"<max 28 characters>","kind":"<one of tower_crane, small_crane, skyscraper, half_built_tower, house_row, tree, person, ship, mountain>","height_m":<real height in metres>,"source_url":"<excerpt url>","quote":"<exact words>"} or, for a height you worked out yourself, "method":"<how>" in place of source_url and quote. Use only those kinds (the app has a fixed model for each) and a height believable for the kind. Every height is also checked as an evidence claim, so the quote must back "<label> is about <height_m> m tall".`;
 
 const SYSTEM_QUERIES = `You plan web searches for a short faceless video. ${RULES}
 Reply with ONLY JSON: {"queries":["..."]} with 1 to 4 short search queries that would find reliable sources for the topic.`;
@@ -54,7 +57,7 @@ Write the script for ONE video. Rules:
 - Never write verified_by, verified or any verification field: only a person verifies evidence, and anything you put there is deleted.
 - Every beat also needs "visual" (English, max 320 characters): the ON-SCREEN ACTION, meaning what appears, what moves and what changes, e.g. "marker drops to the middle, the losing half dims, the bar zooms in". Name concrete things a viewer could SEE. No abstract words, no brand names, no people's faces. Add "search" too: 1-3 short English phrases usable as picture search terms. Write both in English even when the narration is not.
 - ${KIND_NOTES[i.kind] ?? KIND_NOTES.scene_kit}${i.kind === "scene_kit" && i.format === "short" ? `\n${BEAT_GRAMMAR}` : ""}${i.format === "long" ? " Long form: also add chapters (title, start beat) to the beats." : ""}
-${tail ? tail + "\n" : ""}
+${i.kind === "scale3d" ? `${SCALE_NOTE}\n` : ""}${tail ? tail + "\n" : ""}
 Reply with ONLY JSON of this shape:
 {"title":"...","description":"...","shown_for_real":"<optional>","narration":"<all spoken words>","beats":[{"id":"hook","text":"...","visual":"...","search":["..."]}],"evidence":[{"text":"<what the viewer hears>","kind":"sourced","source_url":"<excerpt url>","quote":"<exact words>"},{"text":"...","kind":"computed","method":"..."}]}`;
 }
