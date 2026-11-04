@@ -139,6 +139,7 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
         await report(1);
         let sent = 0;
         const beat = setInterval(() => { queue = queue.then(() => onProgress(reported)).catch(() => undefined); }, deps.heartbeatMs ?? 60_000);
+        beat.unref?.(); // never keep a process alive; cleared in the finally below
         try {
         const put = async (data: Buffer, start: number, last: boolean): Promise<string | null> => {
           const end = start + data.length - 1;
