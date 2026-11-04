@@ -71,6 +71,12 @@ export const AUDIT_EVENTS = {
   "scenes.repair_requested": "A repair of the failing scenes was requested",
   "video.reframe_requested": "The owner asked for a 16:9 or 1:1 version of a finished video (detail: video id, format, stage run id, session id)",
   "seo.requested": "The owner asked for titles, description and tags for the approved script (detail: video id, stage run id, session id)",
+  "seo.auto_requested": "The first titles, description and tags were queued automatically after the video finished rendering (detail: video id, stage run id)",
+  // Phase 5 slice 3 (detail: video id, session id; never claim text or URLs)
+  "upload_details.saved": "The owner saved the upload details (title, description, tags, category, language, made for kids, synthetic content)",
+  "evidence.saved": "The owner saved the evidence claims (detail: video id, session id, claim count)",
+  "evidence.verified": "The owner ran Save and verify on the evidence (detail: video id, session id, ok, sources checked)",
+  "evidence.reseeded": "The owner re-seeded the evidence claims from the script (detail: video id, session id, claim count)",
   // Phase 4 sound tab (detail: video id, session id, library item id or stage run id; never a file path)
   "sound.bed_chosen": "The owner picked the music bed for a video (or removed it)",
   "sound.ear_ok": "The owner listened and ticked that the sound is OK",
