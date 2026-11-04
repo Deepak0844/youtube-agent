@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { localServiceBlockers, MAX_LOCAL_SERVICES, ownServiceConfigProblem } from "@/server/core/local-services";
 import { getPool } from "@/server/db/pool";
+import { checkNativeRenderReady } from "@/server/providers/renderer/native-preflight";
 import { loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
 import { Pill } from "@/ui/primitives/pill";
@@ -21,6 +22,7 @@ async function Owned() {
   const db = getPool();
   const [status, view] = await Promise.all([getSystemStatus(db), loadSystemSettings(db)]);
   const { renders, jobs, warnGb, longMinutes, services } = view;
+  const nativeStatus = (await checkNativeRenderReady({ storageRoot: status.disk.root })).message;
   const blockers = localServiceBlockers();
   const configProblem = ownServiceConfigProblem();
   return (
@@ -36,6 +38,9 @@ async function Owned() {
           warnGb={warnGb}
           longMinutes={longMinutes}
           renderTimeoutS={view.renderTimeoutS}
+          native3d={view.native3d}
+          nativeTimeoutS={view.nativeTimeoutS}
+          nativeStatus={nativeStatus}
           sceneKit={view.sceneKit}
           tracksLater={["Code scenes (Phase 4)", "Collage (Phase 8)", "AI video (Phase 9)"]}
         />

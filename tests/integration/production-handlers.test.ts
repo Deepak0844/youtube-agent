@@ -42,6 +42,13 @@ describe("production handlers", () => {
     await expect(productionStageDeps(db.pool).renderer.render(ctx, { sceneFile: "x", outFile: "render.mp4", size: { width: 1080, height: 1920 } })).rejects.toThrow(/checked scenes/);
   });
 
+  it("the native Mac renderer is wired but refuses while render.native_3d is off (the default), and starts nothing", async () => {
+    const native = productionStageDeps(db.pool).native!;
+    const { buildEngineConfig } = await import("@/server/core/engine-config");
+    const ctx = { claim: { stageRunId: "r" }, attemptDir: "/nonexistent", config: buildEngineConfig(new Map()) } as never;
+    await expect(native.renderer.render(ctx, { sceneFile: "x", scale3d: {} as never, outFile: "render.mp4", size: { width: 1080, height: 1920 } })).rejects.toThrow(/switched off/);
+  });
+
   it("a dry-run video is refused by the production tts handler", async () => {
     const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "dry", notes: DRY_RUN_NOTES });
     const ctx = { stage: { id: "s", name: "tts", inputHash: "h", videoId: v.id } } as never;
