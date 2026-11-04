@@ -29,6 +29,7 @@ import { Pill } from "@/ui/primitives/pill";
 import { Skeleton } from "@/ui/primitives/skeleton";
 import { ForceRerunForm, ReframeButtons, RerunForm, SaveToLibraryForm, SceneButtons } from "./controls";
 import { SoundTabPanel } from "./sound-tab";
+import { EvidenceTabPanel } from "./evidence-tab";
 import { TitlesTabPanel } from "./titles-tab";
 
 // The video page (Doc 4 /videos/[id]): where it is now, what it cost, and the content of each step, one tab at a time
@@ -194,24 +195,8 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
           <div><Button asChild variant="secondary"><a href="#stage-render">Go to the Render step</a></Button></div>
         </>
       );
-    case "evidence": {
-      const s = scriptSchema.safeParse(p.script?.body);
-      const claims = s.success ? s.data.evidence : [];
-      if (claims.length === 0 && !p.evidence) return <Empty>No evidence yet. Sources show here once the script lists them.</Empty>;
-      return (
-        <>
-          <ul className="m-0 flex list-none flex-col gap-3 p-0">
-            {claims.map((c, i) => (
-              <li key={i} className="flex min-w-0 flex-col gap-1 text-body">
-                <span className="[overflow-wrap:anywhere]">{c.text}</span>
-                <span className="text-small text-muted [overflow-wrap:anywhere]">{c.kind === "sourced" ? `Sourced: ${c.source_url} - "${c.quote}"` : `Calculated: ${c.method}`}</span>
-              </li>
-            ))}
-          </ul>
-          {p.evidence?.fileSrc ? <a className="text-body underline" href={p.evidence.fileSrc} target="_blank" rel="noreferrer">Open the evidence file</a> : null}
-        </>
-      );
-    }
+    case "evidence":
+      return <EvidenceTabPanel p={p} />;
     case "titles":
       return <TitlesTabPanel p={p} />;
     case "cost": {
