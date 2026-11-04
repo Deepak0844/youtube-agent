@@ -14,7 +14,7 @@ import { safeJoin } from "@/server/storage/paths";
 import { buildVideoProps } from "@/shared/scene/video-props";
 import { isCaptionStyleId, isStyleId } from "../../../../remotion/kit/presets";
 import { openRegular } from "@/worker/stages/attempt";
-import type { Renderer } from "./index";
+import type { Renderer, RenderArgs } from "./index";
 
 // SECURITY CONTROL: the production renderer. The scene document is model-written, so the render runs in the render image
 // under ADR 0003's locks (lockFlags in runner.ts, shared with the Phase 0 runner): no network, read-only root, noexec /tmp,
@@ -241,6 +241,45 @@ export async function runRenderContainer(
   return { r, tail };
 }
 
+/** props.json of the 3D scale composition: the checked scene, caption words (trimmed) and the chosen look. Shared with the native renderer. */
+export function scale3dProps(a: Pick<RenderArgs, "scale3d" | "captions" | "style" | "captionStyle">): unknown {
+  const caps = (a.captions ?? [])
+    .filter((w): w is { word: string; startS: number; endS: number } => typeof (w as { word?: unknown })?.word === "string" && Number.isFinite((w as { startS?: unknown }).startS) && Number.isFinite((w as { endS?: unknown }).endS))
+    .map((w) => ({ word: w.word.slice(0, 60), startS: w.startS, endS: w.endS }));
+  return { scene: a.scale3d, ...(caps.length ? { captions: caps } : {}), ...(isStyleId(a.style) ? { style: a.style } : {}), ...(isCaptionStyleId(a.captionStyle) ? { captionStyle: a.captionStyle } : {}) };
+}
+
+/**
+ * The output checks both renderers share: copies <outDir>/out.mp4 (plain file, size-capped) into the attempt folder as
+ * a.outFile, then probes it: readable, the asked size, not empty, sound when narration was muxed in. A duration far from
+ * the scenes is only logged. Returns the path of the copy.
+ */
+export async function collectOutput(
+  deps: Pick<ContainerRendererDeps, "probe" | "maxVideoBytes">,
+  ctx: StageContext,
+  a: RenderArgs,
+  outDir: string,
+  expectAudio: boolean,
+): Promise<string> {
+  const outPath = path.join(ctx.attemptDir, a.outFile);
+  await rm(outPath, { force: true });
+  await copyRegular(path.join(outDir, "out.mp4"), outPath, deps.maxVideoBytes ?? MAX_VIDEO_BYTES).catch((e: unknown) => {
+    throw new KnownFailure(e instanceof Error && /bigger than/.test(e.message) ? "The rendered video is too big." : "The render finished but made no video file.");
+  });
+  let p: ProbeResult;
+  try {
+    p = await deps.probe(outPath, ctx.signal);
+  } catch {
+    throw new KnownFailure("The rendered file is not a readable video.");
+  }
+  if (p.width !== a.size.width || p.height !== a.size.height) throw new KnownFailure(`The render is ${p.width}x${p.height}, expected ${a.size.width}x${a.size.height}.`);
+  if (!(p.durationS > 0)) throw new KnownFailure("The rendered video is empty.");
+  if (expectAudio && !p.hasAudio) throw new KnownFailure("The rendered video has no sound although narration was given.");
+  const docS = a.scale3d ? a.scale3d.beats.reduce((t, b) => t + b.duration_s, 0) : Math.max(...a.doc!.scenes.map((s) => s.startMs + s.durationMs)) / 1000;
+  if (Math.abs(p.durationS - docS) > 1) ctx.log(`render: warning: the video is ${p.durationS.toFixed(1)} s but the scenes add up to ${docS.toFixed(1)} s`);
+  return outPath;
+}
+
 export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
   return {
     async render(ctx: StageContext, a) {
@@ -286,10 +325,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         }
         let props: { ok: true; props: unknown } | { ok: false; errors: string[] };
         if (a.scale3d) {
-          const caps = (a.captions ?? [])
-            .filter((w): w is { word: string; startS: number; endS: number } => typeof (w as { word?: unknown })?.word === "string" && Number.isFinite((w as { startS?: unknown }).startS) && Number.isFinite((w as { endS?: unknown }).endS))
-            .map((w) => ({ word: w.word.slice(0, 60), startS: w.startS, endS: w.endS }));
-          props = { ok: true, props: { scene: a.scale3d, ...(caps.length ? { captions: caps } : {}), ...(isStyleId(a.style) ? { style: a.style } : {}), ...(isCaptionStyleId(a.captionStyle) ? { captionStyle: a.captionStyle } : {}) } };
+          props = { ok: true, props: scale3dProps(a) };
         } else props = buildVideoProps(JSON.stringify(a.doc), { fps: FPS, audioSrc, assets, captionsText: a.captions ? JSON.stringify(a.captions) : undefined, seed: a.videoId, title: a.title, style: a.style, captionStyle: a.captionStyle });
         if (!props.ok) throw new KnownFailure(`The scenes or captions are not valid: ${props.errors.slice(0, 3).join("; ")}`.slice(0, 600));
         await writeFile(path.join(inDir, "props.json"), JSON.stringify(props.props), { mode: 0o644, flag: "wx" });
@@ -307,22 +343,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         if (r.truncated) throw new KnownFailure("The render printed too much output and was stopped.");
         if (r.code !== 0) throw new KnownFailure(`The render failed (exit ${r.code ?? r.signal}). Last lines: ${tail.slice(-3).join(" | ")}`.slice(0, 600));
 
-        const outPath = path.join(ctx.attemptDir, a.outFile);
-        await rm(outPath, { force: true });
-        await copyRegular(path.join(outDir, "out.mp4"), outPath, deps.maxVideoBytes ?? MAX_VIDEO_BYTES).catch((e: unknown) => {
-          throw new KnownFailure(e instanceof Error && /bigger than/.test(e.message) ? "The rendered video is too big." : "The render finished but made no video file.");
-        });
-        let p: ProbeResult;
-        try {
-          p = await deps.probe(outPath, ctx.signal);
-        } catch {
-          throw new KnownFailure("The rendered file is not a readable video.");
-        }
-        if (p.width !== a.size.width || p.height !== a.size.height) throw new KnownFailure(`The render is ${p.width}x${p.height}, expected ${a.size.width}x${a.size.height}.`);
-        if (!(p.durationS > 0)) throw new KnownFailure("The rendered video is empty.");
-        if (audioSrc && !p.hasAudio) throw new KnownFailure("The rendered video has no sound although narration was given.");
-        const docS = a.scale3d ? a.scale3d.beats.reduce((t, b) => t + b.duration_s, 0) : Math.max(...a.doc!.scenes.map((s) => s.startMs + s.durationMs)) / 1000;
-        if (Math.abs(p.durationS - docS) > 1) ctx.log(`render: warning: the video is ${p.durationS.toFixed(1)} s but the scenes add up to ${docS.toFixed(1)} s`);
+        const outPath = await collectOutput(deps, ctx, a, outDir, audioSrc !== undefined);
         return { outPath, image: image.ref };
       } finally {
         await cleanup();

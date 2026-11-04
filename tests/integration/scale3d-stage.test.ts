@@ -21,6 +21,7 @@ import { fakeModelStep } from "@/server/llm/fake-step";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
 import type { RenderArgs, Renderer } from "@/server/providers/renderer";
+import { KnownFailure } from "@/server/core/paid-call";
 import { createFakeVoice } from "@/server/providers/voice/fake";
 import { validateScale3d } from "@/shared/scale3d";
 import { withAttempt } from "@/worker/stages/attempt";
@@ -188,5 +189,76 @@ describe("scale3d: render stage", () => {
     expect(out.kind).toBe("known_failure");
     expect((await stageRow(id, "render")).result).toMatchObject({ error: expect.stringMatching(/render\.timeout_s.*900/) });
     expect(renderer.calls).toHaveLength(0);
+  });
+
+  describe("native Mac renderer choice (Phase 5d)", () => {
+    const nativeOn = buildEngineConfig(new Map<string, unknown>([["render.native_3d", true]])); // render.timeout_s stays 600
+    const ready = async () => ({ ready: true, message: "Ready" });
+    const notReady = async () => ({ ready: false, message: "Not ready: sandbox-exec is missing." });
+
+    it("uses the native renderer when the switch is on and the preflight is ready, even with the container limit under 900", async () => {
+      const id = await builtAndNarrated();
+      const container = capture();
+      const native = capture();
+      const out = await play(id, "render", withAttempt({ db: db.pool, root }, renderAttempt(mkDeps({ renderer: container, native: { renderer: native, ready } }))), nativeOn);
+      expect(out.kind).toBe("committed");
+      expect(native.calls).toHaveLength(1);
+      expect(native.calls[0]!.scale3d?.beats).toHaveLength(4);
+      expect(container.calls).toHaveLength(0);
+    });
+
+    it("uses the container, as before, when the switch is off, even if a native renderer is wired and ready", async () => {
+      const id = await builtAndNarrated();
+      const container = capture();
+      const native = capture();
+      const out = await play(id, "render", withAttempt({ db: db.pool, root }, renderAttempt(mkDeps({ renderer: container, native: { renderer: native, ready } }))), raised);
+      expect(out.kind).toBe("committed");
+      expect(container.calls).toHaveLength(1);
+      expect(native.calls).toHaveLength(0);
+    });
+
+    it("the 900 s guard still applies to the container when the switch is off", async () => {
+      const id = await builtAndNarrated();
+      const container = capture();
+      const native = capture();
+      const out = await play(id, "render", withAttempt({ db: db.pool, root }, renderAttempt(mkDeps({ renderer: container, native: { renderer: native, ready } }))), config);
+      expect(out.kind).toBe("known_failure");
+      expect(container.calls).toHaveLength(0);
+      expect(native.calls).toHaveLength(0);
+    });
+
+    it("falls back to the container when the preflight is not ready, and the guard applies to it", async () => {
+      const id = await builtAndNarrated();
+      const container = capture();
+      const native = capture();
+      const refused = await play(id, "render", withAttempt({ db: db.pool, root }, renderAttempt(mkDeps({ renderer: container, native: { renderer: native, ready: notReady } }))), nativeOn);
+      expect(refused.kind).toBe("known_failure"); // render.timeout_s is 600: the container guard, not a native render
+      expect(native.calls).toHaveLength(0);
+      const both = buildEngineConfig(new Map<string, unknown>([["render.native_3d", true], ["render.timeout_s", SCALE3D_MIN_RENDER_TIMEOUT_S]]));
+      const id2 = await builtAndNarrated();
+      const out = await play(id2, "render", withAttempt({ db: db.pool, root }, renderAttempt(mkDeps({ renderer: container, native: { renderer: native, ready: notReady } }))), both);
+      expect(out.kind).toBe("committed");
+      expect(container.calls).toHaveLength(1);
+      expect(native.calls).toHaveLength(0);
+    });
+
+    it("falls back to the container when the switch is on but no native renderer is wired", async () => {
+      const id = await builtAndNarrated();
+      const container = capture();
+      const both = buildEngineConfig(new Map<string, unknown>([["render.native_3d", true], ["render.timeout_s", SCALE3D_MIN_RENDER_TIMEOUT_S]]));
+      const out = await play(id, "render", withAttempt({ db: db.pool, root }, renderAttempt(mkDeps({ renderer: container }))), both);
+      expect(out.kind).toBe("committed");
+      expect(container.calls).toHaveLength(1);
+    });
+
+    it("a native render that fails is not retried in the container", async () => {
+      const id = await builtAndNarrated();
+      const container = capture();
+      const failing: Renderer = { render: async () => { throw new KnownFailure("native boom"); } };
+      const out = await play(id, "render", withAttempt({ db: db.pool, root }, renderAttempt(mkDeps({ renderer: container, native: { renderer: failing, ready } }))), nativeOn);
+      expect(out.kind).toBe("known_failure");
+      expect((await stageRow(id, "render")).result).toMatchObject({ error: expect.stringMatching(/native boom/) });
+      expect(container.calls).toHaveLength(0);
+    });
   });
 });

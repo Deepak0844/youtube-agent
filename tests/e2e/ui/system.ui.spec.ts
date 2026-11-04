@@ -107,7 +107,7 @@ test("later ways to make a video are disabled with their phase", async ({ page }
 test("layout: no horizontal scroll, 44 px touch targets on phone, labels on every field", async ({ page }) => {
   await open(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  for (const name of ["Videos rendering at once", "Jobs running at once", "Storage warning (GB)", "Longest long video (minutes)", "Render time limit (seconds)"]) {
+  for (const name of ["Videos rendering at once", "Jobs running at once", "Storage warning (GB)", "Longest long video (minutes)", "Render time limit (seconds)", "3D Mac render limit (seconds)"]) {
     const box = await page.getByLabel(name).boundingBox();
     expect(box, name).not.toBeNull();
     if (phone(page)) expect(box!.height).toBeGreaterThanOrEqual(44);

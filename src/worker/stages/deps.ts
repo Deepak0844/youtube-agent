@@ -40,6 +40,8 @@ export interface StageDeps {
   /** The routed hosted image provider by registry id (production). Refuses before any money is reserved when it is off, unpriced or has no key. */
   imageFor?: (providerId: string) => Promise<ImageProvider>;
   renderer: Renderer;
+  /** The native (Mac GPU, sandbox-exec) renderer for 3D scale videos and its readiness check (Phase 5d). Absent = never used. */
+  native?: { renderer: Renderer; ready(): Promise<{ ready: boolean; message: string }> };
   /** The sandboxed code-scene renderer (tsx_author only). Absent = that stage refuses with a plain sentence. */
   tsx?: TsxRenderer;
   /** Defaults to the real ffprobe-based probe. */

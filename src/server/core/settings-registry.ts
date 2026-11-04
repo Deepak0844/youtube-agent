@@ -87,6 +87,9 @@ export const SETTINGS = {
   "qa.long_max_s": { schema: posNum, default: 900, safety: true, label: "QA long max seconds" },
   // Render sandbox limits (ADR 0003). Safety: raising them loosens the container. Upper bounds keep a ceiling.
   "render.timeout_s": { schema: posInt.max(3600), default: 600, safety: true, label: "Render time limit, seconds" },
+  // Phase 5d: 3D videos may render on this Mac (outside Docker, in a no-network sandbox, ADR in the roadmap). Off by default; the owner turns it on.
+  "render.native_3d": { schema: z.boolean(), default: false, safety: true, label: "Render 3D videos natively on this Mac" },
+  "render.native_timeout_s": { schema: posInt.min(60).max(7200), default: 1800, safety: true, label: "Native 3D render time limit, seconds" },
   "render.cpus": { schema: posInt.max(32), default: 4, safety: true, label: "Render CPUs" },
   "render.memory_mb": { schema: posInt.min(1024).max(16384), default: 4096, safety: true, label: "Render memory (MB)" },
   "render.pids": { schema: posInt.min(64).max(2048), default: 512, safety: true, label: "Render process limit" },
