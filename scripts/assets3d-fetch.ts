@@ -24,7 +24,8 @@ async function downloadPacked(e: Entry3d): Promise<{ glb: Buffer; source: string
   const files = (await (await fetch(`https://api.polyhaven.com/files/${slug}`, { headers: { "User-Agent": UA } })).json()) as {
     gltf: Record<string, { gltf: { url: string; include: Record<string, { url: string }> } }>;
   };
-  const g = files.gltf["1k"].gltf;
+  const g = files.gltf["1k"]?.gltf;
+  if (!g) throw new Error("no 1k glTF listed");
   const tmp = await mkdtemp(path.join(tmpdir(), "assets3d-"));
   try {
     const gltf = await get(g.url);

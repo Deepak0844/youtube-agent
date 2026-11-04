@@ -18,7 +18,7 @@ export function isPacked(e: Pick<Entry3d, "download_url">): boolean {
 // sha256 of the original download of a packed model: the .gltf, then every extra file in path order.
 export function sourceHash(gltf: Uint8Array, extras: Record<string, Uint8Array>): string {
   const h = createHash("sha256").update(gltf);
-  for (const k of Object.keys(extras).sort()) h.update(extras[k]);
+  for (const k of Object.keys(extras).sort()) h.update(extras[k] ?? "");
   return h.digest("hex");
 }
 
