@@ -160,16 +160,24 @@ export function GateCard({ item, index }: { item: GateItem; index: number }) {
       {sentBack ? (
         <p role="note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">You sent this back: &ldquo;{item.sentBackNote}&rdquo;. It stays on hold until the new version arrives.</p>
       ) : null}
-      <p className="m-0 text-small text-faint">
-        Review reference <code data-testid="review-ref" className="font-mono">{item.hash.slice(0, 12)}</code>. If anything changes after you opened this page, the buttons below will refuse and show the new version.
-      </p>
-      <GateForms
-        fields={{ videoId: item.videoId, gate: item.gate, seenHash: item.hash, seenVersions: item.versions }}
-        approveLabel={g.approve}
-        canApprove={!sentBack}
-        captionsTick={item.content.kind === "video" && item.content.captions === "approximate"}
-        topic={item.topic}
-      />
+      {item.blocked !== undefined ? (
+        <p data-testid="gate-blocked" className="m-0 max-w-[68ch] text-body text-muted">
+          Not ready to approve yet: {item.blocked}. Use the form above (and the Titles tab if details are missing), then reload this page.
+        </p>
+      ) : (
+        <>
+          <p className="m-0 text-small text-faint">
+            Review reference <code data-testid="review-ref" className="font-mono">{item.hash.slice(0, 12)}</code>. If anything changes after you opened this page, the buttons below will refuse and show the new version.
+          </p>
+          <GateForms
+            fields={{ videoId: item.videoId, gate: item.gate, seenHash: item.hash, seenVersions: item.versions }}
+            approveLabel={g.approve}
+            canApprove={!sentBack}
+            captionsTick={item.content.kind === "video" && item.content.captions === "approximate"}
+            topic={item.topic}
+          />
+        </>
+      )}
       <CancelForm videoId={item.videoId} topic={item.topic} />
     </article>
   );
