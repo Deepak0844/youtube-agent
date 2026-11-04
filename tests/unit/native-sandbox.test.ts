@@ -21,11 +21,30 @@ const lines = (s: string) => s.split("\n").filter(Boolean);
 describe("sandbox profile", () => {
   const profile = buildSandboxProfile(P);
 
-  it("denies the network and only lets loopback through", () => {
+  it("denies the network, then allows only loopback bind, accept and connect, each with its own filter", () => {
     expect(profile).toContain("(deny network*)");
     const allows = lines(profile).filter((l) => l.startsWith("(allow network"));
-    expect(allows).toEqual(['(allow network* (local ip "localhost:*") (remote ip "localhost:*"))']);
-    expect(profile.indexOf("(deny network*)")).toBeLessThan(profile.indexOf("(allow network*"));
+    expect(allows).toEqual([
+      '(allow network-bind (local ip "localhost:*"))',
+      '(allow network-inbound (local ip "localhost:*"))',
+      '(allow network-outbound (remote ip "localhost:*"))',
+    ]);
+    // regression: one `network*` rule with a local AND a remote filter let any outbound connect through
+    for (const l of allows) {
+      expect(l).not.toMatch(/^\(allow network\*/);
+      if (l.startsWith("(allow network-outbound")) expect(l).not.toContain("local ip");
+    }
+    expect(profile.indexOf("(deny network*)")).toBeLessThan(profile.indexOf("(allow network-bind"));
+  });
+
+  it("strictExec is off by default and, when asked for, adds a process-exec deny with a short allow list after the other rules", () => {
+    expect(profile).not.toContain("process-exec");
+    const strict = lines(buildSandboxProfile(P, { strictExec: true }));
+    expect(strict.slice(0, lines(profile).length)).toEqual(lines(profile));
+    expect(strict.slice(lines(profile).length)).toEqual([
+      "(deny process-exec*)",
+      `(allow process-exec* (subpath "${P.nodePrefix}") (subpath "${P.chromeDir}") (subpath "/usr/bin") (subpath "/bin") (subpath "/usr/libexec") (subpath "/System"))`,
+    ]);
   });
 
   it("denies every write, then allows only the out folder, the private temp folder and null-like devices", () => {
