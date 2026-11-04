@@ -33,6 +33,7 @@ const keyringOf = (r: Ring) => (typeof r === "function" ? r() : r);
 
 export type GoogleHttp = (url: string, init?: RequestInit) => Promise<Response>;
 export const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
+// Every Google call in production goes through safeFetch (SSRF guard, indirect mode); tests inject fakes instead.
 export const defaultGoogleHttp: GoogleHttp = (url, init) => safeFetch(url, init, { mode: "indirect" });
 
 const form = (o: Record<string, string>) => ({

@@ -33,12 +33,12 @@ test("a visitor without a session sees no asset settings", async ({ browser, bas
   }
 });
 
-test("shows the defaults and the note that clean-up arrives with publishing", async ({ page }) => {
+test("shows the defaults and the note that unused-file clean-up is not scheduled yet", async ({ page }) => {
   await open(page);
   await expect(page.getByLabel("Days to keep uploads after a video is finished")).toHaveValue("7");
   await expect(page.getByLabel("Days to keep an upload no video uses")).toHaveValue("30");
   await expect(page.getByLabel("Biggest photo (MB)")).toHaveValue("25");
-  await expect(page.getByRole("note")).toContainText("arrives with publishing");
+  await expect(page.getByRole("note")).toContainText("not scheduled yet");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
