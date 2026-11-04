@@ -117,7 +117,7 @@ export async function syncComments(
       }
     }
   }
-  await db.query("update comment_sync_state set last_sync_at = now() where id = 1");
+  await db.query("insert into comment_sync_state (id, last_sync_at) values (1, now()) on conflict (id) do update set last_sync_at = now()");
   if (opts.queue) {
     for (const videoId of withNew) {
       const r = await requestReplyDrafts(db, opts.queue, videoId, undefined, { auto: true }).catch(() => ({ ok: false as const }));
