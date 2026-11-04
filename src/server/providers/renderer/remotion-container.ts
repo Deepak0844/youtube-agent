@@ -286,7 +286,9 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         }
         let props: { ok: true; props: unknown } | { ok: false; errors: string[] };
         if (a.scale3d) {
-          const caps = (a.captions ?? []).filter((w): w is { word: string; startS: number; endS: number } => typeof (w as { word?: unknown })?.word === "string" && Number.isFinite((w as { startS?: unknown }).startS) && Number.isFinite((w as { endS?: unknown }).endS));
+          const caps = (a.captions ?? [])
+            .filter((w): w is { word: string; startS: number; endS: number } => typeof (w as { word?: unknown })?.word === "string" && Number.isFinite((w as { startS?: unknown }).startS) && Number.isFinite((w as { endS?: unknown }).endS))
+            .map((w) => ({ word: w.word.slice(0, 60), startS: w.startS, endS: w.endS }));
           props = { ok: true, props: { scene: a.scale3d, ...(caps.length ? { captions: caps } : {}), ...(isStyleId(a.style) ? { style: a.style } : {}), ...(isCaptionStyleId(a.captionStyle) ? { captionStyle: a.captionStyle } : {}) } };
         } else props = buildVideoProps(JSON.stringify(a.doc), { fps: FPS, audioSrc, assets, captionsText: a.captions ? JSON.stringify(a.captions) : undefined, seed: a.videoId, title: a.title, style: a.style, captionStyle: a.captionStyle });
         if (!props.ok) throw new KnownFailure(`The scenes or captions are not valid: ${props.errors.slice(0, 3).join("; ")}`.slice(0, 600));
