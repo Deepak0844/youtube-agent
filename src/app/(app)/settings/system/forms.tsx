@@ -26,7 +26,7 @@ function Result({ state }: { state: FormState }) {
   return state.ok ? <p role="status" className="text-body text-pill-positive-ink">Saved.</p> : <p role="status" className="sr-only" />;
 }
 
-export function LimitsForm(props: { renders: number; jobs: number; warnGb: number; longMinutes: number; sceneKit: boolean; tracksLater: string[] }) {
+export function LimitsForm(props: { renders: number; jobs: number; warnGb: number; longMinutes: number; renderTimeoutS: number; sceneKit: boolean; tracksLater: string[] }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveLimitsAction, {});
   return (
     <form action={action} className="flex flex-col gap-5">
@@ -46,6 +46,13 @@ export function LimitsForm(props: { renders: number; jobs: number; warnGb: numbe
         <div className={field}>
           <Label htmlFor="max_long_minutes">Longest long video (minutes)</Label>
           <Input id="max_long_minutes" name="max_long_minutes" type="number" inputMode="numeric" min={1} max={240} step={1} required defaultValue={props.longMinutes} />
+        </div>
+        <div className={field}>
+          <Label htmlFor="render_timeout_s">Render time limit (seconds)</Label>
+          <Input id="render_timeout_s" name="render_timeout_s" type="number" inputMode="numeric" min={60} max={3600} step={1} required aria-describedby="render-timeout-help" defaultValue={props.renderTimeoutS} />
+          <p id="render-timeout-help" className="text-small text-faint">
+            A normal video renders well inside the default 600. 3D scale-comparison videos need 900 or more (about 5 minutes of rendering on a slow machine). Maximum 3600.
+          </p>
         </div>
       </div>
       <fieldset className="flex flex-col gap-3">

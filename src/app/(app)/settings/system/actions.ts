@@ -21,7 +21,7 @@ const text = (v: FormDataEntryValue | null, max: number): string | null => (type
 
 export async function saveLimitsAction(_prev: FormState, form: FormData): Promise<FormState> {
   await requireOwner();
-  const fields = ["concurrent_renders", "concurrent_jobs", "storage_warn_gb", "max_long_minutes"].map((k) => [k, text(form.get(k), 8)] as const);
+  const fields = ["concurrent_renders", "concurrent_jobs", "storage_warn_gb", "max_long_minutes", "render_timeout_s"].map((k) => [k, text(form.get(k), 8)] as const);
   if (fields.some(([, v]) => v === null)) return { error: TOO_LONG };
   const r = await saveSystemSettings(getPool(), { ...Object.fromEntries(fields), scene_kit: form.get("scene_kit") === "on" });
   if (r.ok) revalidatePath("/settings/system");

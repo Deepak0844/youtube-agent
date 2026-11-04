@@ -29,6 +29,7 @@ export const systemFormSchema = z
     concurrent_jobs: int(16),
     storage_warn_gb: int(100_000),
     max_long_minutes: int(240),
+    render_timeout_s: int(3600).pipe(z.number().min(60)),
     scene_kit: z.boolean(),
   })
   .strict();
@@ -69,6 +70,7 @@ export async function saveSystemSettings(db: pg.Pool, input: unknown): Promise<S
       { key: "jobs.concurrent_jobs", value: v.concurrent_jobs },
       { key: "storage.warn_gb", value: v.storage_warn_gb },
       { key: "video.max_long_minutes", value: v.max_long_minutes },
+      { key: "render.timeout_s", value: v.render_timeout_s },
       // read under the lock, so other tracks are never overwritten with a stale copy
       { key: "tracks.enabled", value: (cur: unknown) => ({ ...(cur as Record<string, boolean>), scene_kit: v.scene_kit }) },
     ]);
@@ -211,6 +213,7 @@ export interface SystemSettingsView {
   jobs: number;
   warnGb: number;
   longMinutes: number;
+  renderTimeoutS: number;
   sceneKit: boolean;
   services: string[];
   killSwitch: boolean;
@@ -219,15 +222,16 @@ export interface SystemSettingsView {
 
 /** Everything the page shows, read here so only this file touches the settings module. */
 export async function loadSystemSettings(db: pg.Pool): Promise<SystemSettingsView> {
-  const [renders, jobs, warnGb, longMinutes, tracks, services, killSwitch, cutoverDone] = await Promise.all([
+  const [renders, jobs, warnGb, longMinutes, renderTimeoutS, tracks, services, killSwitch, cutoverDone] = await Promise.all([
     getSetting(db, "jobs.concurrent_renders") as Promise<number>,
     getSetting(db, "jobs.concurrent_jobs") as Promise<number>,
     getSetting(db, "storage.warn_gb") as Promise<number>,
     getSetting(db, "video.max_long_minutes") as Promise<number>,
+    getSetting(db, "render.timeout_s") as Promise<number>,
     getSetting(db, "tracks.enabled") as Promise<{ scene_kit: boolean }>,
     loadLocalServices(db),
     getSetting(db, "uploads.kill_switch"),
     getSetting(db, "youtube.cutover_done"),
   ]);
-  return { renders, jobs, warnGb, longMinutes, sceneKit: tracks.scene_kit, services, killSwitch: killSwitch !== false, cutoverDone: cutoverDone === true };
+  return { renders, jobs, warnGb, longMinutes, renderTimeoutS, sceneKit: tracks.scene_kit, services, killSwitch: killSwitch !== false, cutoverDone: cutoverDone === true };
 }

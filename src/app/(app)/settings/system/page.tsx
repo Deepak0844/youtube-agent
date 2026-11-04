@@ -35,6 +35,7 @@ async function Owned() {
           jobs={jobs}
           warnGb={warnGb}
           longMinutes={longMinutes}
+          renderTimeoutS={view.renderTimeoutS}
           sceneKit={view.sceneKit}
           tracksLater={["Code scenes (Phase 4)", "Collage (Phase 8)", "AI video (Phase 9)"]}
         />
