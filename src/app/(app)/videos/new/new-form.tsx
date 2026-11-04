@@ -15,8 +15,9 @@ const selectClass = cn("w-full rounded-control border border-control bg-surface 
 
 export function NewForm() {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
-  const [kind, setKind] = useState<"scene_kit" | "tsx">("scene_kit");
+  const [kind, setKind] = useState<"scene_kit" | "tsx" | "scale3d">("scene_kit");
   const custom = kind === "tsx";
+  const scale = kind === "scale3d";
   // Custom animation has no Classic look: its default card is AI Studio. Scene kit keeps Classic ("" = no style).
   const [picked, setPicked] = useState("");
   const style = custom && picked === "" ? "ai_studio" : picked;
@@ -52,6 +53,7 @@ export function NewForm() {
           [
             ["scene_kit", "Scene kit (default)", "Safe and fast: the app builds the scenes from a fixed set of parts."],
             ["tsx", "Custom animation (TSX, experimental)", "Claude writes the animation code. Slower, and it may fall back to the scene kit if the code does not pass the safety checks."],
+            ["scale3d", "3D scale comparison (Shorts)", "Sizes compared on a ruler: a camera climbs past real objects. Every height is a claim you verify. Needs the render time limit set to 900 s or more (Settings > System)."],
           ] as const
         ).map(([id, title, help]) => (
           <label key={id} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-rule bg-surface p-3 has-checked:outline-2 has-checked:outline">
@@ -63,6 +65,7 @@ export function NewForm() {
           </label>
         ))}
       </fieldset>
+      {scale ? null : (
       <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
         <legend className="mb-1 text-body font-medium">Style</legend>
         {custom ? <p className="m-0 text-small text-muted">Claude draws the animation in this style: its colours, fonts, motion and pace.</p> : null}
@@ -84,10 +87,13 @@ export function NewForm() {
           ))}
         </div>
       </fieldset>
+      )}
+      {scale ? null : (
       <label className="flex items-start gap-3 text-body">
         <input type="checkbox" name="captionStyle" value="punchy_captions" disabled={custom} className="mt-1" />
         <span>Punchy captions <span className="block text-small text-muted">Big 1-3 word captions, yellow active word, black outline. Works with any style.{custom ? " Not used for custom animation, which has its own captions." : ""}</span></span>
       </label>
+      )}
       <div className="flex flex-col gap-2">
         <Label htmlFor="notes">Notes (optional)</Label>
         <textarea id="notes" name="notes" rows={4} maxLength={2000} placeholder="Angle, tone, things to include or avoid" className={cn(selectClass, "py-2")} />

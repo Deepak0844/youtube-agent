@@ -65,7 +65,7 @@ export function ageLabel(then: Date, now: Date = new Date()): string {
 export const newVideoSchema = z.object({
   topic: z.string().trim().min(1, "Enter a topic.").max(200, "Keep the topic to 200 characters or fewer."),
   language: z.enum(LANGS, "Pick a narration language."),
-  kind: z.enum(["scene_kit", "tsx"], "Pick a video type."),
+  kind: z.enum(["scene_kit", "tsx", "scale3d"], "Pick a video type."),
   format: z.literal("short", "Only Shorts are available for now."),
   notes: z.string().trim().max(2000, "Keep the notes to 2000 characters or fewer.").optional(),
   // Empty or missing = the default look (stored as null).
@@ -81,6 +81,11 @@ export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoIn
   if (r.success && r.data.kind === "tsx") {
     const { topic, language, kind, format, notes, style } = r.data;
     return { ok: true, value: { topic, language, kind, format, notes, ...(style ? { style } : {}) } };
+  }
+  // A 3D scale video uses neither a style nor a caption look (its own composition draws everything), and is Shorts only.
+  if (r.success && r.data.kind === "scale3d") {
+    const { topic, language, kind, format, notes } = r.data;
+    return { ok: true, value: { topic, language, kind, format, notes } };
   }
   return r.success ? { ok: true, value: r.data } : { ok: false, message: r.error.issues[0]?.message ?? "Check the form and try again." };
 }
