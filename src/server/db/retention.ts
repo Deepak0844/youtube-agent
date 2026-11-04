@@ -6,9 +6,10 @@ import { trashAssets } from "./assets";
 import { safeJoin } from "@/server/storage/paths";
 
 // Asset retention: some days after a video was uploaded to YouTube (setting assets.retention_days), its working files are
-// removed. Kept: the final video file(s), anything a Keep switch protects, and assets whose source is "imported". Pictures from
+// removed. Kept: the final video file(s), anything a Keep switch protects, and assets the owner uploaded himself (source = 'upload'). Pictures from
 // the library go to the asset trash (restorable for the trash window), only when no other video uses them. Everything on disk
 // is reached through safeJoin under the storage root, and nothing outside <root>/videos/<id>/ is ever touched.
+// TODO Phase 9: the importer must add an 'imported' source marker and this query must exclude it too (today only 'upload' is protected).
 // Audit rows carry counts and bytes only, never a path.
 
 export type RetentionBy = { kind: "session"; sessionId: string } | { kind: "worker" };
@@ -45,7 +46,7 @@ async function collect(db: pg.Pool, root: string, videoId: string): Promise<Foun
   const content = await db.query<{ kind: string; file_path: string }>("select kind, file_path from video_content where video_id = $1 and file_path is not null", [videoId]);
   const finals = new Set(content.rows.filter((r) => r.kind === "video").map((r) => r.file_path));
   const rels = new Set<string>();
-  for (const r of content.rows) if (r.kind !== "video" && r.file_path.startsWith(own) && !finals.has(r.file_path)) rels.add(r.file_path);
+  for (const r of content.rows) if (r.kind !== "video" && r.file_path.startsWith(own) && !finals.has(r.file_path) && ![...finals].some((f) => f.startsWith(`${r.file_path}/`))) rels.add(r.file_path);
   // scratch folders of finished stage attempts, unless a final file lives inside one
   const dir = await safeJoin(root, "videos", videoId).catch(() => null);
   const names = dir ? await readdir(dir).catch(() => []) : [];
@@ -69,7 +70,7 @@ async function collect(db: pg.Pool, root: string, videoId: string): Promise<Foun
   }
   const assets = await db.query<{ id: string; bytes: string }>(
     `select a.id, a.bytes::text as bytes from video_assets va join assets a on a.id = va.asset_id
-      where va.video_id = $1 and a.deleted_at is null and not a.keep and a.source <> 'imported'
+      where va.video_id = $1 and a.deleted_at is null and not a.keep and a.source <> 'upload'
         and not exists (select 1 from video_assets o where o.asset_id = a.id and o.video_id <> $1)`,
     [videoId],
   );
@@ -103,10 +104,46 @@ export async function planRetention(db: pg.Pool, root: string): Promise<Retentio
 }
 
 /** The real clean-up: re-evaluates every video at this moment (never trusts an earlier dry run), then removes. */
-export async function runRetention(db: pg.Pool, root: string, by: RetentionBy): Promise<RetentionPlan> {
+export async function runRetention(db: pg.Pool, root: string, by: RetentionBy, opts: { afterList?: () => Promise<void> } = {}): Promise<RetentionPlan> {
   const { retentionDays: days } = await loadAssetDays(db);
   const done: RetentionItem[] = [];
-  for (const v of await dueVideos(db, days)) {
+  const due = await dueVideos(db, days);
+  await opts.afterList?.(); // test seam: lets a test change the world between the list and the per-video guard
+  for (const v of due) {
+    // Lock the video row and re-check the guard right now: a step queued after the list was built must win.
+    const lock = await db.connect();
+    try {
+      await lock.query("begin");
+      if (!(await guardOk(lock, v.id))) {
+        await lock.query("rollback");
+        continue;
+      }
+      await cleanOne(db, root, v, by, done);
+      await lock.query("commit");
+    } catch {
+      await lock.query("rollback").catch(() => undefined);
+    } finally {
+      lock.release();
+    }
+  }
+  const sum = (k: "files" | "bytes" | "assets" | "assetBytes") => done.reduce((s, i) => s + i[k], 0);
+  return { days, items: done, files: sum("files"), bytes: sum("bytes"), assets: sum("assets"), assetBytes: sum("assetBytes") };
+}
+
+/** Takes the video row lock (skipping if someone holds it) and re-proves nothing is queued, running or unfinished. */
+async function guardOk(q: pg.PoolClient, videoId: string): Promise<boolean> {
+  const row = await q.query("select id from videos where id = $1 for update skip locked", [videoId]);
+  if (row.rowCount === 0) return false;
+  const bad = await q.query(
+    `select 1 where exists (select 1 from stage_runs s where s.video_id = $1 and s.status in ('queued', 'running'))
+        or exists (select 1 from uploads x where x.video_id = $1 and x.status <> 'uploaded')`,
+    [videoId],
+  );
+  return bad.rowCount === 0;
+}
+
+async function cleanOne(db: pg.Pool, root: string, v: { id: string; topic: string }, by: RetentionBy, done: RetentionItem[]): Promise<void> {
+  {
     const f = await collect(db, root, v.id);
     let files = 0;
     let bytes = 0;
@@ -122,13 +159,11 @@ export async function runRetention(db: pg.Pool, root: string, by: RetentionBy): 
       }
     }
     const trashed = f.assetIds.length ? (await trashAssets(db, f.assetIds, false)).trashed : [];
-    if (files === 0 && trashed.length === 0) continue;
+    if (files === 0 && trashed.length === 0) return;
     const assetBytes = trashed.length === f.assetIds.length ? f.assetBytes : 0;
     await recordAudit(db, "retention.cleaned", { videoId: v.id, by: by.kind, sessionId: by.kind === "session" ? by.sessionId : null, files, bytes, assetsTrashed: trashed.length, assetBytes });
     done.push({ videoId: v.id, topic: v.topic, files, bytes, assets: trashed.length, assetBytes });
   }
-  const sum = (k: "files" | "bytes" | "assets" | "assetBytes") => done.reduce((s, i) => s + i[k], 0);
-  return { days, items: done, files: sum("files"), bytes: sum("bytes"), assets: sum("assets"), assetBytes: sum("assetBytes") };
 }
 
 /** Worker hook: runs a clean-up at most once per `everyMs` (default 6 h) using the injected clock; errors never reach the caller. */
