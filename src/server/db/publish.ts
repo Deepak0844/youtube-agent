@@ -216,7 +216,7 @@ export type TargetResult = { ok: true; value: VerifiedTarget } | { ok: false; re
  * it covers, the approving session, the policy settings and the metadata; so the hash, version ids and file path all
  * belong to one moment. The real file is then hashed and must equal the stored sha256 of THAT version.
  */
-export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { root?: string } = {}): Promise<TargetResult> {
+export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { root?: string; /** a human-requested retry reads an `upload_failed` row */ status?: "publish_approved" | "upload_failed" } = {}): Promise<TargetResult> {
   if (typeof uploadId !== "string" || !UUID_RE.test(uploadId)) return { ok: false, reason: "not_found" };
   const root = opts.root ?? storageRoot();
   const client = await db.connect();
@@ -225,7 +225,7 @@ export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { ro
     await client.query("begin isolation level repeatable read read only");
     const up = (await client.query<{ video_id: string; status: string; channel_id: string | null }>("select video_id, status, channel_id from uploads where id = $1", [uploadId])).rows[0];
     if (!up) return { ok: false, reason: "not_found" };
-    if (up.status !== "publish_approved") return { ok: false, reason: "not_publish_approved" };
+    if (up.status !== (opts.status ?? "publish_approved")) return { ok: false, reason: "not_publish_approved" };
     if (up.channel_id === null) return { ok: false, reason: "no_channel" };
     if (!(await videoIsLive(client, up.video_id))) return { ok: false, reason: "policy", detail: CANCELLED };
     const state = await approvalState(client, up.video_id, "publish");

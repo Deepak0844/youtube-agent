@@ -72,6 +72,7 @@ export function publishPolicyProblem(i: PublishPolicyInput): string | null {
   if (v) return v;
   const at = publishAtProblem(i.publishAt);
   if (at) return at;
+  if (i.publishAt != null && i.visibility !== "private") return "a scheduled time works only with private: choose private, or remove the time";
   if (i.visibility === "public" && i.allowPublic !== true) return "public publishing is switched off in settings (allow public); choose private or unlisted";
   if (!i.videoApproved) return "approve the video first";
   if (i.requireEvidence !== false && !i.evidenceApproved) return "the evidence must be signed off before publishing";

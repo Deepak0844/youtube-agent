@@ -72,6 +72,11 @@ describe("publishPolicyProblem", () => {
     expect(publishPolicyProblem({ ...ok, publishAt: new Date(NOW - 1000).toISOString(), phase: "upload" })).toMatch(/passed/);
     expect(publishPolicyProblem({ ...ok, visibility: "public", phase: "upload" })).toMatch(/public/i);
   });
+  it("a scheduled time works only with private", () => {
+    const later = new Date(NOW + 3 * 3600_000).toISOString();
+    expect(publishPolicyProblem({ ...ok, visibility: "private", publishAt: later })).toBeNull();
+    for (const v of ["unlisted", "public"]) expect(publishPolicyProblem({ ...ok, visibility: v, publishAt: later, allowPublic: true }), v).toMatch(/only with private/);
+  });
   it("applies the lead time and the field checks", () => {
     expect(publishPolicyProblem({ ...ok, publishAt: new Date(NOW + 30 * 60_000).toISOString() })).toMatch(/60 minutes/);
     expect(publishPolicyProblem({ ...ok, visibility: "everyone" })).not.toBeNull();

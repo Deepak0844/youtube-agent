@@ -188,13 +188,13 @@ export function startUpload(db: Db, uploadId: string, ctx: StartCtx, opts: { rec
 
 // The ONLY function that moves upload_failed -> uploading. Human-initiated: the caller must state that a human
 // checked YouTube Studio and the video is not there. The returned attempt must be handed to runUpload.
-export async function manualRetry(db: Db, uploadId: string, ctx: RetryCtx): Promise<StartResult> {
+export async function manualRetry(db: Db, uploadId: string, ctx: RetryCtx, opts: { recheck?: StartRecheck; capsFor?: CapsFor } = {}): Promise<StartResult> {
   assertId(uploadId);
   if ((ctx as { humanConfirmedNotOnYouTube?: unknown }).humanConfirmedNotOnYouTube !== true) {
     return { started: false, reason: "human_confirmation_required" };
   }
   const ignore = (ctx as { ignoreLoggedYoutubeId?: unknown }).ignoreLoggedYoutubeId === true;
-  return guardedStart(db, uploadId, { ...ctx, ...(ignore ? { ignoreLoggedYoutubeId: true as const } : { ignoreLoggedYoutubeId: undefined }) }, "upload_failed");
+  return guardedStart(db, uploadId, { ...ctx, ...(ignore ? { ignoreLoggedYoutubeId: true as const } : { ignoreLoggedYoutubeId: undefined }) }, "upload_failed", opts.recheck, opts.capsFor);
 }
 
 // Monotonic and bounded: a lower value than recorded, a value above bytes_total, or a stale attempt is ignored (false).
@@ -223,7 +223,8 @@ export const STALLED_REASON = "no progress: check YouTube Studio first";
 export const STUDIO_FIRST_PREFIX = "check YouTube Studio first: ";
 // Failure reasons that make a stalled/failed attempt eligible for a late success. Reserved: matched EXACTLY, and an
 // uploader-supplied reason can never produce them (it gets a neutral prefix).
-const isLateSuccessReason = (r: string | null): boolean => r !== null && (r === STALLED_REASON || r.startsWith(STUDIO_FIRST_PREFIX));
+export const isUnclearReason = (r: string | null): boolean => r !== null && (r === STALLED_REASON || r.startsWith(STUDIO_FIRST_PREFIX));
+const isLateSuccessReason = isUnclearReason;
 const isReservedReason = (r: unknown): boolean => {
   const c = safeReason(String(r));
   return c === STALLED_REASON || c.startsWith("check YouTube Studio first");
