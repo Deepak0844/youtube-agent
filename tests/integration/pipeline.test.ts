@@ -3,7 +3,7 @@ import type { GateId } from "@/server/core/gates";
 import { reconcile } from "@/server/db/reconciler";
 import { claimStage, commitStage, failStage, getStage } from "@/server/db/stages";
 import { addContent, createVideoRow } from "@/server/db/videos";
-import { advanceAll, advanceVideo, cancelVideo, rerunStage, type PipelineReaders } from "@/server/db/pipeline";
+import { advanceAll, advanceVideo, cancelVideo, readNextAction, rerunStage, type PipelineReaders } from "@/server/db/pipeline";
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;
@@ -163,6 +163,30 @@ describe("advanceVideo", () => {
     expect(before.map((s) => s.name)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
     expect((await advanceAll(db.pool, q, readers(all))).enqueued).toEqual([]);
     expect(await stages(v.id)).toEqual(before);
+  });
+  it("the_read_only_next_action_sees_the_chosen_style_like_advance_does", async () => {
+    // Regression: readNextAction left style/caption_style out, so every styled video looked "out of date" at build
+    // and the Queue hid its gate card.
+    const v = await createVideoRow(db.pool, { ...input, style: "storybook_calm" });
+    const q = fakeQueue();
+    const rd = readers(["script"]);
+    for (let i = 0; i < 20; i++) {
+      const r = await advanceVideo(db.pool, q, v.id, rd);
+      if (r.enqueued.length === 0) break;
+      await succeed(r.enqueued[0]!);
+      const last = (await stages(v.id)).at(-1)!.name;
+      if (last === "draft") {
+        await addContent(db.pool, v.id, "script", { body: {}, sha256: h("a") });
+        await addContent(db.pool, v.id, "beats", { body: {}, sha256: h("b") });
+      }
+      if (last === "build") await addContent(db.pool, v.id, "cost_plan", { body: { items: [] }, sha256: h("c") });
+      if (last === "qa") break;
+    }
+    const names = (await stages(v.id)).map((s) => s.name);
+    expect(names).toContain("build");
+    const viaAdvance = (await advanceVideo(db.pool, q, v.id, rd)).action;
+    expect(await readNextAction(db.pool, v.id, rd)).toEqual(viaAdvance);
+    expect(viaAdvance).toMatchObject({ kind: "wait_gate" });
   });
   it("send_back_reruns_the_draft_with_the_feedback_in_the_input", async () => {
     const v = await createVideoRow(db.pool, input);
