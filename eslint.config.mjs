@@ -54,6 +54,8 @@ const eslintConfig = defineConfig([
     "tests/fixtures/remotion-spike/**",
     "tests/fixtures/remotion-tsx/**",
   ]),
+  // three.js scene blocks mutate scene objects (materials, instances, cameras) on every frame by design; the React Compiler purity rules do not fit that code.
+  { files: ["remotion/kit/scene3d/**/*.tsx"], rules: { "react-hooks/immutability": "off", "react-hooks/refs": "off" } },
   // Import boundaries (Doc 2 §2). Raw table access is db-only; the package is
   // not installed yet, the rule is pre-wired.
   { files: ["src/**/*.{ts,tsx,mts}"], ignores: ["src/server/**", "src/worker/**"], rules: restrict(orm) },

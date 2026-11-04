@@ -59,6 +59,10 @@ import type { Scene, SceneDoc } from "../../src/shared/scene";
 import { SCALE3D_DEMO } from "./scale3d/demo-scene";
 import { totalFrames } from "./scale3d/math";
 import type { Scale3DProps } from "./scale3d/Scale3D";
+import { SCENE3D_DEMO } from "./scene3d/demo-scene";
+import { withDefaults } from "./scene3d/defaults";
+import { scene3dFrames } from "./scene3d/camera";
+import type { Scene3DProps } from "./scene3d/Scene3D";
 
 const terminal: TerminalProps = {
   lines: [{ text: "npm run build" }, { text: "build ok", prompt: ">" }],
@@ -415,6 +419,17 @@ export const KitRoot: React.FC = () => (
       height={theme.height}
       fps={theme.fps}
       durationInFrames={900}
+    />
+    {/* General 3D scene engine v2 (scene format v2): lazy like scale3d, so three.js loads only for this composition. Rendered natively, not in the container. */}
+    <Composition
+      id="scene3d"
+      lazyComponent={() => import("./scene3d/Scene3D").then((m) => ({ default: m.Scene3D as React.FC<Record<string, unknown>> }))}
+      defaultProps={{ scene: withDefaults(SCENE3D_DEMO) } as Scene3DProps}
+      calculateMetadata={({ props }) => ({ durationInFrames: scene3dFrames(props.scene) })}
+      width={theme.width}
+      height={theme.height}
+      fps={30}
+      durationInFrames={300}
     />
     <Composition
       id="kit-video"

@@ -85,3 +85,6 @@ export function shotAt(shots: readonly { duration_s: number }[], t: number): { i
   }
   return { index: 0, local: 0 };
 }
+
+/** Video length in frames for a scene. */
+export const scene3dFrames = (scene: { shots: readonly { duration_s: number }[]; fps: number }): number => Math.max(1, Math.round(scene.shots.reduce((a, s) => a + s.duration_s, 0) * scene.fps));

@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { withDefaults } from "../../remotion/kit/scene3d/defaults";
 import { animAt, boxCenter, cameraAt, cameraKeys, clampAbove, ease, fits, focusBox, frameBox, groundHeightAt, pointOnPath, SCENE3D_DEMO, scene3dSchema, shotAt, type Box } from "../../src/shared/scene3d";
 
 const scene = scene3dSchema.parse(SCENE3D_DEMO);
+
+describe("defaults without zod", () => {
+  it("gives exactly what the schema gives", () => {
+    expect(withDefaults(SCENE3D_DEMO)).toEqual(scene);
+  });
+});
 
 describe("easing and animation", () => {
   it("every ease starts at 0, ends at 1 and clamps outside", () => {
