@@ -13,8 +13,9 @@ export const MAX_REPLY_CHARS = 500;
 /** Typed by the owner to turn dry run off. */
 export const LIVE_PHRASE = "POST FOR REAL";
 
-// Control characters (NUL included; tab, newline and CR become spaces), bidi overrides and zero-width characters.
-const STRIP = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/gu;
+// Control characters (NUL included; tab, newline and CR become spaces), line and paragraph separators, bidi controls, zero-width and
+// invisible characters, and the Unicode tag block (hides text from people but not from a model).
+const STRIP = new RegExp("[\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u034f\\u061c\\u180e\\u200b-\\u200f\\u2028\\u2029\\u202a-\\u202e\\u2060-\\u2064\\u2066-\\u2069\\u3164\\ufeff\\ufff9-\\ufffb\\u{e0000}-\\u{e007f}]", "gu");
 
 /** Cleaned plain text: control and direction-changing characters become spaces, runs of spaces collapse, length is capped (by characters). */
 export function cleanText(v: unknown, max: number): string {
@@ -56,7 +57,9 @@ export function parseThreads(body: unknown): ParsedComment[] {
 }
 
 // ---- moderation: a simple rule that decides "needs your eyes" ----
-const LINK = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|in|co|me|ly|xyz|tk|ru)\b|t\.me\/|bit\.ly)/i;
+// Anything domain-looking counts as a link (false positives like "Hello.Thanks" are accepted). Fullwidth and look-alike dots are folded first.
+const LINK = /(h(tt|xx)ps?:|www\.|goo\.gl|t\.me\/|\b[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}\b)/i;
+export const hasLink = (t: string): boolean => LINK.test(t.normalize("NFKC").replace(/[\u3002\uff61\u2024\u2027]/g, "."));
 const MONEY = /(\bpaypal\b|\bbitcoin\b|\bcrypto\b|\bdonat|\bsend (me )?money\b|\bgiveaway\b|\bwhatsapp\b|\btelegram\b|\bsub4sub\b|\binvest|\bloan\b|\bpromo ?code\b|\bcash ?app\b|\bupi\b|[$₹€£]\s?\d|\b(rs|inr|usd)\.?\s?\d|\bfree money\b|\bdm me\b)/i;
 const ABUSE = /\b(fuck|shit|bitch|asshole|bastard|cunt|slut|idiot|stupid|retard|kill yourself|kys)\b/i;
 const PERSONAL = /([\w.+-]+@[\w-]+\.[\w.]+|\+?\d[\d\s().-]{8,}\d|\b(my|your) (home )?address\b|\bpassword\b|\baadhaar\b|\bpan card\b)/i;
@@ -74,7 +77,7 @@ const OTHER_SCRIPT =
 /** Why a comment needs the owner's eyes (empty = no rule matched). Replies to flagged comments can never be bulk-approved. */
 export function riskReasons(text: string, channelLang: Lang): string[] {
   const r: string[] = [];
-  if (LINK.test(text)) r.push("contains a link");
+  if (hasLink(text)) r.push("contains a link");
   if (MONEY.test(text)) r.push("asks about money or contact");
   if (ABUSE.test(text)) r.push("abusive words");
   if (PERSONAL.test(text)) r.push("personal information");
@@ -112,7 +115,7 @@ Reply with ONLY JSON: {"replies":[{"id":"<comment id exactly as given>","reply":
 }
 
 /** The model's answer -> replies for the asked comment ids only. Problems are reported (and fed back once); nothing invented is kept. */
-export function validateReplies(raw: unknown, asked: ReadonlySet<string>): { ok: true; replies: Map<string, string> } | { ok: false; errors: string[] } {
+export function validateReplies(raw: unknown, asked: ReadonlySet<string>, lang: Lang = "en"): { ok: true; replies: Map<string, string> } | { ok: false; errors: string[] } {
   const list = (raw as { replies?: unknown })?.replies;
   if (!Array.isArray(list)) return { ok: false, errors: ['Reply with {"replies":[{"id":"...","reply":"..."}]}.'] };
   const out = new Map<string, string>();
@@ -125,7 +128,8 @@ export function validateReplies(raw: unknown, asked: ReadonlySet<string>): { ok:
     const text = cleanText(it.reply, MAX_REPLY_CHARS + 1);
     if (!text) errors.push(`empty reply for ${it.id}`);
     else if ([...text].length > MAX_REPLY_CHARS) errors.push(`reply for ${it.id} is longer than ${MAX_REPLY_CHARS} characters`);
-    else if (LINK.test(text)) errors.push(`reply for ${it.id} contains a link`);
+    else if (hasLink(text)) errors.push(`reply for ${it.id} contains a link`);
+    else if (riskReasons(text, lang).length > 0) errors.push(`reply for ${it.id} ${riskReasons(text, lang)[0]}; write a plain friendly reply`);
     else if (!out.has(it.id)) out.set(it.id, text);
   }
   return errors.length ? { ok: false, errors } : { ok: true, replies: out };
@@ -141,6 +145,6 @@ export function replyTextProblem(raw: unknown): { ok: true; text: string } | { o
   const text = cleanText(raw, MAX_REPLY_CHARS + 1);
   if (!text) return { ok: false, reason: "The reply is empty." };
   if ([...text].length > MAX_REPLY_CHARS) return { ok: false, reason: `Keep the reply to ${MAX_REPLY_CHARS} characters or fewer.` };
-  if (LINK.test(text)) return { ok: false, reason: "Replies here do not contain links." };
+  if (hasLink(text)) return { ok: false, reason: "Replies here do not contain links." };
   return { ok: true, text };
 }

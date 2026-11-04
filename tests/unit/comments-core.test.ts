@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_COMMENT_CHARS, MAX_REPLY_CHARS, cleanText, parseThreads, replyMessages, replyTextProblem, riskReasons, seenHash, threadsUrl, validateReplies } from "@/server/core/comments";
+import { hasLink, MAX_COMMENT_CHARS, MAX_REPLY_CHARS, cleanText, parseThreads, replyMessages, replyTextProblem, riskReasons, seenHash, threadsUrl, validateReplies } from "@/server/core/comments";
 
 const thread = (id: string, text: unknown, extra: Record<string, unknown> = {}) => ({
   snippet: { topLevelComment: { id, snippet: { textOriginal: text, authorDisplayName: "Sam", publishedAt: "2026-11-01T10:00:00Z", ...extra } } },
@@ -10,6 +10,25 @@ describe("comment text is untrusted", () => {
     expect(cleanText("a\u0000b‮c​d\te\nf", 100)).toBe("a b c d e f");
     expect([...cleanText("x".repeat(5000), MAX_COMMENT_CHARS)]).toHaveLength(MAX_COMMENT_CHARS);
     expect(cleanText(42, 10)).toBe("");
+  });
+  it("strips invisible and tag-block characters from comments, model output and owner edits", () => {
+    const tags = String.fromCodePoint(0xe0049, 0xe0067, 0xe006e, 0xe007f);
+    const junk = `a${tags}\u0085  ⁠⁤؜­᠎͏ㅤ￹￻ b`;
+    expect(cleanText(junk, 100)).toBe("a b");
+    const rows = parseThreads({ items: [thread("Ugx9", `hi${tags}there`)] });
+    expect(rows[0]!.text).toBe("hi there");
+    const v = validateReplies({ replies: [{ id: "a", reply: `Thanks${tags}!` }] }, new Set(["a"]));
+    expect(v.ok && v.replies.get("a")).toBe("Thanks !");
+    expect(replyTextProblem(`ok${tags}`)).toEqual({ ok: true, text: "ok" });
+  });
+  it("sees obfuscated links", () => {
+    for (const t of ["hxxp://x", "goo.gl/abc", "see example.org", "a．com is nice", "foo。bar。com", "WWW.x.y", "ｅｘａｍｐｌｅ．ｃｏｍ"]) expect(hasLink(t), t).toBe(true);
+    for (const t of ["e.g. this", "thanks, great video", "i.e. yes"]) expect(hasLink(t), t).toBe(false);
+    expect(validateReplies({ replies: [{ id: "a", reply: "go to example.org" }] }, new Set(["a"]))).toMatchObject({ ok: false });
+    expect(riskReasons("see example.org", "en")).toContain("contains a link");
+  });
+  it("rejects a draft reply that itself trips the moderation rule", () => {
+    expect(validateReplies({ replies: [{ id: "a", reply: "send money to my paypal" }] }, new Set(["a"]))).toMatchObject({ ok: false });
   });
   it("parses clean rows, skips malformed ones and bad ids", () => {
     const rows = parseThreads({ items: [thread("Ugx_1-a", "hello <b>x</b>"), thread("bad id!", "x"), thread("Ugx2", ""), thread("Ugx3", "ok", { authorChannelId: { value: "UCme" } }), null, { snippet: {} }] });

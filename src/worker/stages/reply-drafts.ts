@@ -24,7 +24,7 @@ export function replyDraftsAttempt(deps: StageDeps): AttemptHandler {
     const res = await withRetries(ask, replyMessages({ langName: langName(input.lang), topic: input.topic, comments: input.comments }), (text) => {
       const raw = parseJson(text);
       if (raw === undefined) return { ok: false, errors: ["The answer was not valid JSON."] };
-      const v = validateReplies(raw, asked);
+      const v = validateReplies(raw, asked, input.lang);
       return v.ok ? { ok: true, value: v.replies } : { ok: false, errors: v.errors };
     });
     if ("errors" in res) throw new KnownFailure(`reply_drafts_invalid: ${res.errors.join("; ")}`.slice(0, 600));
