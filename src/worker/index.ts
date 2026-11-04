@@ -9,6 +9,8 @@ import { defaultDryRunDeps, dryRunHandlers, productionHandlers, workerHooksFor, 
 import { loadKeyring } from "@/server/db/master-key";
 import { createFakeUploader } from "@/server/providers/uploader/fake";
 import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
+import { throttledRetention } from "@/server/db/retention";
+import { storageRoot } from "@/server/storage/paths";
 import { startRuntime, type WorkerOptions } from "./runtime";
 
 // Retain startWorker(log) for existing callers, alongside the runtime options interface.
@@ -42,9 +44,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       // First metadata draft after render: only the real worker does it (a dry run has no model), and tests that boot the
       // runtime directly never do, so their stage counts stay as they are.
       if (process.env.ENGINE_DRY_RUN !== "1") {
+        // Asset retention: at most once every 6 h, in the background (it never throws and never blocks the loop).
+        const retentionTick = throttledRetention(pool, storageRoot());
         hooks.advanceAll = async (p, queue, readers) => {
           const r = await advanceAll(p, queue, readers);
           await autoSeoSweep(p, queue).catch(() => undefined);
+          void retentionTick();
           return r;
         };
       }
