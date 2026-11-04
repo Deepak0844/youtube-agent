@@ -6,6 +6,7 @@ import { sha256Hex } from "@/server/core/content-hash";
 import { uuidv7 } from "@/server/core/ids";
 import { approvalState, approveGate, liveGateHash } from "@/server/db/approvals";
 import { approvePublish } from "@/server/db/publish";
+import { autoSeoSweep } from "@/server/db/seo";
 import { loadUploadDetails, saveUploadDetails } from "@/server/db/upload-details";
 import { addContent, createVideoRow, latestContent } from "@/server/db/videos";
 import { ensureChannel } from "../support/channel-fixture";
@@ -103,5 +104,40 @@ describe("upload details", () => {
     expect(withChannel!.draft).toMatchObject({ made_for_kids: true, category_id: 24, language: "hi" });
     const none = await loadUploadDetails(db.pool, (await video()).id);
     expect(none!.draft).toMatchObject({ made_for_kids: false, category_id: 27, language: "en" });
+  });
+});
+
+describe("first metadata draft after render", () => {
+  async function rendered(notes?: string) {
+    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "sky", notes });
+    await addContent(db.pool, v.id, "script", { body: { narration: "n", title: "T", beats: [], evidence: [] }, sha256: sha256Hex(`script-${v.id}`) });
+    await addContent(db.pool, v.id, "beats", { body: { beats: [] }, sha256: sha256Hex(`beats-${v.id}`) });
+    const s = await session();
+    await approveGate(db.pool, { videoId: v.id, gate: "script", seenHash: (await liveGateHash(db.pool, v.id, "script"))!.hash, actor: s });
+    await db.pool.query("insert into stage_runs (id, video_id, name, status, input_hash) values ($1, $2, 'qa', 'succeeded', $3)", [uuidv7(), v.id, sha256Hex(`qa-${v.id}`)]);
+    return v;
+  }
+  const seoRuns = async (id: string) => Number((await db.pool.query("select count(*) c from stage_runs where video_id = $1 and name = 'seo'", [id])).rows[0].c);
+
+  it("queues exactly one seo run, once, and never again after it", async () => {
+    const v = await rendered();
+    const enqueued: string[] = [];
+    const q = { enqueue: async (id: string) => (enqueued.push(id), "j") } as never;
+    expect((await autoSeoSweep(db.pool, q)).length).toBe(1);
+    expect((await autoSeoSweep(db.pool, q)).length).toBe(0);
+    expect(await seoRuns(v.id)).toBe(1);
+    await db.pool.query("update stage_runs set status = 'failed' where video_id = $1 and name = 'seo'", [v.id]);
+    expect((await autoSeoSweep(db.pool, q)).length).toBe(0);
+    expect(enqueued.length).toBe(1);
+    expect((await auditOf("seo.auto_requested")).filter((r) => r.detail.videoId === v.id).length).toBe(1);
+  });
+
+  it("leaves videos that have not finished rendering, and dry-run videos, alone", async () => {
+    const early = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "x" });
+    const dry = await rendered("dry run");
+    const q = { enqueue: async () => "j" } as never;
+    await autoSeoSweep(db.pool, q);
+    expect(await seoRuns(early.id)).toBe(0);
+    expect(await seoRuns(dry.id)).toBe(0);
   });
 });

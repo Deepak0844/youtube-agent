@@ -2,6 +2,7 @@ import type pg from "pg";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { uuidv7 } from "@/server/core/ids";
 import type { SeoBody } from "@/server/core/seo";
+import { DRY_RUN_NOTES } from "@/lib/dry-run";
 import { recordAudit } from "./audit";
 import { inTx, type EnqueueOnly } from "./pipeline";
 import { approvedScript } from "./stage-content";
@@ -13,7 +14,7 @@ export type SeoRequest = { ok: true; stageRunId: string } | { ok: false; message
  * Owner asked for (new) titles. Only queues the on-demand `seo` stage; the worker pays under ctx.paid ($0 on the Claude Code route).
  * Needs an approved script. One run at a time per video. Asking again queues a fresh run: a new `titles` content version.
  */
-export async function requestSeo(db: pg.Pool, queue: EnqueueOnly, videoId: string, sessionId?: string): Promise<SeoRequest> {
+export async function requestSeo(db: pg.Pool, queue: EnqueueOnly, videoId: string, sessionId?: string, opts: { firstOnly?: boolean } = {}): Promise<SeoRequest> {
   const out = await inTx(db, async (c): Promise<SeoRequest & { hash?: string }> => {
     const v = await c.query<{ status: string }>("select status from videos where id = $1 for update", [videoId]);
     if (!v.rows[0]) return { ok: false, message: "That video was not found." };
@@ -23,6 +24,7 @@ export async function requestSeo(db: pg.Pool, queue: EnqueueOnly, videoId: strin
     const busy = await c.query("select 1 from stage_runs where video_id = $1 and name = 'seo' and status in ('queued', 'running', 'needs_decision')", [videoId]);
     if (busy.rowCount) return { ok: false, message: "Titles are already being written for this video." };
     const n = await c.query<{ n: string }>("select count(*)::text as n from stage_runs where video_id = $1 and name = 'seo'", [videoId]);
+    if (opts.firstOnly && Number(n.rows[0]!.n) > 0) return { ok: false, message: "Titles were already requested for this video." };
     const hash = sha256Hex(canonicalJson({ stage: "seo", script: s.hash, n: Number(n.rows[0]!.n) }));
     const id = uuidv7();
     const ins = await c.query("insert into stage_runs (id, video_id, name, status, input_hash) values ($1, $2, 'seo', 'queued', $3) on conflict do nothing", [id, videoId, hash]);
@@ -30,10 +32,32 @@ export async function requestSeo(db: pg.Pool, queue: EnqueueOnly, videoId: strin
     return { ok: true, stageRunId: id, hash };
   });
   if (!out.ok) return out;
-  await recordAudit(db, "seo.requested", { videoId, stageRunId: out.stageRunId, sessionId });
+  await recordAudit(db, opts.firstOnly ? "seo.auto_requested" : "seo.requested", { videoId, stageRunId: out.stageRunId, sessionId });
   // After the commit. If Redis is down the row stays queued and the reconciler enqueues it.
   await queue.enqueue(out.stageRunId, 0, 0, out.hash!).catch(() => undefined);
   return { ok: true, stageRunId: out.stageRunId };
+}
+
+/**
+ * The first metadata draft: once a video has finished rendering (it waits at the video gate or later) and no titles were ever
+ * requested, queue ONE `seo` run. Idempotent: the video row lock plus the "already requested" check mean a second sweep, or two
+ * workers, add nothing. Never retries a failed draft by itself (the Titles tab button does). Dry-run videos are skipped.
+ */
+export async function autoSeoSweep(db: pg.Pool, queue: EnqueueOnly): Promise<string[]> {
+  const { rows } = await db.query<{ id: string }>(
+    `select v.id from videos v
+      where v.status in ('active', 'waiting') and v.notes is distinct from $1
+        and exists (select 1 from stage_runs r where r.video_id = v.id and r.name = 'qa' and r.status = 'succeeded')
+        and not exists (select 1 from stage_runs r where r.video_id = v.id and r.name = 'seo')
+      order by v.updated_at limit 20`,
+    [DRY_RUN_NOTES],
+  );
+  const queued: string[] = [];
+  for (const { id } of rows) {
+    const r = await requestSeo(db, queue, id, undefined, { firstOnly: true }).catch(() => ({ ok: false as const, message: "" }));
+    if (r.ok) queued.push(r.stageRunId);
+  }
+  return queued;
 }
 
 export interface SeoTab {
