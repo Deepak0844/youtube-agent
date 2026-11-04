@@ -68,6 +68,22 @@ test("New with an empty topic does not create a video", async ({ page }) => {
   expect(Number((await db().query("select count(*) as n from videos")).rows[0].n)).toBe(before);
 });
 
+test("New short: 3D scale comparison hides the style picker and creates a scale3d short", async ({ page }) => {
+  const topic = `Crane vs tower ${stamp()}`;
+  await page.goto("/videos/new");
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("group", { name: "Style" })).toBeVisible();
+  await page.getByRole("radio", { name: /3D scale comparison/ }).check();
+  await expect(page.getByRole("group", { name: "Style" })).toHaveCount(0);
+  await expect(page.getByText("Sizes compared on a ruler")).toBeVisible();
+  await noPageScroll(page);
+  await page.getByLabel("Topic").fill(topic);
+  await page.getByRole("button", { name: "Start video" }).click();
+  await page.waitForURL(/\/videos\/[0-9a-f-]{36}$/);
+  const row = (await db().query("select kind, format, style from videos where topic = $1", [topic])).rows;
+  expect(row).toEqual([{ kind: "scale3d", format: "short", style: null }]);
+});
+
 test("nav: Library and New are reachable and only the current one is marked", async ({ page }) => {
   const phone = (page.viewportSize()?.width ?? 1440) < 768;
   await page.goto("/videos/new");
