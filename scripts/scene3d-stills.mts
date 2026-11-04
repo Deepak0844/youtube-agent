@@ -14,9 +14,9 @@ import { existsSync, mkdirSync, symlinkSync } from "node:fs";
 import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { scene3dSchema } from "../src/shared/scene3d/schema.ts";
-import { SCENE3D_DEMO } from "../remotion/kit/scene3d/demo-scene.ts";
-import { scene3dFrames } from "../remotion/kit/scene3d/camera.ts";
+import { scene3dSchema } from "../src/shared/scene3d/schema";
+import { SCENE3D_DEMO } from "../remotion/kit/scene3d/demo-scene";
+import { scene3dFrames } from "../remotion/kit/scene3d/camera";
 
 const root = path.resolve(import.meta.dirname, "..");
 const args = process.argv.slice(2).filter((a) => a !== "--");
