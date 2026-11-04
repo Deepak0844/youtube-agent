@@ -2,7 +2,7 @@
 // or a field of the wrong type falls back to the built-in value for that field.
 // USED today: quotaBudget (clamped to 10,000) by reserveQuota and the per-channel upload caps. NOT used yet: defaultVisibility,
 // maxUploadsPerDay and minHoursBetweenUploads (the channel columns carry their own defaults of 2 and 6), minScheduleLeadMinutes
-// (publish-rules keeps its fixed 60 minutes), repliesPerDay and secondsBetweenReplies (no reply feature yet).
+// (publish-rules keeps its fixed 60 minutes). The reply cap and gap are USED by postReply (src/server/db/comments.ts).
 export interface Policy {
   defaultVisibility: "private";
   maxUploadsPerDay: number;

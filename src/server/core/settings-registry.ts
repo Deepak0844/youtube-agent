@@ -51,6 +51,8 @@ export const SETTINGS = {
   "policy.allow_public": { schema: z.boolean(), default: false, safety: true, label: "Allow public publishing (global kill switch)" },
   // Upload switches (Phase 5). Safety: the kill switch refuses every upload; cutover_done lets production channels receive uploads.
   "uploads.kill_switch": { schema: z.boolean(), default: false, safety: true, label: "Stop every upload (kill switch)" },
+  // Comment replies (Phase 5 slice 5b). Dry run is ON until the owner turns it off: "post" then only records the request that would be sent.
+  "comments.dry_run": { schema: z.boolean(), default: true, safety: true, label: "Comment replies are a dry run (nothing is posted to YouTube)" },
   "youtube.cutover_done": { schema: z.boolean(), default: false, safety: true, label: "Go-live cutover done (production channels may upload)" },
   "network.local_services": { schema: z.array(z.string().min(1)), default: [] as string[], safety: true, label: "Local services (host:port)" },
   // Engine numbers (Doc 02 4.7, agent gap G5). All safety: they bound retries, spend exposure and what counts as a good video.

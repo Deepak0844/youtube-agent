@@ -23,6 +23,7 @@ const ALTERNATE: Record<string, unknown> = {
   "policy.require_evidence": false,
   "policy.allow_public": true,
   "uploads.kill_switch": true,
+  "comments.dry_run": false,
   "youtube.cutover_done": true,
   "network.local_services": ["localhost:11434"],
   "voice.local_url": "http://127.0.0.1:8880",

@@ -23,7 +23,7 @@ export const FLAGS: Record<string, boolean> = {
   "plan.research": false,
   "plan.targets": false,
   "publish.uploads": false,
-  "publish.engagement": false,
+  "publish.engagement": true, // Phase 5 slice 5b
   "publish.analytics": true, // Phase 5 slice 5a
   "settings.account": false,
   "settings.tokens": false,

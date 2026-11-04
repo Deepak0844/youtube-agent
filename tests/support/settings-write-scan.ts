@@ -39,6 +39,8 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
   "src/server/db/queue-data.ts": ["getSetting"],
   // Reads the assets.* upload limits for the upload route and the ingest job; never writes.
   "src/server/db/ingest-jobs.ts": ["getSetting"],
+  // Reads uploads.kill_switch and comments.dry_run for the reply post checks and the Engagement banner; never writes.
+  "src/server/db/comments.ts": ["getSetting"],
   "src/worker/stages/voice-for.ts": ["getSetting"],
   "src/server/llm/default-deps.ts": ["getSetting"],
 };
@@ -48,6 +50,8 @@ export const SESSION_WRITER_IMPORT_ALLOW: ImportAllow = {
   "src/app/(app)/settings/system/actions.ts": ["saveLocalServices", "saveSystemSettings", "saveUploadSwitches"],
   "src/app/(app)/settings/providers/voice-actions.ts": ["saveVoiceServer"],
   "src/app/(app)/settings/assets/actions.ts": ["saveAssetSettings"],
+  // Engagement page: the dry-run switch for comment replies (comments.dry_run), after requireOwner and the origin check.
+  "src/app/(app)/engagement/actions.ts": ["saveUploadSwitches"],
 };
 export const SESSION_WRITERS = ["saveLocalServices", "saveSystemSettings", "saveAssetSettings", "saveVoiceServer", "saveUploadSwitches"] as const;
 const GUARDED: readonly string[] = ["setSetting", "setSessionSettings", ...SESSION_WRITERS];
