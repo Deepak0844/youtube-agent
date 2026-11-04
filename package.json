@@ -35,6 +35,7 @@
     "kit:sheet": "node scripts/kit-sheet.mjs",
     "assets3d:fetch": "tsx scripts/assets3d-fetch.ts",
     "assets3d:verify": "tsx scripts/assets3d-fetch.ts --verify",
+    "assets3d:licenses": "tsx scripts/assets3d-licenses.ts",
     "kit:preview":"tsx scripts/kit-preview.ts",
     "kit:video": "tsx scripts/kit-video.ts",
     "image:render": "docker build -f infra/Dockerfile.render -t ytstudio-render:dev .",
