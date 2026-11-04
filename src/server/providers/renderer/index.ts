@@ -1,5 +1,6 @@
 import type { StageContext } from "@/server/core/stage-handler";
 import type { SceneDoc } from "@/shared/scene";
+import type { Scale3dScene } from "@/shared/scale3d";
 
 // The TSX path (ADR 0009): called by the tsx_author stage (src/worker/stages/tsx-author.ts).
 export type { TsxRenderer, TsxRenderInput, TsxRenderResult, TsxRenderFailure, TsxFailureKind } from "./tsx-render";
@@ -9,6 +10,8 @@ export interface RenderArgs {
   sceneFile: string;
   /** The validated scene document (scenes.json). Required by the container renderer. */
   doc?: SceneDoc;
+  /** A checked 3D scale description (already re-timed to the narration). The container renderer then renders the `scale3d` composition instead of `doc`. */
+  scale3d?: Scale3dScene;
   /** The promoted narration audio. */
   audioFile?: string;
   /** Stored caption words ({word, startS, endS, ...}) from the `captions` content. */
