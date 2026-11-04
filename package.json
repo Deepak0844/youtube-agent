@@ -33,7 +33,10 @@
     "test:api": "playwright test --project=api",
     "kit:studio": "node scripts/kit-studio.mjs",
     "kit:sheet": "node scripts/kit-sheet.mjs",
-    "kit:preview": "tsx scripts/kit-preview.ts",
+    "assets3d:fetch": "tsx scripts/assets3d-fetch.ts",
+    "assets3d:verify": "tsx scripts/assets3d-fetch.ts --verify",
+    "assets3d:licenses": "tsx scripts/assets3d-licenses.ts",
+    "kit:preview":"tsx scripts/kit-preview.ts",
     "kit:video": "tsx scripts/kit-video.ts",
     "scene3d:stills": "tsx scripts/scene3d-stills.mts",
     "image:render": "docker build -f infra/Dockerfile.render -t ytstudio-render:dev .",
@@ -80,6 +83,8 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1",
     "@playwright/test": "^1.64.1",
     "@remotion/bundler": "4.0.538",
     "@remotion/cli": "4.0.538",

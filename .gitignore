@@ -54,3 +54,6 @@ docs
 
 # local design-check output (never commit)
 /.taste-skill/
+
+# downloaded CC0 3D models/maps (fetched by npm run assets3d:fetch; never commit)
+/assets3d/files/
