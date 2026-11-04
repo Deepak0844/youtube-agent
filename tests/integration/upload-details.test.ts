@@ -133,6 +133,19 @@ describe("first metadata draft after render", () => {
     expect((await auditOf("seo.auto_requested")).filter((r) => r.detail.videoId === v.id).length).toBe(1);
   });
 
+  it("skips videos whose QA finished over 7 days ago and videos whose approved script changed", async () => {
+    const old = await rendered();
+    await db.ownerPool.query("update stage_runs set updated_at = now() - interval '8 days' where video_id = $1 and name = 'qa'", [old.id]);
+    const changed = await rendered();
+    await addContent(db.pool, changed.id, "script", { body: { narration: "other", title: "T2", beats: [], evidence: [] }, sha256: sha256Hex(`script2-${changed.id}`) });
+    const fresh = await rendered();
+    const q = { enqueue: async () => "j" } as never;
+    expect(await autoSeoSweep(db.pool, q)).toHaveLength(1);
+    expect(await seoRuns(old.id)).toBe(0);
+    expect(await seoRuns(changed.id)).toBe(0);
+    expect(await seoRuns(fresh.id)).toBe(1);
+  });
+
   it("leaves videos that have not finished rendering, and dry-run videos, alone", async () => {
     const early = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "x" });
     const dry = await rendered("dry run");

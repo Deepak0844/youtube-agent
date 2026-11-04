@@ -44,16 +44,22 @@ export async function requestSeo(db: pg.Pool, queue: EnqueueOnly, videoId: strin
  * workers, add nothing. Never retries a failed draft by itself (the Titles tab button does). Dry-run videos are skipped.
  */
 export async function autoSeoSweep(db: pg.Pool, queue: EnqueueOnly): Promise<string[]> {
+  // Only videos whose QA finished in the last 7 days (a first deploy does not draft for every old video at once) and that have
+  // a script approval on record. The approval is checked for real below, so a video whose script changed is skipped, not retried
+  // by this query forever: it falls out of the 7-day window.
   const { rows } = await db.query<{ id: string }>(
     `select v.id from videos v
       where v.status in ('active', 'waiting') and v.notes is distinct from $1
-        and exists (select 1 from stage_runs r where r.video_id = v.id and r.name = 'qa' and r.status = 'succeeded')
+        and exists (select 1 from stage_runs r where r.video_id = v.id and r.name = 'qa' and r.status = 'succeeded' and r.updated_at > now() - interval '7 days')
+        and exists (select 1 from approvals a where a.video_id = v.id and a.gate = 'script' and a.decision = 'approved')
         and not exists (select 1 from stage_runs r where r.video_id = v.id and r.name = 'seo')
-      order by v.updated_at limit 20`,
+      order by v.updated_at limit 100`,
     [DRY_RUN_NOTES],
   );
   const queued: string[] = [];
   for (const { id } of rows) {
+    if (queued.length >= 20) break;
+    if (!(await approvedScript(db, id)).ok) continue; // the approval no longer matches the script
     const r = await requestSeo(db, queue, id, undefined, { firstOnly: true }).catch(() => ({ ok: false as const, message: "" }));
     if (r.ok) queued.push(r.stageRunId);
   }
