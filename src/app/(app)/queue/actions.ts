@@ -9,6 +9,10 @@ import { BAD_FORM, parseDecisionForm, parseGateForm, parseIdForm, parseStageForm
 import { getPool } from "@/server/db/pool";
 import { cancelVideoById, decideGate, decideParkedStage, resetBreakerFor, sendUploadAgain, startDryRun, type ActionResult } from "@/server/db/queue-actions";
 import { jobCheckers } from "./job-checkers";
+import { loadKeyring } from "@/server/db/master-key";
+import { istToUtcIso } from "@/server/core/publish-rules";
+import { checkOnYoutube, requestRetry, savePublishChoice } from "@/server/db/upload-actions";
+import { defaultGoogleHttp } from "@/server/db/youtube-channels";
 import { webStageQueue, webUploadQueue } from "@/server/queue/web-queues";
 
 // Every action: requireOwner() first (the session id comes from it and from nowhere else), then the Origin check, then
@@ -83,4 +87,39 @@ export async function startDryRunAction(): Promise<QueueState> {
   if (origin) return bad(origin);
   if (!dryRunAllowed()) notFound(); // a production build without ENGINE_DRY_RUN=1 behaves as if this did not exist
   return done(await startDryRun(getPool(), queues(), { kind: "session", sessionId: owner.sessionId }));
+}
+
+const text = (f: FormData, k: string): string => (typeof f.get(k) === "string" ? (f.get(k) as string) : "");
+
+/** Visibility, schedule (typed in India time), channel; public also needs the typed word. Saving never uploads. */
+export async function savePublishChoiceAction(_prev: QueueState, form: FormData): Promise<QueueState> {
+  const owner = await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return bad(origin);
+  const id = parseIdForm(form, "videoId");
+  if (!id.ok) return bad(BAD_FORM);
+  const v = text(form, "visibility");
+  if (v !== "private" && v !== "unlisted" && v !== "public") return bad(BAD_FORM);
+  const when = text(form, "publishAtIst").trim();
+  const publishAt = when === "" ? null : istToUtcIso(when);
+  if (when !== "" && publishAt === null) return bad("That date and time is not valid. Use the pickers (India time).");
+  return done(await savePublishChoice(getPool(), id.value, { visibility: v, publishAt, channelId: text(form, "channelId"), typed: text(form, "typed") }, { kind: "session", sessionId: owner.sessionId }));
+}
+
+export async function checkOnYoutubeAction(_prev: QueueState, form: FormData): Promise<QueueState> {
+  const owner = await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return bad(origin);
+  const p = parseIdForm(form, "uploadId");
+  if (!p.ok) return bad(p.message);
+  return done(await checkOnYoutube(getPool(), loadKeyring, defaultGoogleHttp, p.value, { kind: "session", sessionId: owner.sessionId }));
+}
+
+export async function retryUploadAction(_prev: QueueState, form: FormData): Promise<QueueState> {
+  const owner = await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return bad(origin);
+  const p = parseIdForm(form, "uploadId");
+  if (!p.ok) return bad(p.message);
+  return done(await requestRetry(getPool(), webUploadQueue(), p.value, { kind: "session", sessionId: owner.sessionId }));
 }

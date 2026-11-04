@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { Button, type ButtonProps } from "@/ui/primitives/button";
 import { Label } from "@/ui/primitives/label";
-import { approveGateAction, cancelVideoAction, requeueUploadAction, resetBreakerAction, resolveDecisionAction, sendBackAction, startDryRunAction, type QueueState } from "./actions";
+import { approveGateAction, cancelVideoAction, checkOnYoutubeAction, retryUploadAction, savePublishChoiceAction, requeueUploadAction, resetBreakerAction, resolveDecisionAction, sendBackAction, startDryRunAction, type QueueState } from "./actions";
 
 type Act = (prev: QueueState, form: FormData) => Promise<QueueState>;
 
@@ -140,6 +140,62 @@ export function DecisionForm({ fields, choice, label, hint, variant, needsCheck 
         <Button type="submit" variant={variant} disabled={pending}>
           {label}
         </Button>
+        <Result state={state} />
+      </div>
+    </form>
+  );
+}
+
+export function CheckOnYoutubeForm({ uploadId, topic }: { uploadId: string; topic: string }) {
+  return <OneButton action={checkOnYoutubeAction} fields={{ uploadId }} label="Check on YouTube" variant="secondary" ariaLabel={`Check on YouTube: ${topic}`} />;
+}
+
+export function RetryUploadForm({ uploadId, topic }: { uploadId: string; topic: string }) {
+  return <OneButton action={retryUploadAction} fields={{ uploadId }} label="Send again" variant="secondary" ariaLabel={`Send this upload again: ${topic}`} />;
+}
+
+const FIELD = "rounded-control border border-control bg-ground px-3 py-2 text-body";
+
+/**
+ * Where and how it goes live. Saving is not approving: it makes a new version of the details, so an earlier approval no longer
+ * counts. Times are typed in India time (IST). Public is greyed out unless the channel and the global switches allow it, and
+ * needs the word "public" typed.
+ */
+export function PublishChoiceForm({ videoId, visibility, publishAtIst, channelId, channels, publicOpen }: {
+  videoId: string; visibility: string; publishAtIst: string; channelId: string;
+  channels: Array<{ channelId: string; title: string; allowPublic: boolean }>; publicOpen: boolean;
+}) {
+  const [state, run, pending] = useActionState<QueueState, FormData>(savePublishChoiceAction, {});
+  const [vis, setVis] = useState(visibility === "unlisted" || visibility === "public" ? visibility : "private");
+  const [ch, setCh] = useState(channelId);
+  const chan = channels.find((c) => c.channelId === ch);
+  const publicOk = publicOpen && chan?.allowPublic === true;
+  return (
+    <form action={run} data-testid="publish-choice" className="flex min-w-0 max-w-[68ch] flex-col gap-3">
+      <input type="hidden" name="videoId" value={videoId} />
+      <label className="flex flex-col gap-1 text-body">Channel
+        <select name="channelId" value={ch} onChange={(e) => setCh(e.target.value)} className={FIELD} required>
+          {ch === "" || !chan ? <option value="">Choose a channel</option> : null}
+          {channels.map((c) => <option key={c.channelId} value={c.channelId}>{c.title || c.channelId}</option>)}
+        </select>
+      </label>
+      {channels.length === 0 ? <p className="m-0 text-small text-muted">No connected channel yet. Connect one in Settings, Channels.</p> : null}
+      <fieldset className="m-0 flex min-w-0 flex-col gap-1 border-0 p-0">
+        <legend className="p-0 text-body font-medium">Visibility</legend>
+        <label className="flex items-center gap-2 text-body"><input type="radio" name="visibility" value="private" checked={vis === "private"} onChange={() => setVis("private")} /> Private (only you; can be scheduled)</label>
+        <label className="flex items-center gap-2 text-body"><input type="radio" name="visibility" value="unlisted" checked={vis === "unlisted"} onChange={() => setVis("unlisted")} /> Unlisted (anyone with the link)</label>
+        <label className="flex items-center gap-2 text-body"><input type="radio" name="visibility" value="public" disabled={!publicOk} checked={vis === "public"} onChange={() => setVis("public")} /> Public (everyone){publicOk ? "" : " - switched off; turn on Allow public for the channel and in settings"}</label>
+      </fieldset>
+      {vis === "public" ? (
+        <label className="flex flex-col gap-1 text-body">Type the word public to confirm
+          <input name="typed" autoComplete="off" required pattern="[Pp][Uu][Bb][Ll][Ii][Cc]" className={FIELD} />
+        </label>
+      ) : null}
+      <label className="flex flex-col gap-1 text-body">Go live at (India time, IST; private only; at least 60 minutes from now; leave empty for right after the upload)
+        <input name="publishAtIst" type="datetime-local" defaultValue={publishAtIst} disabled={vis !== "private"} className={FIELD} />
+      </label>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" variant="secondary" disabled={pending}>Save these choices</Button>
         <Result state={state} />
       </div>
     </form>

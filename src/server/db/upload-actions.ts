@@ -19,16 +19,6 @@ export const PUBLIC_PHRASE = "public";
 export type Result = { ok: true; message: string } | { ok: false; message: string };
 const no = (message: string): Result => ({ ok: false, message });
 
-/** Form time typed in India (YYYY-MM-DDTHH:mm) -> a UTC instant string, or null when it is not a real time. */
-export function istToUtcIso(local: string): string | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(local);
-  if (!m) return null;
-  const ms = Date.parse(`${local}:00+05:30`);
-  if (!Number.isFinite(ms)) return null;
-  const back = new Date(ms + 5.5 * 3600_000).toISOString(); // must read back as the same wall-clock time (rejects 2026-02-31)
-  return back.startsWith(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}`) ? new Date(ms).toISOString() : null;
-}
-
 export interface PublishChoice {
   visibility: Visibility;
   /** UTC instant string or null */

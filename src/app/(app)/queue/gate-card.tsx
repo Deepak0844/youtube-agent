@@ -5,7 +5,7 @@ import { BeatTable } from "@/ui/domain/beat-table";
 import { CutStrip } from "@/ui/domain/cut-strip";
 import { cutStages } from "@/ui/domain/queue-strip";
 import { Pill } from "@/ui/primitives/pill";
-import { CancelForm, GateForms } from "./forms";
+import { CancelForm, GateForms, PublishChoiceForm } from "./forms";
 
 const GATE_LABEL: Record<GateItem["gate"], { name: string; ask: string; approve: string }> = {
   script: { name: "Script", ask: "Read the script. Approving lets the studio build the video from exactly this text.", approve: "Approve script" },
@@ -16,7 +16,11 @@ const GATE_LABEL: Record<GateItem["gate"], { name: string; ask: string; approve:
 };
 
 const money = (micro: number) => `$${microToUsd(micro)}`;
-const dt = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
+const dt = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
+/** UTC instant -> the value a datetime-local box wants, in India time. */
+const istInput = (iso: string | null): string => (iso ? new Date(Date.parse(iso) + 5.5 * 3600_000).toISOString().slice(0, 16) : "");
+const VIS: Record<string, string> = { private: "Private", unlisted: "Unlisted", public: "Public" };
+const kidsWord = (m: boolean | null) => (m === null ? "with no made-for-kids answer saved yet" : m ? "and marks it MADE FOR KIDS" : "and marks it NOT made for kids");
 
 export function ageLabel(iso: string, now = Date.now()): string {
   const min = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
@@ -58,7 +62,7 @@ function Player({ src, label }: { src: string | null; label: string }) {
   return <video controls preload="metadata" src={src} aria-label={label} className="aspect-[9/16] max-h-[520px] w-auto max-w-full rounded-card bg-raised" />;
 }
 
-function Content({ c, lang }: { c: GateContent; lang: string }) {
+function Content({ c, lang, videoId }: { c: GateContent; lang: string; videoId: string }) {
   switch (c.kind) {
     case "script":
       return (
@@ -118,10 +122,12 @@ function Content({ c, lang }: { c: GateContent; lang: string }) {
           <dl className="m-0 grid gap-x-6 gap-y-1 text-body sm:grid-cols-[max-content_1fr]">
             <dt className="text-muted">Title</dt><dd lang={lang} className="m-0 [overflow-wrap:anywhere]">{c.title}</dd>
             <dt className="text-muted">Channel</dt><dd data-testid="publish-channel" className="m-0 [overflow-wrap:anywhere]">{c.channel}</dd>
+            <dt className="text-muted">Made for kids</dt><dd data-testid="publish-kids" className="m-0">{c.madeForKids === null ? "Not saved yet (Titles tab)" : c.madeForKids ? "Yes" : "No"}</dd>
             <dt className="text-muted">Visibility</dt><dd data-testid="publish-visibility" className="m-0 capitalize">{c.visibility}</dd>
-            <dt className="text-muted">Goes live</dt><dd className="m-0">{c.publishAt ? `${dt.format(new Date(c.publishAt))} UTC` : "As soon as the upload finishes"}</dd>
+            <dt className="text-muted">Goes live</dt><dd className="m-0">{c.publishAt ? `${dt.format(new Date(c.publishAt))} IST` : "As soon as the upload finishes"}</dd>
           </dl>
           {c.description ? <p className="m-0 max-w-[68ch] text-body text-muted [overflow-wrap:anywhere]">{c.description}</p> : null}
+          <PublishChoiceForm videoId={videoId} visibility={c.visibility} publishAtIst={istInput(c.publishAt)} channelId={c.channel} channels={c.channels} publicOpen={c.publicOpen} />
           <Player src={c.videoSrc} label="Video to publish" />
           <p className="m-0 text-small text-faint">Evidence file fingerprint {c.evidenceShaPrefix}</p>
         </div>
@@ -145,8 +151,12 @@ export function GateCard({ item, index }: { item: GateItem; index: number }) {
         <h2 lang={item.language} className="m-0 min-w-0 text-title font-semibold leading-tight [overflow-wrap:anywhere]">{item.topic}</h2>
         <CutStrip format="short" aspect="9:16" stages={cutStages(item.strip)} thumbnail={false} layout="stack" />
       </header>
-      <p className="m-0 max-w-[68ch] text-body text-muted">{g.ask}</p>
-      <Content c={item.content} lang={item.language} />
+      <p data-testid="gate-ask" className="m-0 max-w-[68ch] text-body text-muted">
+        {item.content.kind === "publish"
+          ? `Approving sends exactly this video to ${item.content.channelTitle ?? (item.content.channel || "no channel chosen")} as ${VIS[item.content.visibility] ?? "(not chosen)"}, ${kidsWord(item.content.madeForKids)}. It happens once.`
+          : g.ask}
+      </p>
+      <Content c={item.content} lang={item.language} videoId={item.videoId} />
       {sentBack ? (
         <p role="note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">You sent this back: &ldquo;{item.sentBackNote}&rdquo;. It stays on hold until the new version arrives.</p>
       ) : null}

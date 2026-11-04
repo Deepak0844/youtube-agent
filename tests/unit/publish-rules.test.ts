@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { liveHash } from "@/server/core/approvals";
-import { MIN_PUBLISH_LEAD_MS, metadataProblem, publishAtProblem, publishLeadProblem, publishPolicyProblem, visibilityProblem } from "@/server/core/publish-rules";
+import { MIN_PUBLISH_LEAD_MS, istToUtcIso, metadataProblem, publishAtProblem, publishLeadProblem, publishPolicyProblem, visibilityProblem } from "@/server/core/publish-rules";
 import { sha256Hex } from "@/server/core/content-hash";
 
 const NOW = Date.parse("2026-11-01T10:00:00Z");
@@ -105,5 +105,12 @@ describe("the cost plan hash refuses malformed fields", () => {
     expect(hashFor(plan({ providers_models: { llm: 5 } })).ok).toBe(false);
     expect(hashFor(plan({ library_scene_versions: { a: "1" } })).ok).toBe(false);
     expect(hashFor(plan({ library_scene_versions: { a: 0 } })).ok).toBe(false);
+  });
+});
+
+describe("istToUtcIso", () => {
+  it("turns India time into a UTC instant", () => expect(istToUtcIso("2026-11-05T10:30")).toBe("2026-11-05T05:00:00.000Z"));
+  it("refuses shapes and dates that are not real", () => {
+    for (const v of ["", "2026-11-05", "2026-11-05T10:30:00", "2026-02-31T10:00", "2026-13-01T10:00", "2026-11-05T25:00", "x"]) expect(istToUtcIso(v), v).toBeNull();
   });
 });

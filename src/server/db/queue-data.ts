@@ -11,6 +11,7 @@ import { breakerHold } from "@/server/db/breakers";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { getCachedMediaKey, getOrCreateMediaKey } from "@/server/db/media-key";
 import { readNextAction } from "@/server/db/pipeline";
+import { getSetting } from "@/server/db/settings";
 import { latestContent } from "@/server/db/videos";
 import { signMediaUrl, stableExpiry } from "@/server/storage/sign";
 
@@ -27,7 +28,16 @@ export type GateContent =
   | { kind: "cost"; totalMicroUsd: number; path: string; models: Array<[string, string]>; items: Array<{ kind: string; provider: string; quoteMicroUsd: number }> }
   | { kind: "video"; src: string | null; shaPrefix: string; captions: "exact" | "approximate" | "check" | "checked"; rewriteLines: number[] }
   | { kind: "evidence"; claims: GateClaim[]; fileSrc: string | null; shaPrefix: string }
-  | { kind: "publish"; title: string; description: string | null; visibility: string; publishAt: string | null; channel: string; videoSrc: string | null; evidenceShaPrefix: string };
+  | {
+      kind: "publish"; title: string; description: string | null; visibility: string; publishAt: string | null; channel: string; channelTitle: string | null;
+      /** the made-for-kids answer saved with the upload details; null when none is saved yet */
+      madeForKids: boolean | null;
+      /** connected, confirmed channels the owner may pick */
+      channels: Array<{ channelId: string; title: string; allowPublic: boolean }>;
+      /** public is open only when the global allow-public switch is on and the kill switch is off */
+      publicOpen: boolean;
+      videoSrc: string | null; evidenceShaPrefix: string;
+    };
 
 /** What the Cut strip is drawn from; src/ui/domain/queue-strip.ts accepts exactly this shape (the server does not import UI code). */
 export interface StripInput {
@@ -148,8 +158,14 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
   const claims = gate === "evidence" && edited ? edited.map((e) => ({ text: e.text, kind: e.kind, detail: e.kind === "sourced" ? e.source_url + ' - "' + e.quote + '"' : e.method })) : scriptClaims;
   if (gate === "evidence") return { kind: "evidence", claims, fileSrc: src(c.evidence?.filePath), shaPrefix: (c.evidence?.sha256 ?? "").slice(0, 12) };
   const meta = asObj(c.metadata?.body);
+  const chans = (await db.query<{ channel_id: string; title: string; allow_public: boolean }>("select channel_id, title, allow_public from youtube_channels where status = 'connected' order by title, channel_id")).rows;
+  const publicOpen = (await getSetting(db, "policy.allow_public")) === true && (await getSetting(db, "uploads.kill_switch")) === false;
   return {
     kind: "publish",
+    channelTitle: (await db.query<{ title: string }>("select title from youtube_channels where channel_id = $1", [snap.inputs.channelId ?? ""])).rows[0]?.title ?? null,
+    madeForKids: typeof meta.made_for_kids === "boolean" ? meta.made_for_kids : null,
+    channels: chans.map((r) => ({ channelId: r.channel_id, title: r.title, allowPublic: r.allow_public })),
+    publicOpen,
     title: str(meta.title) || "(no title)",
     description: typeof meta.description === "string" ? meta.description : null,
     visibility: str(meta.visibility),
