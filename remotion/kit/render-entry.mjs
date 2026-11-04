@@ -22,7 +22,8 @@ const [inDir, outArg, mode = "kit", ...extra] = process.argv.slice(2);
 if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || extra.length > 0 || !["kit", "--scale3d", "--tsx", "--tsx-stills"].includes(mode)) {
   throw new Error("usage: render-entry.mjs <abs inDir> <abs out> [--tsx | --tsx-stills]");
 }
-const tsx = mode !== "kit";
+// Only the two TSX modes use meta.json, video.tsx and the TSX bundle. "--scale3d" is a kit-style mode (props.json, the kit's index.ts, public dir = inDir) that renders another composition.
+const tsx = mode === "--tsx" || mode === "--tsx-stills";
 const nodePath = (process.env.NODE_PATH ?? "").split(path.delimiter).filter(Boolean);
 const readJson = (name) => JSON.parse(readFileSync(path.join(inDir, name), "utf8"));
 

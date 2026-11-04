@@ -282,3 +282,16 @@ describe("copyRegular", () => {
     expect(readFileSync(path.join(root, "ok.bin")).length).toBe(100);
   });
 });
+
+describe("render-entry.mjs modes", () => {
+  // Regression: "--scale3d" was treated as a TSX mode, so the container looked for /in/meta.json (which the 3D stage never writes) and failed at once.
+  const src = readFileSync(path.join(process.cwd(), "remotion/kit/render-entry.mjs"), "utf8");
+  it("only the two TSX modes read meta.json and use the TSX bundle", () => {
+    expect(src).toContain('const tsx = mode === "--tsx" || mode === "--tsx-stills";');
+    expect(src).not.toMatch(/const tsx = mode !== "kit"/);
+  });
+  it("scale3d renders the scale3d composition through the kit entry with props.json", () => {
+    expect(src).toContain('mode === "--scale3d" ? "scale3d" : "kit-video"');
+    expect(src).toContain('tsx ? "tsx-index.ts" : "index.ts"');
+  });
+});
