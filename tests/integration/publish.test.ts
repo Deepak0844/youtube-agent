@@ -591,7 +591,7 @@ describe("youtube upload outcomes through the job", () => {
     expect(await run(uploadId, await uploaderFor(f))).toEqual({ started: true });
     expect(await row(uploadId)).toMatchObject({ status: "uploaded", youtube_id: "ytvid1" });
     expect((await auditOf("upload.finished")).at(-1)?.detail).toMatchObject({ uploadId, status: "uploaded", youtubeId: "ytvid1" });
-    expect(JSON.stringify(await auditOf(""))).not.toContain("ya29");
+    expect(JSON.stringify(await auditOf(""))).not.toContain("upload_id"); // the session address never reaches the audit log
   });
 
   it("a 5xx after bytes started is unclear: no second send, redelivery does nothing, Retry needs a Studio check", async () => {
