@@ -1,5 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { createPool } from "@/server/db/pool";
+import { advanceAll } from "@/server/db/pipeline";
+import { autoSeoSweep } from "@/server/db/seo";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { dryRunRefusal } from "./stages/guard";
 import type { ChildRegistry } from "@/server/render/child";
@@ -33,7 +35,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         log("ENGINE_DRY_RUN=1: stages run on fake providers");
         handlers = dryRunHandlers(defaultDryRunDeps(pool));
       }
-      const worker = startWorker({ log, pool, handlers, readers: approvalReaders, ingest: true, hooks: workerHooksFor(pool, process.env) });
+      const hooks = workerHooksFor(pool, process.env);
+      // First metadata draft after render: only the real worker does it (a dry run has no model), and tests that boot the
+      // runtime directly never do, so their stage counts stay as they are.
+      if (process.env.ENGINE_DRY_RUN !== "1") {
+        hooks.advanceAll = async (p, queue, readers) => {
+          const r = await advanceAll(p, queue, readers);
+          await autoSeoSweep(p, queue).catch(() => undefined);
+          return r;
+        };
+      }
+      const worker = startWorker({ log, pool, handlers, readers: approvalReaders, ingest: true, hooks });
       let exiting = false;
       const shutdown = () => {
         if (exiting) return;

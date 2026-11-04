@@ -11,7 +11,6 @@ import { loadKeyring } from "@/server/db/master-key";
 import { vaultStatus } from "@/server/db/vault";
 import { reconcile, type ReconcileResult } from "@/server/db/reconciler";
 import { advanceAll } from "@/server/db/pipeline";
-import { autoSeoSweep } from "@/server/db/seo";
 import { NO_DECISIONS, type PipelineReaders } from "@/server/db/pipeline";
 import { afterReconcile, afterStageOutcome, sweepRetries } from "@/server/db/retry";
 import { notifyTransition, type NotifyPorts } from "@/server/db/notify";
@@ -110,11 +109,7 @@ const defaults: WorkerHooks = {
   loadSettings: getWorkerSettings,
   checkVault: async (pool) => (await vaultStatus(pool, loadKeyring)).status,
   reconcile: (pool, queue, config) => reconcile(pool, queue, { maxAttempts: config.retryAttempts - 1, attemptBasis: "claim" }),
-  advanceAll: async (pool, queue, readers) => {
-    const r = await advanceAll(pool, queue, readers);
-    await autoSeoSweep(pool, queue).catch(() => undefined); // first metadata draft after render; best effort
-    return r;
-  },
+  advanceAll,
   sweepRetries: (pool, queue, readers) => sweepRetries(pool, queue, readers),
   sweepLostAttempts,
   afterOutcome: afterStageOutcome,
