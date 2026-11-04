@@ -148,7 +148,9 @@ describe("youtube uploader", () => {
     const s = server({ throwOnChunk: 1 });
     const p = progress();
     await expect(go(s, target({ bytes: 3, stream: () => Readable.from([BYTES.subarray(0, 3)]) }), p)).rejects.toThrow(/did not confirm/);
-    expect(p.seen).toEqual([1]);
+    // the first report is 1; the liveness report before the final PUT repeats it; never lower
+    expect(p.seen[0]).toBe(1);
+    expect(p.seen.every((n, i) => i === 0 || n >= p.seen[i - 1]!)).toBe(true);
     expect(putCalls(s)).toHaveLength(1);
   });
 

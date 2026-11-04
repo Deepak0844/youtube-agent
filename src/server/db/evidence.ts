@@ -50,16 +50,17 @@ async function checkAll(head: HeadCheck, urls: string[], o: { concurrency?: numb
   const deadline = Date.now() + (o.budgetMs ?? TOTAL_BUDGET_MS);
   const out: UrlResult[] = new Array(urls.length);
   let next = 0;
+  let expired = false; // set when the deadline timer fires: a timer can fire a millisecond before Date.now() agrees
   const worker = async (): Promise<void> => {
     while (next < urls.length) {
       const i = next++;
       const left = deadline - Date.now();
-      if (left <= 0) {
+      if (expired || left <= 0) {
         out[i] = { url: urls[i]!, ...OUT_OF_TIME };
         continue;
       }
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const late = new Promise<UrlResult>((resolve) => { timer = setTimeout(() => resolve({ url: urls[i]!, ...OUT_OF_TIME }), left); });
+      const late = new Promise<UrlResult>((resolve) => { timer = setTimeout(() => { expired = true; resolve({ url: urls[i]!, ...OUT_OF_TIME }); }, left); });
       out[i] = await Promise.race([checkUrl(head, urls[i]!), late]);
       clearTimeout(timer);
     }
