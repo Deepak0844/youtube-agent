@@ -727,7 +727,7 @@ describe("unclear uploads: cooldown, stall, race, session, recheck", () => {
     expect(puts).toBe(1);
   });
 
-  it("a stalled sweep does not touch an upload whose request is still in flight (heartbeat), and the cooldown covers a late finish", async () => {
+  it("a stalled sweep does not touch an upload whose request is still in flight (heartbeat)", async () => {
     const { uploadId } = await approved();
     let release!: () => void;
     const hold = new Promise<void>((r) => (release = r));
@@ -785,7 +785,7 @@ describe("unclear uploads: cooldown, stall, race, session, recheck", () => {
 
   it("a re-send is refused when the session that asked is no longer live", async () => {
     const { uploadId, q } = await approved();
-    await run(uploadId, await upFor(http({ init: undefined, final: () => json({}, 503) } as never)));
+    await run(uploadId, await upFor(http({ final: () => json({}, 503) })));
     await aged(uploadId);
     const actor = await actorFor();
     await checkOnYoutube(db.pool, ring, http(), uploadId, actor);
