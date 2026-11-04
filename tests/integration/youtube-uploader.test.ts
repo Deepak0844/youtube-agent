@@ -10,6 +10,7 @@ import { completeConnect, confirmChannel, listAccounts, startConnect, type Googl
 import type { UploadTarget } from "@/server/providers/uploader";
 import { createYouTubeUploader, sessionSecretName } from "@/server/providers/uploader/youtube";
 import { withTestDb, type TestDb } from "../support/db";
+import { waitFor } from "./helpers/stage-env";
 
 let db: TestDb;
 const ring = makeKeyring(randomBytes(32).toString("base64"));
@@ -81,7 +82,7 @@ function target(o: { visibility?: "private" | "unlisted" | "public"; publishAt?:
   return {
     videoId: "v", filePath: "x.mp4", fileSha256: "0".repeat(64), bytes: o.bytes ?? BYTES.length, channelId: "UCchan1", channelRowId: rowId,
     details: { title: "My title", description: "desc", tags: ["a", "b"], categoryId: 27, language: "en", madeForKids: false, synthetic: true },
-    visibility: o.visibility ?? "private", publishAt: o.publishAt ?? null,
+    visibility: o.visibility ?? "private", publishAt: o.publishAt ?? null, preFinal: async () => null,
     open: async () => (o.stream ? o.stream() : Readable.from([BYTES.subarray(0, 3), BYTES.subarray(3, 9), BYTES.subarray(9)])),
   };
 }
@@ -197,11 +198,27 @@ describe("youtube uploader", () => {
     };
     const p = progress();
     const pending = createYouTubeUploader({ pool: db.pool, ring, http: s.http, chunkBytes: 4, heartbeatMs: 10 }).upload(UPLOAD, p.fn, new AbortController().signal, target());
-    await new Promise((r) => setTimeout(r, 150));
+    await waitFor(async () => p.seen.length > 5, "heartbeats arrive while the final PUT is held");
     const during = p.seen.length;
     release();
     expect(await pending).toEqual({ kind: "uploaded", youtubeId: "vid123" });
     expect(during).toBeGreaterThan(4); // 1, 4, 8 and several heartbeats
+  });
+
+  it("a heartbeat tick during the read-back does not abort it", async () => {
+    const s = server({ list: () => reply({ items: [{ status: { privacyStatus: "private" } }] }) });
+    const base = s.http;
+    s.http = async (url, init) => {
+      if (url.includes("/youtube/v3/videos?part=status")) await new Promise((r) => setTimeout(r, 60)); // several ticks pass here
+      return base(url, init);
+    };
+    const p = progress();
+    const out = await createYouTubeUploader({ pool: db.pool, ring, http: s.http, chunkBytes: 4, heartbeatMs: 10 }).upload(UPLOAD, p.fn, new AbortController().signal, target());
+    expect(out).toEqual({ kind: "uploaded", youtubeId: "vid123" });
+    expect(await logOf()).toContain("readback_ok: private");
+    // heartbeats never go backwards
+    const nums = p.seen;
+    expect(nums.every((n, i) => i === 0 || n >= nums[i - 1]!)).toBe(true);
   });
 
   it("refuses without quota: nothing is called at YouTube", async () => {

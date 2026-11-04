@@ -242,9 +242,10 @@ export async function readUploadTarget(db: pg.Pool, uploadId: string, opts: { ro
       [up.video_id],
     )).rows[0];
     if (!ap || ap.content_hash !== state.hash) return { ok: false, reason: "approval_changed" };
-    if (opts.retrySessionId !== undefined) {
-      if (!(await sessionIsLive(client, opts.retrySessionId))) return { ok: false, reason: "approval_session_invalid" };
-    } else if (!ap.valid) return { ok: false, reason: "approval_session_invalid" };
+    // APPROVAL_SESSION_VALID_SQL is evaluated as of the approval's decided_at, so it does not go stale the next day: it is kept
+    // for a re-send too. A re-send ALSO needs the session that asked for it to be live now.
+    if (!ap.valid) return { ok: false, reason: "approval_session_invalid" };
+    if (opts.retrySessionId !== undefined && !(await sessionIsLive(client, opts.retrySessionId))) return { ok: false, reason: "approval_session_invalid" };
     const body = meta.body as Record<string, unknown>;
     const policy = publishPolicyProblem({ visibility: body.visibility, publishAt: body.publish_at ?? null, ...(await policyFacts(client, up.video_id)), phase: "upload" });
     if (policy) return { ok: false, reason: "policy", detail: policy };

@@ -124,9 +124,21 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
         }
 
         // 3. From here a failure may leave a live video. 1 byte of progress now makes the job treat any throw as "check Studio first".
-        await onProgress(1);
+        // `reported` is the highest value the job accepted; the heartbeat repeats exactly that (never a lower, stale number).
+        // Reports and heartbeats run one at a time, so a tick can never land after (and be refused as lower than) a newer report.
+        let reported = 0;
+        let queue: Promise<unknown> = Promise.resolve();
+        const report = (n: number): Promise<void> => {
+          const r = queue.then(async () => {
+            await onProgress(n);
+            reported = Math.max(reported, n);
+          });
+          queue = r.catch(() => undefined);
+          return r;
+        };
+        await report(1);
         let sent = 0;
-        const beat = setInterval(() => void onProgress(Math.max(1, sent)).catch(() => undefined), deps.heartbeatMs ?? 60_000);
+        const beat = setInterval(() => { queue = queue.then(() => onProgress(reported)).catch(() => undefined); }, deps.heartbeatMs ?? 60_000);
         try {
         const put = async (data: Buffer, start: number, last: boolean): Promise<string | null> => {
           const end = start + data.length - 1;
@@ -166,7 +178,7 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
               await put(held.subarray(0, chunkBytes), sent, false);
               sent += chunkBytes;
               held = held.subarray(chunkBytes);
-              await onProgress(sent);
+              await report(sent);
             }
           }
         } catch (e) {
@@ -183,12 +195,18 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
           return { kind: "failed", reason: "the video file changed after it was approved; nothing was published" };
         }
         // Point of no return: re-check the approval and switches right before the final chunk. Stopping here is clean (no video yet).
-        const stop = await target.preFinal?.().catch(() => "the check before the last piece could not run");
+        const stop = await target.preFinal().catch(() => "the check before the last piece could not run");
         if (stop) {
           await dropSession();
           return { kind: "failed", reason: stop === "approval_changed" ? "the approval changed before the last piece was sent; nothing was published" : stop === "policy" ? "publishing was switched off or not allowed before the last piece was sent; nothing was published" : `stopped before the last piece was sent: ${stop}` };
         }
-        youtubeId = await put(held, sent, true);
+        // Liveness right before the final PUT: if this attempt was superseded, onProgress throws and we stop (nothing sent).
+        await report(Math.max(1, sent));
+        try {
+          youtubeId = await put(held, sent, true);
+        } finally {
+          clearInterval(beat); // a tick must not abort the read-back below
+        }
         if (youtubeId === null) throw new Unclear();
         await onProgress(target.bytes).catch(() => undefined);
 

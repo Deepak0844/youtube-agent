@@ -625,7 +625,7 @@ describe("youtube upload outcomes through the job", () => {
     const actor = await actorFor();
     // cooldown: right after the failure nothing can be recorded and no re-send is possible
     expect(await checkOnYoutube(db.pool, ring, google().http, uploadId, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/too soon/) });
-    expect(await count("upload_log where event like 'checked_not_found%'")).toBe(0);
+    expect(await count(`upload_log where upload_id = '${uploadId}' and event like 'checked_not_found%'`)).toBe(0);
     await aged(uploadId);
     const checked = await checkOnYoutube(db.pool, ring, google().http, uploadId, actor);
     expect(checked).toMatchObject({ ok: true, message: expect.stringMatching(/No matching video/) });
@@ -744,7 +744,7 @@ describe("unclear uploads: cooldown, stall, race, session, recheck", () => {
     expect((await row(uploadId)).status).toBe("uploaded");
   });
 
-  it("if the row WAS swept while the request lives, Check cannot clear it inside the cooldown and a later re-send needs an aged check", async () => {
+  it("an unclear upload cannot be cleared or re-sent inside the cooldown", async () => {
     const { uploadId, q } = await approved();
     await run(uploadId, await upFor(http({ final: () => json({}, 503) })));
     const actor = await actorFor();
@@ -760,7 +760,7 @@ describe("unclear uploads: cooldown, stall, race, session, recheck", () => {
     const actor = await actorFor();
     const changes = http({ playlist: async () => { await db.ownerPool.query("update uploads set status = 'uploading', attempt = 2, finished_at = null where id = $1", [uploadId]); return { items: [] }; } });
     expect(await checkOnYoutube(db.pool, ring, changes, uploadId, actor)).toMatchObject({ ok: false, message: expect.stringMatching(/changed while/) });
-    expect(await count("upload_log where event like 'checked_not_found%'")).toBe(0);
+    expect(await count(`upload_log where upload_id = '${uploadId}' and event like 'checked_not_found%'`)).toBe(0);
   });
 
   it("a second 'not found' for an older attempt does not clear a newer failure", async () => {
@@ -783,13 +783,26 @@ describe("unclear uploads: cooldown, stall, race, session, recheck", () => {
     expect(await row(uploadId)).toMatchObject({ status: "uploaded", youtube_id: "ytvid1" });
   });
 
+  it("a re-send is also refused when the original approval was never session-valid, even with a live requester", async () => {
+    const { s, uploadId, q } = await approved();
+    await run(uploadId, await upFor(http({ final: () => json({}, 503) })));
+    await aged(uploadId);
+    const actor = await actorFor();
+    await checkOnYoutube(db.pool, ring, http(), uploadId, actor);
+    expect(await requestRetry(db.pool, q, uploadId, actor)).toMatchObject({ ok: true });
+    // the approving session is made to look revoked BEFORE it decided (what APPROVAL_SESSION_VALID_SQL rejects)
+    await db.ownerPool.query("update sessions set revoked_at = (select min(decided_at) from approvals where session_id = $1) - interval '1 second' where id = $1", [s.sessionId]);
+    expect(await run(uploadId, await upFor(http()))).toEqual({ started: false });
+    expect((await auditOf("upload.retry_refused")).at(-1)?.detail.reason).toBe("approval_session_invalid");
+  });
+
   it("a re-send is refused when the session that asked is no longer live", async () => {
     const { uploadId, q } = await approved();
     await run(uploadId, await upFor(http({ final: () => json({}, 503) })));
     await aged(uploadId);
     const actor = await actorFor();
-    await checkOnYoutube(db.pool, ring, http(), uploadId, actor);
-    await requestRetry(db.pool, q, uploadId, actor);
+    expect(await checkOnYoutube(db.pool, ring, http(), uploadId, actor)).toMatchObject({ ok: true });
+    expect(await requestRetry(db.pool, q, uploadId, actor)).toMatchObject({ ok: true });
     await db.ownerPool.query("update sessions set revoked_at = clock_timestamp() where id = $1", [actor.sessionId]);
     expect(await run(uploadId, await upFor(http()))).toEqual({ started: false });
     expect((await auditOf("upload.retry_refused")).at(-1)?.detail.reason).toBe("approval_session_invalid");
