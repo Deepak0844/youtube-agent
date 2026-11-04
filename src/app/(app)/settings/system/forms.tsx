@@ -26,7 +26,7 @@ function Result({ state }: { state: FormState }) {
   return state.ok ? <p role="status" className="text-body text-pill-positive-ink">Saved.</p> : <p role="status" className="sr-only" />;
 }
 
-export function LimitsForm(props: { renders: number; jobs: number; warnGb: number; longMinutes: number; renderTimeoutS: number; sceneKit: boolean; tracksLater: string[] }) {
+export function LimitsForm(props: { renders: number; jobs: number; warnGb: number; longMinutes: number; renderTimeoutS: number; native3d: boolean; nativeTimeoutS: number; nativeStatus: string; sceneKit: boolean; tracksLater: string[] }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveLimitsAction, {});
   return (
     <form action={action} className="flex flex-col gap-5">
@@ -54,7 +54,22 @@ export function LimitsForm(props: { renders: number; jobs: number; warnGb: numbe
             A normal video renders well inside the default 600. 3D scale-comparison videos need 900 or more (about 5 minutes of rendering on a slow machine). Maximum 3600.
           </p>
         </div>
+        <div className={field}>
+          <Label htmlFor="native_timeout_s">3D Mac render limit (seconds)</Label>
+          <Input id="native_timeout_s" name="native_timeout_s" type="number" inputMode="numeric" min={60} max={7200} step={1} required aria-describedby="native-help" defaultValue={props.nativeTimeoutS} />
+          <p id="native-help" className="text-small text-faint">Used only when 3D videos render on this Mac (below). Default 1800, maximum 7200.</p>
+        </div>
       </div>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-small font-medium text-muted">3D videos on this Mac</legend>
+        <label className="flex min-h-11 items-center gap-3 text-body">
+          <input type="checkbox" name="native_3d" defaultChecked={props.native3d} className="size-5 accent-[var(--text)]" />
+          Render 3D videos on this Mac&apos;s graphics card
+        </label>
+        <p className="text-small text-faint">
+          Runs outside Docker, with no network and writing only to its own folder. When this is off, or the Mac is not ready, 3D videos use the Docker renderer. {props.nativeStatus}
+        </p>
+      </fieldset>
       <fieldset className="flex flex-col gap-3">
         <legend className="text-small font-medium text-muted">Ways to make a video</legend>
         <label className="flex min-h-11 items-center gap-3 text-body">

@@ -36,6 +36,9 @@ async function Owned() {
           warnGb={warnGb}
           longMinutes={longMinutes}
           renderTimeoutS={view.renderTimeoutS}
+          native3d={view.native3d}
+          nativeTimeoutS={view.nativeTimeoutS}
+          nativeStatus=""
           sceneKit={view.sceneKit}
           tracksLater={["Code scenes (Phase 4)", "Collage (Phase 8)", "AI video (Phase 9)"]}
         />

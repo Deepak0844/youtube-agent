@@ -82,7 +82,7 @@ test("no session: the real save actions change nothing and are sent to login", a
   await seed("jobs.concurrent_jobs", 2);
   const list = await post(request, "saveLocalServicesAction", { services: "" }, { origin: ORIGIN });
   expect(await succeeded(list)).toBe(false);
-  const limits = await post(request, "saveLimitsAction", { concurrent_renders: "4", concurrent_jobs: "9", storage_warn_gb: "9", max_long_minutes: "9", render_timeout_s: "900" }, { origin: ORIGIN });
+  const limits = await post(request, "saveLimitsAction", { concurrent_renders: "4", concurrent_jobs: "9", storage_warn_gb: "9", max_long_minutes: "9", render_timeout_s: "900", native_timeout_s: "1800" }, { origin: ORIGIN });
   expect(await succeeded(limits)).toBe(false);
   expect(await value("network.local_services")).toEqual(["localhost:11434"]);
   expect(await value("jobs.concurrent_jobs")).toBe(2);

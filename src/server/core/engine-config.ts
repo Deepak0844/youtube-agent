@@ -19,7 +19,7 @@ export interface EngineConfig {
   breaker: { threshold: number; cooldownS: number; stages: readonly string[] };
   uploadsConcurrent: number;
   qa: { short: QaTrack; long: QaTrack; meanDbMin: number; peakDbMax: number; loopDiffMax: number; durationToleranceS: number };
-  render: { timeoutS: number; cpus: number; memoryMb: number; pids: number };
+  render: { timeoutS: number; cpus: number; memoryMb: number; pids: number; native3d: boolean; nativeTimeoutS: number };
 }
 
 export const ENGINE_KEYS = (Object.keys(SETTINGS) as SettingKey[]).filter((k) => /^(engine|breaker|qa|render)\./.test(k) || k === "uploads.concurrent");
@@ -57,7 +57,7 @@ export function buildEngineConfig(stored: ReadonlyMap<string, unknown>): EngineC
       loopDiffMax: get("qa.loop_diff_max"),
       durationToleranceS: get("qa.duration_tolerance_s"),
     },
-    render: { timeoutS: get("render.timeout_s"), cpus: get("render.cpus"), memoryMb: get("render.memory_mb"), pids: get("render.pids") },
+    render: { timeoutS: get("render.timeout_s"), cpus: get("render.cpus"), memoryMb: get("render.memory_mb"), pids: get("render.pids"), native3d: get("render.native_3d"), nativeTimeoutS: get("render.native_timeout_s") },
   };
   // Same cross-checks as the old config.py validate().
   if (c.leaseS <= c.heartbeatS * 2) throw new Error("engine.lease_s must be more than twice engine.heartbeat_s");

@@ -37,7 +37,7 @@ describe("engine numbers", () => {
         loopDiffMax: 14,
         durationToleranceS: 1.5,
       },
-      render: { timeoutS: 600, cpus: 4, memoryMb: 4096, pids: 512 },
+      render: { timeoutS: 600, cpus: 4, memoryMb: 4096, pids: 512, native3d: false, nativeTimeoutS: 1800 },
     });
     expect(d("engine.retry_backoff_seconds")).toEqual([30, 120, 480]);
   });
@@ -51,6 +51,13 @@ describe("engine numbers", () => {
     expect(() => buildEngineConfig(new Map([["render.memory_mb", 1_000_000]]))).toThrow(/render\.memory_mb/);
     expect(() => buildEngineConfig(new Map([["render.timeout_s", 0]]))).toThrow(/render\.timeout_s/);
     expect(buildEngineConfig(new Map([["render.cpus", 2]])).render.cpus).toBe(2);
+  });
+
+  it("native 3D rendering is off by default and its time limit is bounded 60..7200", () => {
+    expect(buildEngineConfig(new Map()).render).toMatchObject({ native3d: false, nativeTimeoutS: 1800 });
+    expect(buildEngineConfig(new Map<string, unknown>([["render.native_3d", true], ["render.native_timeout_s", 7200]])).render).toMatchObject({ native3d: true, nativeTimeoutS: 7200 });
+    for (const bad of [0, 59, 7201, "1800"]) expect(() => buildEngineConfig(new Map([["render.native_timeout_s", bad]]))).toThrow(/render\.native_timeout_s/);
+    expect(() => buildEngineConfig(new Map([["render.native_3d", "true"]]))).toThrow(/render\.native_3d/);
   });
 
   it("refuses numbers that contradict each other", () => {
