@@ -119,7 +119,7 @@ describe("local service list (app role)", () => {
 });
 
 describe("system settings form (app role)", () => {
-  const good = { concurrent_renders: 2, concurrent_jobs: 3, storage_warn_gb: 80, max_long_minutes: 20, scene_kit: false };
+  const good = { concurrent_renders: 2, concurrent_jobs: 3, storage_warn_gb: 80, max_long_minutes: 20, render_timeout_s: 900, scene_kit: false };
 
   it("saves each changed value and audits each", async () => {
     const r = await saveSystemSettings(db.pool, good);
@@ -130,8 +130,17 @@ describe("system settings form (app role)", () => {
     expect(await getSetting(db.pool, "video.max_long_minutes")).toBe(20);
     expect(await getSetting(db.pool, "tracks.enabled")).toEqual({ scene_kit: false, tsx: true, collage: true, ai: true });
     const rows = await audit();
-    expect(rows.map(settingOf).sort()).toEqual(["jobs.concurrent_jobs", "jobs.concurrent_renders", "storage.warn_gb", "tracks.enabled", "video.max_long_minutes"]);
+    expect(rows.map(settingOf).sort()).toEqual(["jobs.concurrent_jobs", "jobs.concurrent_renders", "render.timeout_s", "storage.warn_gb", "tracks.enabled", "video.max_long_minutes"]);
     expect(rows.find((x) => settingOf(x) === "storage.warn_gb")!.detail).toMatchObject({ from: 50, to: 80 });
+  });
+
+  it("saving changes render.timeout_s and writes one setting.changed audit row for it", async () => {
+    expect(await getSetting(db.pool, "render.timeout_s")).toBe(600);
+    await saveSystemSettings(db.pool, good);
+    expect(await getSetting(db.pool, "render.timeout_s")).toBe(900);
+    const rows = (await audit()).filter((x) => settingOf(x) === "render.timeout_s");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.detail).toMatchObject({ from: 600, to: 900 });
   });
 
   it("an unchanged form audits nothing", async () => {
@@ -143,7 +152,7 @@ describe("system settings form (app role)", () => {
 
   it("loadSystemSettings reads back what was saved", async () => {
     await saveSystemSettings(db.pool, good);
-    expect(await loadSystemSettings(db.pool)).toMatchObject({ renders: 2, jobs: 3, warnGb: 80, longMinutes: 20, sceneKit: false });
+    expect(await loadSystemSettings(db.pool)).toMatchObject({ renders: 2, jobs: 3, warnGb: 80, longMinutes: 20, renderTimeoutS: 900, sceneKit: false });
   });
 
   it.each([
@@ -159,6 +168,8 @@ describe("system settings form (app role)", () => {
     ["decimal string", { ...good, concurrent_jobs: "3.0" }],
     ["empty", { ...good, concurrent_jobs: "" }],
     ["huge", { ...good, concurrent_jobs: 100000 }],
+    ["timeout too low", { ...good, render_timeout_s: 59 }],
+    ["timeout too high", { ...good, render_timeout_s: 3601 }],
     ["missing", { concurrent_jobs: 2 }],
     ["extra key", { ...good, tsx: true }],
   ])("refuses invalid limits: %s, and stores nothing", async (_n, input) => {
@@ -185,12 +196,12 @@ describe("system settings form (app role)", () => {
   });
 
   it("N4: two saves at once leave one whole form, never a mixture", async () => {
-    const a = { concurrent_renders: 2, concurrent_jobs: 4, storage_warn_gb: 60, max_long_minutes: 30, scene_kit: true };
-    const b = { concurrent_renders: 3, concurrent_jobs: 5, storage_warn_gb: 70, max_long_minutes: 40, scene_kit: false };
+    const a = { concurrent_renders: 2, concurrent_jobs: 4, storage_warn_gb: 60, max_long_minutes: 30, render_timeout_s: 900, scene_kit: true };
+    const b = { concurrent_renders: 3, concurrent_jobs: 5, storage_warn_gb: 70, max_long_minutes: 40, render_timeout_s: 1200, scene_kit: false };
     for (let i = 0; i < 5; i++) {
       await Promise.all([saveSystemSettings(db.pool, a), saveSystemSettings(db.pool, b)]);
       const s = await loadSystemSettings(db.pool);
-      const got = { concurrent_renders: s.renders, concurrent_jobs: s.jobs, storage_warn_gb: s.warnGb, max_long_minutes: s.longMinutes, scene_kit: s.sceneKit };
+      const got = { concurrent_renders: s.renders, concurrent_jobs: s.jobs, storage_warn_gb: s.warnGb, max_long_minutes: s.longMinutes, render_timeout_s: s.renderTimeoutS, scene_kit: s.sceneKit };
       expect([a, b]).toContainEqual(got);
     }
   });
