@@ -74,6 +74,13 @@ function Content({ c, lang, videoId }: { c: GateContent; lang: string; videoId: 
           <BeatTable rows={c.beatRows} shownForReal={c.shownForReal} style={c.style} />
           <h4 className="m-0 mt-2 text-small font-medium text-muted">Evidence</h4>
           <Claims claims={c.claims} />
+          {c.scale ? (
+            <>
+              <h4 className="m-0 mt-2 text-small font-medium text-muted">Heights in the 3D scale video (you will verify each one later)</h4>
+              <Claims claims={c.scale.rows} />
+              {c.scale.limitNote ? <p role="note" data-testid="render-limit-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{c.scale.limitNote}</p> : null}
+            </>
+          ) : null}
         </div>
       );
     case "cost":

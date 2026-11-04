@@ -1,3 +1,5 @@
+import { renderLimitNote, scaleRows } from "@/server/core/scale3d-view";
+import { getEngineConfig } from "@/server/db/engine-config";
 import { claimsOf as evidenceClaims } from "@/server/core/evidence-edit";
 import type pg from "pg";
 import { STAGE_NAMES, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
@@ -24,7 +26,7 @@ export interface GateClaim {
   detail: string;
 }
 export type GateContent =
-  | { kind: "script"; title: string; description: string | null; narration: string; words: number; beats: number; beatRows: BeatRow[]; shownForReal: string | null; style: string | null; claims: GateClaim[]; readable: boolean }
+  | { kind: "script"; title: string; description: string | null; narration: string; words: number; beats: number; beatRows: BeatRow[]; shownForReal: string | null; style: string | null; claims: GateClaim[]; readable: boolean; /** 3D scale scripts only: the heights to approve and the render-limit note. */ scale?: { rows: GateClaim[]; limitNote: string | null } }
   | { kind: "cost"; totalMicroUsd: number; path: string; models: Array<[string, string]>; items: Array<{ kind: string; provider: string; quoteMicroUsd: number }> }
   | { kind: "video"; src: string | null; shaPrefix: string; captions: "exact" | "approximate" | "check" | "checked"; rewriteLines: number[] }
   | { kind: "evidence"; claims: GateClaim[]; fileSrc: string | null; shaPrefix: string }
@@ -140,7 +142,7 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
     const { parsed } = claimsOf(c.script?.body);
     if (!parsed.success) return { kind: "script", title: "Script", description: null, narration: JSON.stringify(c.script?.body ?? null), words: 0, beats: 0, beatRows: [], shownForReal: null, style, claims: [], readable: false };
     const s = parsed.data;
-    return { kind: "script", title: s.title, description: s.description ?? null, narration: s.narration, words: isLang(lang) ? wordCount(s.narration) : s.narration.split(/\s+/).filter(Boolean).length, beats: s.beats.length, beatRows: buildBeatRows(s.beats), shownForReal: s.shown_for_real ?? null, style, claims: claimsOf(s).claims, readable: true };
+    return { kind: "script", title: s.title, description: s.description ?? null, narration: s.narration, words: isLang(lang) ? wordCount(s.narration) : s.narration.split(/\s+/).filter(Boolean).length, beats: s.beats.length, beatRows: buildBeatRows(s.beats), shownForReal: s.shown_for_real ?? null, style, claims: claimsOf(s).claims, readable: true, ...(s.scale ? { scale: { rows: scaleRows(s.scale), limitNote: renderLimitNote((await getEngineConfig(db)).render.timeoutS) } } : {}) };
   }
   if (gate === "cost") {
     const b = asObj(c.cost_plan?.body);
