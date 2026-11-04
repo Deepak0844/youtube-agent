@@ -1,5 +1,5 @@
 import React from "react";
-import { HOOK_X, HOOK_Y_TOP, LOAD_DROP } from "../../../../src/shared/scale3d/math";
+import { HOOK_X, HOOK_Y_TOP, LOAD_DROP } from "../math";
 import { Built, C, LIFT_A, type Merger } from "./geo";
 
 /** Square lattice mast: four legs, rings and zig-zag braces on every level. */

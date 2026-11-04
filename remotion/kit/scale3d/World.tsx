@@ -2,7 +2,7 @@
 import React, { useLayoutEffect, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { FOV_DEG, cameraPosition, type CamPose, type Placement } from "../../../src/shared/scale3d/math";
+import { FOV_DEG, cameraPosition, type CamPose, type Placement } from "./math";
 import type { Scale3dScene } from "../../../src/shared/scale3d";
 import { Clouds, Ground, PlacedModel } from "./models";
 

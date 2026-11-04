@@ -1,5 +1,5 @@
 import React from "react";
-import { WIDTH_RATIO, type Placement } from "../../../../src/shared/scale3d/math";
+import { WIDTH_RATIO, type Placement } from "../math";
 import { ContactShadow, Surroundings } from "./Backdrop";
 import { HouseRow } from "./HouseRow";
 import { Mountain } from "./Mountain";

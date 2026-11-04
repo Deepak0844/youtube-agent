@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { ThreeCanvas } from "@remotion/three";
 import * as THREE from "three";
-import { beatFrames, beatIndexAt, cameraAt, cameraKeys, formatHeight, layoutObjects, rulerRangeAt, rulerStep, rulerValue, totalFrames } from "../../../src/shared/scale3d/math";
+import { beatFrames, beatIndexAt, cameraAt, cameraKeys, formatHeight, layoutObjects, rulerRangeAt, rulerStep, rulerValue, totalFrames } from "./math";
 import type { Scale3dScene } from "../../../src/shared/scale3d";
 import { Captions } from "../Captions";
 import { captionStyleOf, presetOf } from "../presets";

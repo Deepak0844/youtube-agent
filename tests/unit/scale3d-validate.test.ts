@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { SCALE3D_SAMPLE, validateScale3d, type Scale3dScene } from "../../src/shared/scale3d";
+import { SCALE3D_DEMO, validateScale3d, type Scale3dScene } from "../../src/shared/scale3d";
 
-const clone = (): Scale3dScene => structuredClone(SCALE3D_SAMPLE);
+const clone = (): Scale3dScene => structuredClone(SCALE3D_DEMO);
 const errorsOf = (v: unknown): string[] => {
   const r = validateScale3d(v);
   return r.ok ? [] : r.errors;
@@ -9,7 +9,7 @@ const errorsOf = (v: unknown): string[] => {
 
 describe("validateScale3d", () => {
   it("accepts the sample and reports its length", () => {
-    const r = validateScale3d(SCALE3D_SAMPLE);
+    const r = validateScale3d(SCALE3D_DEMO);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.totalS).toBe(34);
   });
@@ -57,10 +57,10 @@ describe("validateScale3d", () => {
   });
   it("enforces object and beat counts", () => {
     const o = clone();
-    o.objects = Array.from({ length: 13 }, (_, i) => ({ ...SCALE3D_SAMPLE.objects[2]!, id: `h${i}` }));
+    o.objects = Array.from({ length: 13 }, (_, i) => ({ ...SCALE3D_DEMO.objects[2]!, id: `h${i}` }));
     expect(errorsOf(o).length).toBeGreaterThan(0);
     const b = clone();
-    b.beats = Array.from({ length: 13 }, () => ({ ...SCALE3D_SAMPLE.beats[0]!, duration_s: 3 }));
+    b.beats = Array.from({ length: 13 }, () => ({ ...SCALE3D_DEMO.beats[0]!, duration_s: 3 }));
     expect(errorsOf(b).length).toBeGreaterThan(0);
   });
   it("rejects extra fields (no free-form code can ride along)", () => {

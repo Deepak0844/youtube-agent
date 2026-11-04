@@ -1,7 +1,7 @@
-import type { Scale3dScene } from "./schema";
+import type { Scale3dScene } from "../../../src/shared/scale3d/schema";
 
 /** The approved prototype as data: climb a crane, a crane lifts a small crane, then the skyline's big tower, back to the start. */
-export const SCALE3D_SAMPLE: Scale3dScene = {
+export const SCALE3D_DEMO: Scale3dScene = {
   version: 1,
   loop_back: true,
   ruler: { show_ticks: true },

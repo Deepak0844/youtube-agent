@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SCALE3D_SAMPLE as S, beatFrames, beatIndexAt, cameraAt, cameraKeys, cameraPosition, formatHeight, layoutObjects, niceCeil, rulerRangeAt, rulerStep, rulerValue, totalFrames } from "../../src/shared/scale3d";
+import { SCALE3D_DEMO as S, beatFrames, beatIndexAt, cameraAt, cameraKeys, cameraPosition, formatHeight, layoutObjects, niceCeil, rulerRangeAt, rulerStep, rulerValue, totalFrames } from "../../src/shared/scale3d";
 
 const placements = layoutObjects(S.objects);
 const keys = cameraKeys(S, placements);

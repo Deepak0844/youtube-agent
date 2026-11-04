@@ -56,8 +56,8 @@ import { HookCard } from "./HookCard";
 import { firstPictureId, HOOK_FRAMES, hashString, lookBackground, pickLook, sceneCaptionAllowed } from "./look";
 import { collageStarts, docFrames, introSkipFrames, loopOpacity, loopOverlay, mediaOf, msToFrame, sceneRange, sequenceFrames, transitionIn, type CaptionWord } from "./timeline";
 import type { Scene, SceneDoc } from "../../src/shared/scene";
-import { SCALE3D_SAMPLE } from "../../src/shared/scale3d/sample";
-import { totalFrames } from "../../src/shared/scale3d/math";
+import { SCALE3D_DEMO } from "./scale3d/demo-scene";
+import { totalFrames } from "./scale3d/math";
 import type { Scale3DProps } from "./scale3d/Scale3D";
 
 const terminal: TerminalProps = {
@@ -409,7 +409,7 @@ export const KitRoot: React.FC = () => (
     <Composition
       id="scale3d"
       lazyComponent={() => import("./scale3d/Scale3D").then((m) => ({ default: m.Scale3D as React.FC<Record<string, unknown>> }))}
-      defaultProps={{ scene: SCALE3D_SAMPLE } as Scale3DProps}
+      defaultProps={{ scene: SCALE3D_DEMO } as Scale3DProps}
       calculateMetadata={({ props }) => ({ durationInFrames: Math.max(1, totalFrames(props.scene.beats.map((b) => b.duration_s), theme.fps)) })}
       width={theme.width}
       height={theme.height}
