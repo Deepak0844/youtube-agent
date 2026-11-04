@@ -63,6 +63,8 @@ export interface GateItem extends QueueVideo {
   content: GateContent;
   /** The newest decision on this very content, when it was sent back. */
   sentBackNote: string | null;
+  /** Publish only: why it cannot be approved yet (no channel chosen, details missing). The card still shows so the owner can fix it; no approve button. */
+  blocked?: string;
 }
 export interface DecisionItem extends QueueVideo {
   kind: "decision";
@@ -198,16 +200,22 @@ export async function loadQueue(db: pg.Pool, checkable: ReadonlySet<string> = ne
     if (action?.kind !== "wait_gate" || !(QUEUE_GATES as readonly string[]).includes(action.gate)) continue;
     const gate = action.gate as QueueGate;
     const snap = await readSnapshot(db, v.id, gate);
-    if (snap === "no_video" || !snap.live.ok) continue;
+    if (snap === "no_video") continue;
+    // The publish card carries the form that picks the channel, so it must show while the channel is still missing; every other gate stays hidden until its content is complete.
+    const c = snap.inputs.content;
+    const blocked = !snap.live.ok && gate === "publish" && c.video && c.metadata && c.evidence ? snap.live.reason : undefined;
+    if (!snap.live.ok && blocked === undefined) continue;
     const content = await contentFor(db, gate, snap, v.language, v.id, sign, v.style);
+    const liveHash = snap.live.ok ? snap.live.hash : "";
     items.push({
       ...base,
       kind: "gate",
       gate,
-      hash: snap.live.hash,
+      hash: liveHash,
+      ...(blocked !== undefined ? { blocked } : {}),
       versions: versionsKey(snap.versions),
       content,
-      sentBackNote: snap.last?.decision === "sent_back" && snap.last.hash === snap.live.hash ? await noteOf(db, v.id, gate) : null,
+      sentBackNote: liveHash !== "" && snap.last?.decision === "sent_back" && snap.last.hash === liveHash ? await noteOf(db, v.id, gate) : null,
       strip: { runs: await runsFor(db, v.id), openGate: gate, upload: await uploadFor(db, v.id) },
     });
   }

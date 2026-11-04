@@ -273,6 +273,14 @@ describe("decideGate: publish", () => {
     expect(q.uploadCalls).toHaveLength(1);
     expect((await db.pool.query("select count(*)::int as n from uploads where video_id = $1", [videoId])).rows[0].n).toBe(1);
   });
+  it("shows the publish card with a reason (and no approve hash) while no channel is chosen, so the owner can choose one there", async () => {
+    // Regression: the card was hidden until a channel was chosen, but the channel picker lives on the card.
+    const { videoId } = await publishReady();
+    await db.pool.query("update videos set channel_id = null where id = $1", [videoId]);
+    const { items } = await loadQueue(db.pool);
+    const item = items.find((x) => x.videoId === videoId);
+    expect(item).toMatchObject({ kind: "gate", gate: "publish", hash: "", blocked: "choose a channel before publishing", content: { kind: "publish", channel: "" } });
+  });
   it("changing the metadata after the page rendered voids the publish approval attempt", async () => {
     const { q, root, videoId } = await publishReady();
     const i = await inputFor(videoId, "publish");
