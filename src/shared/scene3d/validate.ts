@@ -1,5 +1,6 @@
 import { SCENE3D_LIMITS as L, scene3dSchema, type Scene3d } from "./schema";
 import { type ModelResolver } from "./resolver";
+import { allowedKeys, keyWord, schemaAt } from "./describe";
 
 export type Scene3dResult = { ok: true; scene: Scene3d; totalS: number; warnings: string[] } | { ok: false; errors: string[] };
 
@@ -8,7 +9,18 @@ export const shotsTotalS = (shots: readonly { duration_s: number }[]): number =>
 /** Checks a scene the director wrote. Returns plain sentences a person can act on. Pass a resolver to check model references too. */
 export function validateScene3d(input: unknown, resolver?: ModelResolver): Scene3dResult {
   const parsed = scene3dSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.length ? i.path.join(".") : "scene"}: ${i.message}`) };
+  if (!parsed.success) {
+    return {
+      ok: false,
+      errors: parsed.error.issues.map((i) => {
+        const where = i.path.length ? i.path.join(".") : "scene";
+        if (i.code !== "unrecognized_keys") return `${where}: ${i.message}`;
+        // Name the key (zod's own text is cut to [redacted] by the log filter when the key is long) and say what IS allowed here.
+        const allowed = allowedKeys(schemaAt(scene3dSchema, input, i.path.filter((p): p is string | number => typeof p !== "symbol")));
+        return `${where}: remove the unknown key ${i.keys.map(keyWord).join(", ")}${allowed.length ? `; the allowed keys here are: ${allowed.join(", ")}` : ""}.`;
+      }),
+    };
+  }
   const s = parsed.data;
   const errors: string[] = [];
   const warnings: string[] = [];

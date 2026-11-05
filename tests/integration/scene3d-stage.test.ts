@@ -192,11 +192,27 @@ describe("scene3d: director stage", () => {
     expect(((await latestContent(db.pool, id, "scenes"))!.body as { missing_assets: unknown[] }).missing_assets).toEqual([]);
   });
 
+  it("a reply with the slips of the first real run (invented key, two paths, over-long missing_assets) is cleaned and accepted at once", async () => {
+    const id = await scene3dVideo();
+    const mv = (path: number[][], start_s: number) => ({ type: "move_along_path", path, start_s, duration_s: 5 });
+    const messy = JSON.stringify({
+      scene: sceneJson({ elements: [
+        { kind: "model", id: "barge", model: { catalog: "pp_ship" }, height_m: 20, animations: [mv([[0, 0], [5, 0]], 1), mv([[5, 0], [5, 5]], 7)] },
+        { kind: "sand_pile", id: "mound", radius_m: 10, height_m: 4, animations: [{ type: "pour", from: [0, 10, 0], start_s: 2, duration_s: 10, a_made_up_key_that_is_much_too_long_for_the_log: 1 }] },
+      ] }),
+      missing_assets: [{ beat: "dig", wanted: "w".repeat(200), substitute: null }],
+    });
+    expect((await play(id, "direct_scene3d", direct([messy]))).kind).toBe("committed");
+    expect((await stageRow(id, "direct_scene3d")).result).toMatchObject({ attempts: 1 });
+    const saved = (await latestContent(db.pool, id, "scenes"))!.body as { missing_assets: unknown[] };
+    expect(saved.missing_assets).toEqual([{ beat: "dig", wanted: "w".repeat(80), substitute: "none" }]);
+  });
+
   it("an unknown catalogue id is rejected each time, and after three attempts the stage fails clearly and keeps the kind", async () => {
     const id = await scene3dVideo();
     const out = await play(id, "direct_scene3d", direct([UNKNOWN_ID]));
     expect(out.kind).toBe("known_failure");
-    expect((await stageRow(id, "direct_scene3d")).result).toMatchObject({ error: expect.stringMatching(/scene3d_invalid: .*after 3 attempts/) });
+    expect((await stageRow(id, "direct_scene3d")).result).toMatchObject({ error: expect.stringMatching(/scene3d_invalid: the 3D scene failed the checks 4 times/) });
     expect(await latestContent(db.pool, id, "scenes")).toBeNull();
     expect((await db.pool.query("select kind from videos where id = $1", [id])).rows[0].kind).toBe("scene3d");
   });
