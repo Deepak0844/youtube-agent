@@ -134,15 +134,15 @@ export async function seedLookGate(topic: string, opts: { advice?: string[] } = 
   const ok = await approveGate(db(), { videoId: v.id, gate: "script", seenHash: sc!.hash, actor });
   if (!ok.ok) throw new Error(`seed script: ${ok.reason}`);
   const body = (b: unknown) => ({ body: b, sha256: sha256Hex(canonicalJson(b)) });
+  const scene = scene3dSchema.parse({ version: 2, elements: [{ kind: "box", id: "b", size_m: [2, 2, 2] }], shots: ["hook", "setup", "dig", "load", "pour", "reveal"].map((id) => ({ id, duration_s: 6, focus: "b", caption: `Caption ${id}` })) });
   await advance(v.id);
   await workerFinishes(v.id, "direct_scene3d");
-  await addContent(db(), v.id, "scenes", body({ kind: "scene3d", scene: { seeded: v.id }, missing_assets: [{ beat: "dig", wanted: "an excavator", substitute: "a dump truck" }] }));
+  await addContent(db(), v.id, "scenes", body({ kind: "scene3d", scene, missing_assets: [{ beat: "dig", wanted: "an excavator", substitute: "a dump truck" }] }));
   await advance(v.id);
   await workerFinishes(v.id, "tts");
   await addContent(db(), v.id, "narration", body({ file: "narration.mp3", seeded: v.id }));
   await advance(v.id);
   await workerFinishes(v.id, "scene3d_stills");
-  const scene = scene3dSchema.parse({ version: 2, elements: [{ kind: "box", id: "b", size_m: [2, 2, 2] }], shots: ["hook", "setup", "dig", "load", "pour", "reveal"].map((id) => ({ id, duration_s: 6, focus: "b", caption: `Caption ${id}` })) });
   const picks = pickStills(scene);
   mkdirSync(path.join(root, "videos", v.id, "stills"), { recursive: true });
   picks.forEach((_, i) => writeFileSync(path.join(root, "videos", v.id, "stills", `${String(i + 1).padStart(2, "0")}.png`), TINY_PNG));

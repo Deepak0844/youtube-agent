@@ -8,19 +8,21 @@ import { describeDetail } from "@/server/core/audit-view";
 import { microToUsd } from "@/server/core/llm-catalog";
 import { ttsRerunProblem, type StageName } from "@/server/core/pipeline-plan";
 import { renderLimitNote, scale3dSummary } from "@/server/core/scale3d-view";
+import { lookView, scene3dSummary } from "@/server/core/scene3d-view";
+import { loadRepoCatalog } from "@/server/providers/renderer/scene3d-models";
 import { scriptSchema } from "@/server/core/script-contract";
 import { estimateLabel, parseTab, forceRerunOffered, voiceChanged, rerunCostNote, rerunOffered, SEVERITY_WORDS, STAGE_LABELS, STATE_WORDS, TABS, type StageView, type TabId, type UiState } from "@/server/core/video-page-view";
 import { FORMAT_WORDS, KIND_WORDS, LANGUAGE_WORDS, STATUS_WORDS } from "@/server/core/videos-view";
 import { getPool } from "@/server/db/pool";
 import { jobCheckers } from "../../queue/job-checkers";
-import { loadQueue } from "@/server/db/queue-data";
+import { loadQueue, mediaSigner } from "@/server/db/queue-data";
 import { loadVideoPage, type VideoPage } from "@/server/db/video-page";
 import { loadPreview } from "@/server/db/video-preview";
 import type { PreviewData } from "@/shared/preview";
 import { presetOf } from "../../../../../remotion/kit/presets";
 import { LazyPreviewStage } from "@/ui/kit/kit-lazy";
 import { Button } from "@/ui/primitives/button";
-import { ageLabel, GateCard } from "../../queue/gate-card";
+import { ageLabel, GateCard, LookStills } from "../../queue/gate-card";
 import { DecisionCard } from "../../queue/decision-card";
 import { CancelForm } from "../../queue/forms";
 import { LiveFeed } from "../../queue/live-feed";
@@ -61,7 +63,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
   const q = live && (p.openGate || p.stages.some((s) => s.state === "needs_you")) ? await loadQueue(db, new Set(Object.keys(jobCheckers())), { videoId: id.data }) : null;
   const card = q?.items[0];
   const status = STATUS_WORDS[p.head.status];
-  const preview = tab === "preview" && p.head.kind !== "tsx" ? await loadPreview(db, id.data) : null; // read only; only this tab pays for it
+  const preview = tab === "preview" && p.head.kind !== "tsx" && p.head.kind !== "scene3d" ? await loadPreview(db, id.data) : null; // read only; only this tab pays for it
 
   return (
     <div className="flex min-w-0 flex-col gap-layout">
@@ -201,6 +203,56 @@ function Scale3dPreview({ p }: { p: VideoPage }) {
   );
 }
 
+/** A 3D story has no live preview: the storyboard (shots with times and visual lines), what is in the scene, what was not found, and the preview pictures once they exist. */
+async function Scene3dPreview({ p }: { p: VideoPage }) {
+  const d = p.scene3d;
+  const catalog = await loadRepoCatalog(process.cwd()).catch(() => null); // names only; without the catalogue the ids are shown
+  const v = scene3dSummary(d?.scenes ?? null, d?.story ?? null, (id) => catalog?.getById(id)?.name ?? null);
+  if (!v.ok) return <Empty>{v.message}</Empty>;
+  const { shots, objects, missing, totalS } = v.summary;
+  const look = lookView(d?.previews ?? null, d?.scenes ?? null);
+  const sign = look.ok ? await mediaSigner(getPool()) : null;
+  const rendered = p.stages.some((s) => s.stage === "render" && s.state === "done");
+  const th = "px-2 py-2 text-small font-normal text-faint first:pl-0";
+  const td = "px-2 py-3 align-top first:pl-0 [overflow-wrap:anywhere]";
+  return (
+    <>
+      <p data-testid="preview-note" className="m-0 max-w-[68ch] text-body text-muted">A 3D story has no live preview: this is its plan, in order, and the preview pictures once they are drawn. {rendered ? "The final video is on the Review step." : "The final video is made by Render after you approve the look."}</p>
+      <p data-testid="scene3d-total" className="m-0 text-body tabular-nums">Total length {totalS} s, {shots.length} shots. The times are the director&apos;s plan; they are fitted to the narration when the preview pictures are drawn.</p>
+      <H>Storyboard</H>
+      <div className="min-w-0 overflow-x-auto">
+        <table data-testid="scene3d-shots" className="w-full border-collapse text-left text-body">
+          <caption className="sr-only">Shots of the 3D story, in order</caption>
+          <thead><tr className="border-b border-rule"><th scope="col" className={th}>#</th><th scope="col" className={th}>Starts (s)</th><th scope="col" className={th}>Length (s)</th><th scope="col" className={th}>What we see</th><th scope="col" className={th}>Camera on</th></tr></thead>
+          <tbody>
+            {shots.map((s) => (
+              <tr key={s.n} className="border-b border-rule">
+                <td className={`${td} tabular-nums`}>{s.n}</td><td className={`${td} tabular-nums`}>{s.startS}</td><td className={`${td} tabular-nums`}>{s.durationS}</td>
+                <td className={td}><span className="font-medium">{s.beat ?? s.id}</span>{s.visual ? <span className="block text-muted">{s.visual}</span> : null}{s.caption ? <span className="block text-small text-muted">Caption: {s.caption}</span> : null}</td>
+                <td className={td}>{s.focus}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <H>In the scene</H>
+      <ul data-testid="scene3d-objects" className="m-0 flex list-none flex-col gap-1 p-0 text-body">
+        {objects.map((o) => <li key={o.id} className="[overflow-wrap:anywhere]">{o.id}: {o.label}</li>)}
+      </ul>
+      <H>What could not be found</H>
+      {missing.length === 0 ? (
+        <p data-testid="scene3d-missing" className="m-0 text-body text-muted">Every visual was matched to a model or a block.</p>
+      ) : (
+        <ul data-testid="scene3d-missing" className="m-0 flex list-none flex-col gap-1 p-0 text-body">
+          {missing.map((m, i) => <li key={i} className="[overflow-wrap:anywhere]">Scene {m.beat}: wanted {m.wanted}; used {m.substitute} instead.</li>)}
+        </ul>
+      )}
+      <H>Preview pictures</H>
+      {look.ok ? <LookStills stills={look.look.stills.map((s) => ({ ...s, src: sign ? sign(`videos/${p.head.id}/${s.file}`) : null }))} /> : <Empty>No preview pictures yet. They are drawn after the narration is made.</Empty>}
+    </>
+  );
+}
+
 function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: PreviewData | null }) {
   const lang = p.head.language;
   switch (tab) {
@@ -239,6 +291,7 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
     case "preview":
       if (p.head.kind === "tsx") return <Empty>Preview is not available for custom animation; use the final render.</Empty>;
       if (p.head.kind === "scale3d") return <Scale3dPreview p={p} />;
+      if (p.head.kind === "scene3d") return <Scene3dPreview p={p} />;
       return !preview ? <Empty>No scenes yet. The preview appears once the build step has made them.</Empty> : (
         <>
           <p data-testid="preview-note" className="m-0 max-w-[68ch] text-body text-muted">Preview only. The final video is made by Render.</p>

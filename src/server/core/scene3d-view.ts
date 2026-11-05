@@ -1,5 +1,7 @@
+import { z } from "zod";
 import { missingAssetSchema, type MissingAsset } from "@/server/core/scene3d-direct";
 import { readPreviews, type PreviewsBody } from "@/server/core/scene3d-stills";
+import { scene3dSchema, shotBeatId } from "@/shared/scene3d";
 
 // Plain-words views of a 3D story (scene3d) video. Pure: no IO, no WebGL.
 
@@ -63,4 +65,75 @@ export function lookView(previews: unknown, scenes: unknown): LookView {
       advice: p.advice,
     },
   };
+}
+
+// ---- the storyboard summary for the Preview tab ----------------------------------------------------------------------
+
+export interface Scene3dShotRow {
+  n: number;
+  id: string;
+  startS: number;
+  durationS: number;
+  /** The story beat this shot belongs to and the one-sentence visual written for it, when the script has a story. */
+  beat: string | null;
+  visual: string | null;
+  caption: string | null;
+  /** Names of what the camera frames. */
+  focus: string;
+}
+export interface Scene3dObjectRow {
+  id: string;
+  /** "Cargo Ship (pp_ship)" for a catalogue model, a plain word like "water" or "sand pile" for an engine block. */
+  label: string;
+  isModel: boolean;
+}
+export interface Scene3dSummary {
+  shots: Scene3dShotRow[];
+  objects: Scene3dObjectRow[];
+  missing: MissingAsset[];
+  totalS: number;
+}
+export type Scene3dSummaryView = { ok: true; summary: Scene3dSummary } | { ok: false; message: string };
+
+export const SCENE3D_EMPTY = "No 3D scene yet. It appears once the director step has written it.";
+export const SCENE3D_UNREADABLE = "The 3D scene is not readable. If this stays, run the director step again.";
+
+const storyRowSchema = z.object({ id: z.string(), visual: z.string() });
+
+/**
+ * The stored `scenes` body of a scene3d video ({kind: "scene3d", scene, missing_assets}) and the script's story as the storyboard the owner
+ * reads: every shot with its time and visual line, what is in the scene (catalogue names through `nameOf`), and what could not be found.
+ */
+export function scene3dSummary(scenes: unknown, story: unknown, nameOf: (catalogId: string) => string | null): Scene3dSummaryView {
+  if (scenes === null || scenes === undefined) return { ok: false, message: SCENE3D_EMPTY };
+  const raw = typeof scenes === "object" ? (scenes as { scene?: unknown; missing_assets?: unknown }) : {};
+  const parsed = scene3dSchema.safeParse(raw.scene);
+  if (!parsed.success) return { ok: false, message: SCENE3D_UNREADABLE };
+  const scene = parsed.data;
+  const beats = z.array(storyRowSchema).safeParse(story);
+  const beatIds = beats.success ? beats.data.map((b) => b.id) : [];
+  const label = (id: string): string => {
+    const el = scene.elements.find((e) => e.id === id);
+    if (!el) return id;
+    return el.kind === "model" ? (("catalog" in el.model ? nameOf(el.model.catalog) : null) ?? el.id) : `${el.id} (${el.kind.replace(/_/g, " ")})`;
+  };
+  let t = 0;
+  const shots = scene.shots.map((s, i): Scene3dShotRow => {
+    const beat = beats.success ? shotBeatId(s.id, beatIds) : null;
+    const row: Scene3dShotRow = {
+      n: i + 1, id: s.id, startS: Math.round(t * 100) / 100, durationS: s.duration_s, beat,
+      visual: beat === null || !beats.success ? null : (beats.data.find((b) => b.id === beat)?.visual ?? null),
+      caption: s.caption ?? null,
+      focus: s.focus === undefined ? "free camera" : [s.focus].flat().map(label).join(", "),
+    };
+    t += s.duration_s;
+    return row;
+  });
+  const objects = scene.elements.map((e): Scene3dObjectRow =>
+    e.kind === "model"
+      ? { id: e.id, isModel: true, label: "catalog" in e.model ? `${nameOf(e.model.catalog) ?? e.model.catalog} (${e.model.catalog})` : e.id }
+      : { id: e.id, isModel: false, label: e.kind.replace(/_/g, " ") },
+  );
+  const missing = missingAssetSchema.array().max(40).safeParse(raw.missing_assets);
+  return { ok: true, summary: { shots, objects, missing: missing.success ? missing.data : [], totalS: Math.round(t * 100) / 100 } };
 }

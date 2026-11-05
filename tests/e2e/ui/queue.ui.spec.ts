@@ -240,3 +240,17 @@ test("look gate: send back needs a note and queues the director again with it", 
   expect(await count("select count(*)::int as n from stage_runs where video_id = $1 and name = 'direct_scene3d' and status = 'queued'", [videoId])).toBe(1);
   expect(await count("select count(*)::int as n from stage_runs where video_id = $1 and name = 'render'", [videoId])).toBe(0);
 });
+
+test("a 3D story's Preview tab shows the storyboard, what was not found and the preview pictures; fits a phone", async ({ page }) => {
+  const topic = `look-tab ${stamp()}`;
+  const { videoId } = await seedLookGate(topic);
+  await page.goto(`/videos/${videoId}?tab=preview`);
+  await expect(page.getByRole("heading", { level: 1, name: topic })).toBeVisible();
+  await expect(page.getByTestId("scene3d-total")).toContainText("Total length 36 s, 6 shots");
+  await expect(page.getByTestId("scene3d-shots").getByRole("row")).toHaveCount(7); // header and 6 shots
+  await expect(page.getByTestId("scene3d-objects")).toContainText("box");
+  await expect(page.getByTestId("scene3d-missing")).toContainText("Scene dig: wanted an excavator; used a dump truck instead.");
+  await expect(page.getByRole("heading", { name: "Preview pictures" })).toBeVisible(); // the open Look card shows the same sheet above the tabs
+  await expect(page.getByTestId("look-sheet").first().getByRole("listitem")).toHaveCount(7);
+  await noPageScroll(page);
+});

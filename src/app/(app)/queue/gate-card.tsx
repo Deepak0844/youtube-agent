@@ -64,26 +64,33 @@ function Player({ src, label }: { src: string | null; label: string }) {
   return <video controls preload="metadata" src={src} aria-label={label} className="aspect-[9/16] max-h-[520px] w-auto max-w-full rounded-card bg-raised" />;
 }
 
+/** The contact sheet: each preview picture with its shot name, time and caption. Shared by the Look card and the video page Preview tab. */
+export function LookStills({ stills }: { stills: Array<{ file: string; timeS: number; shot: string; caption: string | null; src: string | null }> }) {
+  return (
+    <ul data-testid="look-sheet" className="m-0 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-4">
+      {stills.map((s, i) => (
+        <li key={s.file} className="flex min-w-0 flex-col gap-1">
+          {s.src ? (
+            // eslint-disable-next-line @next/next/no-img-element -- a signed media address of our own picture; next/image would need the host allow-listed
+            <img src={s.src} alt={`Preview ${i + 1}: shot ${s.shot} at ${timeLabel(s.timeS)}`} width={540} height={960} loading="lazy" className="aspect-[9/16] h-auto w-full rounded-card bg-raised object-cover" />
+          ) : (
+            <p className="m-0 flex aspect-[9/16] items-center rounded-card bg-raised p-2 text-small text-muted">Picture {i + 1} cannot be shown right now (the media key is locked).</p>
+          )}
+          <span className="text-small font-medium tabular-nums">{i + 1}. {s.shot} at {timeLabel(s.timeS)}</span>
+          {s.caption ? <span className="text-small text-muted [overflow-wrap:anywhere]">Caption: {s.caption}</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** The Look: a contact sheet of preview pictures with their shot names and times, what the director could not find, and the advisory picture check. */
 function LookContent({ c }: { c: Extract<GateContent, { kind: "look" }> }) {
   if (!c.view.ok) return <p data-testid="look-unreadable" className="m-0 max-w-[68ch] text-body text-muted">{c.view.message}</p>;
   const { stills, missing, advice } = c.view.look;
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <ul data-testid="look-sheet" className="m-0 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-4">
-        {stills.map((s, i) => (
-          <li key={s.file} className="flex min-w-0 flex-col gap-1">
-            {s.src ? (
-              // eslint-disable-next-line @next/next/no-img-element -- a signed media address of our own picture; next/image would need the host allow-listed
-              <img src={s.src} alt={`Preview ${i + 1}: shot ${s.shot} at ${timeLabel(s.timeS)}`} width={540} height={960} loading="lazy" className="aspect-[9/16] h-auto w-full rounded-card bg-raised object-cover" />
-            ) : (
-              <p className="m-0 flex aspect-[9/16] items-center rounded-card bg-raised p-2 text-small text-muted">Picture {i + 1} cannot be shown right now (the media key is locked).</p>
-            )}
-            <span className="text-small font-medium tabular-nums">{i + 1}. {s.shot} at {timeLabel(s.timeS)}</span>
-            {s.caption ? <span className="text-small text-muted [overflow-wrap:anywhere]">Caption: {s.caption}</span> : null}
-          </li>
-        ))}
-      </ul>
+      <LookStills stills={stills} />
       <section aria-label="What could not be found" className="flex min-w-0 flex-col gap-1">
         <h4 className="m-0 text-small font-medium text-muted">What could not be found</h4>
         {missing.length === 0 ? (
