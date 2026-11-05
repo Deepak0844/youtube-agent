@@ -155,6 +155,7 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
       renderer: createNativeRenderer({
         root, kitDir: renderKitDir(), runChild: run, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
         preflight: () => checkNativeRenderReady({ repoRoot: path.resolve(renderKitDir(), "..", ".."), storageRoot: root }),
+        catalog: () => loadRepoCatalog(path.resolve(renderKitDir(), "..", "..")),
       }),
       ready: () => checkNativeRenderReady({ repoRoot: path.resolve(renderKitDir(), "..", ".."), storageRoot: root }),
     },

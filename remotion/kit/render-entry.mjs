@@ -3,6 +3,7 @@
 // usage: node /opt/render/kit/render-entry.mjs <inDir> <outFile>                 the scene kit (props.json)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --scale3d       the 3D scale composition (props.json: scene, captions)
 //        node <repo>/remotion/kit/render-entry.mjs <inDir> <outFile> --scale3d --native   the same on the host Mac's GPU (remotion-native.ts, inside sandbox-exec)
+//        node <repo>/remotion/kit/render-entry.mjs <inDir> <outFile> --scene3d --native   the general 3D scene composition (props.json: scene; models/ staged in <inDir>), native ONLY
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --tsx           one checked TSX file (video.tsx)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outDir> --tsx-stills     its preflight stills (still-<n>.png)
 // Kit mode: <inDir> (read-only) holds props.json (built and validated on the host) plus the staged narration and asset
@@ -21,13 +22,14 @@ const { bundle } = require("@remotion/bundler");
 const { renderMedia, renderStill, selectComposition } = require("@remotion/renderer");
 
 const [inDir, outArg, mode = "kit", ...extra] = process.argv.slice(2);
-// "--native" (render on the host Mac's GPU, see remotion-native.ts) is accepted ONLY together with --scale3d. The container
+// "--native" (render on the host Mac's GPU, see remotion-native.ts) is accepted ONLY together with --scale3d or --scene3d. The container
 // never passes it, so the container keeps software GL, its own paths and the default concurrency. Nothing else may follow the mode.
-const native = mode === "--scale3d" && extra.length === 1 && extra[0] === "--native";
-if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || (extra.length > 0 && !native) || !["kit", "--scale3d", "--tsx", "--tsx-stills"].includes(mode)) {
+// "--scene3d" is native ONLY: it is refused without --native, so the container can never be asked to draw it.
+const native = (mode === "--scale3d" || mode === "--scene3d") && extra.length === 1 && extra[0] === "--native";
+if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || (extra.length > 0 && !native) || (mode === "--scene3d" && !native) || !["kit", "--scale3d", "--scene3d", "--tsx", "--tsx-stills"].includes(mode)) {
   throw new Error("usage: render-entry.mjs <abs inDir> <abs out> [--tsx | --tsx-stills]");
 }
-// Only the two TSX modes use meta.json, video.tsx and the TSX bundle. "--scale3d" is a kit-style mode (props.json, the kit's index.ts, public dir = inDir) that renders another composition.
+// Only the two TSX modes use meta.json, video.tsx and the TSX bundle. "--scale3d" and "--scene3d" are kit-style modes (props.json, the kit's index.ts, public dir = inDir) that renders another composition.
 const tsx = mode === "--tsx" || mode === "--tsx-stills";
 const nodePath = (process.env.NODE_PATH ?? "").split(path.delimiter).filter(Boolean);
 const readJson = (name) => JSON.parse(readFileSync(path.join(inDir, name), "utf8"));
@@ -80,7 +82,7 @@ const serveUrl = await bundle({
 
 const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE;
 const chromiumOptions = { gl: native ? "angle" : "swangle", disableWebSecurity: false, ignoreCertificateErrors: false };
-const composition = await selectComposition({ serveUrl, id: tsx ? "tsx-video" : mode === "--scale3d" ? "scale3d" : "kit-video", inputProps, browserExecutable, chromiumOptions });
+const composition = await selectComposition({ serveUrl, id: tsx ? "tsx-video" : mode === "--scene3d" ? "scene3d" : mode === "--scale3d" ? "scale3d" : "kit-video", inputProps, browserExecutable, chromiumOptions });
 if (tsx && (composition.durationInFrames !== meta.durationInFrames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) {
   throw new Error("the TSX composition does not match meta.json");
 }

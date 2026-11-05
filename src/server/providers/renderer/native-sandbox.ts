@@ -78,9 +78,11 @@ export interface NativeCommandInput extends NativeSandboxPaths {
   node: string;
   /** Absolute path of the finished mp4. */
   outFile: string;
+  /** Which composition: the 3D scale kit (default) or the general 3D scene engine. */
+  mode?: "--scale3d" | "--scene3d";
 }
 
-/** `nice -n 10 sandbox-exec -p <profile> env -i PATH HOME TMPDIR node render-entry.mjs <in> <out> --scale3d --native` */
+/** `nice -n 10 sandbox-exec -p <profile> env -i PATH HOME TMPDIR node render-entry.mjs <in> <out> --scale3d|--scene3d --native` */
 export function nativeCommand(i: NativeCommandInput): { command: string; args: string[] } {
   if (!path.isAbsolute(i.node) || !path.isAbsolute(i.outFile) || path.dirname(i.outFile) !== i.outDir) throw new KnownFailure("The native render has a bad program or output path.");
   return {
@@ -89,7 +91,7 @@ export function nativeCommand(i: NativeCommandInput): { command: string; args: s
       "-n", "10",
       SANDBOX_EXEC, "-p", buildSandboxProfile(i),
       ENV, "-i", `PATH=${path.dirname(i.node)}:/usr/bin:/bin`, `HOME=${i.tmpDir}`, `TMPDIR=${i.tmpDir}`,
-      i.node, path.join(i.kitDir, "render-entry.mjs"), i.inDir, i.outFile, "--scale3d", "--native",
+      i.node, path.join(i.kitDir, "render-entry.mjs"), i.inDir, i.outFile, i.mode ?? "--scale3d", "--native",
     ],
   };
 }

@@ -107,6 +107,13 @@ describe("native command", () => {
     expect(cmd.args.slice(-6)).toEqual(["/Users/me/.nvm/versions/node/v22/bin/node", `${P.kitDir}/render-entry.mjs`, P.inDir, `${P.outDir}/out.mp4`, "--scale3d", "--native"]);
   });
 
+  it("scene3d mode only swaps the mode word; the profile (and so the read allow-list) is the same, models are staged in the in folder", () => {
+    const scene = nativeCommand({ ...P, node: "/Users/me/.nvm/versions/node/v22/bin/node", outFile: `${P.outDir}/out.mp4`, mode: "--scene3d" });
+    expect(scene.args.slice(-6)).toEqual(["/Users/me/.nvm/versions/node/v22/bin/node", `${P.kitDir}/render-entry.mjs`, P.inDir, `${P.outDir}/out.mp4`, "--scene3d", "--native"]);
+    expect(scene.args[4]).toBe(cmd.args[4]);
+    expect(scene.args[4]).not.toContain("assets3d");
+  });
+
   it("refuses an output file outside the out folder and a relative node", () => {
     expect(() => nativeCommand({ ...P, node: "/n/node", outFile: "/tmp/out.mp4" })).toThrow(KnownFailure);
     expect(() => nativeCommand({ ...P, node: "node", outFile: `${P.outDir}/out.mp4` })).toThrow(KnownFailure);
@@ -116,9 +123,11 @@ describe("native command", () => {
 describe("the gl override and the container", () => {
   const entry = readFileSync("remotion/kit/render-entry.mjs", "utf8");
 
-  it("render-entry honours native (angle gl, concurrency 1) only for --scale3d with exactly --native", () => {
-    expect(entry).toContain('const native = mode === "--scale3d" && extra.length === 1 && extra[0] === "--native";');
+  it("render-entry honours native (angle gl, concurrency 1) only for --scale3d or --scene3d with exactly --native", () => {
+    expect(entry).toContain('const native = (mode === "--scale3d" || mode === "--scene3d") && extra.length === 1 && extra[0] === "--native";');
     expect(entry).toContain('(extra.length > 0 && !native)');
+    expect(entry).toContain('(mode === "--scene3d" && !native)'); // the container can never be asked to draw a 3D scene
+    expect(entry).toContain('mode === "--scene3d" ? "scene3d" : mode === "--scale3d" ? "scale3d" : "kit-video"');
     expect(entry).toContain('gl: native ? "angle" : "swangle"');
     expect(entry).toContain("...(native ? { concurrency: 1 } : {})");
     expect(entry).not.toMatch(/process\.env\.\w*GL\w*/);
