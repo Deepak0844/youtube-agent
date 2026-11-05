@@ -30,6 +30,18 @@ export interface RenderArgs {
   size: { width: number; height: number };
 }
 
+export interface Scene3dStillsArgs {
+  /** A checked 3D scene (already re-timed to the narration). */
+  scene3d: Scene3d;
+  /** 1 to 8 whole frame numbers inside the video. */
+  frames: number[];
+}
+/** Draws a few frames of a 3D scene as 540x960 PNGs (native renderer only). */
+export interface Scene3dStillsRenderer {
+  /** Writes <attemptDir>/stills/01.png ... and returns those names (relative to the attempt folder). */
+  stills(ctx: StageContext, a: Scene3dStillsArgs): Promise<{ files: string[]; image?: string }>;
+}
+
 // Turns a scene document into an mp4 inside ctx.attemptDir.
 export interface Renderer {
   /** `image`: what ran (the render image id when pinned). */

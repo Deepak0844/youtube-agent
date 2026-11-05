@@ -316,9 +316,10 @@ describe("scale3d kind", () => {
 
 describe("scene3d kind", () => {
   const f = { requireEvidence: true, paidGeneration: false };
-  it("runs draft, direct_scene3d, tts, render, voice, sfx, qa with no pictures, build or generate", () => {
+  it("runs draft, direct_scene3d, tts, scene3d_stills, render, voice, sfx, qa with no pictures, build or generate", () => {
     const plan = stagePlan("scene3d", "short", { ...f, paidGeneration: true });
-    expect(plan.map((s) => s.stage)).toEqual(["draft", "direct_scene3d", "tts", "render", "voice", "sfx", "qa"]);
+    expect(plan.map((s) => s.stage)).toEqual(["draft", "direct_scene3d", "tts", "scene3d_stills", "render", "voice", "sfx", "qa"]);
+    expect(plan.find((s) => s.stage === "scene3d_stills")).toMatchObject({ resource: "render" });
     expect(plan[0]).toMatchObject({ stage: "draft", gateAfter: "script" });
     expect(plan.at(-1)).toMatchObject({ stage: "qa", gateAfter: "video" });
     expect(chainPrev(plan, 2)?.stage).toBe("direct_scene3d");
@@ -327,6 +328,14 @@ describe("scene3d kind", () => {
     const v = base({ kind: "scene3d", content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
     expect(expectedInputHash(v, "direct_scene3d", "d")).toBe(stageInputHash("direct_scene3d", { prev: "d", script: "s" }, {}));
     expect(expectedInputHash(v, "render", "t")).toBe(stageInputHash("render", { prev: "t", beats: "b", narration: "n", scenes: "sc" }, {}));
+  });
+  it("the preview pictures read the scene and the narration, chain on the narration, and Render chains on them", () => {
+    const v = base({ kind: "scene3d", content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
+    expect(expectedInputHash(v, "scene3d_stills", "t")).toBe(stageInputHash("scene3d_stills", { prev: "t", scenes: "sc", narration: "n" }, {}));
+    const plan = stagePlan("scene3d", "short", f);
+    expect(chainPrev(plan, plan.findIndex((s) => s.stage === "render"))?.stage).toBe("scene3d_stills");
+    const changed = base({ kind: "scene3d", content: { script: "s", beats: "b", narration: "n2", scenes: "sc" } });
+    expect(expectedInputHash(changed, "scene3d_stills", "t")).not.toBe(expectedInputHash(v, "scene3d_stills", "t"));
   });
   it("leaves the hashes and routes of every existing kind exactly as they were", () => {
     const sk = base({ content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
@@ -337,5 +346,6 @@ describe("scene3d kind", () => {
     expect(stagePlan("scale3d", "short", f).map((s) => s.stage)).toEqual(["draft", "build", "tts", "render", "voice", "sfx", "qa"]);
     expect(stagePlan("tsx", "short", f).map((s) => s.stage)).toEqual(["draft", "tts", "tsx_author", "voice", "sfx", "qa"]);
     expect(stagePlan("scene_kit", "short", f).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
+    for (const k of ["scene_kit", "tsx", "scale3d"] as const) expect(stagePlan(k, "short", f).map((s) => s.stage), k).not.toContain("scene3d_stills");
   });
 });

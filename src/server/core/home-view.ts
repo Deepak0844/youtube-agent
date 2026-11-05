@@ -10,6 +10,7 @@ export const STAGE_LABEL: Record<string, string> = {
   render: "Rendering the video",
   tsx_author: "Writing and rendering the code scene",
   direct_scene3d: "Directing the 3D scene",
+  scene3d_stills: "Drawing preview pictures",
   voice: "Mixing the voice",
   sfx: "Adding sound",
   qa: "Checking the video",

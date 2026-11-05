@@ -184,10 +184,10 @@ async function renderScale3d(renderer: Renderer, deps: StageDeps, ctx: Parameter
  * The renderer for a scene3d video: the native Mac renderer ONLY. If render.native_3d is off, no native renderer is wired or the
  * preflight is not ready, the stage fails with a plain sentence; it never falls back to the container.
  */
-async function nativeOnly(deps: StageDeps, ctx: Parameters<AttemptHandler>[0]): Promise<Renderer> {
+export async function nativeOnly(deps: StageDeps, ctx: Parameters<AttemptHandler>[0], step = "Render"): Promise<NonNullable<StageDeps["native"]>["renderer"]> {
   // The stored error is cut at about 120 characters in places: the fix comes first, the detail after.
   const fix = 'Turn on render.native_3d in System settings and run "npx remotion browser ensure" first: 3D scene videos render on this Mac only.';
-  const tail = "Run Render again afterwards. Nothing was rendered.";
+  const tail = `Run ${step} again afterwards. Nothing was rendered.`;
   if (!ctx.config.render.native3d) throw new KnownFailure(`${fix} The setting is off. ${tail}`);
   if (!deps.native) throw new KnownFailure(`${fix} This worker has no native renderer. ${tail}`);
   const ready = await deps.native.ready().catch(() => ({ ready: false, message: "The readiness check failed." }));
@@ -216,8 +216,11 @@ export async function readScene3dFile(file: string, resolver: ReturnType<typeof 
   return v.scene;
 }
 
-/** Render for a scene3d video: the checked scene, re-timed to the real word times (shots follow the story lines), through the native renderer. */
-async function renderScene3d(renderer: Renderer, deps: StageDeps, ctx: Parameters<AttemptHandler>[0], video: Awaited<ReturnType<typeof loadVideo>>, audioFile: string) {
+/**
+ * The checked scene of a scene3d video, re-timed to the real word times (shots follow the story lines). The ONE copy: the preview
+ * pictures and the full render both call it, so the pictures the owner approves show exactly the scene that is rendered.
+ */
+export async function loadRetimedScene3d(deps: StageDeps, ctx: Parameters<AttemptHandler>[0], video: Awaited<ReturnType<typeof loadVideo>>, audioFile: string) {
   if (!deps.catalog3d) throw new KnownFailure("The 3D model catalogue is not wired, so the 3D scene cannot be checked.");
   const catalog = await deps.catalog3d().catch(() => {
     throw new KnownFailure("The 3D model catalogue could not be read (assets3d/manifest.json).");
@@ -245,6 +248,12 @@ async function renderScene3d(renderer: Renderer, deps: StageDeps, ctx: Parameter
   } catch (e) {
     ctx.log(`render: 3D shots not re-timed, original timing kept (${e instanceof Error ? e.message : "unknown"})`.slice(0, 300));
   }
+  return { scene, sceneFile, captions, retime };
+}
+
+/** Render for a scene3d video: the checked, re-timed scene through the native renderer. */
+async function renderScene3d(renderer: Renderer, deps: StageDeps, ctx: Parameters<AttemptHandler>[0], video: Awaited<ReturnType<typeof loadVideo>>, audioFile: string) {
+  const { scene, sceneFile, captions, retime } = await loadRetimedScene3d(deps, ctx, video, audioFile);
   const r = await renderer.render(ctx, { sceneFile, scene3d: scene, audioFile, videoId: video.id, style: video.style, captionStyle: video.captionStyle, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: SIZE });
   if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
   return { files: ["render.mp4"], result: { rendered: "render.mp4", kind: "scene3d", shots: scene.shots.length, image: r.image ?? null, ...retime } };
