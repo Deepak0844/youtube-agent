@@ -13,6 +13,7 @@ import type { AlignArgs } from "@/server/render/whisper";
 import type { MixDeps } from "@/server/render/mix";
 import type { probeVideo } from "@/server/render/probe";
 import type { QaScanner } from "@/server/render/qa-scan";
+import type { Catalog3d } from "@/shared/assets3d/catalog";
 import type { LlmClient } from "@/server/llm/client";
 import { videoIdOf } from "./attempt";
 
@@ -64,6 +65,8 @@ export interface StageDeps {
   sceneAssets?: (videoId: string) => Promise<string[]>;
   /** Build only: pictures linked to beats (video_assets). When given, those beats get story_kenburns/collage from the app and sceneAssets is not used by Build. */
   scenePictures?: (videoId: string) => Promise<Array<{ assetId: string; beatId: string; kind?: string }>>;
+  /** Director only: the CC0 3D model catalogue (assets3d/manifest.json). Absent = the scene3d director refuses with a plain sentence. */
+  catalog3d?: () => Promise<Catalog3d>;
   /** Real sound pass (ffmpeg). Absent = dry run: Voice and Sfx copy the file on. */
   mix?: MixDeps;
 }

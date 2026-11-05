@@ -27,10 +27,10 @@ export function parseTab(raw: unknown): TabId {
 }
 
 export const STAGE_LABELS: Record<StageName, string> = {
-  draft: "Draft", pictures: "Pictures", build: "Build", generate: "Generate", tts: "Narration", render: "Render", tsx_author: "Code scene", voice: "Voice", sfx: "Sound", qa: "Check", repair_scenes: "Scene repair", reframe: "Re-frame", seo: "Titles", reply_drafts: "Reply drafts",
+  draft: "Draft", pictures: "Pictures", build: "Build", generate: "Generate", tts: "Narration", render: "Render", tsx_author: "Code scene", direct_scene3d: "3D scene", voice: "Voice", sfx: "Sound", qa: "Check", repair_scenes: "Scene repair", reframe: "Re-frame", seo: "Titles", reply_drafts: "Reply drafts",
 };
 const VERB: Record<StageName, string> = {
-  draft: "Drafting", pictures: "Finding pictures", build: "Building", generate: "Generating", tts: "Recording narration", render: "Rendering", tsx_author: "Writing and rendering the code scene", voice: "Mixing voice", sfx: "Adding sound", qa: "Checking quality", repair_scenes: "Repairing scenes", reframe: "Re-framing", seo: "Writing titles", reply_drafts: "Drafting replies",
+  draft: "Drafting", pictures: "Finding pictures", build: "Building", generate: "Generating", tts: "Recording narration", render: "Rendering", tsx_author: "Writing and rendering the code scene", direct_scene3d: "Directing the 3D scene", voice: "Mixing voice", sfx: "Adding sound", qa: "Checking quality", repair_scenes: "Repairing scenes", reframe: "Re-framing", seo: "Writing titles", reply_drafts: "Drafting replies",
 };
 
 /** Samples needed before a time estimate is shown. */

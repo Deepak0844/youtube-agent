@@ -5,6 +5,9 @@ import { approvedScript } from "@/server/db/stage-content";
 import { validateScenes, type SceneDoc } from "@/shared/scene";
 import { retimeScenes } from "@/shared/scene/retime";
 import { retimeScale3d, validateScale3d, type Scale3dScene } from "@/shared/scale3d";
+import { retimeScene3d, validateScene3d, type Scene3d } from "@/shared/scene3d";
+import { wordCount } from "@/server/core/lang";
+import { catalogModelResolver } from "@/server/core/scene3d-direct";
 import type { Renderer } from "@/server/providers/renderer";
 import { openRegular, promotedPath, type AttemptHandler } from "./attempt";
 import { contentBody, loadVideo, SIZE, type StageDeps } from "./deps";
@@ -91,6 +94,7 @@ export async function readScale3dFile(file: string): Promise<Scale3dScene> {
 export function renderAttempt(deps: StageDeps): AttemptHandler {
   return async (ctx) => {
     const video = await loadVideo(deps.db, ctx);
+    const scene3dRenderer = video.kind === "scene3d" ? await nativeOnly(deps, ctx) : null; // refuses at once, before any other work, when native is off or not ready
     const scale3d = video.kind === "scale3d" ? await scale3dRenderer(deps, ctx) : null;
     // The 900 s minimum is about the container's software drawing; the native Mac render has its own limit (render.native_timeout_s).
     if (scale3d && !scale3d.native && ctx.config.render.timeoutS < SCALE3D_MIN_RENDER_TIMEOUT_S) {
@@ -103,6 +107,7 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
     const audioFile = await promotedPath(deps.root, video.id, narration.file);
     if (!(await isFile(audioFile))) throw new KnownFailure(`The file ${narration.file} from an earlier stage is missing. Run that stage again.`);
 
+    if (scene3dRenderer) return renderScene3d(scene3dRenderer, deps, ctx, video, audioFile);
     if (video.kind === "scale3d") return renderScale3d(scale3d!.renderer, deps, ctx, video, audioFile);
 
     const scenesFile = await promotedPath(deps.root, video.id, "scenes.json");
@@ -173,4 +178,74 @@ async function renderScale3d(renderer: Renderer, deps: StageDeps, ctx: Parameter
   });
   if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
   return { files: ["render.mp4"], result: { rendered: "render.mp4", kind: "scale3d", beats: scene.beats.length, image: r.image ?? null, ...retime } };
+}
+
+/**
+ * The renderer for a scene3d video: the native Mac renderer ONLY. If render.native_3d is off, no native renderer is wired or the
+ * preflight is not ready, the stage fails with a plain sentence; it never falls back to the container.
+ */
+async function nativeOnly(deps: StageDeps, ctx: Parameters<AttemptHandler>[0]): Promise<Renderer> {
+  // The stored error is cut at about 120 characters in places: the fix comes first, the detail after.
+  const fix = 'Turn on render.native_3d in System settings and run "npx remotion browser ensure" first: 3D scene videos render on this Mac only.';
+  const tail = "Run Render again afterwards. Nothing was rendered.";
+  if (!ctx.config.render.native3d) throw new KnownFailure(`${fix} The setting is off. ${tail}`);
+  if (!deps.native) throw new KnownFailure(`${fix} This worker has no native renderer. ${tail}`);
+  const ready = await deps.native.ready().catch(() => ({ ready: false, message: "The readiness check failed." }));
+  if (!ready.ready) throw new KnownFailure(`${fix} Not ready: ${ready.message.slice(0, 250)} ${tail}`);
+  if (ctx.config.render.nativeTimeoutS > ctx.config.timeoutStageS) ctx.log(`render: the native limit (${ctx.config.render.nativeTimeoutS} s) is longer than the stage limit (${ctx.config.timeoutStageS} s), which stops the render first`);
+  return deps.native.renderer;
+}
+
+/** Reads and validates scene3d.json (same file rules as scenes.json); every model must be a CC0 catalogue model. */
+export async function readScene3dFile(file: string, resolver: ReturnType<typeof catalogModelResolver>): Promise<Scene3d> {
+  const fh = await openRegular(file).catch(() => {
+    throw new KnownFailure("scene3d.json is missing or not a plain file. Run the director step again.");
+  });
+  let json: unknown;
+  try {
+    if ((await fh.stat()).size > MAX_SCENES_BYTES) throw new KnownFailure("scene3d.json is too big (over 1 MB). Run the director step again.");
+    json = JSON.parse(await fh.readFile("utf8"));
+  } catch (e) {
+    if (e instanceof KnownFailure) throw e;
+    throw new KnownFailure("scene3d.json is not valid JSON. Run the director step again.");
+  } finally {
+    await fh.close();
+  }
+  const v = validateScene3d(json, resolver);
+  if (!v.ok) throw new KnownFailure(`scene3d_invalid: ${v.errors.slice(0, 3).join("; ")}. Run the director step again.`.slice(0, 600));
+  return v.scene;
+}
+
+/** Render for a scene3d video: the checked scene, re-timed to the real word times (shots follow the story lines), through the native renderer. */
+async function renderScene3d(renderer: Renderer, deps: StageDeps, ctx: Parameters<AttemptHandler>[0], video: Awaited<ReturnType<typeof loadVideo>>, audioFile: string) {
+  if (!deps.catalog3d) throw new KnownFailure("The 3D model catalogue is not wired, so the 3D scene cannot be checked.");
+  const catalog = await deps.catalog3d().catch(() => {
+    throw new KnownFailure("The 3D model catalogue could not be read (assets3d/manifest.json).");
+  });
+  const sceneFile = await promotedPath(deps.root, video.id, "scene3d.json");
+  let scene = await readScene3dFile(sceneFile, catalogModelResolver(catalog));
+  const captions = await contentBody<{ words?: unknown }>(deps.db, video.id, "captions").catch(() => null);
+  const fromS = scene.shots.reduce((a, s) => a + s.duration_s, 0);
+  let retime: { retimed: boolean; fromS: number | null; toS: number | null } = { retimed: false, fromS: null, toS: null };
+  try {
+    const words = (Array.isArray(captions?.words) ? captions.words : []).filter(
+      (w): w is { startS: number; endS: number } => typeof (w as { startS?: unknown })?.startS === "number" && typeof (w as { endS?: unknown })?.endS === "number",
+    );
+    const lastEnd = words.length > 0 ? Math.max(...words.map((w) => w.endS)) + 0.3 : 0;
+    const narrationDurationS = await audioSeconds(deps.mix, ctx, audioFile).catch(() => lastEnd);
+    const script = await approvedScript(deps.db, video.id);
+    const story = script.ok && Array.isArray(script.script.story) ? (script.script.story as Array<{ id?: unknown; line?: unknown }>) : [];
+    const fromStory = story.filter((b) => typeof b?.id === "string" && typeof b?.line === "string").map((b) => ({ id: b.id as string, words: wordCount(b.line as string) }));
+    // No story in the script (should not happen for this kind): each shot is its own beat, weighted by its planned length.
+    const beats = fromStory.length > 0 ? fromStory : scene.shots.map((s) => ({ id: s.id, words: s.duration_s }));
+    const res = retimeScene3d(scene, { beats, words, narrationDurationS });
+    if (!res.ok) throw new Error(res.reason);
+    scene = res.scene;
+    retime = { retimed: true, fromS, toS: res.totalS };
+  } catch (e) {
+    ctx.log(`render: 3D shots not re-timed, original timing kept (${e instanceof Error ? e.message : "unknown"})`.slice(0, 300));
+  }
+  const r = await renderer.render(ctx, { sceneFile, scene3d: scene, audioFile, videoId: video.id, style: video.style, captionStyle: video.captionStyle, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: SIZE });
+  if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
+  return { files: ["render.mp4"], result: { rendered: "render.mp4", kind: "scene3d", shots: scene.shots.length, image: r.image ?? null, ...retime } };
 }

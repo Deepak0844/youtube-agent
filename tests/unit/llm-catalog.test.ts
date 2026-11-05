@@ -205,7 +205,7 @@ describe("form text is bounded, never silently emptied", () => {
 describe("stage routing and capabilities", () => {
   const m = (c: Partial<typeof caps>, o: Partial<ModelRow> = {}): ModelRow => ({ id: "00000000-0000-4000-8000-000000000002", ...hosted, endpointKind: "hosted", ...o, capabilities: { ...caps, ...c } });
   it("stages follow Doc 8 section 3 and are unique", () => {
-    expect(STAGES.map((s) => s.id)).toEqual(["outline", "draft", "build_scene_kit", "build_tsx", "build_scale3d", "qa_vision", "review_frames", "research", "titles", "comment_replies"]);
+    expect(STAGES.map((s) => s.id)).toEqual(["outline", "draft", "build_scene_kit", "build_tsx", "build_scale3d", "direct_scene3d", "qa_vision", "review_frames", "research", "titles", "comment_replies"]);
   });
   it("structured-output stages exclude models without it", () => {
     for (const id of ["outline", "titles", "comment_replies"]) expect(eligibleForStage(id, m({ structuredOutput: false })).ok, id).toBe(false);
@@ -229,7 +229,7 @@ describe("stage routing and capabilities", () => {
   it("a claude_code row counts as tool-free whatever it claims (tools are off in the adapter)", () => {
     const cc = { ...m({ toolUse: true, vision: true, nativeWebSearch: true }), provider: "claude_code" };
     for (const id of ["qa_vision", "research"]) expect(eligibleForStage(id, cc).ok, id).toBe(false);
-    for (const id of ["outline", "draft", "build_scene_kit", "build_tsx", "build_scale3d", "titles", "comment_replies"]) expect(eligibleForStage(id, cc).ok, id).toBe(true);
+    for (const id of ["outline", "draft", "build_scene_kit", "build_tsx", "build_scale3d", "direct_scene3d", "titles", "comment_replies"]) expect(eligibleForStage(id, cc).ok, id).toBe(true);
   });
   it("unknown stage is refused", () => expect(eligibleForStage("nope", m({})).ok).toBe(false));
   it("a route target must be enabled and priced (or free local)", () => {

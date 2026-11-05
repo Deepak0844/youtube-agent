@@ -48,6 +48,8 @@ import { dryRunPicturesHandler, picturesHandler } from "./stages/pictures";
 import { qaAttempt } from "./stages/qa";
 import { renderAttempt } from "./stages/render";
 import { tsxAuthorAttempt } from "./stages/tsx-author";
+import { directScene3dAttempt } from "./stages/direct-scene3d";
+import { loadRepoCatalog } from "@/server/providers/renderer/scene3d-models";
 import { sfxHandler } from "./stages/sfx";
 import { ttsAttempt } from "./stages/tts";
 import { voiceAttempt } from "./stages/voice";
@@ -91,6 +93,7 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     tts: withAttempt(fin, ttsAttempt(deps)),
     render: withAttempt(fin, renderAttempt(deps)),
     tsx_author: withAttempt(fin, tsxAuthorAttempt(deps)),
+    direct_scene3d: withAttempt(fin, directScene3dAttempt(deps)),
     voice: withAttempt(fin, voiceAttempt(deps)),
     sfx: sfxHandler(fin, deps),
     qa: withAttempt(fin, qaAttempt(deps)),
@@ -146,11 +149,13 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
       assetFile: async (id) => { const a = await getAsset(pool, id); return a && !a.deletedAt && (a.kind === "image" || a.kind === "video") ? a.storageRef : null; },
       probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
     }),
+    catalog3d: () => loadRepoCatalog(path.resolve(renderKitDir(), "..", "..")),
     // 3D videos on this Mac's GPU, inside sandbox-exec (remotion-native.ts). Used only when render.native_3d is on and the preflight is ready.
     native: {
       renderer: createNativeRenderer({
         root, kitDir: renderKitDir(), runChild: run, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
         preflight: () => checkNativeRenderReady({ repoRoot: path.resolve(renderKitDir(), "..", ".."), storageRoot: root }),
+        catalog: () => loadRepoCatalog(path.resolve(renderKitDir(), "..", "..")),
       }),
       ready: () => checkNativeRenderReady({ repoRoot: path.resolve(renderKitDir(), "..", ".."), storageRoot: root }),
     },
@@ -183,6 +188,11 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
   const tsxAuthor: StageHandler = async (ctx) => {
     const models = await defaultModelDeps(pool, () => loadKeyring());
     return withAttempt(fin, tsxAuthorAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
+  };
+  // 3D scene videos: the direct_scene3d model route and the same budget scopes as Build; the catalogue comes from the repo the worker runs in.
+  const directScene3d: StageHandler = async (ctx) => {
+    const models = await defaultModelDeps(pool, () => loadKeyring());
+    return withAttempt(fin, directScene3dAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
   };
   // On demand only (never in the route): same model wiring and budget scopes as Build; saves its own scenes version.
   const repair: StageHandler = async (ctx) => {
@@ -222,6 +232,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     tts: refuseDryRunVideos(pool, withAttempt(fin, ttsAttempt(deps))),
     render: refuseDryRunVideos(pool, withAttempt(fin, renderAttempt(deps))),
     tsx_author: refuseDryRunVideos(pool, tsxAuthor),
+    direct_scene3d: refuseDryRunVideos(pool, directScene3d),
     voice: refuseDryRunVideos(pool, withAttempt(fin, voiceAttempt(deps))),
     sfx: refuseDryRunVideos(pool, sfxHandler(fin, deps)),
     qa: refuseDryRunVideos(pool, withAttempt(fin, qaAttempt(deps))),

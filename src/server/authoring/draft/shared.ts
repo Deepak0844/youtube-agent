@@ -22,7 +22,7 @@ export interface DraftDeps {
 export interface DraftInput {
   topic: string;
   lang: Lang;
-  kind: "scene_kit" | "tsx" | "collage" | "ai" | "scale3d";
+  kind: "scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "scene3d";
   /** Defaults to "short". */
   format?: "short" | "long";
   notes?: string;

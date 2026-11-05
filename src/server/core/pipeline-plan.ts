@@ -7,11 +7,11 @@ import type { GateId } from "@/server/core/gates";
 // covers the hash of the stage before it, so rerunning an early stage makes every later one stale automatically.
 
 export type VideoFormat = "short" | "long";
-export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai" | "scale3d";
+export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "scene3d";
 export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
-export const STAGE_NAMES = ["draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "voice", "sfx", "qa", "repair_scenes", "reframe", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
+export const STAGE_NAMES = ["draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "voice", "sfx", "qa", "repair_scenes", "reframe", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
 export type StageName = (typeof STAGE_NAMES)[number];
 
 export interface PlanStep {
@@ -61,6 +61,19 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
       { stage: "qa", gateAfter: "video", resource: "cpu" },
     ];
   }
+  // scene3d: the director (text only, $0 on Claude Code) writes the whole scene from catalogue models in one step after the script gate; Render
+  // retimes its shots to the narration and draws it natively. No pictures, no build, nothing to buy.
+  if (kind === "scene3d") {
+    const head: PlanStep[] = flags.imported ? [] : [{ stage: "draft", gateAfter: "script", resource: "net" }, { stage: "direct_scene3d", resource: "cpu" }];
+    return [
+      ...head,
+      { stage: "tts", resource: "net" },
+      { stage: "render", resource: "render" },
+      { stage: "voice", resource: "cpu" },
+      { stage: "sfx", resource: "cpu" },
+      { stage: "qa", gateAfter: "video", resource: "cpu" },
+    ];
+  }
   const steps: PlanStep[] = flags.imported
     ? []
     : [
@@ -99,6 +112,7 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   tts: ["script"],
   render: ["beats", "narration", "scenes"],
   tsx_author: ["script", "narration"],
+  direct_scene3d: ["script"],
   voice: [],
   sfx: [],
   qa: [],

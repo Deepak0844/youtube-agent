@@ -290,6 +290,15 @@ export const STAGES: readonly StageDef[] = [
     requiresAny: [],
     prefers: [],
   },
+  // Free-form text (one scene JSON back), no tools sent: Claude Code works too.
+  {
+    id: "direct_scene3d",
+    label: "Director, 3D scene",
+    hint: "Writes the 3D scene of a 3D scene video as plain JSON text, from catalogue models. Used only for 3D scene videos.",
+    requires: [],
+    requiresAny: [],
+    prefers: [],
+  },
   { id: "qa_vision", label: "QA, vision review", hint: "Optional review of frames. Leave unset to skip.", requires: ["vision"], requiresAny: [], prefers: [], optional: true },
   // Reads rendered key frames of a code scene (images in, strict JSON out). Unrouted = the review is skipped, never the video.
   { id: "review_frames", label: "Frame check, code scenes", hint: "Reads key frames of a custom animation and says what looks wrong. Leave unset to skip.", requires: ["vision"], requiresAny: [], prefers: [], optional: true },

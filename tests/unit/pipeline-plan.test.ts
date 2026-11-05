@@ -313,3 +313,29 @@ describe("scale3d kind", () => {
     expect(routeFor(v).map((s) => s.stage)).toEqual(["draft", "build", "tts", "render", "voice", "sfx", "qa"]);
   });
 });
+
+describe("scene3d kind", () => {
+  const f = { requireEvidence: true, paidGeneration: false };
+  it("runs draft, direct_scene3d, tts, render, voice, sfx, qa with no pictures, build or generate", () => {
+    const plan = stagePlan("scene3d", "short", { ...f, paidGeneration: true });
+    expect(plan.map((s) => s.stage)).toEqual(["draft", "direct_scene3d", "tts", "render", "voice", "sfx", "qa"]);
+    expect(plan[0]).toMatchObject({ stage: "draft", gateAfter: "script" });
+    expect(plan.at(-1)).toMatchObject({ stage: "qa", gateAfter: "video" });
+    expect(chainPrev(plan, 2)?.stage).toBe("direct_scene3d");
+  });
+  it("the director hash covers the script and the previous stage; the kind is never in a hash", () => {
+    const v = base({ kind: "scene3d", content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
+    expect(expectedInputHash(v, "direct_scene3d", "d")).toBe(stageInputHash("direct_scene3d", { prev: "d", script: "s" }, {}));
+    expect(expectedInputHash(v, "render", "t")).toBe(stageInputHash("render", { prev: "t", beats: "b", narration: "n", scenes: "sc" }, {}));
+  });
+  it("leaves the hashes and routes of every existing kind exactly as they were", () => {
+    const sk = base({ content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
+    expect(expectedInputHash(sk, "draft", null)).toBe(stageInputHash("draft", { params: "p", feedback: "" }, {}));
+    expect(expectedInputHash(sk, "build", "d")).toBe(stageInputHash("build", { prev: "d", script: "s" }, {}));
+    expect(expectedInputHash(sk, "tts", "b")).toBe(stageInputHash("tts", { prev: "b", script: "s" }, {}));
+    expect(expectedInputHash(sk, "render", "t")).toBe(stageInputHash("render", { prev: "t", beats: "b", narration: "n", scenes: "sc" }, {}));
+    expect(stagePlan("scale3d", "short", f).map((s) => s.stage)).toEqual(["draft", "build", "tts", "render", "voice", "sfx", "qa"]);
+    expect(stagePlan("tsx", "short", f).map((s) => s.stage)).toEqual(["draft", "tts", "tsx_author", "voice", "sfx", "qa"]);
+    expect(stagePlan("scene_kit", "short", f).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
+  });
+});

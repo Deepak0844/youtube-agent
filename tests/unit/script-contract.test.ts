@@ -92,3 +92,42 @@ describe("validateScript, scale3d", () => {
     expect(problems(validateScript({ ...good(), scale: [item(), item({ label: "B" })] }, "en", "short", { kind: "scene_kit" })).join()).toMatch(/only for 3D/);
   });
 });
+
+describe("validateScript, scene3d story", () => {
+  const ids = ["hook", "setup", "dig", "load", "pour", "reveal", "loop"];
+  const beat = (id: string, over: Record<string, unknown> = {}) => ({ id, visual: `A ship pours sand into the sea at ${id}`, line: words(14), ...over });
+  const story = (over: Record<string, unknown>[] = []) => ids.map((id, i) => beat(id, over[i] ?? {}));
+  // 7 beats x 14 words = 98 words
+  const s3 = (st: unknown, extra: Record<string, unknown> = {}) => ({ ...good(words(98)), evidence: [], story: st, ...extra });
+  const run = (st: unknown, requireEvidence = false, extra: Record<string, unknown> = {}) => validateScript(s3(st, extra), "en", "short", { kind: "scene3d", requireEvidence });
+  it("accepts a 7 beat story and turns facts into evidence claims", () => {
+    const r = run(story([{}, {}, { fact: "The island is 5 km wide", source_url: "https://example.com/i", quote: "the island is five km wide" }, { fact: "Ships moved 94 million m3", method: "from the project record" }]), true);
+    if (!r.ok) throw new Error(r.problems.join());
+    expect(r.script.evidence).toEqual([
+      { text: "The island is 5 km wide", kind: "sourced", source_url: "https://example.com/i", quote: "the island is five km wide" },
+      { text: "Ships moved 94 million m3", kind: "computed", method: "from the project record" },
+    ]);
+  });
+  it("needs 6 to 12 beats, a hook first and a loop last", () => {
+    expect(problems(run(undefined)).join()).toMatch(/story of 6 to 12/);
+    expect(problems(run(story().slice(0, 5))).join()).toMatch(/story of 6 to 12/);
+    expect(run(Array.from({ length: 13 }, (_, i) => beat(i === 0 ? "hook" : `b${i}`))).ok).toBe(false);
+    expect(problems(run(story([{ id: "first" }]))).join()).toMatch(/first beat id must be "hook"/);
+    expect(problems(run(story([{}, {}, {}, {}, {}, {}, { id: "end" }]))).join()).toMatch(/last beat id must be "loop"/);
+  });
+  it("rejects a visual of two sentences, a fact without proof and a repeated id", () => {
+    expect(problems(run(story([{ visual: "A ship arrives. A crane lifts a block." }]))).join()).toMatch(/ONE sentence/);
+    expect(problems(run(story([{}, { fact: "X is big" }]))).join()).toMatch(/source_url with a quote, or a method/);
+    expect(problems(run(story([{}, { id: "hook" }]))).join()).toMatch(/used twice/);
+  });
+  it("rejects scale-only scripts and a scale list on a scene video", () => {
+    expect(problems(run(story(ids.map(() => ({ visual: "The tower is taller than the crane" }))))).join()).toMatch(/size comparison/);
+    expect(problems(run(story(), false, { scale: [] })).join()).toMatch(/scale is only/);
+  });
+  it("the lines must be the narration split into beats", () => {
+    expect(problems(validateScript({ ...s3(story()), narration: words(140) }, "en", "short", { kind: "scene3d", requireEvidence: false })).join()).toMatch(/beat lines add up/);
+  });
+  it("story is refused on other kinds", () => {
+    expect(problems(validateScript(s3(story()), "en", "short", { kind: "scene_kit", requireEvidence: false })).join()).toMatch(/only for 3D scene/);
+  });
+});
