@@ -17,10 +17,10 @@ import { rest } from "../rest";
 import { clamp, rnd, smooth, ramp } from "../rng";
 import { pebbleTexture, sandTexture } from "../textures";
 
-export const RECLAMATION_MODELS = { ship: "pp_ship_meqj", boat: "pp_boat_5uel", crane: "pp_crane_17ab" } as const;
+export const RECLAMATION_MODELS = { ship: "pp_small_ship_w2vm", boat: "pp_boat_5uel", crane: "pp_crane_17ab" } as const;
 /** Heights (m): sea level 0, sea bed -12, final land +2.5. */
 export const SEA_Y = 0, BED_Y = -12, LAND_Y = 2.5, BOTTOM_Y = -40;
-export const LAND_X0 = -90, WALL_X0 = 18, WALL_X1 = 32, SEA_X1 = 90, DEPTH_Z = 120;
+export const LAND_X0 = -30, WALL_X0 = 10, WALL_X1 = 20, SEA_X1 = 50, DEPTH_Z = 70;
 /** Story beats in seconds. */
 export const WALL_T = [0.5, 4.5] as const, POUR_T = [4.5, 10.5] as const, TOWER_T = [9.5, 13.5] as const;
 
@@ -44,7 +44,7 @@ export function buildReclamation(models: Models): Reclamation {
   wall.castShadow = wall.receiveShadow = true;
   const wallPivot = new THREE.Group(); wallPivot.position.y = BED_Y; wall.position.y = -BED_Y; wallPivot.add(wall); root.add(wallPivot);
   // loose boulders along the wall crest (instanced: one draw call)
-  const boulderSlots: Slot[] = Array.from({ length: 70 }, () => ({ x: WALL_X0 + 2 + rng() * 11, y: 3.4 + rng() * 0.4, z: -rng() * 60 - 1, rx: rng() * 6, ry: rng() * 6, s: 0.8 + rng() * 1.4 }));
+  const boulderSlots: Slot[] = Array.from({ length: 140 }, () => ({ x: WALL_X0 + 2 + rng() * (WALL_X1 - WALL_X0 - 4), y: 3.4 + rng() * 0.3, z: -rng() * (DEPTH_Z - 4) - 1, rx: rng() * 6, ry: rng() * 6, s: 0.4 + rng() * 0.7 }));
   const boulders = instance(new THREE.DodecahedronGeometry(1, 0), std("#8f8678", { roughness: 1 }), boulderSlots);
   const boulderPivot = new THREE.Group(); boulderPivot.add(boulders); root.add(boulderPivot);
 
@@ -56,13 +56,13 @@ export function buildReclamation(models: Models): Reclamation {
   const landPivot = new THREE.Group(); landPivot.position.y = BED_Y; landPivot.add(land); root.add(landPivot);
 
   // ---- ship in the open sea, pouring sand over the wall ----
-  const ship = models.get(RECLAMATION_MODELS.ship, { size: 46 });
-  ship.position.set(58, 0, -30); ship.rotation.y = Math.PI / 2; root.add(ship);
+  const ship = models.get(RECLAMATION_MODELS.ship, { size: 28 });
+  ship.position.set(37, 0, -26); ship.rotation.y = Math.PI / 2; root.add(ship);
   rest(ship, SEA_Y, 0.2); // hull on the water: the one rule that keeps ships from floating
   const shipY = ship.position.y;
-  const nozzle = new THREE.Vector3(40, 9, -30), pour = new THREE.Vector3(8, LAND_Y, -30);
+  const nozzle = new THREE.Vector3(26, 7, -26), pour = new THREE.Vector3(0, LAND_Y, -26);
   const jet = makeParticles({
-    count: 260, seed: 12, size: 1.1, color: "#e7cf9c", opacity: 0.9,
+    count: 320, seed: 12, size: 1.6, color: "#e2c48a", opacity: 1,
     emit: (s, ph, _t, out) => { // a parabola from the nozzle to the pour spot, a little spread, falling fast at the end
       out[0] = nozzle.x + (pour.x - nozzle.x) * ph + (s.r - 0.5) * 1.4;
       out[1] = nozzle.y + (pour.y - nozzle.y) * ph + 16 * 4 * ph * (1 - ph) * 0.5;
@@ -74,9 +74,9 @@ export function buildReclamation(models: Models): Reclamation {
   // ---- skyline growing on the new land ----
   const mats = towerMaterials();
   const towers: { g: THREE.Group; at: number }[] = [];
-  for (let i = 0; i < 9; i++) {
-    const g = glassTower(mats, 8 + rng() * 6, 24 + rng() * 40 + (i % 3 === 0 ? 20 : 0), 8 + rng() * 5, i + 1, LAND_X0 + 12 + i * 8.5, -14 - rng() * 70);
-    g.position.y = LAND_Y; root.add(g); towers.push({ g, at: TOWER_T[0] + (i / 9) * (TOWER_T[1] - TOWER_T[0]) * 0.7 });
+  for (let i = 0; i < 8; i++) {
+    const g = glassTower(mats, 5 + rng() * 3, 14 + rng() * 22 + (i % 3 === 0 ? 14 : 0), 5 + rng() * 3, i + 1, LAND_X0 + 7 + (i % 4) * 8, -10 - Math.floor(i / 4) * 24 - rng() * 8);
+    g.position.y = LAND_Y; root.add(g); towers.push({ g, at: TOWER_T[0] + (i / 8) * (TOWER_T[1] - TOWER_T[0]) * 0.7 });
   }
 
   const update = (t: number): void => {
@@ -86,7 +86,7 @@ export function buildReclamation(models: Models): Reclamation {
     const pouring = t >= POUR_T[0] + 0.5 && t < POUR_T[1];
     jet.points.visible = pouring; if (pouring) jet.update(t);
     landPivot.scale.y = Math.max(0.001, 0.04 + 0.96 * smooth(ramp(t, POUR_T[0] + 0.5, POUR_T[1])));
-    towers.forEach((o) => { o.g.scale.y = Math.max(0.001, smooth(clamp(ramp(t, o.at, o.at + 2.2)))); });
+    towers.forEach((o) => { const k = smooth(clamp(ramp(t, o.at, o.at + 2.2))); o.g.visible = k > 0.02; o.g.scale.y = Math.max(0.001, k); });
   };
   update(0);
   return { root, update, nozzle, pour };

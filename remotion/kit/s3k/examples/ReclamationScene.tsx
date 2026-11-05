@@ -22,23 +22,23 @@ export const RECLAMATION_CAPTIONS: CaptionItem[] = [
 ];
 const T = RECLAMATION_SECONDS;
 export const RECLAMATION_SHOTS: RigShot[] = [
-  { t: 0, frame: { box: { min: [LAND_X0, BOTTOM_Y, -2], max: [SEA_X1, 6, 2] }, yawDeg: 10, pitchDeg: 14, distanceMul: 1.05 } },
-  { t: T * 0.45, at: [70, 20, 72], look: [28, 0, -26] },
-  { t: T, frame: { box: { min: [LAND_X0, BED_Y, -90], max: [WALL_X1, 70, 0] }, yawDeg: -22, pitchDeg: 12, distanceMul: 1.0 } },
+  { t: 0, frame: { box: { min: [LAND_X0, BOTTOM_Y, -2], max: [SEA_X1, 6, 2] }, yawDeg: 10, pitchDeg: 14, distanceMul: 1.0 } },
+  { t: T * 0.45, at: [62, 22, 62], look: [20, 1, -22] },
+  { t: T, frame: { box: { min: [LAND_X0, BED_Y, -60], max: [WALL_X1, 42, 0] }, yawDeg: -24, pitchDeg: 12, distanceMul: 1.0 } },
 ];
-const FOCUS = { min: [-100, -45, -130] as [number, number, number], max: [100, 75, 10] as [number, number, number] };
+const FOCUS = { min: [-40, -45, -80] as [number, number, number], max: [60, 50, 10] as [number, number, number] };
 const IDS = Object.values(RECLAMATION_MODELS);
 
 const Content: React.FC<{ models: NonNullable<ReturnType<typeof useModels>>; finish: "full" | "fast" | "off" }> = ({ models, finish }) => {
   const t = useT();
   const parts = useMemo(() => ({
     rec: buildReclamation(models),
-    boats: buildBoats(models, [{ id: RECLAMATION_MODELS.boat, size: 9, x: 75, z: -12, yaw: 0.6 }, { id: RECLAMATION_MODELS.boat, size: 7, x: 50, z: -60, yaw: -0.3 }], SEA_Y),
+    boats: buildBoats(models, [{ id: RECLAMATION_MODELS.boat, size: 6, x: 44, z: -10, yaw: 0.6 }, { id: RECLAMATION_MODELS.boat, size: 5, x: 30, z: -50, yaw: -0.3 }], SEA_Y),
   }), [models]);
   parts.rec.update(t); parts.boats.update(t);
   return (
     <>
-      <World preset="clear" focus={FOCUS} ground={{ y: BOTTOM_Y, kind: "sand", tile: 12, zMin: 0 }} sea={{ y: SEA_Y, zMax: 0, color: "#2fb8cf" }} />
+      <World preset="clear" tweak={{ fogDensity: 0.001 }} focus={FOCUS} ground={{ y: BOTTOM_Y, kind: "sand", tile: 12, zMin: 0 }} sea={{ y: SEA_Y, zMax: 0, color: "#2fb8cf" }} />
       {/* sea bed under everything: tilted layers, gravel and sand; the cut face is the plane z = 0 */}
       <CutawayBox x0={LAND_X0} x1={SEA_X1} top={BED_Y} bottom={BOTTOM_Y} tiltDeg={7} tile={40} parapet={false} waterBlock={{ x0: WALL_X1 + 3, x1: SEA_X1, y0: BED_Y, y1: SEA_Y - 0.05, depth: 60 }} />
       <primitive object={parts.rec.root} />
