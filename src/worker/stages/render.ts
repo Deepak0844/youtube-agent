@@ -11,6 +11,9 @@ import { retimeScale3d, validateScale3d, type Scale3dScene } from "@/shared/scal
 import { retimeScene3d, validateScene3d, type Scene3d } from "@/shared/scene3d";
 import { wordCount } from "@/server/core/lang";
 import { catalogModelResolver } from "@/server/core/scene3d-direct";
+import { readSceneCodeBody, sceneCodeSha, type Scene3dCodeBody } from "@/server/core/scene3d-code-body";
+import { isScene3dKind } from "@/server/core/pipeline-plan";
+import { sha256Hex as sha256Text } from "@/server/core/content-hash";
 import type { Renderer } from "@/server/providers/renderer";
 import { openRegular, promotedPath, type AttemptHandler } from "./attempt";
 import { contentBody, loadVideo, SIZE, type StageDeps } from "./deps";
@@ -97,8 +100,8 @@ export async function readScale3dFile(file: string): Promise<Scale3dScene> {
 export function renderAttempt(deps: StageDeps): AttemptHandler {
   return async (ctx) => {
     const video = await loadVideo(deps.db, ctx);
-    const scene3dRenderer = video.kind === "scene3d" ? await nativeOnly(deps, ctx) : null; // refuses at once, before any other work, when native is off or not ready
-    const approvedSceneSha = video.kind === "scene3d" ? await approvedLookSceneSha(deps, video.id) : null; // and before the long render, unless the owner approved the look
+    const scene3dRenderer = isScene3dKind(video.kind) ? await nativeOnly(deps, ctx) : null; // refuses at once, before any other work, when native is off or not ready
+    const approvedSceneSha = isScene3dKind(video.kind) ? await approvedLookSceneSha(deps, video.id) : null; // and before the long render, unless the owner approved the look
     const scale3d = video.kind === "scale3d" ? await scale3dRenderer(deps, ctx) : null;
     // The 900 s minimum is about the container's software drawing; the native Mac render has its own limit (render.native_timeout_s).
     if (scale3d && !scale3d.native && ctx.config.render.timeoutS < SCALE3D_MIN_RENDER_TIMEOUT_S) {
@@ -111,7 +114,7 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
     const audioFile = await promotedPath(deps.root, video.id, narration.file);
     if (!(await isFile(audioFile))) throw new KnownFailure(`The file ${narration.file} from an earlier stage is missing. Run that stage again.`);
 
-    if (scene3dRenderer) return renderScene3d(scene3dRenderer, deps, ctx, video, audioFile, approvedSceneSha!);
+    if (scene3dRenderer) return video.kind === "scene3d_code" ? renderScene3dCode(scene3dRenderer, deps, ctx, video, approvedSceneSha!) : renderScene3d(scene3dRenderer, deps, ctx, video, audioFile, approvedSceneSha!);
     if (video.kind === "scale3d") return renderScale3d(scale3d!.renderer, deps, ctx, video, audioFile);
 
     const scenesFile = await promotedPath(deps.root, video.id, "scenes.json");
@@ -208,6 +211,43 @@ async function approvedLookSceneSha(deps: StageDeps, videoId: string): Promise<s
   const previews = snap === "no_video" ? null : readPreviews(snap.inputs.content.previews?.body);
   if (!previews) throw refusal;
   return previews.scene_sha256;
+}
+
+/**
+ * The stored AI-written scene of a scene3d_code video: the `scenes` body (source + props + fingerprints) AND the promoted file scene.tsx,
+ * which must hold exactly the same source. Any difference, an unreadable body or a missing file is a plain refusal. The ONE copy: the preview
+ * pictures and the full render both call it.
+ */
+export async function loadSceneCode(deps: StageDeps, video: Awaited<ReturnType<typeof loadVideo>>): Promise<Scene3dCodeBody> {
+  const body = readSceneCodeBody(await contentBody<unknown>(deps.db, video.id, "scenes").catch(() => null));
+  if (!body) throw new KnownFailure("The stored scene code is missing or damaged. Run the author step again. Nothing was rendered.");
+  const file = await promotedPath(deps.root, video.id, "scene.tsx");
+  const fh = await openRegular(file).catch(() => {
+    throw new KnownFailure("The file scene.tsx from the author step is missing. Run that step again. Nothing was rendered.");
+  });
+  let onDisk: string;
+  try {
+    if ((await fh.stat()).size > 70 * 1024) throw new KnownFailure("The file scene.tsx is too big. Run the author step again. Nothing was rendered.");
+    onDisk = await fh.readFile("utf8");
+  } finally {
+    await fh.close();
+  }
+  if (sha256Text(onDisk) !== body.source_sha256) throw new KnownFailure("The file scene.tsx is not the scene that was checked and saved (it was changed). Run the author step again. Nothing was rendered.");
+  return body;
+}
+
+/** Render for a scene3d_code video: the approved source and props through the native renderer, which re-checks the source and the fingerprint before running anything. */
+async function renderScene3dCode(renderer: Renderer, deps: StageDeps, ctx: Parameters<AttemptHandler>[0], video: Awaited<ReturnType<typeof loadVideo>>, approvedSceneSha: string) {
+  const body = await loadSceneCode(deps, video);
+  if (sceneCodeSha(body.source, body.props) !== approvedSceneSha) throw new KnownFailure("The scene is not the one you approved the look for. Run the preview pictures again and approve the new look. Nothing was rendered.");
+  const narration = await contentBody<{ file?: unknown }>(deps.db, video.id, "narration");
+  const audioFile = typeof narration.file === "string" ? await promotedPath(deps.root, video.id, narration.file) : null;
+  if (!audioFile || !(await isFile(audioFile))) throw new KnownFailure("The narration audio from an earlier stage is missing. Run that stage again.");
+  const captions = await contentBody<{ words?: unknown }>(deps.db, video.id, "captions").catch(() => null);
+  const sceneFile = await promotedPath(deps.root, video.id, "scene.tsx");
+  const r = await renderer.render(ctx, { sceneFile, scene3dCode: { source: body.source, props: body.props, expectedSha256: approvedSceneSha }, audioFile, videoId: video.id, style: video.style, captionStyle: video.captionStyle, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: SIZE });
+  if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
+  return { files: ["render.mp4"], result: { rendered: "render.mp4", kind: "scene3d_code", beats: body.props.beats.length, durationS: body.props.durationS, image: r.image ?? null } };
 }
 
 /** Reads and validates scene3d.json (same file rules as scenes.json); every model must be a CC0 catalogue model. */

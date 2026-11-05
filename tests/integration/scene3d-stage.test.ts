@@ -409,7 +409,7 @@ describe("scene3d: preview pictures stage (native only)", () => {
     const call = stills.calls[0]!;
     expect(call.frames.length).toBeGreaterThanOrEqual(6);
     expect(call.frames.length).toBeLessThanOrEqual(8);
-    expect(call.scene3d.shots.map((s) => s.duration_s)).not.toEqual(Array(7).fill(8)); // re-timed to the voice, exactly like Render
+    expect(call.scene3d!.shots.map((s) => s.duration_s)).not.toEqual(Array(7).fill(8)); // re-timed to the voice, exactly like Render
     const p = (await previewsOf(id))!;
     expect(p.times).toHaveLength(call.frames.length);
     expect(p.shots[0]).toEqual({ id: "hook", caption: "hook" });

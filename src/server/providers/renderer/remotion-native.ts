@@ -8,11 +8,11 @@ import type { StageContext } from "@/server/core/stage-handler";
 import type { ProbeResult } from "@/server/core/qa";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { openRegular } from "@/worker/stages/attempt";
-import type { Renderer, Scene3dStillsArgs, Scene3dStillsRenderer } from "./index";
+import type { Renderer, RenderArgs, Scene3dStillsArgs, Scene3dStillsRenderer } from "./index";
 import { nativeCommand, type NativeCommandInput } from "./native-sandbox";
 import type { NativeReadiness } from "./native-preflight";
 import { collectOutput, copyRegular, parseProgress, realDir, scale3dProps } from "./remotion-container";
-import { stageSceneModels } from "./scene3d-models";
+import { stageSceneCode, stageSceneModels } from "./scene3d-models";
 import type { Catalog3d } from "@/shared/assets3d/catalog";
 import type { Scene3d } from "@/shared/scene3d";
 
@@ -121,17 +121,25 @@ async function stagedScene(deps: NativeRendererDeps, scene: Scene3d, j: Job) {
   return stageSceneModels(scene, catalog, deps.assetsDir ?? path.join(j.repoRoot, "assets3d", "files"), j.inDir);
 }
 
+/** An AI-written scene staged into <inDir>: scene.tsx, props.json and the catalogue models it names (see stageSceneCode: fingerprint and checker re-run). */
+async function stagedSceneCode(deps: NativeRendererDeps, input: NonNullable<RenderArgs["scene3dCode"]>, j: Job) {
+  const catalog = await deps.catalog?.().catch(() => undefined);
+  if (!catalog) throw new KnownFailure("The 3D model catalogue could not be read (assets3d/manifest.json). Nothing was rendered.");
+  return stageSceneCode(input, catalog, deps.assetsDir ?? path.join(j.repoRoot, "assets3d", "files"), j.inDir);
+}
+
 export function createNativeRenderer(deps: NativeRendererDeps): Renderer & Scene3dStillsRenderer {
   return {
     async render(ctx: StageContext, a) {
       if (a.outFile === "" || a.outFile !== path.basename(a.outFile) || a.outFile.startsWith(".")) throw new Error("outFile must be a plain file name");
-      if (!a.scale3d && !a.scene3d) throw new KnownFailure("The native renderer only renders 3D scale and 3D scene videos.");
+      if (!a.scale3d && !a.scene3d && !a.scene3dCode) throw new KnownFailure("The native renderer only renders 3D scale and 3D scene videos.");
       return runNativeJob(deps, ctx, {
-        mode: a.scene3d ? "--scene3d" : "--scale3d",
+        mode: a.scene3dCode ? "--scene3d-code" : a.scene3d ? "--scene3d" : "--scale3d",
         output: (outDir) => path.join(outDir, "out.mp4"),
         // The inputs: props.json, and for a 3D scene ONLY the catalogue models it names, copied into <inDir>/models. The sandbox
         // reads this folder and nothing else of the repo or the storage root, so the read allow-list is not widened for them.
         prepare: async (j) => {
+          if (a.scene3dCode) return stagedSceneCode(deps, a.scene3dCode, j); // refuses a changed or unsafe scene BEFORE anything is written
           const props = a.scene3d ? { scene: await stagedScene(deps, a.scene3d, j) } : scale3dProps(a);
           await writeFile(path.join(j.inDir, "props.json"), JSON.stringify(props), { mode: 0o600, flag: "wx" });
         },
@@ -142,12 +150,14 @@ export function createNativeRenderer(deps: NativeRendererDeps): Renderer & Scene
     /** Draws the given frames of a 3D scene as 540x960 PNGs and copies them into <attemptDir>/stills/NN.png (at most 8, each checked). */
     async stills(ctx: StageContext, a: Scene3dStillsArgs) {
       if (a.frames.length < 1 || a.frames.length > MAX_STILLS || !a.frames.every((f) => Number.isInteger(f) && f >= 0)) throw new Error("stills: 1 to 8 whole frame numbers are needed");
+      if (!a.scene3d === !a.scene3dCode) throw new Error("stills: give exactly one of scene3d and scene3dCode");
       const dest = path.join(await realpath(ctx.attemptDir), "stills");
       return runNativeJob(deps, ctx, {
-        mode: "--scene3d-stills",
+        mode: a.scene3dCode ? "--scene3d-code-stills" : "--scene3d-stills",
         output: (outDir) => outDir,
         prepare: async (j) => {
-          await writeFile(path.join(j.inDir, "props.json"), JSON.stringify({ scene: await stagedScene(deps, a.scene3d, j) }), { mode: 0o600, flag: "wx" });
+          if (a.scene3dCode) await stagedSceneCode(deps, a.scene3dCode, j);
+          else await writeFile(path.join(j.inDir, "props.json"), JSON.stringify({ scene: await stagedScene(deps, a.scene3d!, j) }), { mode: 0o600, flag: "wx" });
           await writeFile(path.join(j.inDir, "stills.json"), JSON.stringify({ frames: a.frames }), { mode: 0o600, flag: "wx" });
         },
         collect: async (j) => {

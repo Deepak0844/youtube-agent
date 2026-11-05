@@ -3,12 +3,14 @@ import path from "node:path";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { logSafe } from "@/server/core/frame-review";
 import { BudgetRefusedError, KnownFailure } from "@/server/core/paid-call";
-import { adviceMessages, ADVICE_MAX_OUTPUT_TOKENS, buildPreviewsBody, parseAdvice, pickStills, type Advice, type StillPick } from "@/server/core/scene3d-stills";
+import { adviceMessages, ADVICE_MAX_OUTPUT_TOKENS, buildPreviewsBody, parseAdvice, pickCodeStills, pickStills, type Advice, type StillPick } from "@/server/core/scene3d-stills";
+import { isScene3dKind } from "@/server/core/pipeline-plan";
+import { sceneCodeSha } from "@/server/core/scene3d-code-body";
 import { UnpricedCallError } from "@/server/core/spend";
 import { LlmRefusal, type LlmClient, type LlmStageContext } from "@/server/llm/client";
 import { contentBody, loadVideo, videoMoneyScopes, type StageDeps } from "./deps";
 import { openRegular, promotedPath, sha256File, type AttemptHandler } from "./attempt";
-import { loadRetimedScene3d, nativeOnly } from "./render";
+import { loadRetimedScene3d, loadSceneCode, nativeOnly } from "./render";
 
 // Preview pictures of a 3D story (Phase 5d slice D2): after the narration exists, the scene is retimed to it (the same function Render
 // uses), 6 to 8 moments are drawn natively at 540x960, and the optional picture check (the review_frames vision route, advisory only)
@@ -44,7 +46,7 @@ export async function adviceFor(llm: LlmClient | null, ctx: LlmStageContext, pic
 export function scene3dStillsAttempt(deps: StageDeps): AttemptHandler {
   return async (ctx) => {
     const video = await loadVideo(deps.db, ctx);
-    if (video.kind !== "scene3d") throw new KnownFailure("Only 3D story videos have preview pictures.");
+    if (!isScene3dKind(video.kind)) throw new KnownFailure("Only 3D story videos have preview pictures.");
     await nativeOnly(deps, ctx, "Preview pictures"); // refuses at once, naming render.native_3d, when native is off or not ready
     const stills = deps.native?.stills;
     if (!stills) throw new KnownFailure("Turn on render.native_3d and run \"npx remotion browser ensure\" first: this worker has no native preview renderer. Nothing was drawn.");
@@ -54,9 +56,23 @@ export function scene3dStillsAttempt(deps: StageDeps): AttemptHandler {
     const audioFile = await promotedPath(deps.root, video.id, narration.file);
     if (!(await lstat(audioFile).catch(() => null))?.isFile()) throw new KnownFailure(`The file ${narration.file} from an earlier stage is missing. Run that stage again.`);
 
-    const { scene } = await loadRetimedScene3d(deps, ctx, video, audioFile);
-    const picks = pickStills(scene);
-    const r = await stills.stills(ctx, { scene3d: scene, frames: picks.map((p) => p.frame) });
+    // scene3d: the director's scene, re-timed to the narration. scene3d_code: the AI-written source with its host-built props (both already checked and fingerprinted).
+    let picks: StillPick[];
+    let sceneSha: string;
+    let drawn: Awaited<ReturnType<typeof stills.stills>>;
+    if (video.kind === "scene3d_code") {
+      const body = await loadSceneCode(deps, video);
+      sceneSha = sceneCodeSha(body.source, body.props);
+      picks = pickCodeStills(body.props);
+      if (picks.length === 0) throw new KnownFailure("The scene has no story beats to draw. Run the author step again.");
+      drawn = await stills.stills(ctx, { scene3dCode: { source: body.source, props: body.props, expectedSha256: sceneSha }, frames: picks.map((p) => p.frame) });
+    } else {
+      const { scene } = await loadRetimedScene3d(deps, ctx, video, audioFile);
+      sceneSha = sha256Hex(canonicalJson(scene));
+      picks = pickStills(scene);
+      drawn = await stills.stills(ctx, { scene3d: scene, frames: picks.map((p) => p.frame) });
+    }
+    const r = drawn;
     if (r.files.length !== picks.length) throw new KnownFailure("The preview renderer returned the wrong number of pictures. Nothing was saved.");
 
     const shas: string[] = [];
@@ -78,7 +94,7 @@ export function scene3dStillsAttempt(deps: StageDeps): AttemptHandler {
       advice = await adviceFor(llm, ctx, picks, pngs);
     }
     ctx.log(`previews: ${picks.length} pictures drawn; picture check: ${advice.status}`);
-    const body = buildPreviewsBody({ sceneSha256: sha256Hex(canonicalJson(scene)), picks, shas, advice });
+    const body = buildPreviewsBody({ sceneSha256: sceneSha, picks, shas, advice });
     return { files: r.files, content: [{ kind: "previews", body }], result: { kind: "scene3d_previews", stills: picks.length, advice: advice.status, image: r.image ?? null } };
   };
 }
