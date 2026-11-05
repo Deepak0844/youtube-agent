@@ -2,6 +2,7 @@
 // with holes punched through it (a tunnel, a station, a shaft) so you see what is behind. Layers use a world-aligned UV map and a
 // RepeatWrapping texture, so a pebble is the same size on every face. Put the ground top behind the face with <World ground={{zMax: 0}} />.
 import React, { useMemo } from "react";
+import type {} from "@react-three/fiber"; // loads the JSX types for <primitive>
 import * as THREE from "three";
 import { glassWaterTexture, strataTexture, STRATA_DEFAULT, type Layer } from "./textures";
 import { std } from "./parts";
