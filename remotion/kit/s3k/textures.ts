@@ -47,10 +47,10 @@ function stones(g: CanvasRenderingContext2D, w: number, h: number, r: Rng, n: nu
 
 // ---------------- strata (cut-face layers) ----------------
 /** One soil layer: colour, relative thickness, and whether it is a gravel/pebble layer. */
-export type Layer = { color: string; h: number; pebbles?: boolean };
+export type Layer = { color: string; h: number; /** Stones in this layer: true = a normal scatter, or { count, rmin, rmax } (stone radius in texture pixels) for a denser or coarser gravel. */ pebbles?: boolean | { count?: number; rmin?: number; rmax?: number } };
 /** The proof's sand, clay and gravel sequence (top to bottom). */
 export const STRATA_DEFAULT: readonly Layer[] = [
-  { color: "#ecd9ae", h: 0.9 }, { color: "#d9bd88", h: 0.5, pebbles: true }, { color: "#a8693f", h: 1.1 }, { color: "#d6c7b0", h: 1.3 }, { color: "#8e6446", h: 0.8, pebbles: true },
+  { color: "#ecd9ae", h: 0.9, pebbles: { count: 700, rmin: 2, rmax: 6 } }, { color: "#d9bd88", h: 0.5, pebbles: true }, { color: "#a8693f", h: 1.1 }, { color: "#d6c7b0", h: 1.3 }, { color: "#8e6446", h: 0.8, pebbles: true },
   { color: "#e3d6c0", h: 1.3 }, { color: "#a9805f", h: 0.9 }, { color: "#d8ccb8", h: 1.4 }, { color: "#7d5c46", h: 0.8, pebbles: true }, { color: "#cdbda5", h: 1.3 }, { color: "#a37a58", h: 0.9 }, { color: "#dcd0bb", h: 1.1 },
 ];
 /** Lower edge of every layer as a fraction 0..1 of the tile height (top = 0). Pure. */
@@ -62,7 +62,7 @@ export function layerEdges(layers: readonly Layer[]): number[] {
 
 /** One tile of layered ground: coloured bands with gently wavy edges (the wave repeats exactly across the tile), grain, and pebbles in gravel layers. */
 export function strataTexture(layers: readonly Layer[] = STRATA_DEFAULT, seed = 11): THREE.CanvasTexture {
-  const key = `strata:${seed}:${layers.map((l) => `${l.color}${l.h}${l.pebbles ? "p" : ""}`).join(",")}`;
+  const key = `strata:${seed}:${layers.map((l) => `${l.color}${l.h}${JSON.stringify(l.pebbles ?? 0)}`).join(",")}`;
   return once(key, () => {
     const W = 1024, H = 1024, c = mk(W, H), g = ctx2d(c), r = rnd(seed);
     g.fillStyle = "#ccb99c"; g.fillRect(0, 0, W, H);
@@ -80,8 +80,9 @@ export function strataTexture(layers: readonly Layer[] = STRATA_DEFAULT, seed = 
       const gr = g.createLinearGradient(0, y0, 0, y1); gr.addColorStop(0, "#ffffff22"); gr.addColorStop(0.5, "#00000000"); gr.addColorStop(1, "#00000026");
       g.fillStyle = gr; g.fillRect(0, y0, W, y1 - y0);
       if (l.pebbles) {
+        const pc = typeof l.pebbles === "object" ? l.pebbles : {};
         g.save(); g.beginPath(); g.rect(0, y0, W, y1 - y0); g.clip(); g.translate(0, y0);
-        stones(g, W, y1 - y0, r, 300, 1.6, 5.5, ["#cdbba0", "#8a7863", "#e0d2bb", "#a0694a", "#6f6a62"], 0.95);
+        stones(g, W, y1 - y0, r, pc.count ?? 300, pc.rmin ?? 1.6, pc.rmax ?? 5.5, ["#cdbba0", "#8a7863", "#e0d2bb", "#a0694a", "#6f6a62"], 0.95);
         g.restore();
       }
       y0 = y1;

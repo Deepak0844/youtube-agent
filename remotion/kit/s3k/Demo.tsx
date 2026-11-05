@@ -6,16 +6,17 @@ import { Stage } from "./Stage";
 import { Captions } from "./Overlays";
 import { idResolver } from "./models";
 import { TUNNEL_CAPTIONS, TunnelScene } from "./examples/TunnelScene";
+import { RECLAMATION_CAPTIONS, ReclamationScene } from "./examples/ReclamationScene";
 import type { S3kDemoProps } from "./meta";
 
 // Catalogue ids are file names under assets3d/files/ (the host links that folder into the render's public dir).
 const resolver = idResolver((id) => staticFile(`assets3d/files/${id}.glb`));
 
 export const S3kDemo: React.FC<S3kDemoProps> = ({ example = "tunnel", finish = "full" }) => {
-  void example;
+  const rec = example === "reclamation";
   return (
-    <Stage overlay={<Captions items={TUNNEL_CAPTIONS} />}>
-      <TunnelScene resolver={resolver} finish={finish} />
+    <Stage overlay={<Captions items={rec ? RECLAMATION_CAPTIONS : TUNNEL_CAPTIONS} />}>
+      {rec ? <ReclamationScene resolver={resolver} finish={finish} /> : <TunnelScene resolver={resolver} finish={finish} />}
     </Stage>
   );
 };
