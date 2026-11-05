@@ -91,6 +91,14 @@ function LookContent({ c }: { c: Extract<GateContent, { kind: "look" }> }) {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <LookStills stills={stills} />
+      {c.view.look.models ? (
+        <section aria-label="Models used" className="flex min-w-0 flex-col gap-1">
+          <h4 className="m-0 text-small font-medium text-muted">Models the scene code uses</h4>
+          <ul data-testid="look-models" className="m-0 flex list-none flex-col gap-1 p-0 text-body">
+            {c.view.look.models.map((m) => <li key={m} className="[overflow-wrap:anywhere]">{m}</li>)}
+          </ul>
+        </section>
+      ) : null}
       <section aria-label="What could not be found" className="flex min-w-0 flex-col gap-1">
         <h4 className="m-0 text-small font-medium text-muted">What could not be found</h4>
         {missing.length === 0 ? (
