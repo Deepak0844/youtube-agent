@@ -1,6 +1,7 @@
 // Captions and overlays. <Captions> is a plain HTML layer drawn OVER the 3D canvas (white bold text on a dark rounded pill, like the
 // reference videos), timed per shot, with an ease in and out. <Ruler> is a 3D measuring line with a text label.
 import React, { useMemo } from "react";
+import type {} from "@react-three/fiber"; // loads the JSX types for <primitive>
 import * as THREE from "three";
 import { smooth } from "./rng";
 import { useStable, useT } from "./time";
