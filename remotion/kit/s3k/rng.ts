@@ -12,6 +12,10 @@ export const rnd = (seed: number): (() => number) => {
   };
 };
 
+/** The most items any kit helper makes at once (slots, particles, towers): a scene that asks for more gets this many, not a frozen render. */
+export const MAX_COUNT = 20000;
+/** A whole number from 0 to `max`; NaN and Infinity become 0. */
+export const capCount = (n: number, max: number = MAX_COUNT): number => Math.min(max, Math.max(0, Math.floor(Number.isFinite(n) ? n : 0)));
 export const clamp = (x: number, lo = 0, hi = 1): number => Math.min(hi, Math.max(lo, x));
 export const lerp = (a: number, b: number, u: number): number => a + (b - a) * u;
 /** Smootherstep 0..1 (flat at both ends). */

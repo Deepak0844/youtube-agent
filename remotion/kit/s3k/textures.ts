@@ -61,7 +61,8 @@ export function layerEdges(layers: readonly Layer[]): number[] {
 }
 
 /** One tile of layered ground: coloured bands with gently wavy edges (the wave repeats exactly across the tile), grain, and pebbles in gravel layers. */
-export function strataTexture(layers: readonly Layer[] = STRATA_DEFAULT, seed = 11): THREE.CanvasTexture {
+export function strataTexture(layersIn: readonly Layer[] = STRATA_DEFAULT, seed = 11): THREE.CanvasTexture {
+  const layers = layersIn.slice(0, 32); // a scene cannot ask for thousands of bands
   const key = `strata:${seed}:${layers.map((l) => `${l.color}${l.h}${JSON.stringify(l.pebbles ?? 0)}`).join(",")}`;
   return once(key, () => {
     const W = 1024, H = 1024, c = mk(W, H), g = ctx2d(c), r = rnd(seed);
@@ -82,7 +83,7 @@ export function strataTexture(layers: readonly Layer[] = STRATA_DEFAULT, seed = 
       if (l.pebbles) {
         const pc = typeof l.pebbles === "object" ? l.pebbles : {};
         g.save(); g.beginPath(); g.rect(0, y0, W, y1 - y0); g.clip(); g.translate(0, y0);
-        stones(g, W, y1 - y0, r, pc.count ?? 300, pc.rmin ?? 1.6, pc.rmax ?? 5.5, ["#cdbba0", "#8a7863", "#e0d2bb", "#a0694a", "#6f6a62"], 0.95);
+        stones(g, W, y1 - y0, r, Math.min(5000, Math.max(0, pc.count ?? 300)), pc.rmin ?? 1.6, pc.rmax ?? 5.5, ["#cdbba0", "#8a7863", "#e0d2bb", "#a0694a", "#6f6a62"], 0.95);
         g.restore();
       }
       y0 = y1;
@@ -197,7 +198,8 @@ export function beltTexture(): THREE.CanvasTexture {
   });
 }
 /** Station / shop sign: bold text on a flat colour. Use with a MeshBasicMaterial (toneMapped:false) so it stays crisp. */
-export function signTexture(text: string, bg = "#1f8f93", fg = "#ffffff"): THREE.CanvasTexture {
+export function signTexture(textIn: string, bg = "#1f8f93", fg = "#ffffff"): THREE.CanvasTexture {
+  const text = String(textIn).slice(0, 60);
   return once(`sign:${text}:${bg}:${fg}`, () => {
     const W = 512, H = 128, c = mk(W, H), g = ctx2d(c);
     g.fillStyle = bg; g.fillRect(0, 0, W, H); g.fillStyle = "#ffffff22"; g.fillRect(0, 0, W, 10);

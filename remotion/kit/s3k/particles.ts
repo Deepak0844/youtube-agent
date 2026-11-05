@@ -1,14 +1,14 @@
 // Particles (dust, spray, smoke, sparks): a THREE.Points cloud whose positions are recomputed on the CPU every frame from the time t,
 // so any frame renders the same without state. You give `emit(seed, phase, t, out)`; the helper cycles the phase 0..1 per particle.
 import * as THREE from "three";
-import { rnd } from "./rng";
+import { capCount, rnd } from "./rng";
 import { dustSprite } from "./textures";
 
 /** Per-particle random numbers, fixed by the seed. */
 export type Seed = { a: number; r: number; p: number; sp: number; v: number };
 export function particleSeeds(count: number, seed = 1): Seed[] {
   const r = rnd(seed);
-  return Array.from({ length: Math.max(0, count) }, () => ({ a: r() * Math.PI * 2, r: r(), p: r(), sp: 0.12 + r() * 0.3, v: r() }));
+  return Array.from({ length: capCount(count) }, () => ({ a: r() * Math.PI * 2, r: r(), p: r(), sp: 0.12 + r() * 0.3, v: r() }));
 }
 /** Phase 0..1 of a looping particle at time t (each has its own start offset `p` and speed `sp`). Pure: the same t gives the same phase. */
 export const phaseOf = (t: number, s: Pick<Seed, "p" | "sp">): number => (((t * s.sp + s.p) % 1) + 1) % 1;
@@ -26,8 +26,9 @@ export type ParticleOptions = {
 export type ParticleField = { points: THREE.Points; update: (t: number) => void };
 
 export function makeParticles(o: ParticleOptions): ParticleField {
-  const seeds = particleSeeds(o.count, o.seed ?? 1);
-  const pos = new Float32Array(o.count * 3);
+  const count = capCount(o.count);
+  const seeds = particleSeeds(count, o.seed ?? 1);
+  const pos = new Float32Array(count * 3);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   const mat = new THREE.PointsMaterial({ map: dustSprite(), color: o.color ?? "#d9c19a", size: o.size ?? 1.2, sizeAttenuation: true, transparent: true, opacity: o.opacity ?? 0.6, depthWrite: false, fog: true });
