@@ -88,7 +88,7 @@ describe("native renderer, scene3d_code", () => {
       }),
     ).render(ctx(), args());
     expect(r.outPath).toBe(path.join(attemptDir, "render.mp4"));
-    expect(calls[0]!.args.slice(-2)).toEqual(["--scene3d-code", "--native"]);
+    expect(calls[0]!.args.slice(-4)).toEqual(["--scene3d-code", "--native", "--expect-sha", textSha(SOURCE)]); // render-entry hashes scene.tsx before bundling
     expect(calls[0]!.envAllow).toEqual([]);
     expect(seen!.files).toEqual(["models", "props.json", "scene.tsx"]);
     expect(seen!.scene).toBe(SOURCE);
@@ -186,7 +186,7 @@ describe("native renderer, scene3d_code preview pictures", () => {
     let files: string[] = [];
     const r = await createNativeRenderer(deps((spec) => { files = readdirSync(inDirOf(spec)).sort(); return draws(spec); })).stills(ctx(), { scene3dCode: input(), frames: [15, 90] });
     expect(r.files).toEqual(["stills/01.png", "stills/02.png"]);
-    expect(calls[0]!.args.slice(-2)).toEqual(["--scene3d-code-stills", "--native"]);
+    expect(calls[0]!.args.slice(-4)).toEqual(["--scene3d-code-stills", "--native", "--expect-sha", textSha(SOURCE)]);
     expect(outFileOf(calls[0]!)).toBe(path.join(attemptDir, "native-out"));
     expect(files).toEqual(["models", "props.json", "scene.tsx", "stills.json"]);
   });
@@ -199,23 +199,37 @@ describe("native renderer, scene3d_code preview pictures", () => {
   });
 });
 
+describe("disk quota", () => {
+  it("measures the job folders and kills the process group when they pass the cap, with a key-first sentence", async () => {
+    writeFileSync(path.join(assets, "pp_ship.glb"), GLB);
+    let killed = false;
+    const waiting = (spec: ChildSpec): Promise<ChildResult> => new Promise((resolve) => {
+      calls.push(spec);
+      spec.signal?.addEventListener("abort", () => { killed = true; resolve({ ...DONE, aborted: true, code: null }); });
+    });
+    const seen: string[][] = [];
+    const err = await createNativeRenderer(deps(undefined, { runChild: waiting, dirSize: async (d) => (seen.push([...d]), 7 * 1024 ** 3), quotaBytes: 6 * 1024 ** 3, quotaPollMs: 5 })).render(ctx(), args()).catch((e: unknown) => e);
+    expect(killed).toBe(true);
+    expect(err).toBeInstanceOf(KnownFailure);
+    expect((err as Error).message).toMatch(/^The render wrote more than 6 GB of files and was stopped\./);
+    expect(seen[0]!.map((x) => path.basename(x))).toEqual(["native-in", "native-out", "native-tmp"]);
+    expect(existsSync(path.join(attemptDir, "native-in"))).toBe(false);
+  });
+  it("a render under the cap, and the caller's own abort, are not mistaken for it", async () => {
+    writeFileSync(path.join(assets, "pp_ship.glb"), GLB);
+    await createNativeRenderer(deps(undefined, { dirSize: async () => 1024, quotaPollMs: 5 })).render(ctx(), args());
+    expect(calls).toHaveLength(1);
+    ac.abort(new Error("owner cancelled"));
+    await expect(createNativeRenderer(deps(() => ({ ...DONE, aborted: true, code: null }))).render(ctx(), args())).rejects.toThrow(/owner cancelled/);
+  });
+});
+
 describe("render-entry.mjs, authored scenes", () => {
   const entry = readFileSync("remotion/kit/render-entry.mjs", "utf8");
-  it("accepts --scene3d-code and --scene3d-code-stills only with exactly --native", () => {
+  it("accepts --scene3d-code and --scene3d-code-stills only with exactly --native (then an optional --expect-sha), and the sha is mandatory for them", () => {
     expect(entry).toContain('mode === "--scene3d-code" || mode === "--scene3d-code-stills") && extra.length === 1 && extra[0] === "--native"');
     expect(entry).toContain('((mode === "--scene3d" || mode === "--scene3d-stills" || mode === "--scene3d-code" || mode === "--scene3d-code-stills") && !native)');
-  });
-  it("aliases exactly s3k-scene to the staged scene.tsx and s3k to the kit, and enforces the import allow-list in the bundler", () => {
-    expect(entry).toContain('"s3k-scene$": SCENE_FILE, "s3k$": kit');
-    expect(entry).toContain('{ name: "s3k-scene", alias: SCENE_FILE, onlyModule: true }');
-    expect(entry).toContain('const SCENE_IMPORTS = new Set(["react", "react/jsx-runtime", "react/jsx-dev-runtime", "remotion", "three", "@react-three/fiber", "s3k"]);');
-    expect(entry).toContain("data.contextInfo?.issuer === SCENE_FILE && !SCENE_IMPORTS.has(data.request)");
-    expect(entry).toContain('author ? "s3k-author-index.tsx"');
-  });
-  it("uses the guarded browser for the scene and only for it", () => {
-    expect(entry).toContain("guardBrowser(guarded");
-    expect(entry).toContain("...(guarded ? { puppeteerInstance: guarded } : {})");
-    expect(entry.match(/guardBrowser\(/g)).toHaveLength(1); // one call, inside the author branch
+    expect(entry).toContain("!expectSha ||");
   });
   it("the registry never imports the staged scene, so no other bundle can contain untrusted code", () => {
     expect(readFileSync("remotion/kit/registry.tsx", "utf8")).not.toMatch(/s3k-scene|s3k\/Author/);

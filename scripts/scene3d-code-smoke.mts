@@ -6,6 +6,7 @@
 // against a loopback listener on another port) is staged by hand, bypassing the checker ON PURPOSE (a test-only harness), and drawn in the
 // same sandbox command. It passes when the listener saw NO connection and the page printed `GUARD blocked` lines for that port.
 // One render at a time. Not part of any CI job: it needs this Mac's Chrome shell (npx remotion browser ensure).
+import { createSocket } from "node:dgram";
 import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, realpath, rm } from "node:fs/promises";
@@ -14,6 +15,7 @@ import path from "node:path";
 import { buildEngineConfig } from "../src/server/core/engine-config";
 import { checkScene3dCode } from "../src/server/core/scene3d-code-check";
 import { sceneProps } from "../src/server/core/scene3d-author-prompt";
+import { sha256Hex } from "../src/server/core/content-hash";
 import { sceneCodeSha } from "../src/server/core/scene3d-code-body";
 import { runChild } from "../src/server/render/child";
 import { nativeCommand } from "../src/server/providers/renderer/native-sandbox";
@@ -68,6 +70,10 @@ if (!probe) {
   server.on("connection", () => hits.push("CONNECTION"));
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const port = (server.address() as { port: number }).port;
+  const udpHits: string[] = []; // a STUN-like UDP listener on the SAME port number: WebRTC ICE would show up here
+  const udp = createSocket("udp4");
+  udp.on("message", (m, r) => udpHits.push(`${r.port}:${m.length}`));
+  await new Promise<void>((r) => udp.bind(port, "127.0.0.1", r));
   const hostile = `import { World, CameraRig, Finish } from "s3k";
 const PORT = ${port};
 const g = globalThis as unknown as Record<string, any>;
@@ -84,6 +90,8 @@ function attack() {
     ["iframe", () => { const f = g.document.createElement("iframe"); f.onload = () => say("iframe", "loaded-or-error-page"); f.src = url("frame"); g.document.body.appendChild(f); }],
     ["eval", () => { say("eval", g.eval("1+1") === 2 ? "ALLOWED" : "blocked"); }],
     ["worker", () => { new g.Worker(url("worker.js")); say("worker", "CREATED-UNEXPECTED-ALLOWED"); }],
+    ["webrtc", () => { const pc = new g.RTCPeerConnection({ iceServers: [{ urls: "stun:127.0.0.1:" + PORT }] }); pc.createDataChannel("x"); pc.createOffer().then((o: unknown) => pc.setLocalDescription(o)); say("webrtc", "CREATED-UNEXPECTED-ALLOWED"); }],
+    ["popup", () => { const a = g.document.createElement("a"); a.href = url("popup"); a.target = "_blank"; g.document.body.appendChild(a); a.click(); say("popup", "clicked"); }],
   ];
   for (const [name, t] of tries) { try { t(); } catch { say(name, "blocked(exception)"); } }
 }
@@ -102,15 +110,18 @@ export default function Scene() {
   const nodeReal = await realpath(process.execPath);
   const cmd = nativeCommand({
     repoRoot: root, kitDir: path.join(root, "remotion", "kit"), nodeModules: await realpath(path.join(root, "node_modules")), storageRoot: storage, homeDir: await realpath(os.homedir()),
-    inDir, outDir, tmpDir, nodePrefix: path.dirname(path.dirname(nodeReal)), chromeDir: ready.chromeDir, node: nodeReal, outFile: outDir, mode: "--scene3d-code-stills",
+    inDir, outDir, tmpDir, nodePrefix: path.dirname(path.dirname(nodeReal)), chromeDir: ready.chromeDir, node: nodeReal, outFile: outDir, mode: "--scene3d-code-stills", expectSha: sha256Hex(hostile),
   });
   const lines: string[] = [];
   const r = await runChild({ ...cmd, cwd: tmpDir, cwdRoot: attemptDir, envAllow: [], timeoutMs: 240_000, maxOutputBytes: 1024 * 1024, signal: ctx.signal, stageRunId: "smoke-probe", onLine: (l: string) => { lines.push(l); if (/GUARD|PROBE/.test(l)) console.log(`  child: ${l.slice(0, 200)}`); } });
   server.close();
+  udp.close();
   const blocked = lines.filter((l) => l.startsWith("GUARD blocked") && l.includes(`:${port}`));
-  const allowed = lines.filter((l) => /PROBE \w+ ALLOWED/.test(l));
-  console.log(`child exit code ${r.code}; listener hits: ${hits.length} ${JSON.stringify(hits)}; GUARD blocked lines for the listener port: ${blocked.length}; PROBE lines saying ALLOWED: ${allowed.length}`);
+  const allowed = lines.filter((l) => /PROBE \w+ \S*ALLOWED/.test(l));
+  console.log(`child exit code ${r.code}; listener hits: ${hits.length} ${JSON.stringify(hits)}; UDP (WebRTC/STUN) hits: ${udpHits.length}; GUARD blocked lines for the listener port: ${blocked.length}; PROBE lines saying ALLOWED: ${allowed.length}`);
   await rm(storage, { recursive: true, force: true });
-  if (hits.length > 0 || allowed.length > 0) { console.log("PROBE FAILED: the hostile scene reached the listener or an attempt was allowed"); process.exit(1); }
+  const stopped = lines.some((l) => l.startsWith("GUARD violation"));
+  console.log(`popup: ${stopped ? "the guard closed it and stopped the render (exit code " + r.code + ")" : "none was created (the CSP sandbox forbids popups)"}`);
+  if (hits.length > 0 || udpHits.length > 0 || allowed.length > 0) { console.log("PROBE FAILED: the hostile scene reached the listener or an attempt was allowed"); process.exit(1); }
   console.log(lines.some((l) => /PROBE \w+ blocked/.test(l)) ? "PROBE PASSED: every attempt was stopped, none reached the listener" : "PROBE INCONCLUSIVE: no hits, but the page reported no attempts");
 }

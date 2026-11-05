@@ -27,17 +27,19 @@ export function cspFor(origin) {
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",
+    "sandbox allow-scripts allow-same-origin", // no popups (a link with target=_blank), no forms, no top-level navigation: a popup would load BEFORE any guard can attach to it
   ].join("; ");
 }
 
-/** What the request filter does with one URL. `origin` is the bundle server's origin, or null before the first document is seen. */
-export function decide(url, origin, resourceType) {
+/** What the request filter does with one URL. `origin` is the bundle server's EXACT origin, passed in by render-entry (never learned from traffic). */
+export function decide(url, origin) {
   let u;
   try {
     u = new URL(url);
   } catch {
     return { allow: false, why: "unparsable" };
   }
+  if (typeof origin !== "string" || origin === "") return { allow: false, why: "no-origin" };
   if (u.protocol === "data:") return { allow: true };
   if (u.protocol === "about:") return { allow: u.href === "about:blank" || u.href === "about:srcdoc", why: "about" };
   if (u.protocol === "blob:") {
@@ -47,15 +49,14 @@ export function decide(url, origin, resourceType) {
     } catch {
       return { allow: false, why: "blob" };
     }
-    return { allow: origin !== null && inner.origin === origin, why: "blob" };
+    return { allow: inner.origin === origin, why: "blob" };
   }
   if (u.protocol !== "http:") return { allow: false, why: u.protocol };
-  if (origin === null) {
-    // The very first main-frame document of the page is Remotion's own bundle server on this machine; it fixes the allowed origin.
-    return LOCAL_HOSTS.has(u.hostname) && resourceType === "Document" ? { allow: true, learn: u.origin } : { allow: false, why: "before-document" };
-  }
   return { allow: u.origin === origin, why: "origin" };
 }
+
+/** Run before any page script: no WebRTC, no WebTransport, no service workers, no extra windows (belt and braces behind the CSP and the checker). */
+export const HARDEN_SCRIPT = `(() => { const names = ["RTCPeerConnection","webkitRTCPeerConnection","RTCDataChannel","RTCSessionDescription","RTCIceCandidate","WebTransport","WebSocket","EventSource","SharedWorker","Worker"]; for (const n of names) { try { Object.defineProperty(globalThis, n, { value: undefined, configurable: false, writable: false }); } catch (e) {} } try { Object.defineProperty(navigator, "serviceWorker", { value: undefined, configurable: false }); } catch (e) {} try { Object.defineProperty(window, "open", { value: () => null, configurable: false, writable: false }); } catch (e) {} })();`;
 
 /** `scheme://host:port`, nothing of the path or query: safe to log. */
 export const labelOf = (url) => {
@@ -71,9 +72,8 @@ export const labelOf = (url) => {
  * Installs both controls on one page (before it navigates). `stats.blocked` counts refused requests; `log` gets one line per refusal
  * (at most 50 lines per page). Returns the stats object.
  */
-export async function guardPage(page, { log = console.log, stats = { blocked: 0 } } = {}) {
+export async function guardPage(page, { origin, log = console.log, stats = { blocked: 0 } } = {}) {
   const client = page._client();
-  let origin = null;
   let logged = 0;
   const refuse = async (requestId, url, why) => {
     stats.blocked++;
@@ -87,7 +87,7 @@ export async function guardPage(page, { log = console.log, stats = { blocked: 0 
       const isResponse = e.responseStatusCode !== undefined || e.responseErrorReason !== undefined;
       if (isResponse) {
         // Response stage, main-frame documents only: add the CSP header (the filter below already let the request through).
-        if (e.responseErrorReason !== undefined || origin === null || e.responseStatusCode < 200 || e.responseStatusCode >= 300 || e.responseStatusCode === 204) {
+        if (e.responseErrorReason !== undefined || e.responseStatusCode < 200 || e.responseStatusCode >= 300 || e.responseStatusCode === 204) {
           await client.send("Fetch.continueResponse", { requestId }).catch(() => undefined);
           return;
         }
@@ -102,24 +102,47 @@ export async function guardPage(page, { log = console.log, stats = { blocked: 0 
         }
         return;
       }
-      const d = decide(url, origin, resourceType);
-      if (!d.allow) return refuse(requestId, url, d.why ?? "origin");
-      if (d.learn) origin = d.learn;
+      const d = decide(url, origin);
+      if (!d.allow) return refuse(requestId, url, resourceType === "Document" ? "document-not-bundle" : (d.why ?? "origin"));
       await client.send("Fetch.continueRequest", { requestId }).catch(() => undefined);
     })();
   });
+  await client.send("Page.addScriptToEvaluateOnNewDocument", { source: HARDEN_SCRIPT }).catch(() => undefined);
+  await client.send("Network.setBypassServiceWorker", { bypass: true }).catch(() => undefined);
+  await client.send("Network.setBlockedURLs", { urls: ["ws://*", "wss://*", "stun:*", "turn:*", "webrtc:*"] }).catch(() => undefined);
   await client.send("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }, { urlPattern: "*", resourceType: "Document", requestStage: "Response" }] });
   return stats;
 }
 
-/** Makes every page this browser opens guarded before Remotion navigates it. Returns the shared stats. */
-export function guardBrowser(browser, opts = {}) {
-  const stats = opts.stats ?? { blocked: 0 };
+/**
+ * Makes every page this browser opens guarded before Remotion navigates it, and treats any target the PAGE creates (a popup, a worker, a
+ * service worker, a shared worker, an extra tab with an opener) as a violation: it is closed at once and `onViolation` is called (the
+ * render fails). `origin` is the exact bundle server origin. Returns the shared stats.
+ */
+export function guardBrowser(browser, { origin, onViolation = () => undefined, ...opts } = {}) {
+  const stats = opts.stats ?? { blocked: 0, violations: 0 };
+  stats.violations ??= 0;
+  const log = opts.log ?? console.log;
   const open = browser.newPage.bind(browser);
   browser.newPage = async (...args) => {
     const page = await open(...args);
-    await guardPage(page, { ...opts, stats });
+    await guardPage(page, { ...opts, origin, stats });
     return page;
   };
+  browser.on?.("targetcreated", (target) => {
+    let type = "other";
+    let opener;
+    try {
+      type = target.type();
+      opener = target.opener();
+    } catch {
+      /* treated as a violation below */
+    }
+    if (type === "browser" || (type === "page" && !opener)) return;
+    stats.violations++;
+    log(`GUARD violation: a ${type} target was created by the page`);
+    Promise.resolve(browser.connection?.send?.("Target.closeTarget", { targetId: target._targetId })).catch(() => undefined);
+    onViolation(type);
+  });
   return stats;
 }

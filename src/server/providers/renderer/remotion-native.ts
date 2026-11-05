@@ -1,6 +1,7 @@
-import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { sha256Hex as sha256Text } from "@/server/core/content-hash";
 import { redactLine } from "@/server/core/log-redact";
 import { KnownFailure } from "@/server/core/paid-call";
 import { MAX_STILLS, MAX_STILL_BYTES, pngProblem } from "@/server/core/scene3d-stills";
@@ -29,6 +30,24 @@ import type { Scene3d } from "@/shared/scene3d";
 // write PNG files into the out folder, which the host copies out with a size cap, a PNG check and a 540x960 check.
 
 export const NATIVE_IMAGE = "native-mac-angle";
+/** The job folders (in, out, temp) may hold at most this much; a render that writes more is killed (a hostile scene filling the disk). */
+export const JOB_QUOTA_BYTES = 6 * 1024 * 1024 * 1024;
+export const QUOTA_POLL_MS = 5000;
+
+/** Total size in bytes of the files under `dirs` (lstat, no symlink followed, no du process). Missing folders count 0. */
+export async function dirsSize(dirs: readonly string[]): Promise<number> {
+  let total = 0;
+  const walk = async (d: string): Promise<void> => {
+    const entries = await readdir(d, { withFileTypes: true }).catch(() => []);
+    for (const e of entries) {
+      const f = path.join(d, e.name);
+      if (e.isDirectory()) await walk(f);
+      else total += (await lstat(f).catch(() => null))?.size ?? 0;
+    }
+  };
+  for (const d of dirs) await walk(d);
+  return total;
+}
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 
 export interface NativeRendererDeps {
@@ -43,6 +62,10 @@ export interface NativeRendererDeps {
   /** The 3D model catalogue and the folder of its files (default <repo>/assets3d/files): scene3d videos only. */
   catalog?: () => Promise<Catalog3d>;
   assetsDir?: string;
+  /** Test hooks for the disk quota: how big the job folders are, the cap and the poll interval. */
+  dirSize?: (dirs: readonly string[]) => Promise<number>;
+  quotaBytes?: number;
+  quotaPollMs?: number;
   /** The in-process type-check run again on the staged scene (default: typeCheckScene3d; tests inject one). */
   typeCheck?: StagedTypeCheck;
   /** Test hooks. */
@@ -64,7 +87,7 @@ interface Job {
 async function runNativeJob<T>(
   deps: NativeRendererDeps,
   ctx: StageContext,
-  job: { mode: NonNullable<NativeCommandInput["mode"]>; /** the output path argument, given the out folder */ output: (outDir: string) => string; prepare(j: Job): Promise<void>; collect(j: Job): Promise<T> },
+  job: { mode: NonNullable<NativeCommandInput["mode"]>; /** authored scenes: sha256 of scene.tsx */ expectSha?: string; /** the output path argument, given the out folder */ output: (outDir: string) => string; prepare(j: Job): Promise<void>; collect(j: Job): Promise<T> },
 ): Promise<T> {
   if (!ctx.config.render.native3d) throw new KnownFailure("Native 3D rendering is switched off in Settings. Nothing was rendered.");
   const ready = await deps.preflight();
@@ -79,6 +102,7 @@ async function runNativeJob<T>(
   const tmpDir = path.join(attemptDir, "native-tmp");
   const cleanup = () => Promise.all([inDir, outDir, tmpDir].map((d) => rm(d, { recursive: true, force: true }))).catch(() => undefined);
   await cleanup();
+  let poll: ReturnType<typeof setInterval> | undefined;
   try {
     await Promise.all([inDir, outDir, tmpDir].map((d) => mkdir(d, { recursive: true, mode: 0o700 })));
     await job.prepare({ inDir, outDir, repoRoot });
@@ -87,16 +111,31 @@ async function runNativeJob<T>(
     const cmd = nativeCommand({
       repoRoot, kitDir, nodeModules: await realpath(path.join(repoRoot, "node_modules")).catch(() => path.join(repoRoot, "node_modules")), storageRoot: await realpath(deps.root), homeDir: await realpath(deps.homeDir ?? homedir()),
       inDir, outDir, tmpDir, nodePrefix: path.dirname(path.dirname(nodeReal)), chromeDir: ready.chromeDir,
-      node: nodeReal, outFile: job.output(outDir), mode: job.mode,
+      node: nodeReal, outFile: job.output(outDir), mode: job.mode, ...(job.expectSha ? { expectSha: job.expectSha } : {}),
     });
     const tail: string[] = [];
     const timeoutS = ctx.config.render.nativeTimeoutS;
     ctx.log("render: native 3D render on this Mac (sandboxed, no network)");
+    // Disk quota: every few seconds the job folders are measured; over the cap, the whole process group is killed (through the abort signal).
+    const quota = deps.quotaBytes ?? JOB_QUOTA_BYTES;
+    const abort = new AbortController();
+    const onOuter = () => abort.abort(ctx.signal.reason);
+    if (ctx.signal.aborted) onOuter();
+    else ctx.signal.addEventListener("abort", onOuter, { once: true });
+    let overQuota = 0;
+    poll = setInterval(() => {
+      void (deps.dirSize ?? dirsSize)([inDir, outDir, tmpDir]).then((n) => {
+        if (n > quota && overQuota === 0) {
+          overQuota = n;
+          abort.abort(new Error("quota"));
+        }
+      }).catch(() => undefined);
+    }, deps.quotaPollMs ?? QUOTA_POLL_MS);
     const r = await deps.runChild({
       // cwd is the private temp folder, NOT the attempt folder: the attempt folder sits under the read-denied storage root, and
       // node's process.cwd() (uv_cwd) fails with EPERM there. The temp folder is an allowed subtree, so getcwd works.
       ...cmd, cwd: tmpDir, cwdRoot: attemptDir, envAllow: [], timeoutMs: timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES,
-      signal: ctx.signal, stageRunId: ctx.claim.stageRunId,
+      signal: abort.signal, stageRunId: ctx.claim.stageRunId,
       onLine: (line) => {
         const p = parseProgress(line);
         if (p !== null) { ctx.progress?.(p); return ctx.log(`render: ${p}%`); }
@@ -107,12 +146,16 @@ async function runNativeJob<T>(
         if (tail.length > 8) tail.shift();
       },
     });
+    clearInterval(poll);
+    ctx.signal.removeEventListener("abort", onOuter);
+    if (overQuota > 0) throw new KnownFailure(`The render wrote more than ${Math.round(quota / 1024 ** 3)} GB of files and was stopped. Nothing was rendered. (${Math.round(overQuota / 1024 ** 3 * 10) / 10} GB at the check.)`);
     if (r.aborted) throw ctx.signal.reason ?? new Error("render aborted");
     if (r.timedOut) throw new KnownFailure(`The native render took longer than its ${Math.ceil(timeoutS / 60)} min limit and was stopped.`);
     if (r.truncated) throw new KnownFailure("The render printed too much output and was stopped.");
     if (r.code !== 0) throw new KnownFailure(`The native render failed (exit ${r.code ?? r.signal}). Last lines: ${tail.slice(-3).join(" | ")}`.slice(0, 600));
     return await job.collect({ inDir, outDir, repoRoot });
   } finally {
+    if (poll) clearInterval(poll);
     await cleanup();
   }
 }
@@ -138,6 +181,7 @@ export function createNativeRenderer(deps: NativeRendererDeps): Renderer & Scene
       if (!a.scale3d && !a.scene3d && !a.scene3dCode) throw new KnownFailure("The native renderer only renders 3D scale and 3D scene videos.");
       return runNativeJob(deps, ctx, {
         mode: a.scene3dCode ? "--scene3d-code" : a.scene3d ? "--scene3d" : "--scale3d",
+        ...(a.scene3dCode ? { expectSha: sha256Text(a.scene3dCode.source) } : {}),
         output: (outDir) => path.join(outDir, "out.mp4"),
         // The inputs: props.json, and for a 3D scene ONLY the catalogue models it names, copied into <inDir>/models. The sandbox
         // reads this folder and nothing else of the repo or the storage root, so the read allow-list is not widened for them.
@@ -157,6 +201,7 @@ export function createNativeRenderer(deps: NativeRendererDeps): Renderer & Scene
       const dest = path.join(await realpath(ctx.attemptDir), "stills");
       return runNativeJob(deps, ctx, {
         mode: a.scene3dCode ? "--scene3d-code-stills" : "--scene3d-stills",
+        ...(a.scene3dCode ? { expectSha: sha256Text(a.scene3dCode.source) } : {}),
         output: (outDir) => outDir,
         prepare: async (j) => {
           if (a.scene3dCode) await stagedSceneCode(deps, a.scene3dCode, j);
