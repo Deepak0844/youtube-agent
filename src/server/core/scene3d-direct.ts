@@ -4,7 +4,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { extractJson } from "@/server/core/scale3d-build";
 import type { Catalog3d } from "@/shared/assets3d/catalog";
 import { ALLOWED_LICENSES } from "@/shared/assets3d/schema";
-import { catalogResolver, SCENE3D_LIMITS, validateScene3d, type ModelResolver, type Scene3d } from "@/shared/scene3d";
+import { catalogResolver, SCENE3D_LIMITS, shotBeatId, validateScene3d, type ModelResolver, type Scene3d } from "@/shared/scene3d";
 
 // The director of a scene3d video. Step one is deterministic: the nouns of each story beat's `visual` are looked up in the CC0 model
 // catalogue, and a short candidate list goes to the model. Step two is the model (text only): it writes scene format v2 JSON using ONLY
@@ -14,6 +14,7 @@ import { catalogResolver, SCENE3D_LIMITS, validateScene3d, type ModelResolver, t
 
 const fenceUntrusted = (label: string, t: string) => `<<<DATA ${label}\n${t.replaceAll("<<<", "< < <").replaceAll(">>>", "> > >").trim()}\n>>>`;
 
+export { shotBeatId };
 export const MAX_DIRECT_ATTEMPTS = 3;
 export const MAX_CANDIDATES = 120;
 export const DIRECTOR_MIN_TOTAL_S = 50;
@@ -105,13 +106,6 @@ export function catalogModelResolver(catalog: Catalog3d): ModelResolver {
 
 export const missingAssetSchema = z.object({ beat: z.string().min(1).max(40), wanted: z.string().trim().min(1).max(160), substitute: z.string().trim().min(1).max(160) });
 export type MissingAsset = z.infer<typeof missingAssetSchema>;
-
-/** The story beat a shot belongs to: its id is the beat id, or the beat id plus _2, _3 ... (longest beat id wins). */
-export function shotBeatId(shotId: string, beatIds: readonly string[]): string | null {
-  let best: string | null = null;
-  for (const b of beatIds) if ((shotId === b || shotId.startsWith(`${b}_`)) && (best === null || b.length > best.length)) best = b;
-  return best;
-}
 
 export type Directed = { ok: true; scene: Scene3d; totalS: number; missing: MissingAsset[]; modelIds: string[] } | { ok: false; errors: string[] };
 
