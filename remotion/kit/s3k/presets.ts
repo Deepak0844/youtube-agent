@@ -42,6 +42,14 @@ export function presetProblems(p: WorldPreset): string[] {
   return out;
 }
 
+/** The preset with the author's tweaks applied; throws with a clear message when a value is out of range. */
+export function resolvePreset(name: PresetName = "haze", tweak?: Partial<WorldPreset>): WorldPreset {
+  const p = { ...WORLD_PRESETS[name], ...tweak };
+  const bad = presetProblems(p);
+  if (bad.length) throw new Error(`World preset "${name}": ${bad.join("; ")}`);
+  return p;
+}
+
 export const PRESET_LIMITS = { fogDensity: [0, 0.02], sunIntensity: [0, 10], sunElevationDeg: [2, 89], exposure: [0.3, 3] } as const;
 
 /** Unit vector from the ground towards the sun. Azimuth 0 = +z, 90 = +x. */

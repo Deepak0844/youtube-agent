@@ -8,32 +8,14 @@ import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import { useThree } from "@react-three/fiber";
 import { continueRender, delayRender } from "remotion";
 import type { ModelResolver } from "../../../src/shared/scene3d/resolver";
+import { fitScale, type FitOptions, type ModelInfo } from "./fit";
 
 export type { ModelResolver };
-/** What the catalogue manifest says about a model (all optional): used when you do not give a size. */
-export type ModelInfo = { default_scale?: number; pivot?: "bottom" | "center"; bounds_m?: { x: number; y: number; z: number } };
-
+export { fitScale, type FitOptions, type ModelInfo };
 /** A resolver for catalogue ids: `urlFor(id)` gives the file URL (in a render: staticFile("assets3d/files/<id>.glb")). */
 export const idResolver = (urlFor: (id: string) => string): ModelResolver => ({
   resolve: (ref) => ("catalog" in ref ? { url: urlFor(ref.catalog) } : null),
 });
-
-export type FitOptions = {
-  /** Longest side in metres (or the height when `height` is true). */
-  size?: number;
-  /** Fit the HEIGHT to `size` (people, lamps, trees) instead of the longest side. */
-  height?: boolean;
-  /** Catalogue manifest entry: its default_scale applies when no size is given. */
-  info?: ModelInfo;
-  /** Tone metals down (they go black without a rich environment); default true. */
-  matte?: boolean;
-};
-
-/** Scale factor that makes a model of `dims` metres meet the request. Pure, unit-tested. */
-export function fitScale(dims: { x: number; y: number; z: number }, o: FitOptions): number {
-  if (o.size !== undefined) return o.size / ((o.height ? dims.y : Math.max(dims.x, dims.y, dims.z)) || 1);
-  return o.info?.default_scale ?? 1;
-}
 
 /** Clones a loaded glTF scene: base on y = 0, centred on x/z, scaled per `o`. `userData.size` holds the final size in metres. */
 export function fitModel(source: THREE.Object3D, o: FitOptions = {}): THREE.Group {

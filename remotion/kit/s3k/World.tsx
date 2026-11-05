@@ -4,7 +4,9 @@
 import React, { useLayoutEffect, useMemo } from "react";
 import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { fitSunFrustum, presetProblems, sunVector, WORLD_PRESETS, type BoxV, type PresetName, type WorldPreset } from "./presets";
+import { fitSunFrustum, resolvePreset, sunVector, type BoxV, type PresetName, type WorldPreset } from "./presets";
+
+export { resolvePreset };
 import { paveTexture, rippleTexture, sandTexture } from "./textures";
 import { useStable, useT } from "./time";
 
@@ -62,14 +64,6 @@ const skyMaterial = (p: WorldPreset, sun: THREE.Vector3, gain: number): THREE.Sh
     vertexShader: "varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
     fragmentShader: SKY_FRAG,
   });
-
-/** The preset with the author's tweaks applied; throws with a clear message when a value is out of range. */
-export function resolvePreset(name: PresetName = "haze", tweak?: Partial<WorldPreset>): WorldPreset {
-  const p = { ...WORLD_PRESETS[name], ...tweak };
-  const bad = presetProblems(p);
-  if (bad.length) throw new Error(`World preset "${name}": ${bad.join("; ")}`);
-  return p;
-}
 
 /** Environment light: the sky dome, a warm ground and the sun as a bright spot, baked once into a PMREM texture. */
 function bakeEnvironment(gl: THREE.WebGLRenderer, p: WorldPreset, sun: THREE.Vector3): THREE.Texture {
