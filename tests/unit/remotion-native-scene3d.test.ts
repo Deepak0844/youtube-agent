@@ -91,6 +91,7 @@ describe("native renderer, scene3d", () => {
     ).render(ctx(), args());
     expect(r.outPath).toBe(path.join(attemptDir, "render.mp4"));
     expect(calls[0]!.args.slice(-2)).toEqual(["--scene3d", "--native"]);
+    expect(calls[0]!.cwd).toBe(path.join(realpathSync(attemptDir), "native-tmp"));
     expect(calls[0]!.envAllow).toEqual([]);
     expect(seen!.staged).toEqual(["pp_ship.glb"]);
     const models = seen!.props.scene.elements.filter((e) => e.kind === "model").map((e) => (e.kind === "model" ? e.model : null));
@@ -164,6 +165,8 @@ describe("native renderer, scene3d preview pictures", () => {
     expect(r.files).toEqual(["stills/01.png", "stills/02.png", "stills/03.png"]);
     for (const f of r.files) expect(existsSync(path.join(attemptDir, f))).toBe(true);
     expect(calls[0]!.args.slice(-2)).toEqual(["--scene3d-stills", "--native"]);
+    expect(calls[0]!.cwd).toBe(path.join(realpathSync(attemptDir), "native-tmp")); // an allowed folder: the attempt folder is under the read-denied storage root
+    expect(calls[0]!.cwdRoot).toBe(realpathSync(attemptDir));
     expect(outFileOf(calls[0]!)).toBe(path.join(attemptDir, "native-out"));
     expect(calls[0]!.envAllow).toEqual([]);
     expect(seen!.staged).toEqual(["pp_ship.glb"]);

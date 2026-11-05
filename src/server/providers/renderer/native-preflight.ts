@@ -7,6 +7,8 @@ import path from "node:path";
 /** Must equal the Remotion version in package.json and in the render image (infra/Dockerfile.render). */
 export const REMOTION_PIN = "4.0.538";
 export const NATIVE_MODULES = ["@remotion/renderer", "@remotion/bundler"] as const;
+/** The binary name inside the Chrome folder; the native command points Remotion at it (cwd is not a project, so Remotion cannot find it itself). */
+export const CHROME_BIN = "chrome-headless-shell";
 export const MIN_FREE_BYTES = 5 * 1024 ** 3;
 const ENSURE_HINT = "Run `npx remotion browser ensure` once in the project folder, then reload this page.";
 
@@ -54,7 +56,7 @@ function findChromeShell(repoRoot: string): string | null {
     }
     for (const n of names) {
       const f = path.join(dir, n.name);
-      if (n.isFile() && (n.name === "headless_shell" || n.name === "chrome-headless-shell")) return f;
+      if (n.isFile() && n.name === CHROME_BIN) return f;
     }
     if (depth > 0) for (const n of names) if (n.isDirectory()) { const r = walk(path.join(dir, n.name), depth - 1); if (r) return r; }
     return null;

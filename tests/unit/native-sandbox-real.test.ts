@@ -37,7 +37,7 @@ afterAll(() => {
 });
 
 describe.skipIf(!can)("generated sandbox profile, applied for real", () => {
-  it("allows loopback and writes to out/tmp only; denies egress, reading home and a repo file (tsconfig.json; .env.local is under the same repo deny but may not exist), and writes elsewhere", async () => {
+  it("allows loopback and writes to out/tmp only; denies egress, reading home and a repo file (package-lock.json; .env.local is under the same repo deny but may not exist), and writes elsewhere", async () => {
     const { createServer } = await import("node:net");
     const inDir = path.join(root, "in");
     const outDir = path.join(root, "out");
@@ -57,7 +57,7 @@ describe.skipIf(!can)("generated sandbox profile, applied for real", () => {
       const out = await new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
         // async spawn so this process's own loopback server can answer
         import("node:child_process").then(({ spawn }) => {
-          const c = spawn(SANDBOX_EXEC, ["-p", profile, node, path.join(inDir, "probe.mjs"), String(port), outDir, tmpDir, path.join(root, "outside.txt"), path.join(realpathSync(homedir()), ".zshrc"), path.join(repoRoot, "tsconfig.json")], { stdio: ["ignore", "pipe", "pipe"] });
+          const c = spawn(SANDBOX_EXEC, ["-p", profile, node, path.join(inDir, "probe.mjs"), String(port), outDir, tmpDir, path.join(root, "outside.txt"), path.join(realpathSync(homedir()), ".zshrc"), path.join(repoRoot, "package-lock.json")], { stdio: ["ignore", "pipe", "pipe"] });
           let stdout = "";
           let stderr = "";
           c.stdout.on("data", (d) => (stdout += d));
@@ -80,6 +80,24 @@ describe.skipIf(!can)("generated sandbox profile, applied for real", () => {
     } finally {
       server.close();
     }
+  }, 30_000);
+
+  it("node starts with its working directory in the allowed temp folder UNDER the read-denied storage root; the denied attempt folder fails with EPERM (uv_cwd)", () => {
+    // storage root (denied) > attempt dir (denied, not itself allowed) > native-tmp (allowed): the real layout of a job
+    const storage = path.join(root, "cwd-storage");
+    const attempt = path.join(storage, "att");
+    const [inDir, outDir, tmpDir] = ["native-in", "native-out", "native-tmp"].map((n) => path.join(attempt, n));
+    for (const d of [inDir!, outDir!, tmpDir!]) mkdirSync(d, { recursive: true });
+    const repoRoot = realpathSync(process.cwd());
+    const node = realpathSync(process.execPath);
+    const profile = buildSandboxProfile({
+      repoRoot, kitDir: path.join(repoRoot, "remotion", "kit"), nodeModules: path.join(repoRoot, "node_modules"), storageRoot: storage, homeDir: realpathSync(homedir()),
+      inDir: inDir!, outDir: outDir!, tmpDir: tmpDir!, nodePrefix: path.dirname(path.dirname(node)), chromeDir: path.join(root, "chrome"),
+    });
+    const cwdOf = (cwd: string) => spawnSync(SANDBOX_EXEC, ["-p", profile, node, "-e", 'try { console.log(process.cwd()); } catch (e) { console.log(e.code); }'], { cwd, encoding: "utf8" });
+    expect(cwdOf(tmpDir!).stdout.trim()).toBe(tmpDir);
+    expect(cwdOf(inDir!).stdout.trim()).toBe(inDir);
+    expect(cwdOf(attempt).stdout.trim()).toBe("EPERM"); // negative control: the old cwd
   }, 30_000);
 
   it("the sandbox program itself is the one the renderer uses", () => {

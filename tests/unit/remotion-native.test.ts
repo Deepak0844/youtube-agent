@@ -83,7 +83,8 @@ describe("native renderer", () => {
     expect(s.envAllow).toEqual([]);
     expect(s.timeoutMs).toBe(3_000_000);
     expect(s.signal).toBe(ac.signal);
-    expect(s.cwd).toBe(realpathSync(attemptDir));
+    // cwd is the allowed private temp folder: under the read-denied storage root the attempt folder itself makes process.cwd() fail (EPERM)
+    expect(s.cwd).toBe(path.join(realpathSync(attemptDir), "native-tmp"));
     expect(s.cwdRoot).toBe(realpathSync(attemptDir));
     expect(props).toMatchObject({ scene: expect.any(Object), captions: [{ word: "hi", startS: 0, endS: 0.5 }] });
     // the profile names this job's folders and denies the network
