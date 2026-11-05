@@ -11,7 +11,9 @@ import { concreteTexture, signTexture } from "../textures";
 import type { Models } from "../models";
 import { HOLE_BOTTOM, LIN_I, RAIL_Y, ST0, ST1, STATION_TOP, TUNNEL_MODELS, YA } from "./dims";
 
-export function buildStation(models: Models): THREE.Group {
+export type Station = { root: THREE.Group; update: (t: number) => void };
+
+export function buildStation(models: Models): Station {
   const root = new THREE.Group();
   const tile = (t: THREE.Texture, rx: number, ry: number) => { const c = t.clone(); c.needsUpdate = true; c.wrapS = c.wrapT = THREE.RepeatWrapping; c.repeat.set(rx, ry); return c; };
   const conc = std("#ffffff", { map: tile(concreteTexture(), 6, 1.6), roughness: 0.9, metalness: 0 });
@@ -56,5 +58,5 @@ export function buildStation(models: Models): THREE.Group {
   put("cone", xm - 3, -4.4, 1.4, 0, 0.7, true); put("cone", xm + 1.5, -4.4, 1.4, 0, 0.7, true);
   put("barrier", xm - 14, -5.0, 1.6, 0, 1.2, true); put("barrier", xm + 15, -5.0, 1.6, 0, 1.2, true);
   put("container", ST1 - 7, -13.0, 0.9, 0, 6);
-  return root;
+  return { root, update: () => undefined }; // static: nothing moves in the station (the train arrives from train.ts)
 }

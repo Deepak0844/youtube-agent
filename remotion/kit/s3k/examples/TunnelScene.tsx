@@ -53,7 +53,7 @@ const Content: React.FC<{ models: NonNullable<ReturnType<typeof useModels>>; fin
     <>
       <World preset="haze" focus={FOCUS} ground={{ y: 0, zMax: 0 }} sea={{ y: SEA, zMin: 0, foamZ: 0 }} />
       <CutawayBox x0={-420} x1={420} bottom={BOTTOM} holes={[tunnelHole()]} />
-      {[parts.skyline, parts.tunnel.root, parts.station, parts.machine.root, parts.street.root, parts.train.root, parts.boats.root].map((o) => <primitive key={o.uuid} object={o} />)}
+      {[parts.skyline, parts.tunnel.root, parts.station.root, parts.machine.root, parts.street.root, parts.train.root, parts.boats.root].map((o) => <primitive key={o.uuid} object={o} />)}
       <CameraRig shots={TUNNEL_SHOTS} />
       {finish === "off" ? null : <Finish mode={finish} />}
     </>
