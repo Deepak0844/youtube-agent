@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
+import { useThree } from "@react-three/fiber";
 import { continueRender, delayRender } from "remotion";
 import type { ModelResolver } from "../../../src/shared/scene3d/resolver";
 
@@ -84,7 +85,14 @@ export function useModels(ids: readonly string[], resolver: ModelResolver, info?
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  useEffect(() => { if (loaded) continueRender(handle); }, [loaded, handle]);
+  // Release the render hold only after the scene built from these models has been DRAWN once. Remotion's canvas draws only when told to
+  // (once per frame change), so draw by hand now that the models are in (child effects have already run), then continue.
+  const { advance } = useThree();
+  useEffect(() => {
+    if (!loaded) return;
+    advance(performance.now());
+    continueRender(handle);
+  }, [loaded, advance, handle]);
   return useMemo(() => {
     if (!loaded) return null;
     return {

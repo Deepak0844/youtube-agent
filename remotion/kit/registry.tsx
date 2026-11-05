@@ -63,6 +63,7 @@ import { SCENE3D_DEMO } from "./scene3d/demo-scene";
 import { withDefaults } from "./scene3d/defaults";
 import { scene3dFrames } from "./scene3d/camera";
 import type { Scene3DProps } from "./scene3d/Scene3D";
+import { s3kFrames, type S3kDemoProps } from "./s3k/meta";
 
 const terminal: TerminalProps = {
   lines: [{ text: "npm run build" }, { text: "build ok", prompt: ">" }],
@@ -430,6 +431,17 @@ export const KitRoot: React.FC = () => (
       height={theme.height}
       fps={30}
       durationInFrames={300}
+    />
+    {/* 3D authoring kit demo (s3k): lazy, so three.js loads only for this composition (meta.ts has no three import). Rendered natively, not in the container. */}
+    <Composition
+      id="S3kDemo"
+      lazyComponent={() => import("./s3k/Demo").then((m) => ({ default: m.S3kDemo as React.FC<Record<string, unknown>> }))}
+      defaultProps={{ example: "tunnel" } as S3kDemoProps}
+      calculateMetadata={({ props }) => ({ durationInFrames: s3kFrames(props) })}
+      width={theme.width}
+      height={theme.height}
+      fps={30}
+      durationInFrames={600}
     />
     <Composition
       id="kit-video"
