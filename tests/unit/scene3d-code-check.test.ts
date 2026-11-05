@@ -246,6 +246,25 @@ describe("prototype pollution and dynamic lookups", () => {
     ["String.raw", "const s = String.raw`x`;", /String\.raw|tagged|String may/],
   ];
   for (const [name, body, re] of cases) it(`rejects ${name}`, () => rejects(wrap(body), re));
+  it("refuses forbidden members reached by destructuring", () => {
+    rejects(wrap("const { constructor } = {};"), /destructuring \.constructor/);
+    rejects(wrap("const { ownerDocument: d } = { ownerDocument: 1 } as { ownerDocument: number };"), /destructuring \.ownerDocument/);
+    rejects(wrap("const f = ({ domElement }: { domElement: number }) => domElement;"), /destructuring \.domElement/);
+    rejects(wrap("let c: unknown;\n  ({ constructor: c } = {});"), /destructuring \.constructor|any and unknown/);
+    rejects(wrap("let s = 0;\n  ({ a: { src: s } } = { a: { src: 1 } });"), /destructuring \.src/);
+    rejects(wrap("for (const { cookie } of [{ cookie: 1 }]) { }"), /destructuring \.cookie/);
+    expect(checkScene3dCode(wrap("const { x, y } = { x: 1, y: 2 };\n  const [a, b] = [x, y];\n  const f = ({ z }: { z: number }) => z + a + b;")).ok).toBe(true);
+  });
+  it("refuses a cast used as a computed key", () => {
+    rejects(wrap("const k = 'constructor';\n  const a = [1];\n  const v = a[k as number];"), /not a cast/);
+    rejects(wrap("const a = [1];\n  const v = a[(Math.floor(1) as number)];"), /not a cast/);
+  });
+  it("refuses generics (a type-parameter cast could make a text key look like a number) and allows Error", () => {
+    rejects(wrap("function cast<T>(x: string): T { return x as T; }\n  const a = [1];\n  const v = a[cast<number>('constructor')];"), /generics/);
+    rejects(wrap("const id = <T,>(x: T) => x;"), /generics/);
+    expect(checkScene3dCode(wrap("if (Math.PI < 0) throw new Error('never');")).ok).toBe(true);
+    rejects(wrap("const e = new Error('x').constructor;"), /constructor/);
+  });
   it("allows numeric computed indexes and literal names", () => {
     expect(checkScene3dCode(wrap("const a = [1, 2, 3];\n  const i = Math.floor(1.5);\n  const v = a[i] + a[0] + a[a.length - 1];\n  const o = { x: 1 } as Record<string, number>;\n  const w = o['x'];")).ok).toBe(true);
   });

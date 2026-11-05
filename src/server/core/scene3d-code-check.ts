@@ -68,12 +68,12 @@ const GLOBAL_MEMBERS: Readonly<Record<string, ReadonlySet<string>>> = {
   Number: new Set(["isFinite", "isInteger", "isNaN", "isSafeInteger", "parseFloat", "parseInt", "EPSILON", "MAX_SAFE_INTEGER", "MIN_SAFE_INTEGER", "MAX_VALUE", "MIN_VALUE", "POSITIVE_INFINITY", "NEGATIVE_INFINITY"]),
   Array: new Set(["isArray", "from", "of"]),
   Object: new Set(["keys", "values", "entries", "fromEntries", "assign", "freeze"]),
-  String: new Set([]), Boolean: new Set([]),
+  String: new Set([]), Boolean: new Set([]), Error: new Set([]),
 };
 const CALLABLE_GLOBALS = new Set(["Number", "String", "Boolean", "Array", "parseFloat", "parseInt", "isNaN", "isFinite"]);
 const TYPED_ARRAYS = ["Float32Array", "Float64Array", "Uint8Array", "Uint8ClampedArray", "Uint16Array", "Uint32Array", "Int8Array", "Int16Array", "Int32Array"];
-const NEWABLE_GLOBALS = new Set(["Array", "Map", "Set", "WeakMap", "WeakSet", ...TYPED_ARRAYS]);
-const SAFE_GLOBALS = new Set(["Math", "Number", "String", "Boolean", "Array", "Object", "Map", "Set", "WeakMap", "WeakSet", "parseFloat", "parseInt", "isNaN", "isFinite", ...TYPED_ARRAYS]);
+const NEWABLE_GLOBALS = new Set(["Array", "Error", "Map", "Set", "WeakMap", "WeakSet", ...TYPED_ARRAYS]);
+const SAFE_GLOBALS = new Set(["Math", "Number", "String", "Boolean", "Array", "Object", "Error", "Map", "Set", "WeakMap", "WeakSet", "parseFloat", "parseInt", "isNaN", "isFinite", ...TYPED_ARRAYS]);
 const ALWAYS_OK = new Set(["undefined", "NaN", "Infinity"]);
 const AS_ARGUMENT_OK = new Set(["Boolean", "Number", "String"]); // arr.filter(Boolean), arr.map(Number)
 const GLOBAL_OBJECT_NAMES = new Set(["globalthis", "window", "self", "top", "parent", "frames", "global", "opener"]);
@@ -238,6 +238,12 @@ function run(source: string): SceneCheckResult {
       if (BANNED_MEMBERS.has(lit.toLowerCase()) || BANNED_STRINGS.has(lit.toLowerCase()) || !/^[A-Za-z0-9_]{1,40}$/.test(lit)) add(owner, `computed key: ["${echo(lit)}"] is not allowed; write plain names with a dot (obj.name) and avoid prototype names.`);
       return;
     }
+    let bare: ts.Expression = key;
+    while (ts.isParenthesizedExpression(bare) || ts.isNonNullExpression(bare)) bare = bare.expression;
+    if (ts.isAsExpression(bare) || ts.isTypeAssertionExpression(bare) || ts.isSatisfiesExpression(bare)) {
+      add(owner, "computed key: a computed index must be a plain number expression, not a cast (x as number); remove the cast.");
+      return;
+    }
     if (ts.isNumericLiteral(key) || isNumberType(key)) return;
     add(owner, "computed key: a computed index [..] must be a number (a loop counter or Math.floor(x)); a text key could reach forbidden members. Use obj.name or an array index.");
   };
@@ -349,6 +355,14 @@ function run(source: string): SceneCheckResult {
     return ts.isPropertyAccessExpression(e) && e.name.text === "resolver" && ts.isIdentifier(e.expression) && fromParam(e.expression);
   };
 
+  /** True for an object literal that is the target of an assignment or a for-of: ({ a, b } = x), for ({ a } of xs). */
+  const isAssignmentPattern = (lit: ts.Node): boolean => {
+    let node: ts.Node = lit;
+    while (node.parent && (ts.isPropertyAssignment(node.parent) || ts.isShorthandPropertyAssignment(node.parent) || ts.isArrayLiteralExpression(node.parent) || ts.isSpreadElement(node.parent) || ts.isParenthesizedExpression(node.parent) || ts.isSpreadAssignment(node.parent) || ts.isObjectLiteralExpression(node.parent))) node = node.parent;
+    const p = node.parent;
+    return !!p && ((ts.isBinaryExpression(p) && ASSIGN_OPS.has(p.operatorToken.kind) && p.left === node) || ((ts.isForOfStatement(p) || ts.isForInStatement(p)) && p.initializer === node));
+  };
+
   const globalUse = (n: ts.Identifier) => {
     const name = n.text;
     const p = n.parent;
@@ -427,6 +441,7 @@ function run(source: string): SceneCheckResult {
       case ts.SyntaxKind.TaggedTemplateExpression: add(n, "template: tagged templates are not allowed; use a plain template string."); break;
       case ts.SyntaxKind.RegularExpressionLiteral: add(n, "regex: regular expressions are not allowed (they can hang); use plain string and number code."); break;
       case ts.SyntaxKind.TypeAssertionExpression: add(n, "cast: write x as Type, not <Type>x."); break;
+      case ts.SyntaxKind.TypeParameter: add(n, "generics: declaring type parameters (<T>) is not allowed; write the concrete types."); break;
       case ts.SyntaxKind.AnyKeyword: case ts.SyntaxKind.UnknownKeyword: add(n, "type: any and unknown are not allowed; write the real type."); break;
       case ts.SyntaxKind.JsxSpreadAttribute: add(n, "jsx: spread props {...x} are not allowed; write the props out."); break;
       case ts.SyntaxKind.ExportAssignment: if ((n as ts.ExportAssignment).isExportEquals) add(n, "export: export = is not allowed; use export default."); else defaultExports++; break;
@@ -473,6 +488,14 @@ function run(source: string): SceneCheckResult {
       else checkKey(n.argumentExpression, n);
     }
     if (ts.isComputedPropertyName(n)) checkKey(n.expression, n);
+    // Destructuring reads members too: const { constructor } = x, ({ ownerDocument } = el), function f({ domElement }) {}
+    const destructured = (key: ts.Node | undefined) => {
+      if (!key || !(ts.isIdentifier(key) || ts.isStringLiteral(key))) return;
+      const m = key.text.toLowerCase();
+      if (BANNED_MEMBERS.has(m)) add(n, `member: destructuring .${echo(key.text)} is not allowed${BANNED_MEMBER_HINT[m] ? `; ${BANNED_MEMBER_HINT[m]}` : "; it can reach the page, the network or a prototype"}.`);
+    };
+    if (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent)) destructured(n.propertyName ?? n.name);
+    if ((ts.isPropertyAssignment(n) || ts.isShorthandPropertyAssignment(n)) && isAssignmentPattern(n.parent)) destructured(n.name);
     if ((ts.isPropertyAssignment(n) || ts.isShorthandPropertyAssignment(n) || ts.isMethodDeclaration(n)) && (ts.isIdentifier(n.name) || ts.isStringLiteral(n.name))) {
       const k = n.name.text.toLowerCase();
       if (k === "__proto__" || k === "constructor" || k === "prototype") add(n, `member: the property name "${echo(n.name.text)}" is not allowed.`);
