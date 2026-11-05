@@ -225,27 +225,64 @@ function run(source: string): SceneCheckResult {
     }
     return undefined;
   };
-  const isNumberType = (e: ts.Expression): boolean => {
-    const t = checker.getTypeAtLocation(e);
-    const num = (x: ts.Type) => (x.flags & ts.TypeFlags.NumberLike) !== 0;
-    return t.isUnion() ? t.types.every(num) : num(t);
-  };
   const literalKey = (e: ts.Expression): string | undefined => (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e) ? e.text : undefined);
-  /** A computed key (`a[k]`, `{[k]: v}`) must be a number or a plain literal name: a built-up string could reach `constructor`. */
-  const checkKey = (key: ts.Expression, owner: ts.Node) => {
+  // Layer 1 does NOT use TypeScript type information for this: a "number" type can be a lie (casts, any, generics, overloads, declarations).
+  // A computed index is allowed only when it is a number BY SYNTAX, and the indexed thing is a locally declared array.
+  const counters = new Set<ts.Symbol>(); // loop counters proven by checkFor (constant bounds, body never writes them)
+  const unwrap = (e: ts.Expression): ts.Expression => {
+    let x = e;
+    while (ts.isParenthesizedExpression(x)) x = x.expression;
+    return x;
+  };
+  const NUMERIC_MATH = new Set(["floor", "ceil", "round", "trunc", "min", "max", "abs"]);
+  /** localArray: an array literal, or a local variable initialised with one (or new Array(..), Array(..), a typed array, Array.from/of). */
+  const localArray = (e: ts.Expression): boolean => {
+    const x = unwrap(e);
+    if (ts.isArrayLiteralExpression(x)) return true;
+    if (!ts.isIdentifier(x)) return false;
+    const d = checker.getSymbolAtLocation(x)?.declarations?.[0];
+    if (!d || !ts.isVariableDeclaration(d) || !d.initializer) return false;
+    let init = unwrap(d.initializer);
+    while (ts.isAsExpression(init) || ts.isSatisfiesExpression(init)) init = unwrap(init.expression);
+    if (ts.isArrayLiteralExpression(init)) return true;
+    if (ts.isNewExpression(init) || ts.isCallExpression(init)) {
+      const c = init.expression;
+      if (ts.isIdentifier(c)) return c.text === "Array" || TYPED_ARRAYS.includes(c.text);
+      return ts.isPropertyAccessExpression(c) && ts.isIdentifier(c.expression) && c.expression.text === "Array" && (c.name.text === "from" || c.name.text === "of");
+    }
+    return false;
+  };
+  /** True only for: a number literal, a proven loop counter, a const of such an expression, + - * / % of such, Math.floor/ceil/round/trunc/min/max/abs of such, and .length of a local array. */
+  const numericSyntax = (e: ts.Expression, depth = 0): boolean => {
+    if (depth > 8) return false;
+    const x = unwrap(e);
+    if (ts.isNumericLiteral(x)) return true;
+    if (ts.isPrefixUnaryExpression(x) && (x.operator === ts.SyntaxKind.MinusToken || x.operator === ts.SyntaxKind.PlusToken)) return numericSyntax(x.operand, depth + 1);
+    if (ts.isBinaryExpression(x)) {
+      const k = x.operatorToken.kind;
+      return (k === ts.SyntaxKind.PlusToken || k === ts.SyntaxKind.MinusToken || k === ts.SyntaxKind.AsteriskToken || k === ts.SyntaxKind.SlashToken || k === ts.SyntaxKind.PercentToken) && numericSyntax(x.left, depth + 1) && numericSyntax(x.right, depth + 1);
+    }
+    if (ts.isIdentifier(x)) {
+      const sym = checker.getSymbolAtLocation(x);
+      if (!sym) return false;
+      if (counters.has(sym)) return true;
+      const d = sym.declarations?.[0];
+      return !!d && ts.isVariableDeclaration(d) && !!d.initializer && ts.isVariableDeclarationList(d.parent) && (d.parent.flags & ts.NodeFlags.Const) !== 0 && ts.isIdentifier(d.name) && numericSyntax(d.initializer, depth + 1);
+    }
+    if (ts.isPropertyAccessExpression(x)) return x.name.text === "length" && localArray(x.expression);
+    if (ts.isCallExpression(x) && ts.isPropertyAccessExpression(x.expression) && ts.isIdentifier(x.expression.expression) && x.expression.expression.text === "Math" && NUMERIC_MATH.has(x.expression.name.text)) {
+      const msym = checker.getSymbolAtLocation(x.expression.expression);
+      const lib = !msym || (msym.declarations ?? []).every(isLibDecl);
+      return lib && x.arguments.length >= 1 && x.arguments.every((a) => numericSyntax(a, depth + 1));
+    }
+    return false;
+  };
+  /** `a[i]`: i provably numeric by syntax and `a` a locally declared array. `{ [i]: v }`: i provably numeric. Text keys, casts and everything else: refused. */
+  const checkKey = (key: ts.Expression, owner: ts.Node, object?: ts.Expression) => {
     const lit = literalKey(key);
-    if (lit !== undefined) {
-      if (BANNED_MEMBERS.has(lit.toLowerCase()) || BANNED_STRINGS.has(lit.toLowerCase()) || !/^[A-Za-z0-9_]{1,40}$/.test(lit)) add(owner, `computed key: ["${echo(lit)}"] is not allowed; write plain names with a dot (obj.name) and avoid prototype names.`);
-      return;
-    }
-    let bare: ts.Expression = key;
-    while (ts.isParenthesizedExpression(bare) || ts.isNonNullExpression(bare)) bare = bare.expression;
-    if (ts.isAsExpression(bare) || ts.isTypeAssertionExpression(bare) || ts.isSatisfiesExpression(bare)) {
-      add(owner, "computed key: a computed index must be a plain number expression, not a cast (x as number); remove the cast.");
-      return;
-    }
-    if (ts.isNumericLiteral(key) || isNumberType(key)) return;
-    add(owner, "computed key: a computed index [..] must be a number (a loop counter or Math.floor(x)); a text key could reach forbidden members. Use obj.name or an array index.");
+    if (lit !== undefined) return add(owner, `computed key: ["${echo(lit)}"] is not allowed; write the name with a dot (obj.name) instead.`);
+    if (!numericSyntax(key)) return add(owner, "computed key: an index [..] must be a number literal, a for-loop counter, simple arithmetic of those, or Math.floor/min/max of those; a text key could reach forbidden members. Use obj.name or an array index.");
+    if (object && !ts.isNumericLiteral(unwrap(key)) && !localArray(object)) add(owner, "computed key: only a locally declared array (const a = [..] or new Float32Array(n)) may be indexed with a counter or arithmetic (a number literal like out[0] works on anything); use .name for objects.");
   };
 
   // --- pass 1: collect functions and loops (call graph for recursion, loop counters), then the main walk ---
@@ -316,6 +353,7 @@ function run(source: string): SceneCheckResult {
     if (assignsTo(n.statement, sym)) return bad("the loop body must not change the counter");
     const count = Math.abs(bound - start) + 1;
     if (!(count <= MAX_LOOP)) return bad(`the loop runs about ${Math.round(count)} times`);
+    counters.add(sym);
     return count;
   };
 
@@ -485,7 +523,7 @@ function run(source: string): SceneCheckResult {
       const info = sym ? importInfo(sym) : undefined;
       const isGlobal = ts.isIdentifier(e) && (!sym || (sym.declarations ?? []).length === 0 || (sym.declarations ?? []).every(isLibDecl));
       if (isGlobal || info?.ns) add(n, "computed key: a global or an imported module cannot be indexed with [..]; write Name.member so the check can see the member.");
-      else checkKey(n.argumentExpression, n);
+      else checkKey(n.argumentExpression, n, n.expression);
     }
     if (ts.isComputedPropertyName(n)) checkKey(n.expression, n);
     // Destructuring reads members too: const { constructor } = x, ({ ownerDocument } = el), function f({ domElement }) {}
@@ -546,9 +584,10 @@ function run(source: string): SceneCheckResult {
   };
   const sizeCheck = (n: ts.Node, name: string, args: readonly ts.Expression[]) => {
     const a = args[0];
-    if (!a || !isNumberType(a)) return; // an array or nothing: bounded already
+    if (!a) return;
     const v = evalNum(a);
     const lim = name === "Array" ? MAX_ARRAY : MAX_TYPED;
+    if (v === undefined && (localArray(a) || ts.isSpreadElement(a))) return; // an array given as the argument: already bounded
     if (v === undefined || !(v <= lim)) add(n, `size: ${name}(n) needs a constant n of at most ${lim} (a number, or a const made of numbers).`);
   };
 

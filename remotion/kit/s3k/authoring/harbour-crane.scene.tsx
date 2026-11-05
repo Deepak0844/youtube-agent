@@ -23,11 +23,11 @@ export default function Scene({ resolver, durationS }: SceneProps) {
     return { crane, ship, box };
   }, [models]);
   const shots = useMemo(() => {
-    const times = glideTimes(3, durationS);
+    const [t0 = 0, t1 = 1, t2 = 2] = glideTimes(3, durationS);
     return [
-      { t: times[0] ?? 0, frame: { box: { min: [-14, 0, -6] as [number, number, number], max: [4, 26, 6] as [number, number, number] }, yawDeg: 24, pitchDeg: 10 } },
-      { t: times[1] ?? 1, frame: { box: { min: [-14, 0, -20] as [number, number, number], max: [18, 16, 6] as [number, number, number] }, yawDeg: -18, pitchDeg: 14 } },
-      { t: times[2] ?? 2, frame: { box: { min: [-2, -2, -22] as [number, number, number], max: [20, 14, -10] as [number, number, number] }, yawDeg: 12, pitchDeg: 18 } },
+      { t: t0, frame: { box: { min: [-14, 0, -6] as [number, number, number], max: [4, 26, 6] as [number, number, number] }, yawDeg: 24, pitchDeg: 10 } },
+      { t: t1, frame: { box: { min: [-14, 0, -20] as [number, number, number], max: [18, 16, 6] as [number, number, number] }, yawDeg: -18, pitchDeg: 14 } },
+      { t: t2, frame: { box: { min: [-2, -2, -22] as [number, number, number], max: [20, 14, -10] as [number, number, number] }, yawDeg: 12, pitchDeg: 18 } },
     ];
   }, [durationS]);
   if (!parts) return null;

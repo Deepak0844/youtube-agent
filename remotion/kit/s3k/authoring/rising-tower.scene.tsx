@@ -30,11 +30,11 @@ export default function Scene({ durationS }: SceneProps) {
   placeSlots(parts.bricks, shown);
   parts.dust.update(t);
   const shots = useMemo(() => {
-    const times = glideTimes(3, durationS);
+    const [t0 = 0, t1 = 1, t2 = 2] = glideTimes(3, durationS);
     return [
-      { t: times[0] ?? 0, frame: { box: { min: [-5, 0, -5] as [number, number, number], max: [5, 4, 5] as [number, number, number] }, yawDeg: 30, pitchDeg: 16 } },
-      { t: times[1] ?? 1, frame: { box: { min: [-5, 0, -5] as [number, number, number], max: [5, 10, 5] as [number, number, number] }, yawDeg: -20, pitchDeg: 12 } },
-      { t: times[2] ?? 2, frame: { box: { min: [-5, 0, -5] as [number, number, number], max: [5, 15, 5] as [number, number, number] }, yawDeg: 10, pitchDeg: 8 } },
+      { t: t0, frame: { box: { min: [-5, 0, -5] as [number, number, number], max: [5, 4, 5] as [number, number, number] }, yawDeg: 30, pitchDeg: 16 } },
+      { t: t1, frame: { box: { min: [-5, 0, -5] as [number, number, number], max: [5, 10, 5] as [number, number, number] }, yawDeg: -20, pitchDeg: 12 } },
+      { t: t2, frame: { box: { min: [-5, 0, -5] as [number, number, number], max: [5, 15, 5] as [number, number, number] }, yawDeg: 10, pitchDeg: 8 } },
     ];
   }, [durationS]);
   return (

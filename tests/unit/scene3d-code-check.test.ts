@@ -50,7 +50,7 @@ describe("positive: real scenes pass unchanged", () => {
       .replace(/from "\.\.\/[A-Za-z]+"/g, 'from "s3k"')
       .replace(/^import type[^;]*from "\.\.?\/[^"]*";\n/gm, "");
     return checkScene3dCode(rewritten).problems.filter((p) => {
-      if (/import: |export: the file needs exactly one default export|useModels: the second argument/.test(p)) return false; // the kit's named scene components get their resolver from Demo.tsx
+      if (/import: |export: the file needs exactly one default export|useModels: the second argument|computed key: an index/.test(p)) return false; // the kit's named scene components get their resolver from Demo.tsx
       const g = /global: "([A-Za-z0-9_]+)" is not available/.exec(p);
       return !(g && dropped.includes(g[1]!));
     });
@@ -256,8 +256,8 @@ describe("prototype pollution and dynamic lookups", () => {
     expect(checkScene3dCode(wrap("const { x, y } = { x: 1, y: 2 };\n  const [a, b] = [x, y];\n  const f = ({ z }: { z: number }) => z + a + b;")).ok).toBe(true);
   });
   it("refuses a cast used as a computed key", () => {
-    rejects(wrap("const k = 'constructor';\n  const a = [1];\n  const v = a[k as number];"), /not a cast/);
-    rejects(wrap("const a = [1];\n  const v = a[(Math.floor(1) as number)];"), /not a cast/);
+    rejects(wrap("const k = 'constructor';\n  const a = [1];\n  const v = a[k as number];"), /computed key: an index/);
+    rejects(wrap("const a = [1];\n  const v = a[(Math.floor(1) as number)];"), /computed key: an index/);
   });
   it("refuses generics (a type-parameter cast could make a text key look like a number) and allows Error", () => {
     rejects(wrap("function cast<T>(x: string): T { return x as T; }\n  const a = [1];\n  const v = a[cast<number>('constructor')];"), /generics/);
@@ -265,8 +265,32 @@ describe("prototype pollution and dynamic lookups", () => {
     expect(checkScene3dCode(wrap("if (Math.PI < 0) throw new Error('never');")).ok).toBe(true);
     rejects(wrap("const e = new Error('x').constructor;"), /constructor/);
   });
-  it("allows numeric computed indexes and literal names", () => {
-    expect(checkScene3dCode(wrap("const a = [1, 2, 3];\n  const i = Math.floor(1.5);\n  const v = a[i] + a[0] + a[a.length - 1];\n  const o = { x: 1 } as Record<string, number>;\n  const w = o['x'];")).ok).toBe(true);
+  it("allows an index that is a number BY SYNTAX into a locally declared array", () => {
+    expect(checkScene3dCode(wrap("const a = [1, 2, 3];\n  const i = Math.floor(1.5);\n  const v = a[i] + a[0] + a[a.length - 1];\n  let s = 0;\n  for (let k = 0; k < 3; k++) s += a[k] + a[k + 1] + a[Math.min(k, 2)];")).ok).toBe(true);
+    expect(checkScene3dCode(wrap("const p = new Float32Array(30);\n  for (let k = 0; k < 10; k++) { p[k * 3] = 1; p[k * 3 + 1] = 2; }")).ok).toBe(true);
+  });
+  it("LAYER 1 ALONE refuses every text key that TypeScript could be made to call a number (no type-check is run in these tests)", () => {
+    const bad: [string, string][] = [
+      ["as number", "const k = 'constructor';\n  const a = [1];\n  const v = a[k as number];"],
+      ["as unknown as number", "const k = 'constructor';\n  const a = [1];\n  const v = a[k as unknown as number];"],
+      ["a generic cast", "function f<T>(x: string): T { return x as T; }\n  const a = [1];\n  const v = a[f<number>('constructor')];"],
+      ["an any value", "const k: any = 'constructor';\n  const a = [1];\n  const v = a[k];"],
+      ["a parameter typed number", "const g = (k: number) => [1][k];"],
+      ["a for-of variable", "const a = [1];\n  for (const k of a) { const v = a[k]; }"],
+      ["a function result", "const k = Number('constructor');\n  const a = [1];\n  const v = a[k];"],
+      ["an overload declaration trick", "declare function h(x: string): number;\n  const a = [1];\n  const v = a[h('constructor')];"],
+      ["a string const cast to a literal union", "const k = 'constructor' as 1 | 2;\n  const a = [1];\n  const v = a[k];"],
+      ["a let that is reassigned", "let k = 0;\n  const a = [1];\n  k = ('x' + 'y') as unknown as number;\n  const v = a[k];"],
+      ["a counter that the body changes", "const a = [1];\n  for (let k = 0; k < 3; k++) { k = ('c' + 'o') as unknown as number; const v = a[k]; }"],
+      ["a number-typed object property", "const o = { n: 0 };\n  const a = [1];\n  const v = a[o.n];"],
+      ["a text literal key", "const a = [1];\n  const v = a['length'];"],
+      ["an object that is not a local array", "const o = { x: 1 };\n  for (let k = 0; k < 3; k++) { const v = o[k]; }"],
+      ["a call result as the object", "const f = () => [1];\n  const v = f()[0];"],
+      ["an array function parameter", "const g = (a: number[]) => a[0];"],
+      ["a template key", "const a = [1];\n  const v = a[`${1}`];"],
+      ["a computed property name from text", "const k = 'constructor';\n  const o = { [k]: 1 };"],
+    ];
+    for (const [name, body] of bad) expect(checkScene3dCode(wrap(body)).ok, name).toBe(false);
   });
 });
 
