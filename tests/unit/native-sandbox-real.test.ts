@@ -82,6 +82,24 @@ describe.skipIf(!can)("generated sandbox profile, applied for real", () => {
     }
   }, 30_000);
 
+  it("node starts with its working directory in the allowed temp folder UNDER the read-denied storage root; the denied attempt folder fails with EPERM (uv_cwd)", () => {
+    // storage root (denied) > attempt dir (denied, not itself allowed) > native-tmp (allowed): the real layout of a job
+    const storage = path.join(root, "cwd-storage");
+    const attempt = path.join(storage, "att");
+    const [inDir, outDir, tmpDir] = ["native-in", "native-out", "native-tmp"].map((n) => path.join(attempt, n));
+    for (const d of [inDir!, outDir!, tmpDir!]) mkdirSync(d, { recursive: true });
+    const repoRoot = realpathSync(process.cwd());
+    const node = realpathSync(process.execPath);
+    const profile = buildSandboxProfile({
+      repoRoot, kitDir: path.join(repoRoot, "remotion", "kit"), nodeModules: path.join(repoRoot, "node_modules"), storageRoot: storage, homeDir: realpathSync(homedir()),
+      inDir: inDir!, outDir: outDir!, tmpDir: tmpDir!, nodePrefix: path.dirname(path.dirname(node)), chromeDir: path.join(root, "chrome"),
+    });
+    const cwdOf = (cwd: string) => spawnSync(SANDBOX_EXEC, ["-p", profile, node, "-e", 'try { console.log(process.cwd()); } catch (e) { console.log(e.code); }'], { cwd, encoding: "utf8" });
+    expect(cwdOf(tmpDir!).stdout.trim()).toBe(tmpDir);
+    expect(cwdOf(inDir!).stdout.trim()).toBe(inDir);
+    expect(cwdOf(attempt).stdout.trim()).toBe("EPERM"); // negative control: the old cwd
+  }, 30_000);
+
   it("the sandbox program itself is the one the renderer uses", () => {
     expect(spawnSync(SANDBOX_EXEC, ["-p", "(version 1)(allow default)", "/usr/bin/true"]).status).toBe(0);
   });

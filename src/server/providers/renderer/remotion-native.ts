@@ -90,7 +90,9 @@ async function runNativeJob<T>(
     const timeoutS = ctx.config.render.nativeTimeoutS;
     ctx.log("render: native 3D render on this Mac (sandboxed, no network)");
     const r = await deps.runChild({
-      ...cmd, cwd: attemptDir, cwdRoot: attemptDir, envAllow: [], timeoutMs: timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES,
+      // cwd is the private temp folder, NOT the attempt folder: the attempt folder sits under the read-denied storage root, and
+      // node's process.cwd() (uv_cwd) fails with EPERM there. The temp folder is an allowed subtree, so getcwd works.
+      ...cmd, cwd: tmpDir, cwdRoot: attemptDir, envAllow: [], timeoutMs: timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES,
       signal: ctx.signal, stageRunId: ctx.claim.stageRunId,
       onLine: (line) => {
         const p = parseProgress(line);
