@@ -104,6 +104,23 @@ test("New short: 3D story hides the style picker, explains itself, and creates a
   expect(row).toEqual([{ kind: "scene3d", format: "short", style: null }]);
 });
 
+test("new video: the 3D story (AI-written scene) choice explains itself, shows one native note and creates the right kind", async ({ page }) => {
+  const topic = `ai code scene ${Date.now()}`;
+  await page.goto("/videos/new");
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("radio", { name: /3D story \(AI-written scene\)/ }).check();
+  await expect(page.getByRole("group", { name: "Style" })).toHaveCount(0);
+  await expect(page.getByText("The app checks the code line by line")).toBeVisible();
+  const note = page.getByTestId("scene3d-native-note");
+  await expect(note).toHaveCount(1);
+  await expect(note).toContainText("render.native_3d");
+  await page.getByLabel("Topic").fill(topic);
+  await page.getByRole("button", { name: "Start video" }).click();
+  await page.waitForURL(/\/videos\/[0-9a-f-]{36}$/);
+  const row = (await db().query("select kind, format, style from videos where topic = $1", [topic])).rows;
+  expect(row).toEqual([{ kind: "scene3d_code", format: "short", style: null }]);
+});
+
 test("nav: Library and New are reachable and only the current one is marked", async ({ page }) => {
   const phone = (page.viewportSize()?.width ?? 1440) < 768;
   await page.goto("/videos/new");

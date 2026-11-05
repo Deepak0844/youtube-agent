@@ -15,9 +15,9 @@ const selectClass = cn("w-full rounded-control border border-control bg-surface 
 
 export function NewForm({ scaleLimitNote, scene3dNote }: { scaleLimitNote: string | null; scene3dNote: string | null }) {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
-  const [kind, setKind] = useState<"scene_kit" | "tsx" | "scale3d" | "scene3d">("scene_kit");
+  const [kind, setKind] = useState<"scene_kit" | "tsx" | "scale3d" | "scene3d" | "scene3d_code">("scene_kit");
   const custom = kind === "tsx";
-  const scale = kind === "scale3d" || kind === "scene3d"; // both draw their own look: no style or caption pickers
+  const scale = kind === "scale3d" || kind === "scene3d" || kind === "scene3d_code"; // both draw their own look: no style or caption pickers
   // Custom animation has no Classic look: its default card is AI Studio. Scene kit keeps Classic ("" = no style).
   const [picked, setPicked] = useState("");
   const style = custom && picked === "" ? "ai_studio" : picked;
@@ -54,6 +54,7 @@ export function NewForm({ scaleLimitNote, scene3dNote }: { scaleLimitNote: strin
             ["scene_kit", "Scene kit (default)", "Safe and fast: the app builds the scenes from a fixed set of parts."],
             ["tsx", "Custom animation (TSX, experimental)", "Claude writes the animation code. Slower, and it may fall back to the scene kit if the code does not pass the safety checks."],
             ["scale3d", "3D scale comparison (Shorts)", "Sizes compared on a ruler: a camera climbs past real objects. Every height is a claim you verify. Needs the render time limit set to 900 s or more (Settings > System)."],
+            ["scene3d_code", "3D story (AI-written scene)", "The AI writes the whole 3D scene as code, from the free building blocks and CC0 models. The app checks the code line by line, runs it only in a locked box on this Mac, and you approve the look from preview pictures before the long render. Needs 'Render 3D on this Mac' turned on in System settings."],
             ["scene3d", "3D story (detailed)", "A 60 s illustrated 3D story built from free CC0 models. You approve the look from preview pictures before the long render. Needs 'Render 3D on this Mac' turned on in System settings."],
           ] as const
         ).map(([id, title, help]) => (
@@ -66,7 +67,7 @@ export function NewForm({ scaleLimitNote, scene3dNote }: { scaleLimitNote: strin
           </label>
         ))}
       </fieldset>
-      {kind === "scene3d" && scene3dNote ? <p role="note" data-testid="scene3d-native-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{scene3dNote}</p> : null}
+      {(kind === "scene3d" || kind === "scene3d_code") && scene3dNote ? <p role="note" data-testid="scene3d-native-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{scene3dNote}</p> : null}
       {kind === "scale3d" && scaleLimitNote ?<p role="note" data-testid="render-limit-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{scaleLimitNote}</p> : null}
       {scale ? null : (
       <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">

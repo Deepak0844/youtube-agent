@@ -299,6 +299,15 @@ export const STAGES: readonly StageDef[] = [
     requiresAny: [],
     prefers: [],
   },
+  // Free-form text (one scene.tsx file back), no tools sent: Claude Code works too. The reply is code, so it is statically checked before anything runs.
+  {
+    id: "author_scene3d",
+    label: "Author, AI-written 3D scene",
+    hint: "Writes the scene file of a 3D story (AI-written scene) as plain text. Used only for those videos.",
+    requires: [],
+    requiresAny: [],
+    prefers: [],
+  },
   { id: "qa_vision", label: "QA, vision review", hint: "Optional review of frames. Leave unset to skip.", requires: ["vision"], requiresAny: [], prefers: [], optional: true },
   // Reads rendered key frames of a code scene (images in, strict JSON out). Unrouted = the review is skipped, never the video.
   { id: "review_frames", label: "Frame check, code scenes", hint: "Reads key frames of a custom animation and says what looks wrong. Leave unset to skip.", requires: ["vision"], requiresAny: [], prefers: [], optional: true },

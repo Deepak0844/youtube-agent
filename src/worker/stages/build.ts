@@ -37,7 +37,7 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
     const video = await loadVideo(deps.db, ctx);
     const script = await approvedScript(deps.db, video.id);
     if (!script.ok) throw new KnownFailure(script.reason);
-    if (video.kind === "scene3d") throw new KnownFailure("A 3D scene video has no build step: its scene is written by the director step."); // never queued: the route has no build
+    if (video.kind === "scene3d" || video.kind === "scene3d_code") throw new KnownFailure("A 3D story video has no build step: its scene is written by the director or author step."); // never queued: the route has no build
     if (video.kind === "scale3d") return buildScale3dAttempt(deps, script.script)(ctx); // no cost plan, no pictures: the model plans the 3D beats
     const beatIds = script.beats.map((b, i) => (typeof b?.id === "string" && b.id !== "" ? b.id : `beat-${i + 1}`));
 

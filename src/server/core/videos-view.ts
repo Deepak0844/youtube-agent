@@ -7,7 +7,7 @@ import { LANGS } from "@/server/core/lang";
 export const PAGE_SIZE = 25;
 export const STATUSES = ["active", "waiting", "done", "failed", "cancelled"] as const;
 export const FORMATS = ["short", "long"] as const;
-export const KINDS = ["scene_kit", "tsx", "collage", "ai", "scale3d", "scene3d"] as const;
+export const KINDS = ["scene_kit", "tsx", "collage", "ai", "scale3d", "scene3d", "scene3d_code"] as const;
 export type Status = (typeof STATUSES)[number];
 
 export const STATUS_WORDS: Record<Status, { label: string; tone: "positive" | "negative" | "warning" | "neutral" }> = {
@@ -18,7 +18,7 @@ export const STATUS_WORDS: Record<Status, { label: string; tone: "positive" | "n
   cancelled: { label: "Cancelled", tone: "neutral" },
 };
 export const FORMAT_WORDS = { short: "Short", long: "Long" } as const;
-export const KIND_WORDS = { scene_kit: "Scene kit", tsx: "Custom animation", collage: "Collage", ai: "AI", scale3d: "3D scale", scene3d: "3D scene" } as const;
+export const KIND_WORDS = { scene_kit: "Scene kit", tsx: "Custom animation", collage: "Collage", ai: "AI", scale3d: "3D scale", scene3d: "3D scene", scene3d_code: "3D scene (AI code)" } as const;
 export const LANGUAGE_WORDS = { en: "English", hi: "Hindi", ta: "Tamil", te: "Telugu", kn: "Kannada", ml: "Malayalam" } as const;
 /** Order shown in the New form. */
 export const LANGUAGE_ORDER = ["en", "hi", "ta", "te", "kn", "ml"] as const;
@@ -65,7 +65,7 @@ export function ageLabel(then: Date, now: Date = new Date()): string {
 export const newVideoSchema = z.object({
   topic: z.string().trim().min(1, "Enter a topic.").max(200, "Keep the topic to 200 characters or fewer."),
   language: z.enum(LANGS, "Pick a narration language."),
-  kind: z.enum(["scene_kit", "tsx", "scale3d", "scene3d"], "Pick a video type."),
+  kind: z.enum(["scene_kit", "tsx", "scale3d", "scene3d", "scene3d_code"], "Pick a video type."),
   format: z.literal("short", "Only Shorts are available for now."),
   notes: z.string().trim().max(2000, "Keep the notes to 2000 characters or fewer.").optional(),
   // Empty or missing = the default look (stored as null).
@@ -84,7 +84,7 @@ export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoIn
   }
   // A 3D scale video uses neither a style nor a caption look (its own composition draws everything), and is Shorts only.
   // A 3D story (scene3d) is the same: no style, no caption look, Shorts only.
-  if (r.success && (r.data.kind === "scale3d" || r.data.kind === "scene3d")) {
+  if (r.success && (r.data.kind === "scale3d" || r.data.kind === "scene3d" || r.data.kind === "scene3d_code")) {
     const { topic, language, kind, format, notes } = r.data;
     return { ok: true, value: { topic, language, kind, format, notes } };
   }

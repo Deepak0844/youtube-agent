@@ -50,6 +50,7 @@ import { renderAttempt } from "./stages/render";
 import { tsxAuthorAttempt } from "./stages/tsx-author";
 import { directScene3dAttempt } from "./stages/direct-scene3d";
 import { scene3dStillsAttempt } from "./stages/scene3d-stills";
+import { scene3dAuthorAttempt } from "./stages/scene3d-author";
 import { loadRepoCatalog } from "@/server/providers/renderer/scene3d-models";
 import { sfxHandler } from "./stages/sfx";
 import { ttsAttempt } from "./stages/tts";
@@ -59,7 +60,7 @@ import { voiceAttempt } from "./stages/voice";
 export type StageHandlers = Partial<Record<StageName, StageHandler>>;
 export function createStageDispatcher(handlers: StageHandlers, concurrentRenders: number): StageHandler {
   const render = createSemaphore(concurrentRenders);
-  const resources = new Map([...stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }), ...stagePlan("tsx", "short", { paidGeneration: false, requireEvidence: false }), ...stagePlan("scene3d", "short", { paidGeneration: false, requireEvidence: false })].map((s) => [s.stage, s.resource]));
+  const resources = new Map([...stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }), ...stagePlan("tsx", "short", { paidGeneration: false, requireEvidence: false }), ...stagePlan("scene3d", "short", { paidGeneration: false, requireEvidence: false }), ...stagePlan("scene3d_code", "short", { paidGeneration: false, requireEvidence: false })].map((s) => [s.stage, s.resource]));
   return async (ctx) => {
     const name = ctx.stage.name;
     if (!(STAGE_NAMES as readonly string[]).includes(name)) throw new KnownFailure("unknown stage");
@@ -96,6 +97,7 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     tsx_author: withAttempt(fin, tsxAuthorAttempt(deps)),
     direct_scene3d: withAttempt(fin, directScene3dAttempt(deps)),
     scene3d_stills: withAttempt(fin, scene3dStillsAttempt(deps)),
+    scene3d_author: withAttempt(fin, scene3dAuthorAttempt(deps)),
     voice: withAttempt(fin, voiceAttempt(deps)),
     sfx: sfxHandler(fin, deps),
     qa: withAttempt(fin, qaAttempt(deps)),
@@ -198,6 +200,11 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     const models = await defaultModelDeps(pool, () => loadKeyring());
     return withAttempt(fin, directScene3dAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
   };
+  // 3D story, AI-written scene: the author_scene3d model route and the same budget scopes as Build; checks and the type-check run in this worker, nothing runs until the sandboxed render.
+  const scene3dAuthor: StageHandler = async (ctx) => {
+    const models = await defaultModelDeps(pool, () => loadKeyring());
+    return withAttempt(fin, scene3dAuthorAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
+  };
   // Preview pictures of a 3D story: native pictures, then the optional (advisory) picture check through the review_frames vision route.
   const scene3dStills: StageHandler = async (ctx) => {
     const models = await defaultModelDeps(pool, () => loadKeyring());
@@ -243,6 +250,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     tsx_author: refuseDryRunVideos(pool, tsxAuthor),
     direct_scene3d: refuseDryRunVideos(pool, directScene3d),
     scene3d_stills: refuseDryRunVideos(pool, scene3dStills),
+    scene3d_author: refuseDryRunVideos(pool, scene3dAuthor),
     voice: refuseDryRunVideos(pool, withAttempt(fin, voiceAttempt(deps))),
     sfx: refuseDryRunVideos(pool, sfxHandler(fin, deps)),
     qa: refuseDryRunVideos(pool, withAttempt(fin, qaAttempt(deps))),
