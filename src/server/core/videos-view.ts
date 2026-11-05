@@ -7,7 +7,7 @@ import { LANGS } from "@/server/core/lang";
 export const PAGE_SIZE = 25;
 export const STATUSES = ["active", "waiting", "done", "failed", "cancelled"] as const;
 export const FORMATS = ["short", "long"] as const;
-export const KINDS = ["scene_kit", "tsx", "collage", "ai", "scale3d"] as const;
+export const KINDS = ["scene_kit", "tsx", "collage", "ai", "scale3d", "scene3d"] as const;
 export type Status = (typeof STATUSES)[number];
 
 export const STATUS_WORDS: Record<Status, { label: string; tone: "positive" | "negative" | "warning" | "neutral" }> = {
@@ -18,7 +18,7 @@ export const STATUS_WORDS: Record<Status, { label: string; tone: "positive" | "n
   cancelled: { label: "Cancelled", tone: "neutral" },
 };
 export const FORMAT_WORDS = { short: "Short", long: "Long" } as const;
-export const KIND_WORDS = { scene_kit: "Scene kit", tsx: "Custom animation", collage: "Collage", ai: "AI", scale3d: "3D scale" } as const;
+export const KIND_WORDS = { scene_kit: "Scene kit", tsx: "Custom animation", collage: "Collage", ai: "AI", scale3d: "3D scale", scene3d: "3D scene" } as const;
 export const LANGUAGE_WORDS = { en: "English", hi: "Hindi", ta: "Tamil", te: "Telugu", kn: "Kannada", ml: "Malayalam" } as const;
 /** Order shown in the New form. */
 export const LANGUAGE_ORDER = ["en", "hi", "ta", "te", "kn", "ml"] as const;
