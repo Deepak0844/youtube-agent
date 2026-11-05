@@ -12,6 +12,7 @@ import { createContainerRenderer } from "@/server/providers/renderer/remotion-co
 import { createNativeRenderer, type NativeRendererDeps } from "@/server/providers/renderer/remotion-native";
 import { buildSandboxProfile } from "@/server/providers/renderer/native-sandbox";
 import { sha256Hex } from "@/shared/assets3d/files";
+import { sha256Hex as textSha } from "@/server/core/content-hash";
 import { loadCatalog } from "@/shared/assets3d/catalog";
 import { FAKE_ENTRIES } from "../support/catalog3d";
 
@@ -62,6 +63,7 @@ function deps(behave?: (spec: ChildSpec) => ChildResult, over: Partial<NativeRen
       copyFileSync(GOOD, outFileOf(spec));
       return DONE;
     },
+    typeCheck: (s) => ({ ok: true, problems: [], sha256: textSha(s) }),
     ...over,
   };
 }
@@ -122,6 +124,20 @@ describe("native renderer, scene3d_code", () => {
     const err = await createNativeRenderer(deps()).render(ctx(), args({ scene3dCode: input({ source: evil }) })).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(KnownFailure);
     expect((err as Error).message).toMatch(/failed the safety check again.*"fetch" is not available/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("the type-check runs again on the staged bytes and any failure, timeout, crash or other bytes stops everything before a process starts", async () => {
+    writeFileSync(path.join(assets, "pp_ship.glb"), GLB);
+    for (const tc of [
+      () => { throw new Error("boom"); },
+      () => ({ ok: false, problems: ["line 1: type error: x"], sha256: textSha(SOURCE) }),
+      () => ({ ok: false, fatal: true, problems: ["type-check: took longer"], sha256: textSha(SOURCE) }),
+      () => ({ ok: true, problems: [], sha256: textSha("different") }),
+      () => ({ ok: true, problems: [] }),
+    ]) {
+      await expect(createNativeRenderer(deps(undefined, { typeCheck: tc })).render(ctx(), args())).rejects.toThrow(/did not pass the type-check again/);
+    }
     expect(calls).toHaveLength(0);
   });
 

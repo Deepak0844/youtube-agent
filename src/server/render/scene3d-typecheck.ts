@@ -3,6 +3,7 @@ import path from "node:path";
 import ts from "typescript";
 import { S3K_ALLOWED, THREE_ALLOWED } from "@/server/core/scene3d-code-check";
 import { S3K_API_DTS } from "@/server/core/s3k-kit-dts";
+import { sha256Hex } from "@/server/core/content-hash";
 import { echo } from "@/server/core/tsx-check";
 
 // Type-check of ONE AI-written 3D scene against the kit's declarations (api.d.ts = module "s3k", with its three and react types) with
@@ -65,13 +66,18 @@ function sentence(d: ts.Diagnostic, sf: ts.SourceFile | undefined): string {
 export interface SceneTypeResult {
   ok: boolean;
   problems: string[];
+  /** sha256 of the exact source text that was checked: the host compares it with the bytes it is about to use. */
+  sha256: string;
+  /** true when the check itself could not finish (timeout, crash, unreadable file): never a hint for the model, always a stop. */
+  fatal?: boolean;
 }
 
 /** Type-checks one scene source. Never throws. `budgetMs` is for tests. */
 export function typeCheckScene3d(source: string, budgetMs: number = SCENE_TYPECHECK_BUDGET_MS): SceneTypeResult {
+  const sha256 = sha256Hex(source);
   const started = Date.now();
   const deadline = started + budgetMs;
-  const slow = (): SceneTypeResult => ({ ok: false, problems: [`type-check: the type-check took longer than ${Math.round(budgetMs / 1000)} s; write simpler, smaller code.`] });
+  const slow = (): SceneTypeResult => ({ ok: false, fatal: true, sha256, problems: [`type-check: the type-check took longer than ${Math.round(budgetMs / 1000)} s; write simpler, smaller code.`] });
   try {
     const files = virtual(source);
     const host = ts.createCompilerHost(OPTIONS, true);
@@ -106,16 +112,16 @@ export function typeCheckScene3d(source: string, budgetMs: number = SCENE_TYPECH
     const program = ts.createProgram({ rootNames: [SCENE, AMBIENT], options: OPTIONS, host });
     if (Date.now() > deadline) return slow();
     const sf = program.getSourceFile(SCENE);
-    if (!sf) return { ok: false, problems: ["type-check: the file could not be read by the type-checker."] };
+    if (!sf) return { ok: false, fatal: true, sha256, problems: ["type-check: the file could not be read by the type-checker."] };
     const token: ts.CancellationToken = {
       isCancellationRequested: () => Date.now() > deadline,
       throwIfCancellationRequested: () => { if (Date.now() > deadline) throw new ts.OperationCanceledException(); },
     };
     const diags = [...program.getSyntacticDiagnostics(sf), ...program.getSemanticDiagnostics(sf, token)];
     const problems = [...new Set(diags.slice(0, MAX_PROBLEMS * 2).map((d) => sentence(d, sf)))].slice(0, MAX_PROBLEMS);
-    return { ok: problems.length === 0, problems };
+    return { ok: problems.length === 0, problems, sha256 };
   } catch (e) {
     if (e instanceof ts.OperationCanceledException) return slow();
-    return { ok: false, problems: ["type-check: the type-checker failed on this file; write simpler code."] };
+    return { ok: false, fatal: true, sha256, problems: ["type-check: the type-checker failed on this file; write simpler code."] };
   }
 }

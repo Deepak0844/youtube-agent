@@ -18,6 +18,8 @@ export const scene3dCodeBodySchema = z.object({
   kind: z.literal("scene3d_code"),
   source: z.string().min(1).max(SCENE_MAX_BYTES),
   source_sha256: hex64,
+  /** sha256 of the source text the type-check (layer 2) passed on: must equal source_sha256. */
+  typechecked_sha256: hex64,
   /** Catalogue model ids the scene names (for the Look card and for staging). */
   models: z.array(z.string().max(80)).max(60),
   props: scenePropsSchema,
@@ -31,5 +33,5 @@ export const sceneCodeSha = (source: string, props: SceneProps): string => sha25
 /** The stored body, or null when it is not a valid scene3d_code body (or its fingerprint of the source does not match the source). */
 export function readSceneCodeBody(body: unknown): Scene3dCodeBody | null {
   const r = scene3dCodeBodySchema.safeParse(body);
-  return r.success && sha256Hex(r.data.source) === r.data.source_sha256 ? r.data : null;
+  return r.success && sha256Hex(r.data.source) === r.data.source_sha256 && r.data.typechecked_sha256 === r.data.source_sha256 ? r.data : null;
 }

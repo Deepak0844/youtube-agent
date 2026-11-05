@@ -12,7 +12,8 @@ import type { Renderer, RenderArgs, Scene3dStillsArgs, Scene3dStillsRenderer } f
 import { nativeCommand, type NativeCommandInput } from "./native-sandbox";
 import type { NativeReadiness } from "./native-preflight";
 import { collectOutput, copyRegular, parseProgress, realDir, scale3dProps } from "./remotion-container";
-import { stageSceneCode, stageSceneModels } from "./scene3d-models";
+import { stageSceneCode, stageSceneModels, type StagedTypeCheck } from "./scene3d-models";
+import { typeCheckScene3d } from "@/server/render/scene3d-typecheck";
 import type { Catalog3d } from "@/shared/assets3d/catalog";
 import type { Scene3d } from "@/shared/scene3d";
 
@@ -42,6 +43,8 @@ export interface NativeRendererDeps {
   /** The 3D model catalogue and the folder of its files (default <repo>/assets3d/files): scene3d videos only. */
   catalog?: () => Promise<Catalog3d>;
   assetsDir?: string;
+  /** The in-process type-check run again on the staged scene (default: typeCheckScene3d; tests inject one). */
+  typeCheck?: StagedTypeCheck;
   /** Test hooks. */
   node?: string;
   homeDir?: string;
@@ -125,7 +128,7 @@ async function stagedScene(deps: NativeRendererDeps, scene: Scene3d, j: Job) {
 async function stagedSceneCode(deps: NativeRendererDeps, input: NonNullable<RenderArgs["scene3dCode"]>, j: Job) {
   const catalog = await deps.catalog?.().catch(() => undefined);
   if (!catalog) throw new KnownFailure("The 3D model catalogue could not be read (assets3d/manifest.json). Nothing was rendered.");
-  return stageSceneCode(input, catalog, deps.assetsDir ?? path.join(j.repoRoot, "assets3d", "files"), j.inDir);
+  return stageSceneCode(input, catalog, deps.assetsDir ?? path.join(j.repoRoot, "assets3d", "files"), j.inDir, deps.typeCheck ?? typeCheckScene3d);
 }
 
 export function createNativeRenderer(deps: NativeRendererDeps): Renderer & Scene3dStillsRenderer {

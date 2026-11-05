@@ -78,7 +78,7 @@ export function scene3dAuthorAttempt(deps: StageDeps): AttemptHandler {
       return !!e && e.kind === "model" && (ALLOWED_LICENSES as readonly string[]).includes(e.license);
     });
     await writeFile(path.join(ctx.attemptDir, "scene.tsx"), out.source, { mode: 0o600 });
-    const body: Scene3dCodeBody = { kind: "scene3d_code", source: out.source, source_sha256: sha256Hex(out.source), models, props, attempts: out.attempts };
+    const body: Scene3dCodeBody = { kind: "scene3d_code", source: out.source, source_sha256: sha256Hex(out.source), typechecked_sha256: out.typecheckedSha256, models, props, attempts: out.attempts };
     return {
       files: ["scene.tsx"],
       content: [{ kind: "scenes", body }],

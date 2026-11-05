@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "@/server/core/agent-loop";
+import { sha256Hex } from "@/server/core/content-hash";
 import { KnownFailure } from "@/server/core/paid-call";
 import { S3K_EXAMPLE_A, S3K_EXAMPLE_B } from "@/server/core/s3k-kit-dts";
 import { authorScene3d } from "@/server/core/scene3d-author";
@@ -95,7 +96,8 @@ describe("the prompt", () => {
 });
 
 describe("authorScene3d", () => {
-  const run = (replies: string[], typeCheck = () => ({ ok: true, problems: [] as string[] })) => {
+  const pass = (s: string) => ({ ok: true, problems: [] as string[], sha256: sha256Hex(s) });
+  const run = (replies: string[], typeCheck: (s: string) => { ok: boolean; problems: string[]; sha256?: string; fatal?: boolean } = pass) => {
     const seen: Message[][] = [];
     const logs: string[] = [];
     let i = 0;
@@ -121,7 +123,7 @@ describe("authorScene3d", () => {
   });
   it("runs the type-check only after the static check passed, and feeds its sentences back", async () => {
     let calls = 0;
-    const tc = () => (++calls === 1 ? { ok: false, problems: ["line 3: import: s3k has no \"Wrold\"; the closest allowed names are World"] } : { ok: true, problems: [] });
+    const tc = (s: string) => (++calls === 1 ? { ok: false, problems: ["line 3: import: s3k has no \"Wrold\"; the closest allowed names are World"] } : pass(s));
     const r = run(["```tsx\nfetch('/x');\n```", GOOD, GOOD], tc);
     expect(await r.promise).toMatchObject({ attempts: 3 });
     expect(calls).toBe(2);
@@ -141,8 +143,22 @@ describe("authorScene3d", () => {
     expect(logged).toHaveLength(AUTHOR_MAX_ATTEMPTS);
     for (const l of logged) expect(l.length).toBeLessThan(6200 + 60);
   });
+  it("a type-check that crashes, times out, cannot finish or confirms other bytes is FATAL: the scene is never accepted and no retry is made", async () => {
+    for (const tc of [
+      () => { throw new Error("boom"); },
+      () => ({ ok: false, fatal: true, problems: ["type-check: the type-check took longer than 15 s"], sha256: "x" }),
+      () => ({ ok: true, problems: [] }), // passed, but did not say which bytes
+      () => ({ ok: true, problems: [], sha256: sha256Hex("other bytes") }),
+    ]) {
+      const r = run([GOOD], tc);
+      const err = await r.promise.catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(KnownFailure);
+      expect((err as Error).message).toMatch(/^scene3d_typecheck_failed: /);
+      expect(r.seen).toHaveLength(1);
+    }
+  });
   it("lets a model-call failure go up untouched (never retried here)", async () => {
     const boom = new Error("budget");
-    await expect(authorScene3d({ ask: async () => { throw boom; }, typeCheck: () => ({ ok: true, problems: [] }), log: () => undefined }, task)).rejects.toBe(boom);
+    await expect(authorScene3d({ ask: async () => { throw boom; }, typeCheck: pass, log: () => undefined }, task)).rejects.toBe(boom);
   });
 });

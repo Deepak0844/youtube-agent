@@ -80,7 +80,9 @@ export const SCENE_CODE_MAX_FRAMES = 2250;
  * approved, and (2) a source the static checker rejects (the same checker that accepted it at the author step: defence in depth). After
  * writing, scene.tsx is read back and compared again, so what the sandbox reads is byte for byte what was checked and approved.
  */
-export async function stageSceneCode(input: Scene3dCodeInput, catalog: Catalog3d, assetsDir: string, inDir: string): Promise<void> {
+export type StagedTypeCheck = (source: string) => { ok: boolean; problems: string[]; sha256?: string; fatal?: boolean } | Promise<{ ok: boolean; problems: string[]; sha256?: string; fatal?: boolean }>;
+
+export async function stageSceneCode(input: Scene3dCodeInput, catalog: Catalog3d, assetsDir: string, inDir: string, typeCheck: StagedTypeCheck): Promise<void> {
   if (sceneCodeSha(input.source, input.props) !== input.expectedSha256) {
     throw new KnownFailure("The scene is not the one you approved the look for. Run the preview pictures again and approve the new look. Nothing was rendered.");
   }
@@ -98,6 +100,11 @@ export async function stageSceneCode(input: Scene3dCodeInput, catalog: Catalog3d
   await writeFile(file, input.source, { mode: 0o600, flag: "wx" });
   const back = await readFile(file, "utf8");
   if (sha256Hex(back) !== sha256Hex(input.source) || !checkScene3dCode(back).ok) throw new KnownFailure("The staged scene file changed after it was checked, so it was not run. Nothing was rendered.");
+  // Layer 2 again, on the very bytes just staged. A failure, timeout or crash is fatal: nothing starts.
+  const typed = await Promise.resolve().then(() => typeCheck(back)).catch(() => null);
+  if (!typed || typed.fatal || !typed.ok || typed.sha256 !== sha256Hex(back)) {
+    throw new KnownFailure(`The scene did not pass the type-check again (${(typed?.problems[0] ?? "the type-check crashed").slice(0, 120)}), so it was not run. Nothing was rendered.`.slice(0, 600));
+  }
   const props = { beats: input.props.beats, captions: input.props.captions, durationS: input.props.durationS, frames, models };
   await writeFile(path.join(inDir, "props.json"), JSON.stringify(props), { mode: 0o600, flag: "wx" });
 }

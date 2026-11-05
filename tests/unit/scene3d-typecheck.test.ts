@@ -5,8 +5,8 @@ import { typeCheckScene3d } from "@/server/render/scene3d-typecheck";
 // The real TypeScript compiler, in-process, against the kit's api.d.ts and the app's installed three, react, remotion and fiber typings.
 describe("typeCheckScene3d", () => {
   it("passes both authoring examples", () => {
-    expect(typeCheckScene3d(S3K_EXAMPLE_A)).toEqual({ ok: true, problems: [] });
-    expect(typeCheckScene3d(S3K_EXAMPLE_B)).toEqual({ ok: true, problems: [] });
+    expect(typeCheckScene3d(S3K_EXAMPLE_A)).toMatchObject({ ok: true, problems: [] });
+    expect(typeCheckScene3d(S3K_EXAMPLE_B)).toMatchObject({ ok: true, problems: [] });
   }, 60_000);
 
   it("names a wrong kit import and offers the closest allowed names", () => {
