@@ -1,12 +1,13 @@
 import path from "node:path";
 import { KnownFailure } from "@/server/core/paid-call";
+import { CHROME_BIN } from "./native-preflight";
 
 // SECURITY CONTROL (Phase 5d): the boundary of the native 3D render, the one render that runs on the host and not in the
 // locked Docker container. What runs is our own composition (remotion/kit) plus a validated scene file plus the fixed
 // catalogue models; no model-written code, no downloaded code. The boundary is macOS sandbox-exec with the profile below:
 //   network   denied, except bind/accept/connect on loopback (Remotion's local file server and Chrome's devtools socket use 127.0.0.1);
 //   writes    denied everywhere except the job's out folder, one private temp folder (also HOME and TMPDIR) and /dev/null-like devices;
-//   reads     the home folder, the repo and the storage root are denied; only the kit, node_modules, the repo's package.json,
+//   reads     the home folder, the repo and the storage root are denied; only the kit, node_modules, the repo's package.json and tsconfig.json,
 //             the job's in folder, the out and temp folders, the node install and the Chrome headless shell folder are readable.
 // ACCEPTED RESIDUAL RISKS (reviewed; the scene is our own validated data, not code):
 //   - the profile is `(allow default)` plus denies, not deny-default (deny-default cannot be made to work for Chrome blind);
@@ -14,7 +15,9 @@ import { KnownFailure } from "@/server/core/paid-call";
 //   - mach lookups, the pasteboard, process exec and signals are not restricted (see strictExec below; off until a real render proves it);
 //   - reads outside home, repo and storage (for example /etc) are allowed; file METADATA (stat/realpath) is not denied on the
 //     protected trees: tested, denying it makes realpath() of an allowed folder fail (EPERM on its parents), which webpack and Chrome use.
-// The program is started with `env -i`: no secret of the worker (database url, keys) reaches it.
+// The program is started with `env -i`: no secret of the worker (database url, keys) reaches it. Only PATH, HOME, TMPDIR and
+// REMOTION_BROWSER_EXECUTABLE are set. The working directory must be the temp folder: process.cwd() fails with EPERM anywhere
+// under the denied storage root that is not itself allowed. Remotion looks for Chrome from the cwd, so the path is given explicitly.
 // Seatbelt applies the LAST matching rule, so each allow below sits after the deny it carves a hole in.
 
 export const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
@@ -52,6 +55,10 @@ const strictExecRules = (p: NativeSandboxPaths): string[] => [
   `(allow process-exec* (subpath ${q(p.nodePrefix)}) (subpath ${q(p.chromeDir)}) (subpath "/usr/bin") (subpath "/bin") (subpath "/usr/libexec") (subpath "/System"))`,
 ];
 
+// The only single files of the repo root the render may read (everything else of the repo stays denied): package.json (browserslist,
+// Remotion) and tsconfig.json (Remotion's esbuild loader reads it while bundling; found by the first real run). Both are plain config.
+export const REPO_FILES = ["package.json", "tsconfig.json"] as const;
+
 /** The sandbox-exec profile text. Builds only; runs nothing. Throws KnownFailure for an unusable path. */
 export function buildSandboxProfile(p: NativeSandboxPaths, opts: { strictExec?: boolean } = {}): string {
   const read = [p.kitDir, p.nodeModules, p.inDir, p.outDir, p.tmpDir, p.nodePrefix, p.chromeDir].map((d) => `(subpath ${q(d)})`).join(" ");
@@ -67,7 +74,7 @@ export function buildSandboxProfile(p: NativeSandboxPaths, opts: { strictExec?: 
     "(deny file-write*)",
     `(allow file-write* (subpath ${q(p.outDir)}) (subpath ${q(p.tmpDir)}) (literal "/dev/null") (literal "/dev/dtracehelper") (regex #"^/dev/(tty|ttys[0-9]+|fd/[0-9]+)$"))`,
     `(deny file-read-data (subpath ${q(p.homeDir)}) (subpath ${q(p.repoRoot)}) (subpath ${q(p.storageRoot)}))`,
-    `(allow file-read-data ${read} (literal ${q(path.join(p.repoRoot, "package.json"))}))`,
+    `(allow file-read-data ${read} ${REPO_FILES.map((f) => `(literal ${q(path.join(p.repoRoot, f))})`).join(" ")})`,
     ...(opts.strictExec ? strictExecRules(p) : []),
     "",
   ].join("\n");
@@ -91,7 +98,7 @@ export function nativeCommand(i: NativeCommandInput): { command: string; args: s
     args: [
       "-n", "10",
       SANDBOX_EXEC, "-p", buildSandboxProfile(i),
-      ENV, "-i", `PATH=${path.dirname(i.node)}:/usr/bin:/bin`, `HOME=${i.tmpDir}`, `TMPDIR=${i.tmpDir}`,
+      ENV, "-i", `PATH=${path.dirname(i.node)}:/usr/bin:/bin`, `HOME=${i.tmpDir}`, `TMPDIR=${i.tmpDir}`, `REMOTION_BROWSER_EXECUTABLE=${path.join(i.chromeDir, CHROME_BIN)}`,
       i.node, path.join(i.kitDir, "render-entry.mjs"), i.inDir, i.outFile, i.mode ?? "--scale3d", "--native",
     ],
   };

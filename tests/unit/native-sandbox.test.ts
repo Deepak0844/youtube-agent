@@ -72,7 +72,7 @@ describe("sandbox profile", () => {
     expect(deny).toBe(`(deny file-read-data (subpath "${P.homeDir}") (subpath "${P.repoRoot}") (subpath "${P.storageRoot}"))`);
     const allow = l.find((x) => x.startsWith("(allow file-read-data"))!;
     const paths = [...allow.matchAll(/\((?:subpath|literal) "([^"]+)"\)/g)].map((m) => m[1]);
-    expect(paths).toEqual([P.kitDir, P.nodeModules, P.inDir, P.outDir, P.tmpDir, P.nodePrefix, P.chromeDir, `${P.repoRoot}/package.json`]);
+    expect(paths).toEqual([P.kitDir, P.nodeModules, P.inDir, P.outDir, P.tmpDir, P.nodePrefix, P.chromeDir, `${P.repoRoot}/package.json`, `${P.repoRoot}/tsconfig.json`]);
     expect(l.indexOf(deny)).toBeLessThan(l.indexOf(allow));
   });
 
@@ -92,13 +92,14 @@ describe("sandbox profile", () => {
 describe("native command", () => {
   const cmd = nativeCommand({ ...P, node: "/Users/me/.nvm/versions/node/v22/bin/node", outFile: `${P.outDir}/out.mp4` });
 
-  it("runs nice 10, then sandbox-exec with the profile, then env -i with only PATH, HOME and TMPDIR", () => {
+  it("runs nice 10, then sandbox-exec with the profile, then env -i with only PATH, HOME, TMPDIR and the Chrome path", () => {
     expect(cmd.command).toBe("/usr/bin/nice");
     expect(cmd.args.slice(0, 4)).toEqual(["-n", "10", "/usr/bin/sandbox-exec", "-p"]);
     expect(cmd.args[4]).toBe(buildSandboxProfile(P));
     expect(cmd.args.slice(5, 8)).toEqual(["/usr/bin/env", "-i", expect.stringMatching(/^PATH=/)]);
     const envs = cmd.args.filter((a) => /^[A-Z_]+=/.test(a) && !a.includes("\n"));
-    expect(envs.map((e) => e.split("=")[0])).toEqual(["PATH", "HOME", "TMPDIR"]);
+    expect(envs.map((e) => e.split("=")[0])).toEqual(["PATH", "HOME", "TMPDIR", "REMOTION_BROWSER_EXECUTABLE"]);
+    expect(cmd.args).toContain(`REMOTION_BROWSER_EXECUTABLE=${P.chromeDir}/chrome-headless-shell`); // Remotion finds Chrome from the cwd, which is no project
     expect(cmd.args).toContain(`HOME=${P.tmpDir}`);
     expect(cmd.args).toContain(`TMPDIR=${P.tmpDir}`);
   });
