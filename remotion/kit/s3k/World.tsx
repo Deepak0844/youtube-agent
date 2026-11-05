@@ -6,7 +6,7 @@ import { useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { fitSunFrustum, presetProblems, sunVector, WORLD_PRESETS, type BoxV, type PresetName, type WorldPreset } from "./presets";
 import { paveTexture, rippleTexture, sandTexture } from "./textures";
-import { useT } from "./time";
+import { useStable, useT } from "./time";
 
 export type GroundSpec = {
   /** Height of the ground surface (default 0). */
@@ -94,7 +94,8 @@ const planeXZ = (x0: number, x1: number, z0: number, z1: number, y: number, mat:
   return m;
 };
 
-export const World: React.FC<WorldProps> = ({ preset = "haze", tweak, focus, ground = false, sea = false, shadowSize = 4096 }) => {
+export const World: React.FC<WorldProps> = (props) => {
+  const { preset = "haze", tweak, focus, ground = false, sea = false, shadowSize = 4096 } = useStable(props);
   const { gl, scene } = useThree();
   const t = useT();
   const p = useMemo(() => resolvePreset(preset, tweak), [preset, tweak]);
