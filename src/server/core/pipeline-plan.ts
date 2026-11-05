@@ -69,7 +69,7 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
     return [
       ...head,
       { stage: "tts", resource: "net" },
-      { stage: "scene3d_stills", resource: "render" },
+      { stage: "scene3d_stills", gateAfter: "look", resource: "render" },
       { stage: "render", resource: "render" },
       { stage: "voice", resource: "cpu" },
       { stage: "sfx", resource: "cpu" },
@@ -160,6 +160,11 @@ export interface PipelineView {
   style?: { style: string | null; captionStyle: string | null };
   /** latest owner send-back note for the script, or null */
   feedback: string | null;
+  /**
+   * 3D stories only: how many times the owner sent the Look back, and the latest note. The director reads the note; both count in its hash,
+   * so a repeated note still makes it run again. Absent or null = never sent back, and then no hash changes.
+   */
+  lookFeedback?: { count: number; note: string } | null;
   /** sha256 of the latest version of each content kind that exists */
   content: Partial<Record<ContentKindName, string>>;
   /** newest run per stage */
@@ -213,6 +218,7 @@ export function expectedInputHash(view: PipelineView, stage: StageName, prevHash
   const nonce = view.nonces?.[stage];
   if (view.style && (stage === "build" || stage === "render")) Object.assign(upstream, styleHashParts(view.style.style, view.style.captionStyle)); // only when chosen: older hashes stay identical
   if (view.style?.style && stage === "tsx_author") upstream.style = view.style.style; // only when chosen: a tsx video with no style keeps its old hash
+  if (stage === "direct_scene3d" && view.lookFeedback) upstream.look_feedback = `${view.lookFeedback.count}:${view.lookFeedback.note}`; // only when sent back: every other hash stays identical
   if (nonce) upstream.nonce = nonce; // only when set: every hash made before forced reruns existed stays identical
   return stageInputHash(stage, upstream, {});
 }

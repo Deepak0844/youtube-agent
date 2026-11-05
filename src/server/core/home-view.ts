@@ -20,6 +20,7 @@ export const stageLabel = (name: string): string => STAGE_LABEL[name] ?? "A step
 export const GATE_LABEL: Record<string, string> = {
   script: "Script gate",
   cost: "Cost gate",
+  look: "Look gate",
   video: "Video gate",
   evidence: "Evidence gate",
   publish: "Publish gate",

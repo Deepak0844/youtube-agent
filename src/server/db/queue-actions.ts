@@ -1,7 +1,8 @@
 import type pg from "pg";
 import { captionsNeedTick, actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { STALE_MESSAGE, versionsKey, type BreakerStage, type DecisionInput, type GateInput } from "@/server/core/queue-input";
-import { approvalReaders } from "@/server/db/approval-readers";
+import { lookSendBackProblem } from "@/server/core/scene3d-view";
+import { approvalReaders, lookFeedbackOf } from "@/server/db/approval-readers";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { approveGate, liveGateHash, readSnapshot, sendBack } from "@/server/db/approvals";
 import { recordAudit } from "@/server/db/audit";
@@ -109,10 +110,15 @@ export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: Ga
   if (!live || live.hash !== i.seenHash || versionsKey(live.versions) !== i.seenVersions) return refuse(STALE_MESSAGE);
 
   if (kind === "send_back") {
+    // The Look may be sent back to the director only a few times; the refusal comes before anything is recorded.
+    if (i.gate === "look") {
+      const capped = lookSendBackProblem((await lookFeedbackOf(db, i.videoId))?.count ?? 0);
+      if (capped) return refuse(capped);
+    }
     const r = await sendBack(db, { videoId: i.videoId, gate: i.gate, seenHash: i.seenHash, note: i.note ?? "", actor });
     if (!r.ok) return refuse(say(r.reason));
-    if (i.gate === "script") await advance(db, q.stage, i.videoId);
-    return { ok: true, message: i.gate === "script" ? "Sent back. A new draft will follow your note." : "Sent back. This video is held until it is rebuilt or cancelled." };
+    if (i.gate === "script" || i.gate === "look") await advance(db, q.stage, i.videoId);
+    return { ok: true, message: i.gate === "script" ? "Sent back. A new draft will follow your note." : i.gate === "look" ? "Sent back. The director will redo the scene with your note, then new preview pictures will follow." : "Sent back. This video is held until it is rebuilt or cancelled." };
   }
 
   if (i.gate === "publish") {

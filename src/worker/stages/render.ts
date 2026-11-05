@@ -1,6 +1,9 @@
 import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { KnownFailure } from "@/server/core/paid-call";
+import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
+import { readPreviews } from "@/server/core/scene3d-stills";
+import { approvalState, readSnapshot } from "@/server/db/approvals";
 import { approvedScript } from "@/server/db/stage-content";
 import { validateScenes, type SceneDoc } from "@/shared/scene";
 import { retimeScenes } from "@/shared/scene/retime";
@@ -95,6 +98,7 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
   return async (ctx) => {
     const video = await loadVideo(deps.db, ctx);
     const scene3dRenderer = video.kind === "scene3d" ? await nativeOnly(deps, ctx) : null; // refuses at once, before any other work, when native is off or not ready
+    const approvedSceneSha = video.kind === "scene3d" ? await approvedLookSceneSha(deps, video.id) : null; // and before the long render, unless the owner approved the look
     const scale3d = video.kind === "scale3d" ? await scale3dRenderer(deps, ctx) : null;
     // The 900 s minimum is about the container's software drawing; the native Mac render has its own limit (render.native_timeout_s).
     if (scale3d && !scale3d.native && ctx.config.render.timeoutS < SCALE3D_MIN_RENDER_TIMEOUT_S) {
@@ -107,7 +111,7 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
     const audioFile = await promotedPath(deps.root, video.id, narration.file);
     if (!(await isFile(audioFile))) throw new KnownFailure(`The file ${narration.file} from an earlier stage is missing. Run that stage again.`);
 
-    if (scene3dRenderer) return renderScene3d(scene3dRenderer, deps, ctx, video, audioFile);
+    if (scene3dRenderer) return renderScene3d(scene3dRenderer, deps, ctx, video, audioFile, approvedSceneSha!);
     if (video.kind === "scale3d") return renderScale3d(scale3d!.renderer, deps, ctx, video, audioFile);
 
     const scenesFile = await promotedPath(deps.root, video.id, "scenes.json");
@@ -196,6 +200,16 @@ export async function nativeOnly(deps: StageDeps, ctx: Parameters<AttemptHandler
   return deps.native.renderer;
 }
 
+/** The scene fingerprint of the look the owner approved, or a plain refusal: a 3D story is never rendered before its look is approved (and still valid). */
+async function approvedLookSceneSha(deps: StageDeps, videoId: string): Promise<string> {
+  const refusal = new KnownFailure("Approve the look of the preview pictures first (Queue, Look gate). Nothing was rendered.");
+  if (!(await approvalState(deps.db, videoId, "look")).approved) throw refusal;
+  const snap = await readSnapshot(deps.db, videoId, "look");
+  const previews = snap === "no_video" ? null : readPreviews(snap.inputs.content.previews?.body);
+  if (!previews) throw refusal;
+  return previews.scene_sha256;
+}
+
 /** Reads and validates scene3d.json (same file rules as scenes.json); every model must be a CC0 catalogue model. */
 export async function readScene3dFile(file: string, resolver: ReturnType<typeof catalogModelResolver>): Promise<Scene3d> {
   const fh = await openRegular(file).catch(() => {
@@ -252,8 +266,10 @@ export async function loadRetimedScene3d(deps: StageDeps, ctx: Parameters<Attemp
 }
 
 /** Render for a scene3d video: the checked, re-timed scene through the native renderer. */
-async function renderScene3d(renderer: Renderer, deps: StageDeps, ctx: Parameters<AttemptHandler>[0], video: Awaited<ReturnType<typeof loadVideo>>, audioFile: string) {
+async function renderScene3d(renderer: Renderer, deps: StageDeps, ctx: Parameters<AttemptHandler>[0], video: Awaited<ReturnType<typeof loadVideo>>, audioFile: string, approvedSceneSha: string) {
   const { scene, sceneFile, captions, retime } = await loadRetimedScene3d(deps, ctx, video, audioFile);
+  // The look the owner approved shows exactly this scene; any difference (a new director run, a different retiming) needs new pictures first.
+  if (sha256Hex(canonicalJson(scene)) !== approvedSceneSha) throw new KnownFailure("The scene is not the one you approved the look for. Run the preview pictures again and approve the new look. Nothing was rendered.");
   const r = await renderer.render(ctx, { sceneFile, scene3d: scene, audioFile, videoId: video.id, style: video.style, captionStyle: video.captionStyle, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: SIZE });
   if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
   return { files: ["render.mp4"], result: { rendered: "render.mp4", kind: "scene3d", shots: scene.shots.length, image: r.image ?? null, ...retime } };

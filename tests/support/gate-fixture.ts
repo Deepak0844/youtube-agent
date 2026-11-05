@@ -39,6 +39,7 @@ export const STALE = "0".repeat(64);
 /** Builds the `act` function the harness needs: drives the real approveGate. Non-session actors are passed through untyped. */
 export async function gateFixture(db: pg.Pool, gate: GateId): Promise<{ videoId: string; seen: string; act: GateAct; resultOf: (r: Awaited<ReturnType<typeof approveGate>>) => GateResult }> {
   const videoId = await seedVideo(db);
+  if (gate === "look") for (const kind of ["previews", "scenes"] as const) await bumpContent(db, videoId, kind); // the preview pictures of a 3D story and the scene they show
   if (gate === "publish") return publishFixture(db, videoId);
   const seen = (await liveGateHash(db, videoId, gate))?.hash;
   if (!seen) throw new Error("fixture: no live hash");

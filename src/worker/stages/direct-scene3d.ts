@@ -6,6 +6,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { directScene3d } from "@/server/core/scene3d-direct";
 import { STORY_LIMITS, storyBeatSchema } from "@/server/core/script-contract";
 import type { LlmClient, LlmStageContext } from "@/server/llm/client";
+import { lookFeedbackOf } from "@/server/db/approval-readers";
 import { approvedScript } from "@/server/db/stage-content";
 import type { AttemptHandler } from "./attempt";
 import { loadVideo, videoMoneyScopes, type StageDeps } from "./deps";
@@ -35,9 +36,10 @@ export function directScene3dAttempt(deps: StageDeps): AttemptHandler {
       throw new KnownFailure("The 3D model catalogue could not be read (assets3d/manifest.json).");
     });
     const llm = deps.makeLlm(await videoMoneyScopes(deps.db, video));
+    const look = await lookFeedbackOf(deps.db, video.id); // the owner's note when the Look was sent back (fenced as untrusted data in the prompt)
     const out = await directScene3d(
       directAsk(llm, ctx),
-      { title: typeof script.script.title === "string" ? script.script.title : "", story: story.data.map((b) => ({ id: b.id, visual: b.visual, line: b.line })), catalog },
+      { title: typeof script.script.title === "string" ? script.script.title : "", story: story.data.map((b) => ({ id: b.id, visual: b.visual, line: b.line })), catalog, ...(look ? { feedback: look.note } : {}) },
       ctx.log,
     );
     await writeFile(path.join(ctx.attemptDir, "scene3d.json"), JSON.stringify(out.scene));

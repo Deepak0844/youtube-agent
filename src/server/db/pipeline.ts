@@ -43,6 +43,8 @@ export interface BreakerHold {
 export interface PipelineReaders {
   approvedGates(db: pg.PoolClient, videoId: string): Promise<ReadonlySet<GateId>>;
   feedback(db: pg.PoolClient, videoId: string): Promise<string | null>;
+  /** 3D stories: how often the Look was sent back and the latest note, or null. Optional: readers without it mean "never sent back". */
+  lookFeedback?(db: pg.PoolClient, videoId: string): Promise<{ count: number; note: string } | null>;
 }
 export const NO_DECISIONS: PipelineReaders = {
   approvedGates: async () => new Set<GateId>(),
@@ -112,6 +114,7 @@ async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineRead
     flags: { requireEvidence, paidGeneration: paid },
     paramsHash: sha256Hex(canonicalJson({ format: v.format, kind: v.kind_origin ?? v.kind, language: v.language, topic: v.topic, notes: v.notes })),
     feedback: await readers.feedback(c, v.id),
+    ...(v.kind === "scene3d" && readers.lookFeedback ? { lookFeedback: await readers.lookFeedback(c, v.id) } : {}),
     content: shas,
     runs,
     approved: await readers.approvedGates(c, v.id),

@@ -4,7 +4,7 @@
 // holds the shared checks every implementation must pass, and tests/unit/gates.test.ts fails the build when a row here
 // has no suite registered.
 
-export const GATE_IDS = ["outline", "script", "cost", "chapter", "video", "thumbnail", "evidence", "publish", "comment_reply", "allow_public", "live_title"] as const;
+export const GATE_IDS = ["outline", "script", "cost", "look", "chapter", "video", "thumbnail", "evidence", "publish", "comment_reply", "allow_public", "live_title"] as const;
 export type GateId = (typeof GATE_IDS)[number];
 
 export interface Gate {
@@ -24,6 +24,7 @@ export const GATES: readonly Gate[] = Object.freeze([
   row("outline", "Outline", ["outline"]),
   row("script", "Script", ["script"]),
   row("cost", "Cost", ["cost_plan", "providers_models", "path", "library_scene_versions", "quote"]),
+  row("look", "Look (3D story preview pictures)", ["previews", "scene"]),
   row("chapter", "Chapter review (long, optional)", ["chapter_render"]),
   row("video", "Video", ["video_file"]),
   row("thumbnail", "Thumbnail (long)", ["thumbnail_image"]),
@@ -39,6 +40,7 @@ export const GATE_ROADMAP_PHASE: Readonly<Record<GateId, number>> = Object.freez
   outline: 6,
   script: 2,
   cost: 2,
+  look: 5,
   chapter: 6,
   video: 2,
   thumbnail: 6,

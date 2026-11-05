@@ -337,6 +337,36 @@ describe("scene3d kind", () => {
     const changed = base({ kind: "scene3d", content: { script: "s", beats: "b", narration: "n2", scenes: "sc" } });
     expect(expectedInputHash(changed, "scene3d_stills", "t")).not.toBe(expectedInputHash(v, "scene3d_stills", "t"));
   });
+  it("stops at the look gate after the preview pictures, before Render; the other gates keep their order", () => {
+    const plan = stagePlan("scene3d", "short", f);
+    expect(plan.filter((s) => s.gateAfter || s.gateBefore).map((s) => [s.stage, s.gateAfter ?? s.gateBefore])).toEqual([["draft", "script"], ["scene3d_stills", "look"], ["qa", "video"]]);
+    expect(postStageGates(plan, f)).toEqual(["video", "evidence", "publish"]);
+    const { trail } = walk(base({ kind: "scene3d" }));
+    expect(trail).toEqual(["draft", "gate:script", "direct_scene3d", "tts", "scene3d_stills", "gate:look", "render", "voice", "sfx", "qa", "gate:video", "gate:evidence", "gate:publish", "done"]);
+    // no look approval: Render is never queued
+    const held = walk(base({ kind: "scene3d" }), { approve: false });
+    expect(held.trail).toEqual(["draft", "gate:script"]);
+    const atLook = { ...held.v, approved: new Set<GateId>(["script"]) };
+    const stopped = walk(atLook, { approve: false });
+    expect(stopped.trail.slice(-2)).toEqual(["scene3d_stills", "gate:look"]);
+    expect(stopped.v.runs.render).toBeUndefined();
+  });
+  it("a Look send-back makes the director run again, even with the same note twice, and changes no other hash", () => {
+    const v = base({ kind: "scene3d", content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
+    const plain = expectedInputHash(v, "direct_scene3d", "d");
+    expect(plain).toBe(stageInputHash("direct_scene3d", { prev: "d", script: "s" }, {}));
+    const one = expectedInputHash({ ...v, lookFeedback: { count: 1, note: "more trees" } }, "direct_scene3d", "d");
+    const two = expectedInputHash({ ...v, lookFeedback: { count: 2, note: "more trees" } }, "direct_scene3d", "d");
+    expect(one).not.toBe(plain);
+    expect(two).not.toBe(one);
+    expect(expectedInputHash({ ...v, lookFeedback: null }, "direct_scene3d", "d")).toBe(plain);
+    for (const stage of ["draft", "tts", "scene3d_stills", "render", "qa"] as const) expect(expectedInputHash({ ...v, lookFeedback: { count: 1, note: "x" } }, stage, "p"), stage).toBe(expectedInputHash(v, stage, "p"));
+  });
+  it("after a send-back the director is queued again (before the look gate is asked about)", () => {
+    const first = walk(base({ kind: "scene3d" }), { approve: true }).v;
+    const sentBack = { ...first, approved: new Set<GateId>(["script"]), lookFeedback: { count: 1, note: "more trees" } };
+    expect(nextActions(sentBack)).toMatchObject([{ kind: "enqueue", stage: "direct_scene3d" }]);
+  });
   it("leaves the hashes and routes of every existing kind exactly as they were", () => {
     const sk = base({ content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
     expect(expectedInputHash(sk, "draft", null)).toBe(stageInputHash("draft", { params: "p", feedback: "" }, {}));

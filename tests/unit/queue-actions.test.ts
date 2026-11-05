@@ -29,6 +29,12 @@ describe("parseGateForm", () => {
     delete rest.seenHash;
     expect(parseGateForm(form(rest), "approve").ok).toBe(false);
   });
+  it("accepts the look gate with a two-kind versions list", () => {
+    const two = `previews:${V}:2,scenes:${V}:1`;
+    expect(parseGateForm(form({ ...ok, gate: "look", seenVersions: two }), "approve")).toMatchObject({ ok: true, value: { gate: "look", seenVersions: two } });
+    expect(parseGateForm(form({ ...ok, gate: "look", seenVersions: two, note: "more trees" }), "send_back")).toMatchObject({ ok: true, value: { gate: "look", note: "more trees" } });
+    expect(parseGateForm(form({ ...ok, gate: "look", seenVersions: two, note: "no" }), "send_back").ok).toBe(false);
+  });
   it("refuses missing versions, an unknown gate and a bad video id", () => {
     expect(parseGateForm(form({ ...ok, seenVersions: "" }), "approve").ok).toBe(false);
     expect(parseGateForm(form({ ...ok, gate: "outline" }), "approve").ok).toBe(false);
