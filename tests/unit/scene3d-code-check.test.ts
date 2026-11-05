@@ -285,7 +285,7 @@ describe("prototype pollution and dynamic lookups", () => {
       ["a number-typed object property", "const o = { n: 0 };\n  const a = [1];\n  const v = a[o.n];"],
       ["a text literal key", "const a = [1];\n  const v = a['length'];"],
       ["an object that is not a local array", "const o = { x: 1 };\n  for (let k = 0; k < 3; k++) { const v = o[k]; }"],
-      ["a call result as the object", "const f = () => [1];\n  const v = f()[0];"],
+      ["a call result as the object", "const f = () => [1];\n  for (let k = 0; k < 1; k++) { const v = f()[k]; }"],
       ["an array function parameter", "const g = (a: number[]) => a[0];"],
       ["a template key", "const a = [1];\n  const v = a[`${1}`];"],
       ["a computed property name from text", "const k = 'constructor';\n  const o = { [k]: 1 };"],
