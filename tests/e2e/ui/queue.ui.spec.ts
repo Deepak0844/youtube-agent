@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { addContent } from "@/server/db/videos";
 import { sha256Hex } from "@/server/core/content-hash";
-import { advance, db, endQueuePool, script, seedParked, seedPublishGate, seedScriptGate, workerFinishes } from "../fixtures/queue";
+import { advance, db, endQueuePool, script, seedLookGate, seedParked, seedPublishGate, seedScriptGate, workerFinishes } from "../fixtures/queue";
 
 // Runs with the seeded owner's session at 1440 and 390 wide. There is no worker in the e2e run: a "worker" step is played by
 // claiming and committing the queued stage row in the database, exactly the rows the real worker would write. Every test
@@ -191,4 +191,66 @@ test("the live feed closes when the tab is hidden and reopens when it is visible
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect(feed).toHaveAttribute("data-state", "live");
+});
+
+test("look gate: a contact sheet of the preview pictures with shots and times, what was not found, the advice; fits a phone; no accessibility violations", async ({ page }) => {
+  const topic = `look ${stamp()}`;
+  const { shots } = await seedLookGate(topic, { advice: ["Image 2 is mostly empty sky."] });
+  await open(page);
+  const c = card(page, topic);
+  await expect(c).toBeVisible();
+  await expect(c).toContainText("Look gate");
+  await expect(c).toContainText("Held at the look gate");
+  const sheet = c.getByTestId("look-sheet");
+  await expect(sheet.getByRole("listitem")).toHaveCount(shots.length); // one per shot plus the middle of the longest (6 shots, 7 pictures)
+  expect(shots).toHaveLength(7);
+  await expect(sheet.getByRole("listitem").first()).toContainText("1. hook at 0.5 s");
+  await expect(sheet.getByRole("listitem").first()).toContainText("Caption: Caption hook");
+  await expect(c.getByTestId("look-missing")).toContainText("Scene dig: wanted an excavator; used a dump truck instead.");
+  await expect(c.getByTestId("look-advice")).toContainText("Image 2 is mostly empty sky.");
+  await expect(c.getByRole("note")).toHaveCount(1); // the advice block is the card's only note
+  await expect(c.getByRole("button", { name: /^Approve look/ })).toBeEnabled();
+  await expect(c.getByLabel("Send back with a note")).toBeVisible();
+  await expect(c.getByTestId("review-ref")).toHaveText(/^[0-9a-f]{12}$/);
+  await noPageScroll(page);
+  expect(await axeViolations(page)).toEqual([]);
+});
+
+test("look gate: approving the look queues Render (and only then); the card goes", async ({ page }) => {
+  const topic = `look-ok ${stamp()}`;
+  const { videoId } = await seedLookGate(topic);
+  expect(await count("select count(*)::int as n from stage_runs where video_id = $1 and name = 'render'", [videoId])).toBe(0);
+  await open(page);
+  const c = card(page, topic);
+  await c.getByRole("button", { name: /^Approve look/ }).click();
+  await expect(c).toHaveCount(0);
+  expect(await count("select count(*)::int as n from approvals where video_id = $1 and gate = 'look' and decision = 'approved'", [videoId])).toBe(1);
+  expect(await count("select count(*)::int as n from stage_runs where video_id = $1 and name = 'render' and status = 'queued'", [videoId])).toBe(1);
+});
+
+test("look gate: send back needs a note and queues the director again with it", async ({ page }) => {
+  const topic = `look-back ${stamp()}`;
+  const { videoId } = await seedLookGate(topic);
+  await open(page);
+  const c = card(page, topic);
+  await c.getByLabel("Send back with a note").fill("More palm trees and a brighter sky.");
+  await c.getByRole("button", { name: /^Send back/ }).click();
+  await expect(c).toHaveCount(0);
+  expect(await count("select count(*)::int as n from approvals where video_id = $1 and gate = 'look' and decision = 'sent_back' and note = $2", [videoId, "More palm trees and a brighter sky."])).toBe(1);
+  expect(await count("select count(*)::int as n from stage_runs where video_id = $1 and name = 'direct_scene3d' and status = 'queued'", [videoId])).toBe(1);
+  expect(await count("select count(*)::int as n from stage_runs where video_id = $1 and name = 'render'", [videoId])).toBe(0);
+});
+
+test("a 3D story's Preview tab shows the storyboard, what was not found and the preview pictures; fits a phone", async ({ page }) => {
+  const topic = `look-tab ${stamp()}`;
+  const { videoId } = await seedLookGate(topic);
+  await page.goto(`/videos/${videoId}?tab=preview`);
+  await expect(page.getByRole("heading", { level: 1, name: topic })).toBeVisible();
+  await expect(page.getByTestId("scene3d-total")).toContainText("Total length 36 s, 6 shots");
+  await expect(page.getByTestId("scene3d-shots").getByRole("row")).toHaveCount(7); // header and 6 shots
+  await expect(page.getByTestId("scene3d-objects")).toContainText("box");
+  await expect(page.getByTestId("scene3d-missing")).toContainText("Scene dig: wanted an excavator; used a dump truck instead.");
+  await expect(page.getByRole("heading", { name: "Preview pictures" })).toBeVisible(); // the open Look card shows the same sheet above the tabs
+  await expect(page.getByTestId("look-sheet").first().getByRole("listitem")).toHaveCount(7);
+  await noPageScroll(page);
 });

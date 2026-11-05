@@ -32,4 +32,17 @@ export const approvalReaders: PipelineReaders = {
     );
     return r.rows[0]?.note ?? null;
   },
+  /** The Look send-backs of a 3D story: how many and the newest note. The note reaches the director (fenced as untrusted data); the count keeps a repeated note from being ignored. */
+  async lookFeedback(db: pg.PoolClient, videoId: string): Promise<{ count: number; note: string } | null> {
+    return lookFeedbackOf(db, videoId);
+  },
 };
+
+export async function lookFeedbackOf(db: pg.PoolClient | pg.Pool, videoId: string): Promise<{ count: number; note: string } | null> {
+  const r = await db.query<{ note: string | null; n: string }>(
+    "select (select note from approvals where video_id = $1 and gate = 'look' and decision = 'sent_back' order by seq desc limit 1) as note, (select count(*) from approvals where video_id = $1 and gate = 'look' and decision = 'sent_back') as n",
+    [videoId],
+  );
+  const row = r.rows[0];
+  return row?.note ? { count: Number(row.n), note: row.note } : null;
+}

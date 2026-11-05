@@ -10,6 +10,7 @@ export const STAGE_LABEL: Record<string, string> = {
   render: "Rendering the video",
   tsx_author: "Writing and rendering the code scene",
   direct_scene3d: "Directing the 3D scene",
+  scene3d_stills: "Drawing preview pictures",
   voice: "Mixing the voice",
   sfx: "Adding sound",
   qa: "Checking the video",
@@ -19,6 +20,7 @@ export const stageLabel = (name: string): string => STAGE_LABEL[name] ?? "A step
 export const GATE_LABEL: Record<string, string> = {
   script: "Script gate",
   cost: "Cost gate",
+  look: "Look gate",
   video: "Video gate",
   evidence: "Evidence gate",
   publish: "Publish gate",

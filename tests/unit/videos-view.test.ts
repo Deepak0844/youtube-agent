@@ -58,6 +58,11 @@ describe("parseNewVideoForm", () => {
     expect(r).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "scale3d", format: "short", notes: undefined } });
     expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "scale3d", format: "long" })).ok).toBe(false);
   });
+  it("3D story (scene3d) is accepted for Shorts only and drops the style and caption look", () => {
+    const r = parseNewVideoForm(form({ topic: "x", language: "en", kind: "scene3d", style: "flat_motion", captionStyle: "punchy_captions" }));
+    expect(r).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "scene3d", format: "short", notes: undefined } });
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "scene3d", format: "long" })).ok).toBe(false);
+  });
   it("refuses empty or too long topics and unknown language/kind/format", () => {
     expect(parseNewVideoForm(form({ topic: "   ", language: "en" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ topic: "x".repeat(201), language: "en" })).ok).toBe(false);

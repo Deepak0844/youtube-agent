@@ -3,7 +3,7 @@ import { stagesFor, type CutStage, type StageStatus } from "./stages";
 // Plain string unions on purpose: the UI layer does not import from the server layers (eslint import boundaries).
 export type EngineStage = "draft" | "pictures" | "build" | "generate" | "tts" | "render" | "voice" | "sfx" | "qa";
 export type RunState = "queued" | "running" | "succeeded" | "failed" | "needs_decision" | "cancelled";
-export type OpenGate = "script" | "cost" | "video" | "evidence" | "publish";
+export type OpenGate = "script" | "cost" | "look" | "video" | "evidence" | "publish";
 
 // Turns what the engine knows about one short video (newest run per stage, the open gate, the upload row) into the
 // eight segments of the Cut strip. Pure: no IO. The engine has more stages than the strip has segments, so some
@@ -19,7 +19,7 @@ const GROUPS: ReadonlyArray<{ key: string; stages: readonly EngineStage[] }> = [
   { key: "review", stages: [] },
   { key: "publish", stages: [] },
 ];
-const GATE_SEGMENT: Partial<Record<OpenGate, number>> = { script: 0, cost: 1, video: 6, evidence: 6, publish: 7 };
+const GATE_SEGMENT: Partial<Record<OpenGate, number>> = { script: 0, cost: 1, look: 3, video: 6, evidence: 6, publish: 7 };
 
 export interface StripInput {
   runs: Partial<Record<EngineStage, RunState>>;

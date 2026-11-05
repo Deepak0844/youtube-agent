@@ -1,4 +1,5 @@
 import { renderLimitNote, scaleRows } from "@/server/core/scale3d-view";
+import { LOOK_SEND_BACK_CAP, lookView, type LookSummary, type LookStill } from "@/server/core/scene3d-view";
 import { getEngineConfig } from "@/server/db/engine-config";
 import { claimsOf as evidenceClaims } from "@/server/core/evidence-edit";
 import type pg from "pg";
@@ -10,7 +11,7 @@ import { wordCount, isLang } from "@/server/core/lang";
 import { getDecision, type DecisionDetail } from "@/server/db/decision";
 import { readSnapshot } from "@/server/db/approvals";
 import { breakerHold } from "@/server/db/breakers";
-import { approvalReaders } from "@/server/db/approval-readers";
+import { approvalReaders, lookFeedbackOf } from "@/server/db/approval-readers";
 import { getCachedMediaKey, getOrCreateMediaKey } from "@/server/db/media-key";
 import { readNextAction } from "@/server/db/pipeline";
 import { getSetting } from "@/server/db/settings";
@@ -28,6 +29,14 @@ export interface GateClaim {
 export type GateContent =
   | { kind: "script"; title: string; description: string | null; narration: string; words: number; beats: number; beatRows: BeatRow[]; shownForReal: string | null; style: string | null; claims: GateClaim[]; readable: boolean; /** 3D scale scripts only: the heights to approve and the render-limit note. */ scale?: { rows: GateClaim[]; limitNote: string | null } }
   | { kind: "cost"; totalMicroUsd: number; path: string; models: Array<[string, string]>; items: Array<{ kind: string; provider: string; quoteMicroUsd: number }> }
+  | {
+      kind: "look";
+      /** The pictures (signed addresses), what the director could not find, and the picture check's notes; or why they cannot be shown. */
+      view: { ok: true; look: Omit<LookSummary, "stills"> & { stills: Array<LookStill & { src: string | null }> } } | { ok: false; message: string };
+      /** How many times this look was already sent back, and the most allowed. */
+      sentBack: number;
+      cap: number;
+    }
   | { kind: "video"; src: string | null; shaPrefix: string; captions: "exact" | "approximate" | "check" | "checked"; rewriteLines: number[] }
   | { kind: "evidence"; claims: GateClaim[]; fileSrc: string | null; shaPrefix: string }
   | {
@@ -149,6 +158,11 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
     const quote = asObj(b.quote);
     const items = Array.isArray(b.items) ? b.items.map(asObj).map((i) => ({ kind: str(i.kind), provider: str(i.provider), quoteMicroUsd: Number(i.quoteMicroUsd) || 0 })) : [];
     return { kind: "cost", totalMicroUsd: Number(str(quote.micro_usd)) || 0, path: str(b.path), models: Object.entries(asObj(b.providers_models)).map(([k, v]) => [k, str(v)] as [string, string]), items };
+  }
+  if (gate === "look") {
+    const v = lookView(c.previews?.body, c.scenes?.body);
+    const used = (await lookFeedbackOf(db, videoId))?.count ?? 0;
+    return { kind: "look", sentBack: used, cap: LOOK_SEND_BACK_CAP, view: v.ok ? { ok: true, look: { ...v.look, stills: v.look.stills.map((s) => ({ ...s, src: src(`videos/${videoId}/${s.file}`) })) } } : v };
   }
   if (gate === "video") {
     const cap = asObj(c.captions?.body);

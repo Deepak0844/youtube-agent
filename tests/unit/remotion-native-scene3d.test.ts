@@ -129,3 +129,78 @@ describe("native renderer, scene3d", () => {
     await expect(createContainerRenderer({} as never).render(ctx(), args() as never)).rejects.toThrow(/Mac's GPU only/);
   });
 });
+
+// The preview pictures (--scene3d-stills): same job, same checks, PNG files instead of an mp4.
+describe("native renderer, scene3d preview pictures", () => {
+  const png = (w = 540, h = 960, pad = 20) => {
+    const b = Buffer.alloc(33 + pad);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(b, 0);
+    b.writeUInt32BE(13, 8);
+    b.write("IHDR", 12, "ascii");
+    b.writeUInt32BE(w, 16);
+    b.writeUInt32BE(h, 20);
+    return b;
+  };
+  const framesOf = (spec: ChildSpec): number[] => (JSON.parse(readFileSync(path.join(inDirOf(spec), "stills.json"), "utf8")) as { frames: number[] }).frames;
+  /** Writes still-NN.png for every requested frame, like render-entry.mjs does. */
+  const draws = (make: (i: number) => Buffer | null = () => png()) => (spec: ChildSpec): ChildResult => {
+    framesOf(spec).forEach((_, i) => {
+      const b = make(i + 1);
+      if (b) writeFileSync(path.join(outFileOf(spec), `still-${String(i + 1).padStart(2, "0")}.png`), b);
+    });
+    return DONE;
+  };
+  const run = (behave?: (spec: ChildSpec) => ChildResult, frames = [15, 90, 200], over: Partial<NativeRendererDeps> = {}, native = true) =>
+    createNativeRenderer(deps(behave ?? draws(), over)).stills(ctx(native), { scene3d: scene(), frames });
+
+  it("runs render-entry with --scene3d-stills --native on the out FOLDER, stages only the named models, and copies the pictures to stills/NN.png", async () => {
+    putModel("pp_ship.glb");
+    putModel("pp_crane.glb");
+    let seen: { props: { scene: Scene3d }; staged: string[]; frames: number[] } | undefined;
+    const r = await run((spec) => {
+      seen = { props: JSON.parse(readFileSync(path.join(inDirOf(spec), "props.json"), "utf8")), staged: readdirSync(path.join(inDirOf(spec), "models")), frames: framesOf(spec) };
+      return draws()(spec);
+    });
+    expect(r.files).toEqual(["stills/01.png", "stills/02.png", "stills/03.png"]);
+    for (const f of r.files) expect(existsSync(path.join(attemptDir, f))).toBe(true);
+    expect(calls[0]!.args.slice(-2)).toEqual(["--scene3d-stills", "--native"]);
+    expect(outFileOf(calls[0]!)).toBe(path.join(attemptDir, "native-out"));
+    expect(calls[0]!.envAllow).toEqual([]);
+    expect(seen!.staged).toEqual(["pp_ship.glb"]);
+    expect(seen!.frames).toEqual([15, 90, 200]);
+    expect(Object.keys(seen!.props)).toEqual(["scene"]);
+    expect(existsSync(path.join(attemptDir, "native-in"))).toBe(false);
+    expect(existsSync(path.join(attemptDir, "native-out"))).toBe(false);
+  });
+
+  it("refuses when native_3d is off or the preflight is not ready, and nothing starts", async () => {
+    putModel("pp_ship.glb");
+    await expect(run(undefined, undefined, undefined, false)).rejects.toThrow(/switched off in Settings/);
+    await expect(run(undefined, undefined, { preflight: async () => ({ ready: false, message: "Not ready: no shell.", chromeDir: null }) })).rejects.toThrow(/Not ready: no shell/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a picture that is not a PNG, one of the wrong size, one that is missing, and one that is too big", async () => {
+    putModel("pp_ship.glb");
+    await expect(run(draws((i) => (i === 2 ? Buffer.from("<svg onload=alert(1)>............") : png())))).rejects.toThrow(/picture 2 is not a PNG/);
+    await expect(run(draws((i) => (i === 1 ? png(1080, 1920) : png())))).rejects.toThrow(/picture 1 is 1080x1920/);
+    await expect(run(draws((i) => (i === 3 ? null : png())))).rejects.toThrow(/picture 3 was not drawn/);
+    await expect(run(draws((i) => (i === 1 ? png(540, 960, 2 * 1024 * 1024 + 10) : png())))).rejects.toThrow(/picture 1 was not drawn, or is bigger than 2 MB/);
+    expect(existsSync(path.join(attemptDir, "native-out"))).toBe(false);
+  });
+
+  it("asks for 1 to 8 whole frames only", async () => {
+    putModel("pp_ship.glb");
+    await expect(run(undefined, [])).rejects.toThrow(/1 to 8/);
+    await expect(run(undefined, [1, 2, 3, 4, 5, 6, 7, 8, 9])).rejects.toThrow(/1 to 8/);
+    await expect(run(undefined, [1.5])).rejects.toThrow(/whole frame/);
+    await expect(run(undefined, [-1])).rejects.toThrow(/whole frame/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a model that does not match the catalogue stops the pictures too", async () => {
+    putModel("pp_ship.glb");
+    await expect(run(undefined, undefined, { catalog: async () => catalog({ sha256: "b".repeat(64), source_sha256: "b".repeat(64) }) })).rejects.toThrow(/does not match the catalogue/);
+    expect(calls).toHaveLength(0);
+  });
+});

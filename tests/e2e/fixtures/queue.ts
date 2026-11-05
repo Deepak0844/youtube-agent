@@ -3,7 +3,9 @@ import { addVerifiedEvidence, metaBody } from "../../support/publishable";
 import path from "node:path";
 import pg from "pg";
 import { hashToken } from "@/server/core/auth-crypto";
-import { sha256Hex } from "@/server/core/content-hash";
+import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
+import { buildPreviewsBody, pickStills } from "@/server/core/scene3d-stills";
+import { scene3dSchema } from "@/shared/scene3d";
 import { uuidv7 } from "@/server/core/ids";
 import { versionsKey } from "@/server/core/queue-input";
 import { approvalReaders } from "@/server/db/approval-readers";
@@ -74,7 +76,7 @@ export async function seedParked(topic: string): Promise<{ videoId: string; stag
   return { videoId: v.id, stageId };
 }
 
-export async function liveFields(videoId: string, gate: "script" | "cost" | "video" | "evidence" | "publish") {
+export async function liveFields(videoId: string, gate: "script" | "cost" | "look" | "video" | "evidence" | "publish") {
   const live = (await liveGateHash(db(), videoId, gate))!;
   return { videoId, gate, seenHash: live.hash, seenVersions: versionsKey(live.versions) };
 }
@@ -110,4 +112,41 @@ export async function seedPublishGate(topic: string, visibility: "private" | "un
   }
   await advance(v.id);
   return { videoId: v.id };
+}
+
+const TINY_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+
+/**
+ * A 3D story waiting at the Look: draft, director, narration and preview pictures are "done" (real PNG files under the e2e storage root,
+ * a previews content row, a scenes row with one missing asset). Nothing is rendered; the script gate is approved by a real session.
+ */
+export async function seedLookGate(topic: string, opts: { advice?: string[] } = {}): Promise<{ videoId: string; shots: string[] }> {
+  const root = process.env.E2E_STORAGE_ROOT!;
+  const v = await createVideoRow(db(), { format: "short", kind: "scene3d", language: "en", topic, channelId: "UC-e2e" });
+  await ensureChannel(db(), "UC-e2e");
+  await addContent(db(), v.id, "script", { body: script(topic), sha256: sha256Hex(`script-${v.id}`) });
+  const token = await mintSession();
+  const s = await db().query<{ id: string }>("select id from sessions where token_hash = $1", [hashToken(token)]);
+  const actor = { kind: "session", sessionId: s.rows[0]!.id } as const;
+  await advance(v.id);
+  await workerFinishes(v.id, "draft");
+  const sc = await liveGateHash(db(), v.id, "script");
+  const ok = await approveGate(db(), { videoId: v.id, gate: "script", seenHash: sc!.hash, actor });
+  if (!ok.ok) throw new Error(`seed script: ${ok.reason}`);
+  const body = (b: unknown) => ({ body: b, sha256: sha256Hex(canonicalJson(b)) });
+  const scene = scene3dSchema.parse({ version: 2, elements: [{ kind: "box", id: "b", size_m: [2, 2, 2] }], shots: ["hook", "setup", "dig", "load", "pour", "reveal"].map((id) => ({ id, duration_s: 6, focus: "b", caption: `Caption ${id}` })) });
+  await advance(v.id);
+  await workerFinishes(v.id, "direct_scene3d");
+  await addContent(db(), v.id, "scenes", body({ kind: "scene3d", scene, missing_assets: [{ beat: "dig", wanted: "an excavator", substitute: "a dump truck" }] }));
+  await advance(v.id);
+  await workerFinishes(v.id, "tts");
+  await addContent(db(), v.id, "narration", body({ file: "narration.mp3", seeded: v.id }));
+  await advance(v.id);
+  await workerFinishes(v.id, "scene3d_stills");
+  const picks = pickStills(scene);
+  mkdirSync(path.join(root, "videos", v.id, "stills"), { recursive: true });
+  picks.forEach((_, i) => writeFileSync(path.join(root, "videos", v.id, "stills", `${String(i + 1).padStart(2, "0")}.png`), TINY_PNG));
+  await addContent(db(), v.id, "previews", body(buildPreviewsBody({ sceneSha256: sha256Hex(`scene-${v.id}`), picks, shas: picks.map(() => sha256Hex(TINY_PNG)), advice: { status: "done", notes: opts.advice ?? [] } })));
+  await advance(v.id);
+  return { videoId: v.id, shots: picks.map((p) => p.shotId) };
 }

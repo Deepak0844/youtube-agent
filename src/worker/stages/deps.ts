@@ -5,7 +5,7 @@ import { ensureScopeCopies, periodScopes, videoTemplate } from "@/server/db/budg
 import { getBudget } from "@/server/db/spend";
 import { latestContent, type ContentKind, type VideoFormat, type VideoKind, type VideoLanguage } from "@/server/db/videos";
 import type { ImageProvider } from "@/server/providers/media";
-import type { Renderer, TsxRenderer } from "@/server/providers/renderer";
+import type { Renderer, Scene3dStillsRenderer, TsxRenderer } from "@/server/providers/renderer";
 import type { CaptionsBody } from "@/server/core/alignment";
 import type { Lang } from "@/server/core/lang";
 import type { VoiceProvider } from "@/server/providers/voice";
@@ -42,7 +42,7 @@ export interface StageDeps {
   imageFor?: (providerId: string) => Promise<ImageProvider>;
   renderer: Renderer;
   /** The native (Mac GPU, sandbox-exec) renderer for 3D scale videos and its readiness check (Phase 5d). Absent = never used. */
-  native?: { renderer: Renderer; ready(): Promise<{ ready: boolean; message: string }> };
+  native?: { renderer: Renderer; /** preview pictures of a 3D story (scene3d_stills); absent = that stage refuses */ stills?: Scene3dStillsRenderer; ready(): Promise<{ ready: boolean; message: string }> };
   /** The sandboxed code-scene renderer (tsx_author only). Absent = that stage refuses with a plain sentence. */
   tsx?: TsxRenderer;
   /** Defaults to the real ffprobe-based probe. */
