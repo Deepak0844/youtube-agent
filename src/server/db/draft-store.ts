@@ -51,7 +51,7 @@ export async function pendingScriptFeedback(db: pg.Pool, videoId: string): Promi
  */
 export async function saveDraftContent(db: pg.Pool, videoId: string, claim: ClaimLike, script: Script): Promise<Record<string, number>> {
   const parts: Array<[ContentKind, unknown]> = [
-    ["script", { title: script.title, ...(script.description !== undefined ? { description: script.description } : {}), narration: script.narration, ...(script.scale ? { scale: script.scale } : {}) }],
+    ["script", { title: script.title, ...(script.description !== undefined ? { description: script.description } : {}), narration: script.narration, ...(script.scale ? { scale: script.scale } : {}), ...(script.story ? { story: script.story } : {}) }],
     ["beats", { beats: withTimeEstimates(script.beats) }],
     ["evidence", { claims: script.evidence }],
   ];

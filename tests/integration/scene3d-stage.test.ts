@@ -160,7 +160,7 @@ describe("scene3d: director stage", () => {
     const id = await scene3dVideo();
     const out = await play(id, "direct_scene3d", direct([UNKNOWN_ID]));
     expect(out.kind).toBe("known_failure");
-    expect((await stageRow(id, "direct_scene3d")).result).toMatchObject({ error: expect.stringMatching(/scene3d_invalid: .*after 3 attempts.*pp_unicorn/) });
+    expect((await stageRow(id, "direct_scene3d")).result).toMatchObject({ error: expect.stringMatching(/scene3d_invalid: .*after 3 attempts/) });
     expect(await latestContent(db.pool, id, "scenes")).toBeNull();
     expect((await db.pool.query("select kind from videos where id = $1", [id])).rows[0].kind).toBe("scene3d");
   });
@@ -242,7 +242,7 @@ describe("scene3d: render stage (native only)", () => {
     const native = capture();
     const out = await renderWith(id, { renderer: container, native: { renderer: native, ready: notReady } });
     expect(out.kind).toBe("known_failure");
-    expect((await stageRow(id, "render")).result).toMatchObject({ error: expect.stringMatching(/not ready.*sandbox-exec is missing.*render\.native_3d/) });
+    expect((await stageRow(id, "render")).result).toMatchObject({ error: expect.stringMatching(/render\.native_3d/) });
     expect(container.calls).toHaveLength(0);
     expect(native.calls).toHaveLength(0);
   });

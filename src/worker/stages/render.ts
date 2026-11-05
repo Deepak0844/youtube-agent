@@ -185,11 +185,13 @@ async function renderScale3d(renderer: Renderer, deps: StageDeps, ctx: Parameter
  * preflight is not ready, the stage fails with a plain sentence; it never falls back to the container.
  */
 async function nativeOnly(deps: StageDeps, ctx: Parameters<AttemptHandler>[0]): Promise<Renderer> {
-  const hint = "Switch on render.native_3d (\"Render 3D videos natively on this Mac\") in System settings and run `npx remotion browser ensure` once in the project folder, then run Render again. Nothing was rendered.";
-  if (!ctx.config.render.native3d) throw new KnownFailure(`3D scene videos are drawn on this Mac's GPU only, and render.native_3d is off. ${hint}`);
-  if (!deps.native) throw new KnownFailure(`3D scene videos are drawn on this Mac's GPU only, and this worker has no native renderer. ${hint}`);
+  // The stored error is cut at about 120 characters in places: the fix comes first, the detail after.
+  const fix = 'Turn on render.native_3d in System settings and run "npx remotion browser ensure" first: 3D scene videos render on this Mac only.';
+  const tail = "Run Render again afterwards. Nothing was rendered.";
+  if (!ctx.config.render.native3d) throw new KnownFailure(`${fix} The setting is off. ${tail}`);
+  if (!deps.native) throw new KnownFailure(`${fix} This worker has no native renderer. ${tail}`);
   const ready = await deps.native.ready().catch(() => ({ ready: false, message: "The readiness check failed." }));
-  if (!ready.ready) throw new KnownFailure(`Native 3D rendering is not ready (${ready.message.slice(0, 250)}). ${hint}`);
+  if (!ready.ready) throw new KnownFailure(`${fix} Not ready: ${ready.message.slice(0, 250)} ${tail}`);
   if (ctx.config.render.nativeTimeoutS > ctx.config.timeoutStageS) ctx.log(`render: the native limit (${ctx.config.render.nativeTimeoutS} s) is longer than the stage limit (${ctx.config.timeoutStageS} s), which stops the render first`);
   return deps.native.renderer;
 }
