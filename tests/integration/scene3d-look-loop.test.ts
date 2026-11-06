@@ -199,7 +199,8 @@ async function drive(id: string, r: Rig, stopBefore?: string): Promise<string> {
 }
 const reviews = async (id: string) => (await db.pool.query<{ body: unknown }>("select body from video_content where video_id = $1 and kind = 'review' order by version", [id])).rows.map((x) => readReview(x.body)!);
 const authorCalls = () => seen.length;
-const promptText = (m: Message[]) => m.map((x) => (typeof x.content === "string" ? x.content : JSON.stringify(x.content))).join("\n");
+/** The USER message(s) only: the fixed system prompt also names the checks, so wording there must not count as revision feedback. */
+const promptText = (m: Message[]) => m.filter((x) => x.role === "user").map((x) => (typeof x.content === "string" ? x.content : JSON.stringify(x.content))).join("\n");
 const sceneNow = async (id: string) => readSceneCodeBody((await latestContent(db.pool, id, "scenes"))!.body)!;
 const lookInput = async (id: string, note?: string): Promise<GateInput> => {
   const live = await liveGateHash(db.pool, id, "look");
@@ -214,7 +215,7 @@ describe("the automatic look loop (scene3d_code)", () => {
     expect(r.ran).toEqual(["draft", "tts", "scene3d_author", "scene3d_stills", "scene3d_review", "scene3d_author", "scene3d_stills", "scene3d_review", "scene3d_author", "scene3d_stills", "scene3d_review"]);
     expect(authorCalls()).toBe(3);
     // round 1 sees round 0's measured problems (our sentences), fenced as data, plus the previous file
-    expect(promptText(seen[0]!)).not.toMatch(/measured problems/);
+    expect(promptText(seen[0]!)).not.toMatch(/BEGIN_DATA measured problems|automatic revision round/);
     const second = promptText(seen[1]!);
     expect(second).toMatch(/automatic revision round 1 of 3/);
     expect(second).toMatch(/BEGIN_DATA measured problems \(written by the app\)\n1\. Frame 1 is almost one flat colour/);
@@ -293,7 +294,7 @@ describe("the automatic look loop (scene3d_code)", () => {
     const text = promptText(seen[2]!);
     expect(text).toMatch(/BEGIN_DATA owner's note on the previous look\nmake the ship bigger\nEND_DATA/);
     expect(text).toMatch(/BEGIN_DATA your previous scene\.tsx/);
-    expect(text).not.toMatch(/measured problems/); // this review is from before the send-back: not active
+    expect(text).not.toMatch(/BEGIN_DATA measured problems|automatic revision round/); // this review is from before the send-back: not active
     let rs = await reviews(id);
     expect(rs.at(-1)).toMatchObject({ round: 0, look_count: 1, passed: true });
     // a second send-back whose new scene is flat: the rounds restart from 0 again (3 fresh tries)
