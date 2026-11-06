@@ -86,6 +86,27 @@ test.describe("without a session", () => {
   });
 });
 
+test.describe("/metrics", () => {
+  test("not public: no session redirects to /login", async ({ request }) => {
+    const res = await request.get("/metrics", { maxRedirects: 0 });
+    expect(res.status()).toBe(307);
+    expect(new URL(res.headers().location!, ORIGIN).pathname).toBe("/login");
+  });
+  test("garbage cookie is refused", async ({ request }) => {
+    const res = await request.get("/metrics", { headers: cookie("garbage"), maxRedirects: 0 });
+    expect(res.status()).toBe(401);
+  });
+  test("with a session: Prometheus text, numbers only", async ({ request }) => {
+    const res = await request.get("/metrics", { headers: cookie(await mintSession()) });
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toContain("text/plain");
+    const body = await res.text();
+    expect(body).toMatch(/^db_up [01]$/m);
+    expect(body).toMatch(/^disk_total_bytes \d+$/m);
+    expect(body).not.toMatch(/postgres(ql)?:\/\/|redis:\/\/|password|secret/i);
+  });
+});
+
 test.describe("session cookie checks", () => {
   test("/api/me: garbage, expired, revoked cookies -> 401; valid -> 200; query param never counts", async ({ request }) => {
     expect((await request.get("/api/me", { headers: cookie("garbage") })).status()).toBe(401);
