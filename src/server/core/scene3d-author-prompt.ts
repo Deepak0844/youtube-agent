@@ -1,6 +1,6 @@
 import type { Message } from "@/server/core/agent-loop";
 import type { Candidate } from "@/server/core/scene3d-direct";
-import { S3K_API_MD, S3K_EXAMPLE_A, S3K_EXAMPLE_B } from "@/server/core/s3k-kit-dts";
+import { S3K_API_MD, S3K_EXAMPLE_A, S3K_EXAMPLE_B, S3K_EXAMPLE_C } from "@/server/core/s3k-kit-dts";
 import { SCENE_MAX_BYTES, S3K_ALLOWED } from "@/server/core/scene3d-code-check";
 import type { ReviewFeedback } from "@/server/core/scene3d-review";
 import { dataFence, sanitizeData } from "@/server/core/tsx-prompt";
@@ -86,11 +86,13 @@ ${AUTOMATIC_CHECKS}
 THE KIT (this reference is exact; names not listed here do not exist). Ignore its Stage and Captions lines: the host draws those. The skeleton there shows the same order of children, without Stage.
 ${S3K_API_MD.split("\n## Examples (imitate these)")[0]}
 
-TWO EXAMPLE SCENES THAT PASS EVERY CHECK (imitate their structure; write your own scene for THIS story):
+THREE EXAMPLE SCENES THAT PASS EVERY CHECK (imitate their structure; write your own scene for THIS story). For a HOW-IT-WORKS story about a machine or process, copy example C: open the object up (a cutaway), show each stage of the process as its own visible part with its own colour, put the action (fire, flow, motion) INSIDE the right stage, and move the camera from stage to stage in story order. Never show a machine as one plain closed shape:
 --- example A (catalogue models) ---
 ${S3K_EXAMPLE_A}
 --- example B (no models, procedural) ---
 ${S3K_EXAMPLE_B}
+--- example C (a machine cutaway: stages, flow, one camera shot per stage) ---
+${S3K_EXAMPLE_C}
 --- end of examples ---`;
 }
 

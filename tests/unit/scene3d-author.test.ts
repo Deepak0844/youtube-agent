@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "@/server/core/agent-loop";
 import { sha256Hex } from "@/server/core/content-hash";
 import { KnownFailure } from "@/server/core/paid-call";
-import { S3K_EXAMPLE_A, S3K_EXAMPLE_B } from "@/server/core/s3k-kit-dts";
+import { S3K_EXAMPLE_A, S3K_EXAMPLE_B, S3K_EXAMPLE_C } from "@/server/core/s3k-kit-dts";
 import { authorScene3d } from "@/server/core/scene3d-author";
 import { AUTHOR_MAX_ATTEMPTS, authorMessages, authorSystemPrompt, authorUserPrompt, captionOf, extractScene, retryPrompt, sceneFrames, sceneProps } from "@/server/core/scene3d-author-prompt";
 import { readSceneCodeBody, sceneCodeSha } from "@/server/core/scene3d-code-body";
@@ -73,6 +73,7 @@ describe("the prompt", () => {
     for (const s of ["HARD RULES", "ONE fenced code block tagged tsx", "export default function Scene", "do NOT render <Stage>", "25 to 60 percent", "Math.random", "useModels(ids, resolver)", "glideTimes", "rest(object, plane)"]) expect(sys).toContain(s);
     expect(sys).toContain(S3K_EXAMPLE_A);
     expect(sys).toContain(S3K_EXAMPLE_B);
+    expect(sys).toContain(S3K_EXAMPLE_C);
     expect(sys).toContain("## World (sky, haze, sun, light, ground, sea)");
     expect(sys).not.toContain("## Examples (imitate these)");
     expect(sys).not.toContain("Tunnels");
