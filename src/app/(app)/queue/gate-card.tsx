@@ -1,4 +1,5 @@
 import { microToUsd } from "@/server/core/llm-catalog";
+import { reviewSummary } from "@/server/core/scene3d-review";
 import { timeLabel } from "@/server/core/scene3d-view";
 import type { GateClaim, GateContent, GateItem } from "@/server/db/queue-data";
 import { ChannelInitial } from "@/ui/domain/channel-initial";
@@ -97,6 +98,18 @@ function LookContent({ c }: { c: Extract<GateContent, { kind: "look" }> }) {
           <ul data-testid="look-models" className="m-0 flex list-none flex-col gap-1 p-0 text-body">
             {c.view.look.models.map((m) => <li key={m} className="[overflow-wrap:anywhere]">{m}</li>)}
           </ul>
+        </section>
+      ) : null}
+      {c.review ? (
+        <section aria-label="Automatic picture review" data-testid="look-review" className="flex min-w-0 flex-col gap-1">
+          <h4 className="m-0 text-small font-medium text-muted">Automatic picture review</h4>
+          <p data-testid="look-review-summary" className="m-0 max-w-[68ch] text-body">{reviewSummary(c.review)}</p>
+          {c.review.remaining.length > 0 ? (
+            <ul data-testid="look-review-remaining" className="m-0 flex list-disc flex-col gap-1 pl-5 text-body">
+              {c.review.remaining.map((p, i) => <li key={i} className="[overflow-wrap:anywhere]">{p}</li>)}
+            </ul>
+          ) : null}
+          <p data-testid="look-review-shown" className="m-0 text-small text-muted tabular-nums">Pictures shown: {c.review.shownRound === 0 ? "the first draft" : `after ${c.review.shownRound} automatic ${c.review.shownRound === 1 ? "revision" : "revisions"}`}.</p>
         </section>
       ) : null}
       <section aria-label="What could not be found" className="flex min-w-0 flex-col gap-1">
