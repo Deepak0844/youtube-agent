@@ -7,6 +7,7 @@ import { loadInrRate, loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
 import { Pill } from "@/ui/primitives/pill";
 import { RateForm } from "./rate-form";
+import { RunNowForms } from "./run-now";
 import { CutoverForm, KillSwitchForm, LimitsForm, LocalServicesForm } from "./forms";
 
 // Reads the session (cookies) and live server facts, so everything sits inside <Suspense> with a static frame.
@@ -127,6 +128,22 @@ function Status({ s }: { s: SystemStatus }) {
           <span className="text-small text-faint tabular-nums">of {gb(s.disk.totalBytes)}</span>
           <Pill tone={used > 0.9 ? "warning" : "neutral"}>{Math.round(used * 100)}% used</Pill>
         </Row>
+        <Row label="CPU load"><span className="tabular-nums">{Math.round(s.cpuLoad * 100)}%</span></Row>
+        <Row label="Memory">
+          <span className="tabular-nums">{gb(s.memory.usedBytes)}</span>
+          <span className="text-small text-faint tabular-nums">of {gb(s.memory.totalBytes)}</span>
+        </Row>
+        <Row label="Job queue">
+          {s.queue ? (
+            <span className="tabular-nums">{s.queue.waiting} waiting · {s.queue.active} active · {s.queue.failed} failed</span>
+          ) : (
+            <Pill tone="negative">Unknown (Redis down)</Pill>
+          )}
+        </Row>
+        <Row label="Storage used">
+          <span className="tabular-nums">{s.storageBytes === null ? "Unknown" : gb(s.storageBytes)}</span>
+          <span className="text-small text-faint">estimate, refreshed each minute</span>
+        </Row>
         <Row label="Storage folder"><code className="font-mono text-small text-muted">{s.disk.root}</code></Row>
         <Row label="Versions">
           <span className="font-mono text-small text-muted tabular-nums">
@@ -134,6 +151,8 @@ function Status({ s }: { s: SystemStatus }) {
           </span>
         </Row>
       </dl>
+      <h3 className="mt-5 mb-2 text-body font-semibold">Run now</h3>
+      <RunNowForms />
     </section>
   );
 }
