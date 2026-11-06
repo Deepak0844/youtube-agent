@@ -8,7 +8,7 @@ import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
 import { useThree } from "@react-three/fiber";
 import { continueRender, delayRender } from "remotion";
 import type { ModelResolver } from "../../../src/shared/scene3d/resolver";
-import { fitScale, type FitOptions, type ModelInfo } from "./fit";
+import { fitScale, safeModelUrl, type FitOptions, type ModelInfo } from "./fit";
 
 export type { ModelResolver };
 export { fitScale, type FitOptions, type ModelInfo };
@@ -59,9 +59,9 @@ export function useModels(ids: readonly string[], resolver: ModelResolver, info?
   useEffect(() => {
     const loader = new GLTFLoader();
     let live = true;
-    Promise.all(key.split("|").filter(Boolean).map(async (id): Promise<[string, THREE.Object3D | null]> => {
+    Promise.all(key.split("|").filter(Boolean).slice(0, 60).map(async (id): Promise<[string, THREE.Object3D | null]> => {
       const r = resolver.resolve({ catalog: id });
-      if (!r) return [id, null];
+      if (!r || !safeModelUrl(r.url)) return [id, null]; // only a relative staged .glb: never http:, file:, data:, blob: or ..
       try { return [id, (await loader.loadAsync(r.url)).scene]; } catch { return [id, null]; }
     })).then((arr) => { if (live) setLoaded(Object.fromEntries(arr.filter((e): e is [string, THREE.Object3D] => e[1] !== null))); });
     return () => { live = false; };

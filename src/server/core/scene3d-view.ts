@@ -46,6 +46,8 @@ export interface LookSummary {
   /** What the director could not find in the catalogue, with what it used instead. */
   missing: MissingAsset[];
   advice: PreviewsBody["advice"];
+  /** AI-written scenes only: the catalogue model ids the scene's code names. */
+  models?: string[];
 }
 export type LookView = { ok: true; look: LookSummary } | { ok: false; message: string };
 
@@ -57,12 +59,15 @@ export function lookView(previews: unknown, scenes: unknown): LookView {
   if (!p) return { ok: false, message: LOOK_UNREADABLE };
   const raw = typeof scenes === "object" && scenes !== null ? (scenes as { missing_assets?: unknown }).missing_assets : undefined;
   const missing = missingAssetSchema.array().max(40).safeParse(raw);
+  const rawModels = typeof scenes === "object" && scenes !== null ? (scenes as { kind?: unknown; models?: unknown }) : {};
+  const models = rawModels.kind === "scene3d_code" && Array.isArray(rawModels.models) ? rawModels.models.filter((m): m is string => typeof m === "string" && m.length <= 80).slice(0, 60) : [];
   return {
     ok: true,
     look: {
       stills: p.stills.map((s, i) => ({ file: s.file, timeS: p.times[i]!, shot: p.shots[i]!.id, caption: p.shots[i]!.caption })),
       missing: missing.success ? missing.data : [],
       advice: p.advice,
+      ...(models.length > 0 ? { models } : {}),
     },
   };
 }

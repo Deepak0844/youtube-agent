@@ -7,12 +7,15 @@ import type { GateId } from "@/server/core/gates";
 // covers the hash of the stage before it, so rerunning an early stage makes every later one stale automatically.
 
 export type VideoFormat = "short" | "long";
-export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "scene3d";
+export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "scene3d" | "scene3d_code";
 export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "previews";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
-export const STAGE_NAMES = ["draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_stills", "voice", "sfx", "qa", "repair_scenes", "reframe", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
+export const STAGE_NAMES = ["draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_author", "scene3d_stills", "voice", "sfx", "qa", "repair_scenes", "reframe", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
 export type StageName = (typeof STAGE_NAMES)[number];
+
+/** The two 3D story kinds: the director writes scene data (scene3d), or the AI writes the scene code (scene3d_code). Both get the Look gate and the native render. */
+export const isScene3dKind = (k: VideoKind): boolean => k === "scene3d" || k === "scene3d_code";
 
 export interface PlanStep {
   stage: StageName;
@@ -76,6 +79,21 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
       { stage: "qa", gateAfter: "video", resource: "cpu" },
     ];
   }
+  // scene3d_code: like scene3d, but the model writes ONE scene.tsx (checked statically, type-checked, drawn in the sandbox) AFTER the narration exists,
+  // so it sees the real beat times. Then preview pictures, the Look gate, the long native render.
+  if (kind === "scene3d_code") {
+    const head: PlanStep[] = flags.imported ? [] : [{ stage: "draft", gateAfter: "script", resource: "net" }];
+    return [
+      ...head,
+      { stage: "tts", resource: "net" },
+      { stage: "scene3d_author", resource: "cpu" },
+      { stage: "scene3d_stills", gateAfter: "look", resource: "render" },
+      { stage: "render", resource: "render" },
+      { stage: "voice", resource: "cpu" },
+      { stage: "sfx", resource: "cpu" },
+      { stage: "qa", gateAfter: "video", resource: "cpu" },
+    ];
+  }
   const steps: PlanStep[] = flags.imported
     ? []
     : [
@@ -115,6 +133,7 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   render: ["beats", "narration", "scenes"],
   tsx_author: ["script", "narration"],
   direct_scene3d: ["script"],
+  scene3d_author: ["script", "narration"],
   scene3d_stills: ["scenes", "narration"],
   voice: [],
   sfx: [],

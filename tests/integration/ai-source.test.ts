@@ -52,13 +52,13 @@ const OK = JSON.stringify({ type: "result", subtype: "success", is_error: false,
 describe("AI source switch", () => {
   it("ON creates the Claude Code model from the suggestion, routes the text stages, remembers the old routes and audits; OFF restores", async () => {
     const api = await createModel(db.pool, paid, session);
-    for (const s of ["outline", "draft", "build_scene_kit", "build_tsx", "build_scale3d", "direct_scene3d", "research", "titles"]) await setRoute(db.pool, s, api.id, session);
+    for (const s of ["outline", "draft", "build_scene_kit", "build_tsx", "build_scale3d", "direct_scene3d", "author_scene3d", "research", "titles"]) await setRoute(db.pool, s, api.id, session);
 
     const notes = await setAiSource(db.pool, true, session);
     const cc = (await listModels(db.pool)).find((m) => m.provider === "claude_code")!;
     expect(cc).toMatchObject({ enabled: true, isFree: true, prices: null });
-    expect(await listRoutes(db.pool)).toEqual({ outline: cc.id, draft: cc.id, build_scene_kit: cc.id, titles: cc.id, comment_replies: cc.id, build_tsx: cc.id, build_scale3d: cc.id, direct_scene3d: cc.id, research: api.id });
-    expect(await getSetting(db.pool, "ai.previous_routes")).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, build_scale3d: api.id, direct_scene3d: api.id, titles: api.id, comment_replies: null });
+    expect(await listRoutes(db.pool)).toEqual({ outline: cc.id, draft: cc.id, build_scene_kit: cc.id, titles: cc.id, comment_replies: cc.id, build_tsx: cc.id, build_scale3d: cc.id, direct_scene3d: cc.id, author_scene3d: cc.id, research: api.id });
+    expect(await getSetting(db.pool, "ai.previous_routes")).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, build_scale3d: api.id, direct_scene3d: api.id, author_scene3d: api.id, titles: api.id, comment_replies: null });
     expect(await claudeCodeEnabled(db.pool)).toBe(true);
     expect(notes.join("\n")).toMatch(/Research and ideas stays on its current model/);
     const audit = await db.pool.query("select detail from audit_log where event = 'ai_source.changed'");
@@ -68,7 +68,7 @@ describe("AI source switch", () => {
     await expect(setAiSource(db.pool, true, session)).rejects.toThrow(/already/);
 
     await setAiSource(db.pool, false, session);
-    expect(await listRoutes(db.pool)).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, build_scale3d: api.id, direct_scene3d: api.id, research: api.id, titles: api.id });
+    expect(await listRoutes(db.pool)).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, build_scale3d: api.id, direct_scene3d: api.id, author_scene3d: api.id, research: api.id, titles: api.id });
     expect(await getSetting(db.pool, "ai.previous_routes")).toBeNull();
     expect(await claudeCodeEnabled(db.pool)).toBe(false);
     expect((await db.pool.query("select count(*)::int n from audit_log where event = 'ai_source.changed'")).rows[0].n).toBe(2);

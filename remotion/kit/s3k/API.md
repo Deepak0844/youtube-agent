@@ -54,6 +54,10 @@ type Plane = number | { y: number } | ((x: number, z: number) => number);
 
 ## Scene skeleton
 ```ts
+/** One story beat with its REAL time in the narration (seconds). */
+export type SceneBeat = { id: string; text: string; from: number; to: number };
+/** The props of the default-exported scene component of an AI-written scene. The host draws Stage, the captions and the sound: your scene returns only the 3D content (World ... Finish). */
+export type SceneProps = { resolver: ModelResolver; beats: readonly SceneBeat[]; durationS: number };
 /** THE PAGE: wraps your 3D content in the canvas (ACES, soft shadows) and gives useT(); `overlay` is HTML drawn over it (Captions). Children: World, objects, CameraRig, Finish LAST. */
 export const Stage: FC<{ children: ReactNode; overlay?: ReactNode; background?: string }>;
 /** Seconds since the start of the video. Call it once per component and pass t to every update(t); motion must be a pure function of t. */

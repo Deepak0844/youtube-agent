@@ -1,6 +1,7 @@
 // "s3k": the 3D authoring kit. A scene file imports ONLY from here and from "three" (plus react/remotion basics).
 // THIS FILE IS THE LIST OF EXPORTS: api.d.ts must document every name below (a unit test fails when they differ); API.md is generated from api.d.ts.
 // Kit code may only `import type` from src/. Examples live in ./examples (imitate them; they are not part of this barrel).
+export type { SceneProps, SceneBeat } from "./meta";
 export { Stage } from "./Stage";
 export { World, resolvePreset } from "./World";
 export { CutawayBox, buildCutFace, strataUV } from "./Cutaway";

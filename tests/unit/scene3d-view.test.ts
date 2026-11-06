@@ -33,6 +33,13 @@ describe("lookView", () => {
     expect(v.look.missing).toEqual([{ beat: "dig", wanted: "an excavator", substitute: "a dump truck" }]);
     expect(v.look.advice).toEqual({ status: "done", notes: ["Image 2 is mostly empty."] });
   });
+  it("an AI-written scene shows the models its code names on the Look card, and a director scene shows none", () => {
+    const code = lookView(previews, { kind: "scene3d_code", source: "x", models: ["pp_ship", 7, "pp_crane"] });
+    expect(code.ok && code.look.models).toEqual(["pp_ship", "pp_crane"]);
+    expect(code.ok && code.look.missing).toEqual([]);
+    const director = lookView(previews, { kind: "scene3d", scene: {}, missing_assets: [], models: ["pp_ship"] });
+    expect(director.ok && "models" in director.look).toBe(false);
+  });
   it("an unreadable missing_assets list shows as empty instead of hiding the pictures", () => {
     const v = lookView(previews, { missing_assets: "nope" });
     expect(v.ok && v.look.missing).toEqual([]);

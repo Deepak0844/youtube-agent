@@ -136,8 +136,8 @@ export function validateScript(
     const sc = checkScale(s.scale);
     problems.push(...sc.problems);
     evidence = [...s.evidence, ...sc.claims.filter((c) => !s.evidence.some((e) => e.text === c.text))];
-  } else if (s.scale && opts.kind !== "scene3d") problems.push("scale is only for 3D scale videos");
-  if (opts.kind === "scene3d") {
+  } else if (s.scale && opts.kind !== "scene3d" && opts.kind !== "scene3d_code") problems.push("scale is only for 3D scale videos");
+  if (opts.kind === "scene3d" || opts.kind === "scene3d_code") {
     if (s.scale) problems.push("scale is only for 3D scale videos; a 3D scene video tells a story instead");
     const st = checkStory(s.story, wordCount(s.narration));
     problems.push(...st.problems);

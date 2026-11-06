@@ -32,6 +32,7 @@ const KIND_NOTES: Record<string, string> = {
   tsx: "Beats: one object per scene with id, text (the voice line) and the real topic-related objects drawn on screen. Never text-only scenes.",
   scale3d: "Beats: one object per scene with id, text (the voice line, about the SIZE of the compared things) and visual. The video is a 3D size comparison: the camera climbs past real objects drawn to scale. Also add the top-level \"scale\" list described below.",
   scene3d: "Beats: one object per story beat with id, text (the line) and visual, exactly as in the top-level \"story\" list described below. The video is a short 3D process film: the camera follows what is built, moved or changed (a ship pours sand, a crane lifts, a wall of rock is laid), not a size comparison.",
+  scene3d_code: "Beats: one object per story beat with id, text (the line) and visual, exactly as in the top-level \"story\" list described below. The video is a short 3D process film: the camera follows what is built, moved or changed (a ship pours sand, a crane lifts, a wall of rock is laid), not a size comparison.",
   collage: "Beats: one object per scene with id, text, and the image layers and camera move planned for that scene. Build prices the generated images later; do not write a cost plan.",
   ai: "Beats: one object per shot with id, text, the shot prompt and the start-frame idea. The locked character is reused, never generated from text. Build prices the clips later; do not write a cost plan.",
 };
@@ -53,14 +54,14 @@ function system(i: DraftPromptInput): string {
   return `You are the DRAFT step of an automated faceless-${i.format} pipeline (video kind: ${i.kind}). ${RULES}
 
 Write the script for ONE video. Rules:
-- About ${i.kind === "scene3d" ? "140" : "100"} spoken words in English (${min}-${max} in the chosen language); the hook is fully composed at the start with the payoff already visible.
+- About ${i.kind === "scene3d" || i.kind === "scene3d_code" ? "140" : "100"} spoken words in English (${min}-${max} in the chosen language); the hook is fully composed at the start with the payoff already visible.
 - NO engagement call-to-action outro (no "comment below", no "subscribe", no "what should I do next"). End on the payoff.
 - Facts must come from the numbered excerpts you were given. One evidence claim per factual statement.
 - A "sourced" claim needs the excerpt's exact URL in source_url and a quote copied word for word from that excerpt: a full sentence or clause of at least 5 words (25 characters) that backs the claim text. A "computed" claim (arithmetic; the old app called it "derived") needs a reproducible method. Never cite a page you were not given.
 - Never write verified_by, verified or any verification field: only a person verifies evidence, and anything you put there is deleted.
 - Every beat also needs "visual" (English, max 320 characters): the ON-SCREEN ACTION, meaning what appears, what moves and what changes, e.g. "marker drops to the middle, the losing half dims, the bar zooms in". Name concrete things a viewer could SEE. No abstract words, no brand names, no people's faces. Add "search" too: 1-3 short English phrases usable as picture search terms. Write both in English even when the narration is not.
 - ${KIND_NOTES[i.kind] ?? KIND_NOTES.scene_kit}${i.kind === "scene_kit" && i.format === "short" ? `\n${BEAT_GRAMMAR}` : ""}${i.format === "long" ? " Long form: also add chapters (title, start beat) to the beats." : ""}
-${i.kind === "scale3d" ? `${SCALE_NOTE}\n` : ""}${i.kind === "scene3d" ? `${STORY_NOTE}\n` : ""}${tail ? tail + "\n" : ""}
+${i.kind === "scale3d" ? `${SCALE_NOTE}\n` : ""}${i.kind === "scene3d" || i.kind === "scene3d_code" ? `${STORY_NOTE}\n` : ""}${tail ? tail + "\n" : ""}
 Reply with ONLY JSON of this shape:
 {"title":"...","description":"...","shown_for_real":"<optional>","narration":"<all spoken words>","beats":[{"id":"hook","text":"...","visual":"...","search":["..."]}],"evidence":[{"text":"<what the viewer hears>","kind":"sourced","source_url":"<excerpt url>","quote":"<exact words>"},{"text":"...","kind":"computed","method":"..."}]}`;
 }

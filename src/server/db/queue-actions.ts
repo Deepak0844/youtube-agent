@@ -112,6 +112,8 @@ export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: Ga
   if (kind === "send_back") {
     // The Look may be sent back to the director only a few times; the refusal comes before anything is recorded.
     if (i.gate === "look") {
+      // An AI-written scene has no redo loop yet (a later slice): the only choices are to approve the look or cancel the video.
+      if ((await db.query<{ kind: string }>("select kind from videos where id = $1", [i.videoId])).rows[0]?.kind === "scene3d_code") return refuse("An AI-written 3D scene cannot be sent back yet. Approve this look, or cancel the video and start a new one.");
       const capped = lookSendBackProblem((await lookFeedbackOf(db, i.videoId))?.count ?? 0);
       if (capped) return refuse(capped);
     }

@@ -63,7 +63,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
   const q = live && (p.openGate || p.stages.some((s) => s.state === "needs_you")) ? await loadQueue(db, new Set(Object.keys(jobCheckers())), { videoId: id.data }) : null;
   const card = q?.items[0];
   const status = STATUS_WORDS[p.head.status];
-  const preview = tab === "preview" && p.head.kind !== "tsx" && p.head.kind !== "scene3d" ? await loadPreview(db, id.data) : null; // read only; only this tab pays for it
+  const preview = tab === "preview" && p.head.kind !== "tsx" && p.head.kind !== "scene3d" && p.head.kind !== "scene3d_code" ? await loadPreview(db, id.data) : null; // read only; only this tab pays for it
 
   return (
     <div className="flex min-w-0 flex-col gap-layout">
@@ -253,6 +253,29 @@ async function Scene3dPreview({ p }: { p: VideoPage }) {
   );
 }
 
+/** A 3D story written as code has no storyboard table: the models it uses and the preview pictures once they exist. */
+async function Scene3dCodePreview({ p }: { p: VideoPage }) {
+  const d = p.scene3d;
+  const catalog = await loadRepoCatalog(process.cwd()).catch(() => null);
+  const body = typeof d?.scenes === "object" && d.scenes !== null ? (d.scenes as { models?: unknown }) : {};
+  const ids = Array.isArray(body.models) ? body.models.filter((m): m is string => typeof m === "string").slice(0, 60) : [];
+  const look = lookView(d?.previews ?? null, d?.scenes ?? null);
+  const sign = look.ok ? await mediaSigner(getPool()) : null;
+  return (
+    <>
+      <p data-testid="preview-note" className="m-0 max-w-[68ch] text-body text-muted">The AI wrote this scene as code. It has no live preview: the preview pictures appear after the narration is made, and the long render runs only after you approve the look.</p>
+      <H>Models used</H>
+      {ids.length === 0 ? <Empty>No scene yet. It appears once the author step has written it.</Empty> : (
+        <ul data-testid="scene3d-objects" className="m-0 flex list-none flex-col gap-1 p-0 text-body">
+          {ids.map((id) => <li key={id} className="[overflow-wrap:anywhere]">{catalog?.getById(id)?.name ?? id}</li>)}
+        </ul>
+      )}
+      <H>Preview pictures</H>
+      {look.ok ? <LookStills stills={look.look.stills.map((s) => ({ ...s, src: sign ? sign(`videos/${p.head.id}/${s.file}`) : null }))} /> : <Empty>No preview pictures yet. They are drawn after the narration is made.</Empty>}
+    </>
+  );
+}
+
 function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: PreviewData | null }) {
   const lang = p.head.language;
   switch (tab) {
@@ -292,6 +315,7 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
       if (p.head.kind === "tsx") return <Empty>Preview is not available for custom animation; use the final render.</Empty>;
       if (p.head.kind === "scale3d") return <Scale3dPreview p={p} />;
       if (p.head.kind === "scene3d") return <Scene3dPreview p={p} />;
+      if (p.head.kind === "scene3d_code") return <Scene3dCodePreview p={p} />;
       return !preview ? <Empty>No scenes yet. The preview appears once the build step has made them.</Empty> : (
         <>
           <p data-testid="preview-note" className="m-0 max-w-[68ch] text-body text-muted">Preview only. The final video is made by Render.</p>

@@ -67,6 +67,8 @@ export interface StageDeps {
   scenePictures?: (videoId: string) => Promise<Array<{ assetId: string; beatId: string; kind?: string }>>;
   /** Director only: the CC0 3D model catalogue (assets3d/manifest.json). Absent = the scene3d director refuses with a plain sentence. */
   catalog3d?: () => Promise<Catalog3d>;
+  /** scene3d_author only: the in-process type-check of an AI-written scene. Default: typeCheckScene3d (tests inject one). */
+  sceneTypeCheck?: (source: string) => { ok: boolean; problems: string[] } | Promise<{ ok: boolean; problems: string[] }>;
   /** Real sound pass (ffmpeg). Absent = dry run: Voice and Sfx copy the file on. */
   mix?: MixDeps;
 }

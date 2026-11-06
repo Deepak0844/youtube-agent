@@ -275,7 +275,7 @@ export async function collectOutput(
   if (p.width !== a.size.width || p.height !== a.size.height) throw new KnownFailure(`The render is ${p.width}x${p.height}, expected ${a.size.width}x${a.size.height}.`);
   if (!(p.durationS > 0)) throw new KnownFailure("The rendered video is empty.");
   if (expectAudio && !p.hasAudio) throw new KnownFailure("The rendered video has no sound although narration was given.");
-  const docS = a.scene3d ? a.scene3d.shots.reduce((t, s) => t + s.duration_s, 0) : a.scale3d ? a.scale3d.beats.reduce((t, b) => t + b.duration_s, 0) : Math.max(...a.doc!.scenes.map((s) => s.startMs + s.durationMs)) / 1000;
+  const docS = a.scene3dCode ? a.scene3dCode.props.durationS : a.scene3d ? a.scene3d.shots.reduce((t, s) => t + s.duration_s, 0) : a.scale3d ? a.scale3d.beats.reduce((t, b) => t + b.duration_s, 0) : Math.max(...a.doc!.scenes.map((s) => s.startMs + s.durationMs)) / 1000;
   if (Math.abs(p.durationS - docS) > 1) ctx.log(`render: warning: the video is ${p.durationS.toFixed(1)} s but the scenes add up to ${docS.toFixed(1)} s`);
   return outPath;
 }
@@ -284,7 +284,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
   return {
     async render(ctx: StageContext, a) {
       if (a.outFile === "" || a.outFile !== path.basename(a.outFile) || a.outFile.startsWith(".")) throw new Error("outFile must be a plain file name");
-      if (a.scene3d) throw new KnownFailure("3D scene videos are drawn on this Mac's GPU only, never in the container. Nothing was rendered.");
+      if (a.scene3d || a.scene3dCode) throw new KnownFailure("3D scene videos are drawn on this Mac's GPU only, never in the container. Nothing was rendered.");
       if (!a.doc && !a.scale3d) throw new KnownFailure("The render step needs the checked scenes. Run the build step again.");
       const inDir = mountable(path.join(ctx.attemptDir, "render-in"));
       const outDir = mountable(path.join(ctx.attemptDir, "render-out"));

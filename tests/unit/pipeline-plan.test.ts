@@ -5,6 +5,7 @@ import {
   expectedInputHash,
   FORCE_RERUN_STAGES,
   FREE_VOICE_PROVIDERS,
+  isScene3dKind,
   ttsRerunProblem,
   nextActions,
   stageInputHash,
@@ -377,5 +378,36 @@ describe("scene3d kind", () => {
     expect(stagePlan("tsx", "short", f).map((s) => s.stage)).toEqual(["draft", "tts", "tsx_author", "voice", "sfx", "qa"]);
     expect(stagePlan("scene_kit", "short", f).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
     for (const k of ["scene_kit", "tsx", "scale3d"] as const) expect(stagePlan(k, "short", f).map((s) => s.stage), k).not.toContain("scene3d_stills");
+  });
+});
+
+describe("scene3d_code kind (3D story, AI-written scene)", () => {
+  const f = { requireEvidence: true, paidGeneration: false };
+  it("runs draft, tts, scene3d_author, scene3d_stills, render, voice, sfx, qa: the author comes AFTER the narration so it sees real beat times", () => {
+    const plan = stagePlan("scene3d_code", "short", { ...f, paidGeneration: true });
+    expect(plan.map((s) => s.stage)).toEqual(["draft", "tts", "scene3d_author", "scene3d_stills", "render", "voice", "sfx", "qa"]);
+    expect(plan.filter((s) => s.gateAfter || s.gateBefore).map((s) => [s.stage, s.gateAfter ?? s.gateBefore])).toEqual([["draft", "script"], ["scene3d_stills", "look"], ["qa", "video"]]);
+    expect(isScene3dKind("scene3d_code") && isScene3dKind("scene3d") && !isScene3dKind("tsx")).toBe(true);
+  });
+  it("pins the author and stills hashes; the kind is never part of a hash", () => {
+    const v = base({ kind: "scene3d_code", content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
+    expect(expectedInputHash(v, "scene3d_author", "t")).toBe(stageInputHash("scene3d_author", { prev: "t", script: "s", narration: "n" }, {}));
+    expect(expectedInputHash(v, "scene3d_stills", "a")).toBe(stageInputHash("scene3d_stills", { prev: "a", scenes: "sc", narration: "n" }, {}));
+    expect(expectedInputHash(v, "render", "p")).toBe(stageInputHash("render", { prev: "p", beats: "b", narration: "n", scenes: "sc" }, {}));
+  });
+  it("tolerates a plan with no beats content: Render's hash uses the stable word 'none' and stays deterministic", () => {
+    const v = base({ kind: "scene3d_code", content: { script: "s", narration: "n", scenes: "sc" } });
+    const h = expectedInputHash(v, "render", "p");
+    expect(h).toBe(stageInputHash("render", { prev: "p", beats: "none", narration: "n", scenes: "sc" }, {}));
+    expect(expectedInputHash({ ...v, content: { ...v.content, scenes: "sc2" } }, "render", "p")).not.toBe(h);
+    expect(nextActions(walk(base({ kind: "scene3d_code", content: {} })).v).at(0)?.kind).toBe("done");
+  });
+  it("walks the gates in order and never queues Render before the look is approved", () => {
+    const { trail } = walk(base({ kind: "scene3d_code" }));
+    expect(trail).toEqual(["draft", "gate:script", "tts", "scene3d_author", "scene3d_stills", "gate:look", "render", "voice", "sfx", "qa", "gate:video", "gate:evidence", "gate:publish", "done"]);
+    const held = walk(base({ kind: "scene3d_code" }), { approve: false });
+    const stopped = walk({ ...held.v, approved: new Set<GateId>(["script"]) }, { approve: false });
+    expect(stopped.trail.slice(-2)).toEqual(["scene3d_stills", "gate:look"]);
+    expect(stopped.v.runs.render).toBeUndefined();
   });
 });

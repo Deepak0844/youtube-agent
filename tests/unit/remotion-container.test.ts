@@ -292,6 +292,7 @@ describe("render-entry.mjs modes", () => {
   });
   it("scale3d renders the scale3d composition through the kit entry with props.json", () => {
     expect(src).toContain('mode === "--scale3d" ? "scale3d" : "kit-video"');
-    expect(src).toContain('tsx ? "tsx-index.ts" : "index.ts"');
+    expect(src).toContain('tsx ? "tsx-index.ts" : author ? "s3k-author-index.tsx" : "index.ts"'); // only the two TSX modes use the TSX bundle; the authored-scene modes have their own entry; every other mode keeps the kit entry
+    expect(src).toContain('publicDir: tsx ? path.join(inDir, "public") : inDir');
   });
 });

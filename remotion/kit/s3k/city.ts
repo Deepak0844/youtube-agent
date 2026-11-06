@@ -67,7 +67,7 @@ export type FarSkylineOptions = { seed?: number; count?: number; /** x range cen
 export function farSkyline(o: FarSkylineOptions = {}): THREE.Group {
   const g = new THREE.Group(), r = rnd(o.seed ?? 5), mats = towerMaterials(true);
   const gy = o.groundY ?? 0, zN = o.zNear ?? -150, zF = o.zFar ?? -600, cx = o.x ?? 0, wd = o.width ?? 900;
-  for (let i = 0; i < (o.count ?? 90); i++) {
+  for (let i = 0; i < Math.min(400, Math.max(0, Math.floor(o.count ?? 90) || 0)); i++) {
     const w = 14 + r() * 26, d = 14 + r() * 26, h = 40 + Math.pow(r(), 1.6) * 190;
     const x = cx + (r() - 0.5) * wd, z = zN + r() * (zF - zN), k = Math.floor(r() * 5);
     const m = new THREE.Mesh(tower(w, h, d), mats[k]!); m.position.set(x, gy + h / 2, z); g.add(m);

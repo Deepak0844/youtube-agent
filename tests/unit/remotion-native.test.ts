@@ -66,6 +66,16 @@ function deps(behave?: (spec: ChildSpec) => Promise<ChildResult> | ChildResult, 
 const args = (over: object = {}) => ({ sceneFile: "unused", scale3d: SCALE3D_DEMO, audioFile: path.join(root, "narration.wav"), captions: [{ word: "hi", startS: 0, endS: 0.5 }], outFile: "render.mp4", size: SIZE, ...over });
 
 describe("native renderer", () => {
+  it("the signal the child gets follows the caller's signal while the render runs", async () => {
+    let during: boolean | undefined;
+    await createNativeRenderer(deps((spec) => {
+      ac.abort(new Error("owner cancelled"));
+      during = spec.signal?.aborted;
+      return { ...DONE, aborted: true, code: null };
+    })).render(ctx(true, 3000), args()).catch(() => undefined);
+    expect(during).toBe(true);
+  });
+
   it("runs the sandboxed command with no env, the native time limit and the caller's signal, and returns the checked mp4", async () => {
     let props: Record<string, unknown> | undefined;
     const r = await createNativeRenderer(deps((spec) => {
@@ -82,7 +92,7 @@ describe("native renderer", () => {
     expect(s.args).toEqual(expect.arrayContaining(["/usr/bin/env", "-i", "--scale3d", "--native"]));
     expect(s.envAllow).toEqual([]);
     expect(s.timeoutMs).toBe(3_000_000);
-    expect(s.signal).toBe(ac.signal);
+    expect(s.signal).toBeInstanceOf(AbortSignal); // a wrapper of the caller's signal (it also carries the disk-quota abort)
     // cwd is the allowed private temp folder: under the read-denied storage root the attempt folder itself makes process.cwd() fail (EPERM)
     expect(s.cwd).toBe(path.join(realpathSync(attemptDir), "native-tmp"));
     expect(s.cwdRoot).toBe(realpathSync(attemptDir));

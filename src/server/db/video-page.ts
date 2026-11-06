@@ -222,7 +222,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   return {
-    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, scale3dBody: head.kind === "scale3d" ? ((await latestContent(db, videoId, "scenes"))?.body ?? null) : null, scene3d: head.kind === "scene3d" ? await scene3dData(db, videoId) : null, renderTimeoutS: cfg.render.timeoutS, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
+    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, scale3dBody: head.kind === "scale3d" ? ((await latestContent(db, videoId, "scenes"))?.body ?? null) : null, scene3d: head.kind === "scene3d" || head.kind === "scene3d_code" ? await scene3dData(db, videoId) : null, renderTimeoutS: cfg.render.timeoutS, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
     beats: beats?.body ?? null,
     evidence: evidence ? { body: evidence.body, fileSrc: sign?.(evidence.filePath) ?? null } : null,
     titles: titles?.body ?? null,

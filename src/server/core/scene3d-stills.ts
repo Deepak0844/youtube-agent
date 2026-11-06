@@ -30,13 +30,22 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000;
  * 8 shots, 8 shots spread evenly over the story. Ordered by time. Frames are clamped inside the video.
  */
 export function pickStills(scene: Scene3d): StillPick[] {
-  const total = scene3dFrames(scene);
   let t = 0;
   const shots = scene.shots.map((s) => {
     const row = { id: s.id, caption: s.caption ?? null, start: t, dur: s.duration_s };
     t += s.duration_s;
     return row;
   });
+  return pickFromShots(shots, scene3dFrames(scene), scene.fps);
+}
+
+/** The moments for an AI-written scene: its story beats play the part of shots (id, host caption, real start and length). */
+export function pickCodeStills(props: { beats: ReadonlyArray<{ id: string; from: number; to: number }>; captions: ReadonlyArray<{ from: number; text: string }>; durationS: number }, fps = 30): StillPick[] {
+  const shots = props.beats.filter((b) => b.to > b.from).map((b) => ({ id: b.id, caption: props.captions.find((c) => Math.abs(c.from - b.from) < 0.005)?.text ?? null, start: b.from, dur: b.to - b.from }));
+  return shots.length > 0 ? pickFromShots(shots, Math.max(1, Math.round(props.durationS * fps)), fps) : [];
+}
+
+function pickFromShots(shots: ReadonlyArray<{ id: string; caption: string | null; start: number; dur: number }>, total: number, fps: number): StillPick[] {
   const chosen = shots.length > MAX_STILLS ? Array.from({ length: MAX_STILLS }, (_, i) => shots[Math.round((i * (shots.length - 1)) / (MAX_STILLS - 1))]!) : shots;
   const picks: StillPick[] = chosen.map((s) => ({ timeS: r3(s.start + Math.min(LEAD_S, s.dur * 0.25)), shotId: s.id, caption: s.caption, mid: false, frame: 0 }));
   if (shots.length < MAX_STILLS) {
@@ -45,7 +54,7 @@ export function pickStills(scene: Scene3d): StillPick[] {
   }
   return picks
     .sort((a, b) => a.timeS - b.timeS)
-    .map((p) => ({ ...p, frame: Math.max(0, Math.min(total - 1, Math.round(p.timeS * scene.fps))) }));
+    .map((p) => ({ ...p, frame: Math.max(0, Math.min(total - 1, Math.round(p.timeS * fps))) }));
 }
 
 /** True when `head` (at least the first 24 bytes of a file) is a PNG of exactly 540x960. */

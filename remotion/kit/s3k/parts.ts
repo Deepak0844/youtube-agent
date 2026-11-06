@@ -28,8 +28,10 @@ export function box(w: number, h: number, d: number, mat: THREE.Material, x: num
   return m;
 }
 /** Cylinder (radius top/bottom, length) lying along axis 'x' | 'y' | 'z', centred at x,y,z. */
+/** Radial segments of a round part: 3 to 64, whatever the scene asks for. */
+export const segments = (n: number): number => Math.min(64, Math.max(3, Math.floor(Number.isFinite(n) ? n : 12)));
 export function cyl(rt: number, rb: number, len: number, mat: THREE.Material, axis: "x" | "y" | "z", x: number, y: number, z: number, parent?: THREE.Object3D, seg = 28): THREE.Mesh {
-  const g = new THREE.CylinderGeometry(rt, rb, len, seg);
+  const g = new THREE.CylinderGeometry(rt, rb, len, segments(seg));
   if (axis === "x") g.rotateZ(Math.PI / 2); else if (axis === "z") g.rotateX(Math.PI / 2);
   const m = new THREE.Mesh(g, mat);
   m.position.set(x, y, z);
@@ -42,7 +44,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 export function between(a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material, parent?: THREE.Object3D, seg = 14): THREE.Mesh {
   const d = b.clone().sub(a);
   const len = d.length();
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), mat);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, segments(seg)), mat);
   m.position.copy(a).addScaledVector(d, 0.5);
   m.quaternion.setFromUnitVectors(UP, d.normalize());
   m.castShadow = m.receiveShadow = true;

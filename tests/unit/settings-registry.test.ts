@@ -73,6 +73,7 @@ describe("settings registry", () => {
       "video:tsx": 5_000_000,
       "video:scale3d": 5_000_000,
       "video:scene3d": 5_000_000,
+      "video:scene3d_code": 5_000_000,
       "video:collage": 5_000_000,
       "video:ai": 15_000_000,
       "video:long": 8_000_000,
