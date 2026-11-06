@@ -115,7 +115,7 @@ const ITERATORS = new Set(["map", "filter", "reduce", "reduceRight", "forEach", 
 const GROWERS = new Set(["push", "unshift", "splice"]);
 const ASSIGN_OPS = new Set([
   ts.SyntaxKind.EqualsToken, ts.SyntaxKind.PlusEqualsToken, ts.SyntaxKind.MinusEqualsToken, ts.SyntaxKind.AsteriskEqualsToken, ts.SyntaxKind.SlashEqualsToken, ts.SyntaxKind.PercentEqualsToken,
-  ts.SyntaxKind.AsteriskAsteriskEqualsToken, ts.SyntaxKind.LessThanLessThanEqualsToken, ts.SyntaxKind.GreaterThanGreaterThanEqualsToken, ts.SyntaxKind.AmpersandEqualsToken, ts.SyntaxKind.BarEqualsToken, ts.SyntaxKind.CaretEqualsToken,
+  ts.SyntaxKind.AsteriskAsteriskEqualsToken, ts.SyntaxKind.LessThanLessThanEqualsToken, ts.SyntaxKind.GreaterThanGreaterThanEqualsToken, ts.SyntaxKind.AmpersandEqualsToken, ts.SyntaxKind.BarEqualsToken, ts.SyntaxKind.CaretEqualsToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken, ts.SyntaxKind.QuestionQuestionEqualsToken, ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken,
 ]);
 
 export interface SceneCheckResult {
@@ -247,8 +247,9 @@ function run(source: string): SceneCheckResult {
     if (ts.isArrayLiteralExpression(init)) return true;
     if (ts.isNewExpression(init) || ts.isCallExpression(init)) {
       const c = init.expression;
-      if (ts.isIdentifier(c)) return c.text === "Array" || TYPED_ARRAYS.includes(c.text);
-      return ts.isPropertyAccessExpression(c) && ts.isIdentifier(c.expression) && c.expression.text === "Array" && (c.name.text === "from" || c.name.text === "of");
+      const libName = (id: ts.Identifier): boolean => (id.text === "Array" || TYPED_ARRAYS.includes(id.text)) && (checker.getSymbolAtLocation(id)?.declarations ?? []).length > 0 && (checker.getSymbolAtLocation(id)?.declarations ?? []).every(isLibDecl);
+      if (ts.isIdentifier(c)) return libName(c);
+      return ts.isPropertyAccessExpression(c) && ts.isIdentifier(c.expression) && libName(c.expression) && c.expression.text === "Array" && (c.name.text === "from" || c.name.text === "of");
     }
     return false;
   };
@@ -296,15 +297,38 @@ function run(source: string): SceneCheckResult {
   let defaultExports = 0;
   const importedSeen = new Set<string>();
 
-  const assignsTo = (root: ts.Node, sym: ts.Symbol): boolean => {
+  /** True when this identifier occurrence is written to: any assignment operator (incl. ||= &&= ??= >>>=), ++/--, delete, a destructuring or array/object-literal target, a for-of/for-in initialiser. */
+  const isWritten = (id: ts.Identifier): boolean => {
+    let node: ts.Node = id;
+    for (;;) {
+      const p = node.parent;
+      if (!p) return false;
+      if (ts.isParenthesizedExpression(p) || ts.isArrayLiteralExpression(p) || ts.isSpreadElement(p) || ts.isSpreadAssignment(p) || ts.isNonNullExpression(p) || ts.isAsExpression(p) || ts.isSatisfiesExpression(p)) { node = p; continue; }
+      if (ts.isShorthandPropertyAssignment(p)) { if (p.name !== node) return false; node = p; continue; }
+      if (ts.isPropertyAssignment(p)) { if (p.initializer !== node) return false; node = p; continue; }
+      if (ts.isObjectLiteralExpression(p)) { node = p; continue; }
+      if (ts.isBinaryExpression(p) && p.left === node) {
+        const k = p.operatorToken.kind;
+        if (k >= ts.SyntaxKind.FirstAssignment && k <= ts.SyntaxKind.LastAssignment) return true;
+        return false;
+      }
+      if ((ts.isPrefixUnaryExpression(p) || ts.isPostfixUnaryExpression(p)) && (p.operator === ts.SyntaxKind.PlusPlusToken || p.operator === ts.SyntaxKind.MinusMinusToken)) return true;
+      if (ts.isDeleteExpression(p)) return true;
+      if ((ts.isForOfStatement(p) || ts.isForInStatement(p)) && p.initializer === node) return true;
+      if (ts.isBindingElement(p) && p.name === node) return true;
+      return false;
+    }
+  };
+  /** True when the symbol is written anywhere in the WHOLE file (closures included) other than inside `except` (the loop's own incrementor). */
+  const writtenOutside = (sym: ts.Symbol, except: ts.Node): boolean => {
     let hit = false;
     const visit = (n: ts.Node) => {
       if (hit) return;
-      if ((ts.isBinaryExpression(n) && ASSIGN_OPS.has(n.operatorToken.kind) && ts.isIdentifier(n.left) && checker.getSymbolAtLocation(n.left) === sym)
-        || ((ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) && (n.operator === ts.SyntaxKind.PlusPlusToken || n.operator === ts.SyntaxKind.MinusMinusToken) && ts.isIdentifier(n.operand) && checker.getSymbolAtLocation(n.operand) === sym)) { hit = true; return; }
+      if (n === except) return;
+      if (ts.isIdentifier(n) && checker.getSymbolAtLocation(n) === sym && isWritten(n)) { hit = true; return; }
       ts.forEachChild(n, visit);
     };
-    visit(root);
+    visit(sf);
     return hit;
   };
   const growsArray = (root: ts.Node, sym: ts.Symbol): boolean => {
@@ -325,6 +349,7 @@ function run(source: string): SceneCheckResult {
     const init = n.initializer;
     if (!init || !ts.isVariableDeclarationList(init) || init.declarations.length !== 1) return bad("a for loop needs one counter, e.g. let i = 0");
     const d = init.declarations[0]!;
+    if (!(init.flags & ts.NodeFlags.Let) || (init.flags & ts.NodeFlags.Const)) return bad("the counter must be declared with let (not var)");
     if (!ts.isIdentifier(d.name) || !d.initializer) return bad("a for loop needs one counter starting at a number");
     const start = evalNum(d.initializer);
     if (start === undefined) return bad("the counter must start at a constant number");
@@ -350,7 +375,7 @@ function run(source: string): SceneCheckResult {
       stepOk = k !== undefined && k > 0 && (up ? inc.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken : inc.operatorToken.kind === ts.SyntaxKind.MinusEqualsToken);
     }
     if (!stepOk) return bad("the step must move the counter towards the bound (i++, i += 2 or i--)");
-    if (assignsTo(n.statement, sym)) return bad("the loop body must not change the counter");
+    if (writtenOutside(sym, inc)) return bad("the loop counter is changed somewhere other than its own i++ step (anywhere in the file, closures included)");
     const count = Math.abs(bound - start) + 1;
     if (!(count <= MAX_LOOP)) return bad(`the loop runs about ${Math.round(count)} times`);
     counters.add(sym);

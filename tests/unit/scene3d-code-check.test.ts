@@ -255,6 +255,36 @@ describe("prototype pollution and dynamic lookups", () => {
     rejects(wrap("for (const { cookie } of [{ cookie: 1 }]) { }"), /destructuring \.cookie/);
     expect(checkScene3dCode(wrap("const { x, y } = { x: 1, y: 2 };\n  const [a, b] = [x, y];\n  const f = ({ z }: { z: number }) => z + a + b;")).ok).toBe(true);
   });
+  it("LAYER 1 ALONE: a loop counter that is written to in ANY way is no longer a number by syntax", () => {
+    const pre = "const a = [1, 2, 3];\n  ";
+    const bad: [string, string][] = [
+      ["||= in the body", "for (let i = 0; i < 3; i++) { i ||= ('con' + 'structor') as never; const v = a[i]; }"],
+      ["&&= in the body", "for (let i = 1; i < 3; i++) { i &&= ('con' + 'structor') as never; const v = a[i]; }"],
+      ["??= in the body", "for (let i = 0; i < 3; i++) { i ??= ('c' + 'd') as never; const v = a[i]; }"],
+      [">>>= in the body", "for (let i = 0; i < 3; i++) { i >>>= 0; const v = a[i]; }"],
+      ["destructuring write", "for (let i = 0; i < 3; i++) { [i] = [('con' + 'structor') as never]; const v = a[i]; }"],
+      ["object destructuring write", "for (let i = 0; i < 3; i++) { ({ x: i } = { x: ('con' + 'structor') as never }); const v = a[i]; }"],
+      ["for-of initialiser", "for (let i = 0; i < 3; i++) { for (i of [('con' + 'structor') as never]) { const v = a[i]; } }"],
+      ["for-in initialiser", "for (let i = 0; i < 3; i++) { for (i in { a: 1 } as never) { const v = a[i]; } }"],
+      ["a var counter written outside the loop", "var i = 0;\n  for (i = 0; i < 3; i++) { }\n  i = ('con' + 'structor') as never;\n  const v = a[i];"],
+      ["a var counter in the for head", "for (var i = 0; i < 3; i++) { const v = a[i]; }"],
+      ["written after the loop", "let j = 0;\n  for (j = 0; j < 3; j++) { }\n  j = ('x' + 'y') as never;\n  const v = a[j];"],
+      ["written in a nested arrow", "for (let i = 0; i < 3; i++) { const f = () => { i = ('con' + 'structor') as never; }; f(); const v = a[i]; }"],
+      ["a shadowed Uint8Array as the indexed object", "const Uint8Array = (n: number) => ({ x: n });\n  const q = Uint8Array(3);\n  for (let i = 0; i < 3; i++) { const v = q[i]; }"],
+      ["a shadowed Array", "const Array = { from: () => ({ constructor: 1 }) };\n  const q = Array.from();\n  for (let k = 0; k < 3; k++) { const v = q[k]; }"],
+    ];
+    for (const [name, body] of bad) expect(checkScene3dCode(wrap(pre + body)).ok, name).toBe(false);
+  });
+  it("ordinary bounded loops over local arrays still pass", () => {
+    const ok = [
+      "const a = [1, 2, 3];\n  let s = 0;\n  for (let i = 0; i < 3; i++) { s += a[i]; }",
+      "const a = new Float32Array(30);\n  for (let i = 0; i < 10; i++) { a[i * 3] = i; a[i * 3 + 1] = 2; }",
+      "const a = [1, 2, 3];\n  for (let i = 2; i >= 0; i--) { const v = a[i]; }",
+      "const a = [1, 2, 3, 4];\n  for (let i = 0; i < 4; i += 2) { const v = a[i] + a[i + 1]; }",
+      "const a = [1, 2, 3];\n  for (let i = 0; i < 3; i++) { const f = () => a[i]; f(); }",
+    ];
+    for (const body of ok) expect(checkScene3dCode(wrap(body)), body).toEqual({ ok: true, problems: [] });
+  });
   it("refuses a cast used as a computed key", () => {
     rejects(wrap("const k = 'constructor';\n  const a = [1];\n  const v = a[k as number];"), /computed key: an index/);
     rejects(wrap("const a = [1];\n  const v = a[(Math.floor(1) as number)];"), /computed key: an index/);
@@ -353,7 +383,7 @@ describe("loops, recursion and sizes", () => {
     ["a for with a wrong step", "for (let i = 0; i < 10; i--) { }", /step must move/],
     ["a for with an unbounded limit", "const n = (Math.floor(5) as number);\n  for (let i = 0; i < n; i++) { }", /loop bound must be a constant/],
     ["a for with a huge bound", "for (let i = 0; i < 1e9; i++) { }", /about 1000000000 times|runs about/],
-    ["a for that changes its counter", "for (let i = 0; i < 10; i++) { i -= 1; }", /must not change the counter/],
+    ["a for that changes its counter", "for (let i = 0; i < 10; i++) { i -= 1; }", /loop counter is changed/],
     ["a for that grows its own array", "const a = [1];\n  for (let i = 0; i < a.length; i++) { a.push(i); }", /grows the array/],
     ["loops nested too deep", "for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++) for (let c = 0; c < 5; c++) for (let d = 0; d < 5; d++) { }", /nested 4 deep/],
     ["nested loops with a huge product", "for (let a = 0; a < 5000; a++) for (let b = 0; b < 5000; b++) { }", /too many times/],
