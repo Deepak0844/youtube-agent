@@ -164,6 +164,7 @@ function rig(replies: string[]): Rig {
 /** Runs what the pipeline asks for until it waits at a gate (returns the gate) or is about to run `stopBefore` (returns "stopped"). */
 async function drive(id: string, r: Rig, stopBefore?: string): Promise<string> {
   const handlers: Record<string, StageHandler> = {
+    draft: async () => ({}), // the script was seeded and approved by hand (codeVideo), so the draft step has nothing left to do
     tts: withAttempt(fin(), ttsAttempt(mkDeps({}))),
     scene3d_author: withAttempt(fin(), scene3dAuthorAttempt(mkDeps({ makeLlm: r.llm }))),
     scene3d_stills: withAttempt(fin(), scene3dStillsAttempt(mkDeps({ native: { renderer: createFakeRenderer(), stills: r.stills, ready } }))),
@@ -210,7 +211,7 @@ describe("the automatic look loop (scene3d_code)", () => {
     const id = await codeVideo();
     const r = rig([GOOD("flat void", 0), GOOD("flat", 1), GOOD("", 2)]);
     expect(await drive(id, r)).toBe("look");
-    expect(r.ran).toEqual(["tts", "scene3d_author", "scene3d_stills", "scene3d_review", "scene3d_author", "scene3d_stills", "scene3d_review", "scene3d_author", "scene3d_stills", "scene3d_review"]);
+    expect(r.ran).toEqual(["draft", "tts", "scene3d_author", "scene3d_stills", "scene3d_review", "scene3d_author", "scene3d_stills", "scene3d_review", "scene3d_author", "scene3d_stills", "scene3d_review"]);
     expect(authorCalls()).toBe(3);
     // round 1 sees round 0's measured problems (our sentences), fenced as data, plus the previous file
     expect(promptText(seen[0]!)).not.toMatch(/measured problems/);
@@ -270,7 +271,7 @@ describe("the automatic look loop (scene3d_code)", () => {
     const id = await codeVideo();
     const r = rig([GOOD("flat", 0), GOOD("", 1)]);
     expect(await drive(id, r, "scene3d_review")).toBe("stopped"); // narrated, authored, pictures drawn; the review is next
-    expect(r.ran).toEqual(["tts", "scene3d_author", "scene3d_stills"]);
+    expect(r.ran).toEqual(["draft", "tts", "scene3d_author", "scene3d_stills"]);
     await db.pool.query("update budgets set cap_micro_usd = 1000 where scope = $1", [`video:${id}`]); // far below one author call
     expect(await drive(id, r)).toBe("look");
     expect(seen).toHaveLength(1);
