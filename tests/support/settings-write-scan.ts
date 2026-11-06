@@ -32,6 +32,8 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
   // Reads policy.require_evidence to decide whether the route has an evidence gate; never writes.
   "src/server/db/pipeline.ts": ["getSetting"],
   "src/server/db/notify.ts": ["getSetting"],
+  // Back up now (session-only action): writes backup.last_run (not a safety key) through setSessionSettings, reads it for the page.
+  "src/server/db/backup.ts": ["getSetting", "setSessionSettings"],
   // Reads policy.allow_public and policy.require_evidence for the publish checks (approval time and job time); never writes.
   "src/server/db/publish.ts": ["getSetting"],
   // read-only: the public-choice check and the publish card's switch display

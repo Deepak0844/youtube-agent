@@ -7,6 +7,7 @@ import { loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
 import { Pill } from "@/ui/primitives/pill";
 import { RunNowForms } from "./run-now";
+import { BackupSection } from "./backup-section";
 import { CutoverForm, KillSwitchForm, LimitsForm, LocalServicesForm } from "./forms";
 
 // Reads the session (cookies) and live server facts, so everything sits inside <Suspense> with a static frame.
@@ -30,6 +31,7 @@ async function Owned() {
     <div className="flex min-w-0 flex-col gap-layout">
       <h1 className="text-page-title font-semibold tracking-tight">System</h1>
       <Status s={status} />
+      <BackupSection />
       <section aria-labelledby="limits-h" className="rounded-card bg-surface p-pad">
         <h2 id="limits-h" className="text-title font-semibold">Limits</h2>
         <p className="mt-1 mb-5 text-body text-muted">How much the studio does at once, and how long a video may run.</p>
