@@ -395,6 +395,13 @@ describe("scene3d_code kind (3D story, AI-written scene)", () => {
     expect(expectedInputHash(v, "scene3d_stills", "a")).toBe(stageInputHash("scene3d_stills", { prev: "a", scenes: "sc", narration: "n" }, {}));
     expect(expectedInputHash(v, "render", "p")).toBe(stageInputHash("render", { prev: "p", beats: "b", narration: "n", scenes: "sc" }, {}));
   });
+  it("tolerates a plan with no beats content: Render's hash uses the stable word 'none' and stays deterministic", () => {
+    const v = base({ kind: "scene3d_code", content: { script: "s", narration: "n", scenes: "sc" } });
+    const h = expectedInputHash(v, "render", "p");
+    expect(h).toBe(stageInputHash("render", { prev: "p", beats: "none", narration: "n", scenes: "sc" }, {}));
+    expect(expectedInputHash({ ...v, content: { ...v.content, scenes: "sc2" } }, "render", "p")).not.toBe(h);
+    expect(nextActions(walk(base({ kind: "scene3d_code", content: {} })).v).at(0)?.kind).toBe("done");
+  });
   it("walks the gates in order and never queues Render before the look is approved", () => {
     const { trail } = walk(base({ kind: "scene3d_code" }));
     expect(trail).toEqual(["draft", "gate:script", "tts", "scene3d_author", "scene3d_stills", "gate:look", "render", "voice", "sfx", "qa", "gate:video", "gate:evidence", "gate:publish", "done"]);
