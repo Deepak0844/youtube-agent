@@ -96,7 +96,7 @@ export function isPublicPath(raw: string): boolean {
 
 export const isApiPath = (raw: string): boolean => {
   const p = normalizePath(raw);
-  return p !== null && (p === "/api" || p.startsWith("/api/"));
+  return p !== null && (p === "/api" || p.startsWith("/api/") || p === "/metrics");
 };
 
 // ---- Post-login redirect target --------------------------------------------------------------------------------------
