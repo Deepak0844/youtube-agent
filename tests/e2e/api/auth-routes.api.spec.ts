@@ -87,10 +87,9 @@ test.describe("without a session", () => {
 });
 
 test.describe("/metrics", () => {
-  test("not public: no session redirects to /login", async ({ request }) => {
+  test("not public: no session is a 401 (scrapers get no login redirect)", async ({ request }) => {
     const res = await request.get("/metrics", { maxRedirects: 0 });
-    expect(res.status()).toBe(307);
-    expect(new URL(res.headers().location!, ORIGIN).pathname).toBe("/login");
+    expect(res.status()).toBe(401);
   });
   test("garbage cookie is refused", async ({ request }) => {
     const res = await request.get("/metrics", { headers: cookie("garbage"), maxRedirects: 0 });
