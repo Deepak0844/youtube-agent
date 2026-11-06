@@ -100,7 +100,12 @@ describe("sandbox profile", () => {
 });
 
 // The REAL sandbox-exec, with negative controls for every newly denied thing (macOS only).
-describe.runIf(process.platform === "darwin" && existsSync("/usr/bin/sandbox-exec"))("the real sandbox", () => {
+describe("the real sandbox", () => {
+  // macOS only: nothing below (no mkdtemp, no /private path, no sandbox-exec) runs on Linux CI
+  if (process.platform !== "darwin" || !existsSync("/usr/bin/sandbox-exec")) {
+    it.skip("needs macOS sandbox-exec", () => undefined);
+    return;
+  }
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "sbx-")));
   const job = path.join(root, "job");
   const dirs = { inDir: path.join(job, "in"), outDir: path.join(job, "out"), tmpDir: path.join(job, "tmp") };

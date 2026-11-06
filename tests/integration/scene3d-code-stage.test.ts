@@ -181,7 +181,7 @@ describe("scene3d_code: author stage", () => {
     const out = await play(id, "scene3d_author", author([BAD_FETCH]));
     expect(out.kind).toBe("known_failure");
     const error = (await stageRow(id, "scene3d_author")).result.error as string;
-    expect(error).toMatch(/^scene3d_author_invalid: line 1: global: "fetch" is not available/);
+    expect(error).toMatch(/^known_failure: scene3d_author_invalid: line 1: global: "fetch" is not available/);
     expect(error.slice(0, 120)).toContain("fetch");
     expect(await latestContent(db.pool, id, "scenes")).toBeNull();
     expect(existsSync(path.join(root, "videos", id, "scene.tsx"))).toBe(false);
@@ -268,6 +268,10 @@ describe("scene3d_code: preview pictures, look gate and Render", () => {
     const body = (await latestContent(db.pool, id, "scenes"))!.body as Record<string, unknown>;
     const damaged = { ...body, source: `${String(body.source)}// x\n` };
     await addContent(db.pool, id, "scenes", { body: damaged, sha256: sha256Hex(canonicalJson(damaged)) });
+    // new scenes content voids the earlier look approval (that refusal comes first); approve again so Render reaches the damaged-body check
+    expect((await renderWith(id, { native: { renderer: capture(), ready } })).kind).toBe("known_failure");
+    expect((await stageRow(id, "render")).result).toMatchObject({ error: expect.stringMatching(/Approve the look/) });
+    await approveLook(id);
     const native = capture();
     expect((await renderWith(id, { native: { renderer: native, ready } })).kind).toBe("known_failure");
     expect((await stageRow(id, "render")).result).toMatchObject({ error: expect.stringMatching(/missing or damaged/) });
