@@ -77,6 +77,10 @@ export const SESSION_BATCH_KEYS: readonly string[] = [
   "assets.unused_days",
   "assets.trash_days",
   // Written only together, by the AI source switch (src/server/db/claude-code.ts setAiSource), after requireOwner.
+  "notify.master",
+  "notify.quiet_hours",
+  "notify.events",
+  "notify.webhook_url",
   "ai.previous_routes",
   "claude_code.enabled",
 ];

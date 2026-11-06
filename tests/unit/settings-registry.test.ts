@@ -28,7 +28,7 @@ describe("settings registry", () => {
         "network.local_services", "policy.allow_public", "policy.require_evidence", "uploads.kill_switch", "youtube.cutover_done", "comments.dry_run",
         "assets.max_image_bytes", "assets.max_audio_bytes", "assets.max_pixels", "assets.max_batch_files", "assets.total_bytes_cap",
         "assets.retention_days", "assets.unused_days", "assets.trash_days", "voice.local_url", "voice.voicestudio_url",
-        "llm.call_gap_ms", "claude_code.enabled", "claude_code.daily_cap", "ai.previous_routes",
+        "notify.webhook_url", "llm.call_gap_ms", "claude_code.enabled", "claude_code.daily_cap", "ai.previous_routes",
         ...ENGINE_KEYS,
       ].sort(),
     );

@@ -123,3 +123,25 @@ export async function unreadCount(db: pg.Pool): Promise<number> {
 export async function markNotificationRead(db: pg.Pool, id: string): Promise<void> {
   await db.query("update notifications set read_at = now() where id = $1 and read_at is null", [id]);
 }
+
+export async function markAllNotificationsRead(db: pg.Pool): Promise<void> {
+  await db.query("update notifications set read_at = now() where read_at is null");
+}
+
+export interface ChannelFailure {
+  channel: string;
+  count: number;
+  lastAt: Date;
+}
+
+/** Channels with failed sends in the last 24 h and no good send since (the settings-page banner). */
+export async function recentChannelFailures(db: pg.Pool): Promise<ChannelFailure[]> {
+  const { rows } = await db.query<{ channel: string; n: number; last_at: Date }>(
+    `select f.channel, count(*)::int n, max(f.at) last_at
+       from notification_log f
+      where f.status = 'failed' and f.at > now() - interval '24 hours'
+        and f.at > coalesce((select max(s.at) from notification_log s where s.channel = f.channel and s.status = 'sent'), '-infinity')
+      group by f.channel order by f.channel`,
+  );
+  return rows.map((r) => ({ channel: r.channel, count: r.n, lastAt: r.last_at }));
+}

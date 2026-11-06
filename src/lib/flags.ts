@@ -29,7 +29,7 @@ export const FLAGS: Record<string, boolean> = {
   "settings.tokens": false,
   "settings.channels": true,
   "settings.policies": false,
-  "settings.notifications": false,
+  "settings.notifications": true, // Phase 7
   "settings.schedule": false, // Phase 6
   "settings.health": false,
 };

@@ -14,6 +14,7 @@ import { advanceAll } from "@/server/db/pipeline";
 import { NO_DECISIONS, type PipelineReaders } from "@/server/db/pipeline";
 import { afterReconcile, afterStageOutcome, sweepRetries } from "@/server/db/retry";
 import { notifyTransition, type NotifyPorts } from "@/server/db/notify";
+import { realNotifyPorts } from "@/server/providers/notify/ports";
 import { getStage } from "@/server/db/stages";
 import type { StageOutcome } from "@/server/core/stage-runner";
 import type { NotifyEventId } from "@/server/core/notify";
@@ -115,7 +116,8 @@ const defaults: WorkerHooks = {
   afterOutcome: afterStageOutcome,
   afterReconcile,
   runStage,
-  notify: notifyTransition,
+  // Callers pass no channels: the real desktop popup and webhook senders are built here, from the current settings.
+  notify: async (pool, ports, e) => notifyTransition(pool, Object.keys(ports.channels).length > 0 ? ports : { ...ports, ...(await realNotifyPorts(pool)) }, e),
   markStalled: (pool) => markStalled(pool, STALL_MS),
   // Retention for the events table through the owner-granted prune_events() (the app role cannot delete). One indexed
   // DELETE per loop tick.

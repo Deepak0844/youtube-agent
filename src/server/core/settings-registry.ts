@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { checkWebhookUrl } from "@/server/core/notify-send";
 import { DEFAULT_EVENT_SWITCHES, NOTIFY_EVENT_IDS, isHhmm, isTimeZone } from "@/server/core/notify";
 
 // Pure registry of owner settings (Docs 02 4.5-4.7, 07 3). `safety` keys weaken protections when changed, so only a
@@ -95,6 +96,8 @@ export const SETTINGS = {
   "render.pids": { schema: posInt.min(64).max(2048), default: 512, safety: true, label: "Render process limit" },
   "notify.master": { schema: z.boolean(), default: true, safety: false, label: "Notifications on (master switch)" },
   "notify.quiet_hours": { schema: quietHours, default: { enabled: false, start: "22:00", end: "07:00", tz: "Asia/Kolkata" }, safety: false, label: "Quiet hours" },
+  // Where the webhook channel posts. Safety: it decides where studio text is sent. "" = none. Public addresses only (checked again at send time).
+  "notify.webhook_url": { schema: z.string().max(2000).refine((v) => v === "" || checkWebhookUrl(v) === null, "not an allowed webhook address"), default: "", safety: true, label: "Notification webhook URL" },
   "notify.events": { schema: notifyEvents, default: DEFAULT_EVENT_SWITCHES as Record<string, unknown>, safety: false, label: "Notification switches per event and channel" },
   // Voice servers (Doc 13 5): where the adapters without a fixed address live. Empty = not set up. Server addresses are safety keys (they decide where the script text is sent).
   "voice.azure_region": { schema: z.string().regex(/^([a-z0-9-]{3,30})?$/), default: "", safety: false, label: "Azure speech region" },
