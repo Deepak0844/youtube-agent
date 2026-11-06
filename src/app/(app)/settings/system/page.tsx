@@ -6,6 +6,7 @@ import { checkNativeRenderReady } from "@/server/providers/renderer/native-prefl
 import { loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
 import { Pill } from "@/ui/primitives/pill";
+import { EngineNumbersSection } from "./engine-numbers-section";
 import { RunNowForms } from "./run-now";
 import { CutoverForm, KillSwitchForm, LimitsForm, LocalServicesForm } from "./forms";
 
@@ -46,6 +47,7 @@ async function Owned() {
           tracksLater={["Code scenes (Phase 4)", "Collage (Phase 8)", "AI video (Phase 9)"]}
         />
       </section>
+      <EngineNumbersSection />
       <section aria-labelledby="uploads-h" className="rounded-card bg-surface p-pad">
         <h2 id="uploads-h" className="text-title font-semibold">Uploads to YouTube</h2>
         <p className="mt-1 mb-5 max-w-[60ch] text-body text-muted">
