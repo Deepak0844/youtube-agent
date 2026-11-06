@@ -71,6 +71,7 @@ const ALTERNATE: Record<string, unknown> = {
   "render.cpus": 2,
   "render.memory_mb": 2048,
   "render.pids": 256,
+  "notify.webhook_url": "https://hooks.example.com/alt",
 };
 
 describe("safety settings are session-only (database)", () => {

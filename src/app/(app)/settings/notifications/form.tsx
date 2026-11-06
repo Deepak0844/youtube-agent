@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
 import { Label } from "@/ui/primitives/label";
@@ -29,6 +29,8 @@ export function NotifyForm(props: {
   rows: EventRow[];
 }) {
   const [state, save, saving] = useActionState<FormState, FormData>(saveNotifyAction, {});
+  // Controlled: React resets uncontrolled fields after every form action, which would blank the address the owner just typed.
+  const [url, setUrl] = useState(props.webhookUrl);
   const [test, runTest, testing] = useActionState<FormState, FormData>(testWebhookAction, {});
   return (
     <form action={save} className="flex flex-col gap-layout">
@@ -75,7 +77,7 @@ export function NotifyForm(props: {
         </p>
         <div className="mt-3 flex flex-col gap-2">
           <Label htmlFor="webhook_url">Webhook address</Label>
-          <Input id="webhook_url" name="webhook_url" type="url" inputMode="url" autoComplete="off" defaultValue={props.webhookUrl} placeholder="https://" />
+          <Input id="webhook_url" name="webhook_url" type="url" inputMode="url" autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <Button type="submit" variant="secondary" formAction={runTest} disabled={testing}>Send test message</Button>
