@@ -37,7 +37,7 @@ export interface ContentRow {
 const VCOLS = "id, format, kind, language, topic, notes, channel_id, style, caption_style, status, created_at, updated_at";
 const CCOLS = "id, video_id, kind, version, sha256, body, file_path, produced_by, created_at";
 
-export async function createVideoRow(db: pg.Pool, i: VideoInput): Promise<VideoRow> {
+export async function createVideoRow(db: Pick<pg.Pool, "query">, i: VideoInput): Promise<VideoRow> {
   const r = await db.query(
     `insert into videos (format, kind, language, topic, notes, channel_id, style, caption_style) values ($1,$2,$3,$4,$5,$6,$7,$8) returning ${VCOLS}`,
     [i.format, i.kind, i.language, i.topic, i.notes ?? null, i.channelId ?? null, i.style ?? null, i.captionStyle ?? null],
