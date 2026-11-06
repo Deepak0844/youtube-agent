@@ -32,7 +32,20 @@ import type { Scene3d } from "@/shared/scene3d";
 export const NATIVE_IMAGE = "native-mac-angle";
 /** The job folders (in, out, temp) may hold at most this much; a render that writes more is killed (a hostile scene filling the disk). */
 export const JOB_QUOTA_BYTES = 6 * 1024 * 1024 * 1024;
-export const QUOTA_POLL_MS = 5000;
+export const QUOTA_POLL_MS = 2000;
+
+/** True when `dir` is `of` or one of its ancestors (so an allow-back for `dir` would reopen `of`). */
+export function coversPath(dir: string, of: string): boolean {
+  const rel = path.relative(dir, of);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+/** Refuses an allow-back folder that is, or contains, the home folder, the repo or the storage root (node installed under the home folder would reopen it all). */
+export function allowBackProblem(dirs: Record<string, string>, protectedDirs: Record<string, string>): string | null {
+  for (const [n, d] of Object.entries(dirs)) for (const [pn, pd] of Object.entries(protectedDirs)) {
+    if (coversPath(d, pd)) return `The ${n} folder (${d}) contains your ${pn} folder, so the render sandbox could not keep it closed. Install node somewhere outside it (for example with Homebrew) and run the render again. Nothing was rendered.`;
+  }
+  return null;
+}
 
 /** Total size in bytes of the files under `dirs` (lstat, no symlink followed, no du process). Missing folders count 0. */
 export async function dirsSize(dirs: readonly string[]): Promise<number> {
@@ -103,11 +116,18 @@ async function runNativeJob<T>(
   const cleanup = () => Promise.all([inDir, outDir, tmpDir].map((d) => rm(d, { recursive: true, force: true }))).catch(() => undefined);
   await cleanup();
   let poll: ReturnType<typeof setInterval> | undefined;
+  let removeOuter: (() => void) | undefined;
   try {
     await Promise.all([inDir, outDir, tmpDir].map((d) => mkdir(d, { recursive: true, mode: 0o700 })));
     await job.prepare({ inDir, outDir, repoRoot });
     const node = deps.node ?? process.execPath;
     const nodeReal = await realpath(node);
+    const homeReal = await realpath(deps.homeDir ?? homedir());
+    const bad = allowBackProblem(
+      { "node install": path.dirname(path.dirname(nodeReal)), "Chrome": ready.chromeDir, "node_modules": await realpath(path.join(repoRoot, "node_modules")).catch(() => path.join(repoRoot, "node_modules")), "kit": kitDir },
+      { home: homeReal, "app": repoRoot, "storage": await realpath(deps.root) },
+    );
+    if (bad) throw new KnownFailure(bad.slice(0, 600));
     const cmd = nativeCommand({
       repoRoot, kitDir, nodeModules: await realpath(path.join(repoRoot, "node_modules")).catch(() => path.join(repoRoot, "node_modules")), storageRoot: await realpath(deps.root), homeDir: await realpath(deps.homeDir ?? homedir()),
       inDir, outDir, tmpDir, nodePrefix: path.dirname(path.dirname(nodeReal)), chromeDir: ready.chromeDir,
@@ -122,6 +142,7 @@ async function runNativeJob<T>(
     const onOuter = () => abort.abort(ctx.signal.reason);
     if (ctx.signal.aborted) onOuter();
     else ctx.signal.addEventListener("abort", onOuter, { once: true });
+    removeOuter = () => ctx.signal.removeEventListener("abort", onOuter);
     let overQuota = 0;
     poll = setInterval(() => {
       void (deps.dirSize ?? dirsSize)([inDir, outDir, tmpDir]).then((n) => {
@@ -129,7 +150,9 @@ async function runNativeJob<T>(
           overQuota = n;
           abort.abort(new Error("quota"));
         }
-      }).catch(() => undefined);
+      }).catch(() => {
+        if (overQuota === 0) { overQuota = -1; abort.abort(new Error("quota")); } // a failed measurement is a kill: fail closed
+      });
     }, deps.quotaPollMs ?? QUOTA_POLL_MS);
     const r = await deps.runChild({
       // cwd is the private temp folder, NOT the attempt folder: the attempt folder sits under the read-denied storage root, and
@@ -148,6 +171,7 @@ async function runNativeJob<T>(
     });
     clearInterval(poll);
     ctx.signal.removeEventListener("abort", onOuter);
+    if (overQuota < 0) throw new KnownFailure("The render was stopped because the size of its working folders could not be measured. Nothing was rendered.");
     if (overQuota > 0) throw new KnownFailure(`The render wrote more than ${Math.round(quota / 1024 ** 3)} GB of files and was stopped. Nothing was rendered. (${Math.round(overQuota / 1024 ** 3 * 10) / 10} GB at the check.)`);
     if (r.aborted) throw ctx.signal.reason ?? new Error("render aborted");
     if (r.timedOut) throw new KnownFailure(`The native render took longer than its ${Math.ceil(timeoutS / 60)} min limit and was stopped.`);
@@ -156,6 +180,7 @@ async function runNativeJob<T>(
     return await job.collect({ inDir, outDir, repoRoot });
   } finally {
     if (poll) clearInterval(poll);
+    removeOuter?.();
     await cleanup();
   }
 }

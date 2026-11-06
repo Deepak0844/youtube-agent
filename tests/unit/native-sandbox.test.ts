@@ -108,6 +108,7 @@ describe.runIf(process.platform === "darwin" && existsSync("/usr/bin/sandbox-exe
   const node = realpathSync(process.execPath);
   const outside = mkdtempSync("/private/tmp/sbx-outside-");
   writeFileSync(path.join(outside, "secret.txt"), "x");
+  mkdirSync(path.join(root, "job2", "tmp"), { recursive: true });
   const homeFile = path.join(homedir(), ".sbx-probe-file");
   writeFileSync(homeFile, "x");
   writeFileSync(path.join(dirs.inDir, "ok.txt"), "ok");
@@ -134,14 +135,24 @@ describe.runIf(process.platform === "darwin" && existsSync("/usr/bin/sandbox-exe
     security: `cp.execFileSync("/usr/bin/security",["-h"])`,
     launchctl: `cp.execFileSync("/bin/launchctl",["version"])`,
     killInit: `process.kill(1,0)`,
+    writeOutside: `fs.writeFileSync(${JSON.stringify(path.join(root, "outside-write.txt"))},"x")`,
+    writeSibling: `fs.writeFileSync(${JSON.stringify(path.join(root, "job2", "tmp", "x.txt"))},"x")`,
+    repoRead: `fs.readFileSync(${JSON.stringify(path.resolve("package-lock.json"))})`,
   }));
   const status = (n: string) => result.find((l) => l.startsWith(`${n} `))!.slice(n.length + 1);
+  const denied = (n: string) => expect(status(n), n).toMatch(/^(EPERM|EACCES)$/);
   it("still reads its in folder and writes its temp folder (positive controls)", () => {
     expect(status("inRead")).toBe("OK");
     expect(status("tmpWrite")).toBe("OK");
   });
-  it.each(["privTmpRead", "homeRead", "usersRead", "volumesRead", "varFoldersRead"])("cannot read %s", (n) => expect(status(n)).not.toBe("OK"));
-  it.each(["curl", "sh", "zsh", "open", "osascript", "security", "launchctl"])("cannot start %s", (n) => expect(status(n)).not.toBe("OK"));
+  it.each(["privTmpRead", "homeRead", "usersRead", "volumesRead", "varFoldersRead", "repoRead"])("cannot read %s (EPERM)", denied);
+  it.each(["writeOutside", "writeSibling"])("cannot write: %s (EPERM)", denied);
+  it("cannot signal init (EPERM)", () => denied("killInit"));
+  it("cannot reach the network except loopback", () => {
+    const out = probe(`const n=require("net");const s=n.connect({host:"1.1.1.1",port:80,timeout:3000});s.on("error",e=>{console.log("net "+e.code);process.exit(0)});s.on("connect",()=>{console.log("net OK");process.exit(0)});s.on("timeout",()=>{console.log("net TIMEOUT");process.exit(0)})`);
+    expect(out[0]).toMatch(/^net (EPERM|EACCES|ENETUNREACH|EHOSTUNREACH)$/);
+  });
+  it.each(["curl", "sh", "zsh", "open", "osascript", "security", "launchctl"])("cannot start %s (EPERM)", (n) => expect(status(n), n).toMatch(/^(EPERM|EACCES)$/));
   it("cleans up", () => {
     rmSync(root, { recursive: true, force: true });
     rmSync(outside, { recursive: true, force: true });

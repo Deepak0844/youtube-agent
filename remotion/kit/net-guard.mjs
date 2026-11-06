@@ -56,7 +56,7 @@ export function decide(url, origin) {
 }
 
 /** Run before any page script: no WebRTC, no WebTransport, no service workers, no extra windows (belt and braces behind the CSP and the checker). */
-export const HARDEN_SCRIPT = `(() => { const names = ["RTCPeerConnection","webkitRTCPeerConnection","RTCDataChannel","RTCSessionDescription","RTCIceCandidate","WebTransport","WebSocket","EventSource","SharedWorker","Worker"]; for (const n of names) { try { Object.defineProperty(globalThis, n, { value: undefined, configurable: false, writable: false }); } catch (e) {} } try { Object.defineProperty(navigator, "serviceWorker", { value: undefined, configurable: false }); } catch (e) {} try { Object.defineProperty(window, "open", { value: () => null, configurable: false, writable: false }); } catch (e) {} })();`;
+export const HARDEN_SCRIPT = `(() => { const names = ["indexedDB","caches","RTCPeerConnection","webkitRTCPeerConnection","RTCDataChannel","RTCSessionDescription","RTCIceCandidate","WebTransport","WebSocket","EventSource","SharedWorker","Worker"]; for (const n of names) { try { Object.defineProperty(globalThis, n, { value: undefined, configurable: false, writable: false }); } catch (e) {} } const mem = () => { const m = new Map(); return { getItem: (k) => (m.has(String(k)) ? m.get(String(k)) : null), setItem: (k, v) => { m.set(String(k), String(v)); }, removeItem: (k) => { m.delete(String(k)); }, clear: () => m.clear(), key: (i) => [...m.keys()][i] ?? null, get length() { return m.size; } }; }; for (const n of ["localStorage", "sessionStorage"]) { try { Object.defineProperty(globalThis, n, { value: mem(), configurable: false, writable: false }); } catch (e) {} } try { Object.defineProperty(navigator, "storage", { value: undefined, configurable: false }); } catch (e) {} try { Object.defineProperty(navigator, "serviceWorker", { value: undefined, configurable: false }); } catch (e) {} try { Object.defineProperty(window, "open", { value: () => null, configurable: false, writable: false }); } catch (e) {} })();`;
 
 /** `scheme://host:port`, nothing of the path or query: safe to log. */
 export const labelOf = (url) => {
@@ -71,6 +71,10 @@ export const labelOf = (url) => {
 /**
  * Installs both controls on one page (before it navigates). `stats.blocked` counts refused requests; `log` gets one line per refusal
  * (at most 50 lines per page). Returns the stats object.
+ */
+/**
+ * @param {any} page
+ * @param {{ origin?: string, log?: (line: string) => void, stats?: { blocked: number, violations?: number } }} [options]
  */
 export async function guardPage(page, { origin, log = console.log, stats = { blocked: 0 } } = {}) {
   const client = page._client();
@@ -107,7 +111,7 @@ export async function guardPage(page, { origin, log = console.log, stats = { blo
       await client.send("Fetch.continueRequest", { requestId }).catch(() => undefined);
     })();
   });
-  await client.send("Page.addScriptToEvaluateOnNewDocument", { source: HARDEN_SCRIPT }).catch(() => undefined);
+  await client.send("Page.addScriptToEvaluateOnNewDocument", { source: HARDEN_SCRIPT }); // not swallowed: no hardening, no page
   await client.send("Network.setBypassServiceWorker", { bypass: true }).catch(() => undefined);
   await client.send("Network.setBlockedURLs", { urls: ["ws://*", "wss://*", "stun:*", "turn:*", "webrtc:*"] }).catch(() => undefined);
   await client.send("Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }, { urlPattern: "*", resourceType: "Document", requestStage: "Response" }] });
@@ -118,6 +122,10 @@ export async function guardPage(page, { origin, log = console.log, stats = { blo
  * Makes every page this browser opens guarded before Remotion navigates it, and treats any target the PAGE creates (a popup, a worker, a
  * service worker, a shared worker, an extra tab with an opener) as a violation: it is closed at once and `onViolation` is called (the
  * render fails). `origin` is the exact bundle server origin. Returns the shared stats.
+ */
+/**
+ * @param {any} browser
+ * @param {{ origin?: string, onViolation?: (type: string) => void, log?: (line: string) => void, stats?: { blocked: number, violations?: number } }} [options]
  */
 export function guardBrowser(browser, { origin, onViolation = () => undefined, ...opts } = {}) {
   const stats = opts.stats ?? { blocked: 0, violations: 0 };

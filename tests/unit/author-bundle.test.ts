@@ -55,6 +55,10 @@ describe.runIf(bundle !== undefined)("bundler import allow-list (real webpack)",
     ["a three loader subpath", scene(`import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";`, "GLTFLoader;")],
     ["a relative file", scene(`import x from "./other";`, "x;")],
     ["a package that is installed", scene(`import { Composition } from "@remotion/renderer";`, "Composition;")],
+    ["export * from a node module", `export * from "fs";\nexport default function Scene() { return null; }\n`],
+    ["new URL(..., import.meta.url)", scene("", `const u = new URL("./x", import.meta.url); u;`)],
+    ["new Worker(new URL(...))", scene("", `new Worker(new URL("./x.ts", import.meta.url));`)],
+    ["require via a context", scene("", `(require as any)("fs");`)],
     ["a dynamic import of a literal", scene("", `import("fs");`)],
   ])("FAILS the bundle for %s", async (name, source) => {
     await expect(run(`bad-${name.replace(/\W+/g, "-")}`, source, { "other.ts": "export default 1;" })).rejects.toBeTruthy();

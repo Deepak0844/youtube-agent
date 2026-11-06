@@ -9,7 +9,7 @@ import { sceneProps } from "@/server/core/scene3d-author-prompt";
 import type { StageContext } from "@/server/core/stage-handler";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { createContainerRenderer } from "@/server/providers/renderer/remotion-container";
-import { createNativeRenderer, type NativeRendererDeps } from "@/server/providers/renderer/remotion-native";
+import { allowBackProblem, coversPath, createNativeRenderer, type NativeRendererDeps } from "@/server/providers/renderer/remotion-native";
 import { buildSandboxProfile } from "@/server/providers/renderer/native-sandbox";
 import { sha256Hex } from "@/shared/assets3d/files";
 import { sha256Hex as textSha } from "@/server/core/content-hash";
@@ -199,7 +199,44 @@ describe("native renderer, scene3d_code preview pictures", () => {
   });
 });
 
+describe("allow-back folders must not reopen the home folder, the repo or the storage root", () => {
+  it("coversPath: equal or ancestor only", () => {
+    expect(coversPath("/Users/me", "/Users/me/app")).toBe(true);
+    expect(coversPath("/Users/me/app", "/Users/me/app")).toBe(true);
+    expect(coversPath("/Users/me/app/node_modules", "/Users/me/app")).toBe(false);
+    expect(coversPath("/usr/local", "/Users/me")).toBe(false);
+  });
+  it("names the folder and the closed folder, key sentence first", () => {
+    expect(allowBackProblem({ "node install": "/Users/me" }, { home: "/Users/me", app: "/Users/me/app" })).toMatch(/^The node install folder \(\/Users\/me\) contains your home folder/);
+    expect(allowBackProblem({ "node install": "/usr/local", Chrome: "/Users/me/app/node_modules/.remotion/x" }, { home: "/Users/me", app: "/Users/me/app" })).toBeNull();
+  });
+  it("the renderer refuses to start when node lives directly under the home folder", async () => {
+    writeFileSync(path.join(assets, "pp_ship.glb"), GLB);
+    const home = path.dirname(path.dirname(realpathSync(process.execPath)));
+    await expect(createNativeRenderer(deps(undefined, { homeDir: home })).render(ctx(), args())).rejects.toThrow(/contains your home folder/);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("disk quota", () => {
+  it("a failed size measurement kills the render (fail closed)", async () => {
+    writeFileSync(path.join(assets, "pp_ship.glb"), GLB);
+    const waiting = (spec: ChildSpec): Promise<ChildResult> => new Promise((resolve) => {
+      calls.push(spec);
+      spec.signal?.addEventListener("abort", () => resolve({ ...DONE, aborted: true, code: null }));
+    });
+    await expect(createNativeRenderer(deps(undefined, { runChild: waiting, dirSize: async () => { throw new Error("du failed"); }, quotaPollMs: 5 })).render(ctx(), args())).rejects.toThrow(/could not be measured/);
+  });
+  it("removes the abort listener even when the child runner throws", async () => {
+    writeFileSync(path.join(assets, "pp_ship.glb"), GLB);
+    let added = 0, removed = 0;
+    const add = ac.signal.addEventListener.bind(ac.signal), rem = ac.signal.removeEventListener.bind(ac.signal);
+    ac.signal.addEventListener = ((...a: Parameters<typeof add>) => (added++, add(...a))) as typeof add;
+    ac.signal.removeEventListener = ((...a: Parameters<typeof rem>) => (removed++, rem(...a))) as typeof rem;
+    await expect(createNativeRenderer(deps(undefined, { runChild: async () => { throw new Error("spawn failed"); } })).render(ctx(), args())).rejects.toThrow(/spawn failed/);
+    expect(added).toBeGreaterThan(0);
+    expect(removed).toBe(added);
+  });
   it("measures the job folders and kills the process group when they pass the cap, with a key-first sentence", async () => {
     writeFileSync(path.join(assets, "pp_ship.glb"), GLB);
     let killed = false;

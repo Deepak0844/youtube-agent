@@ -146,7 +146,7 @@ if (author) {
     writeFileSync(wrapper, `#!${process.execPath}\nconst real = ${JSON.stringify(browserExecutable)};\nprocess.execve(real, [real, ...process.argv.slice(2), "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"], process.env);\n`, { mode: 0o700 });
     chmodSync(wrapper, 0o700);
     browserExecutable = wrapper;
-  }
+  } else console.log("GUARD note: process.execve is unavailable, so the Chrome WebRTC UDP flag is not set (the checker, CSP and page script still block WebRTC)");
 }
 const chromiumOptions = { gl: native ? "angle" : "swangle", disableWebSecurity: false, ignoreCertificateErrors: false };
 // AI-written scene: ONE browser we open ourselves, so every page it opens is guarded (CSP + request filter, net-guard.mjs) before it loads anything.

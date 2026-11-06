@@ -98,6 +98,8 @@ export function typeCheckCore({ source, dts, pools, budgetMs }) {
     },
   };
   try {
+    const global = [...program.getGlobalDiagnostics(), ...program.getOptionsDiagnostics()];
+    if (global.length > 0) return { ok: false, fatal: true, sha256, problems: [`type-check: the compiler reported a setup problem (${echo(ts.flattenDiagnosticMessageText(global[0].messageText, " "), 80)}).`] };
     const diags = [...program.getSyntacticDiagnostics(sf), ...program.getSemanticDiagnostics(sf, token)];
     const problems = [...new Set(diags.slice(0, MAX_PROBLEMS * 2).map((d) => sentence(d, sf, pools)))].slice(0, MAX_PROBLEMS);
     return { ok: problems.length === 0, problems, sha256 };

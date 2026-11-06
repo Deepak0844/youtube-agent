@@ -148,7 +148,7 @@ describe("the page hardening commands", () => {
     await guardPage(f.page, { origin: ORIGIN, log: () => undefined });
     const [add] = f.find("Page.addScriptToEvaluateOnNewDocument");
     expect(add!.params.source).toBe(HARDEN_SCRIPT);
-    for (const n of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel", "WebTransport", "WebSocket", "EventSource", "SharedWorker", "Worker", "serviceWorker", "open"]) expect(HARDEN_SCRIPT).toContain(n);
+    for (const n of ["indexedDB", "caches", "localStorage", "sessionStorage", "storage", "RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel", "WebTransport", "WebSocket", "EventSource", "SharedWorker", "Worker", "serviceWorker", "open"]) expect(HARDEN_SCRIPT).toContain(n);
     expect(f.find("Network.setBypassServiceWorker")[0]!.params).toEqual({ bypass: true });
     expect(f.find("Network.setBlockedURLs")[0]!.params.urls).toEqual(["ws://*", "wss://*", "stun:*", "turn:*", "webrtc:*"]);
     expect(f.sent.findIndex((c) => c.method === "Page.addScriptToEvaluateOnNewDocument")).toBeLessThan(f.sent.findIndex((c) => c.method === "Fetch.enable"));
