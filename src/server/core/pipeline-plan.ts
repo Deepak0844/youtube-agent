@@ -8,10 +8,10 @@ import type { GateId } from "@/server/core/gates";
 
 export type VideoFormat = "short" | "long";
 export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "scene3d" | "scene3d_code";
-export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "previews";
+export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "previews" | "review";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
-export const STAGE_NAMES = ["draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_author", "scene3d_stills", "voice", "sfx", "qa", "repair_scenes", "reframe", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
+export const STAGE_NAMES = ["draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_author", "scene3d_stills", "scene3d_review", "voice", "sfx", "qa", "repair_scenes", "reframe", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
 export type StageName = (typeof STAGE_NAMES)[number];
 
 /** The two 3D story kinds: the director writes scene data (scene3d), or the AI writes the scene code (scene3d_code). Both get the Look gate and the native render. */
@@ -80,14 +80,16 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
     ];
   }
   // scene3d_code: like scene3d, but the model writes ONE scene.tsx (checked statically, type-checked, drawn in the sandbox) AFTER the narration exists,
-  // so it sees the real beat times. Then preview pictures, the Look gate, the long native render.
+  // so it sees the real beat times. Then preview pictures, the automatic review of those pictures (which may send the author back for up to 3 revisions:
+  // the author's hash carries the round, see expectedInputHash), the Look gate, the long native render.
   if (kind === "scene3d_code") {
     const head: PlanStep[] = flags.imported ? [] : [{ stage: "draft", gateAfter: "script", resource: "net" }];
     return [
       ...head,
       { stage: "tts", resource: "net" },
       { stage: "scene3d_author", resource: "cpu" },
-      { stage: "scene3d_stills", gateAfter: "look", resource: "render" },
+      { stage: "scene3d_stills", resource: "render" },
+      { stage: "scene3d_review", gateAfter: "look", resource: "cpu" },
       { stage: "render", resource: "render" },
       { stage: "voice", resource: "cpu" },
       { stage: "sfx", resource: "cpu" },
@@ -135,6 +137,7 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   direct_scene3d: ["script"],
   scene3d_author: ["script", "narration"],
   scene3d_stills: ["scenes", "narration"],
+  scene3d_review: ["scenes", "previews"],
   voice: [],
   sfx: [],
   qa: [],
@@ -184,6 +187,11 @@ export interface PipelineView {
    * so a repeated note still makes it run again. Absent or null = never sent back, and then no hash changes.
    */
   lookFeedback?: { count: number; note: string } | null;
+  /**
+   * AI-written 3D stories only: how many automatic revisions of the scene the look review has asked for so far (0 = none). The author's
+   * hash carries it, so each asked-for revision runs the author again, then the pictures and the review. Absent or 0 = no hash change.
+   */
+  reviewRound?: number;
   /** sha256 of the latest version of each content kind that exists */
   content: Partial<Record<ContentKindName, string>>;
   /** newest run per stage */
@@ -237,7 +245,8 @@ export function expectedInputHash(view: PipelineView, stage: StageName, prevHash
   const nonce = view.nonces?.[stage];
   if (view.style && (stage === "build" || stage === "render")) Object.assign(upstream, styleHashParts(view.style.style, view.style.captionStyle)); // only when chosen: older hashes stay identical
   if (view.style?.style && stage === "tsx_author") upstream.style = view.style.style; // only when chosen: a tsx video with no style keeps its old hash
-  if (stage === "direct_scene3d" && view.lookFeedback) upstream.look_feedback = `${view.lookFeedback.count}:${view.lookFeedback.note}`; // only when sent back: every other hash stays identical
+  if (stage === "scene3d_author" && view.reviewRound) upstream.review_round = String(view.reviewRound); // only when a revision was asked for: older hashes stay identical
+  if ((stage === "direct_scene3d" || stage === "scene3d_author") && view.lookFeedback) upstream.look_feedback = `${view.lookFeedback.count}:${view.lookFeedback.note}`; // only when sent back: every other hash stays identical
   if (nonce) upstream.nonce = nonce; // only when set: every hash made before forced reruns existed stays identical
   return stageInputHash(stage, upstream, {});
 }

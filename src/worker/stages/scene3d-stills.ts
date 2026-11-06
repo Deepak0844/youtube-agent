@@ -94,7 +94,7 @@ export function scene3dStillsAttempt(deps: StageDeps): AttemptHandler {
       advice = await adviceFor(llm, ctx, picks, pngs);
     }
     ctx.log(`previews: ${picks.length} pictures drawn; picture check: ${advice.status}`);
-    const body = buildPreviewsBody({ sceneSha256: sceneSha, picks, shas, advice });
+    const body = buildPreviewsBody({ sceneSha256: sceneSha, picks, shas, advice, hero: r.hero });
     return { files: r.files, content: [{ kind: "previews", body }], result: { kind: "scene3d_previews", stills: picks.length, advice: advice.status, image: r.image ?? null } };
   };
 }

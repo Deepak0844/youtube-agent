@@ -110,17 +110,19 @@ export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: Ga
   if (!live || live.hash !== i.seenHash || versionsKey(live.versions) !== i.seenVersions) return refuse(STALE_MESSAGE);
 
   if (kind === "send_back") {
-    // The Look may be sent back to the director only a few times; the refusal comes before anything is recorded.
+    // The Look may be sent back (to the director, or to the scene author) only a few times; the refusal comes before anything is recorded.
     if (i.gate === "look") {
-      // An AI-written scene has no redo loop yet (a later slice): the only choices are to approve the look or cancel the video.
-      if ((await db.query<{ kind: string }>("select kind from videos where id = $1", [i.videoId])).rows[0]?.kind === "scene3d_code") return refuse("An AI-written 3D scene cannot be sent back yet. Approve this look, or cancel the video and start a new one.");
       const capped = lookSendBackProblem((await lookFeedbackOf(db, i.videoId))?.count ?? 0);
       if (capped) return refuse(capped);
     }
     const r = await sendBack(db, { videoId: i.videoId, gate: i.gate, seenHash: i.seenHash, note: i.note ?? "", actor });
     if (!r.ok) return refuse(say(r.reason));
     if (i.gate === "script" || i.gate === "look") await advance(db, q.stage, i.videoId);
-    return { ok: true, message: i.gate === "script" ? "Sent back. A new draft will follow your note." : i.gate === "look" ? "Sent back. The director will redo the scene with your note, then new preview pictures will follow." : "Sent back. This video is held until it is rebuilt or cancelled." };
+    // An AI-written scene is rewritten by the scene author with the note (the automatic picture checks start again, 3 fresh tries); the other 3D kind goes back to the director.
+    const lookMessage = (await db.query<{ kind: string }>("select kind from videos where id = $1", [i.videoId])).rows[0]?.kind === "scene3d_code"
+      ? "Sent back. The scene author will rewrite the scene with your note, check the new pictures itself, then show you the result."
+      : "Sent back. The director will redo the scene with your note, then new preview pictures will follow.";
+    return { ok: true, message: i.gate === "script" ? "Sent back. A new draft will follow your note." : i.gate === "look" ? lookMessage : "Sent back. This video is held until it is rebuilt or cancelled." };
   }
 
   if (i.gate === "publish") {

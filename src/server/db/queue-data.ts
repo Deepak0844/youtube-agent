@@ -12,6 +12,8 @@ import { getDecision, type DecisionDetail } from "@/server/db/decision";
 import { readSnapshot } from "@/server/db/approvals";
 import { breakerHold } from "@/server/db/breakers";
 import { approvalReaders, lookFeedbackOf } from "@/server/db/approval-readers";
+import { activeReviewOf } from "@/server/db/review-state";
+import { reviewView, type ReviewView } from "@/server/core/scene3d-review";
 import { getCachedMediaKey, getOrCreateMediaKey } from "@/server/db/media-key";
 import { readNextAction } from "@/server/db/pipeline";
 import { getSetting } from "@/server/db/settings";
@@ -36,6 +38,8 @@ export type GateContent =
       /** How many times this look was already sent back, and the most allowed. */
       sentBack: number;
       cap: number;
+      /** AI-written scenes only: what the automatic picture review did (rounds, fixed, still wrong); null for the other 3D kind and for older videos. */
+      review: ReviewView | null;
     }
   | { kind: "video"; src: string | null; shaPrefix: string; captions: "exact" | "approximate" | "check" | "checked"; rewriteLines: number[] }
   | { kind: "evidence"; claims: GateClaim[]; fileSrc: string | null; shaPrefix: string }
@@ -162,7 +166,8 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
   if (gate === "look") {
     const v = lookView(c.previews?.body, c.scenes?.body);
     const used = (await lookFeedbackOf(db, videoId))?.count ?? 0;
-    return { kind: "look", sentBack: used, cap: LOOK_SEND_BACK_CAP, view: v.ok ? { ok: true, look: { ...v.look, stills: v.look.stills.map((s) => ({ ...s, src: src(`videos/${videoId}/${s.file}`) })) } } : v };
+    const review = reviewView(await activeReviewOf(db, videoId));
+    return { kind: "look", sentBack: used, cap: LOOK_SEND_BACK_CAP, review, view: v.ok ? { ok: true, look: { ...v.look, stills: v.look.stills.map((s) => ({ ...s, src: src(`videos/${videoId}/${s.file}`) })) } } : v };
   }
   if (gate === "video") {
     const cap = asObj(c.captions?.body);

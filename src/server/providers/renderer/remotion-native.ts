@@ -4,6 +4,7 @@ import path from "node:path";
 import { sha256Hex as sha256Text } from "@/server/core/content-hash";
 import { redactLine } from "@/server/core/log-redact";
 import { KnownFailure } from "@/server/core/paid-call";
+import { heroReportSchema, type HeroReport } from "@/server/core/scene3d-look-check";
 import { MAX_STILLS, MAX_STILL_BYTES, pngProblem } from "@/server/core/scene3d-stills";
 import type { StageContext } from "@/server/core/stage-handler";
 import type { ProbeResult } from "@/server/core/qa";
@@ -237,6 +238,7 @@ export function createNativeRenderer(deps: NativeRendererDeps): Renderer & Scene
           await rm(dest, { recursive: true, force: true });
           await mkdir(dest, { recursive: true, mode: 0o700 });
           const files: string[] = [];
+          const hero: HeroReport[] = [];
           for (let i = 1; i <= a.frames.length; i++) {
             const name = String(i).padStart(2, "0");
             const to = path.join(dest, `${name}.png`);
@@ -253,10 +255,29 @@ export function createNativeRenderer(deps: NativeRendererDeps): Renderer & Scene
             const bad = pngProblem(head);
             if (bad) throw new KnownFailure(`Preview picture ${i} ${bad}. Nothing was saved.`);
             files.push(`stills/${name}.png`);
+            if (a.scene3dCode) hero.push(await readHeroReport(path.join(j.outDir, `still-${name}.hero.json`)));
           }
-          return { files, image: NATIVE_IMAGE };
+          return { files, image: NATIVE_IMAGE, ...(a.scene3dCode ? { hero } : {}) };
         },
       });
     },
   };
+}
+
+/** The hero report the page wrote next to a picture. The file comes from the sandboxed render, so: a regular file, tiny, strictly parsed. Anything else means "no hero reported". */
+async function readHeroReport(file: string): Promise<HeroReport> {
+  try {
+    const fh = await openRegular(file);
+    try {
+      const buf = Buffer.alloc(2049);
+      const { bytesRead } = await fh.read(buf, 0, 2049, 0);
+      if (bytesRead > 2048) return { declared: false };
+      const r = heroReportSchema.safeParse(JSON.parse(buf.subarray(0, bytesRead).toString("utf8")));
+      return r.success ? r.data : { declared: false };
+    } finally {
+      await fh.close();
+    }
+  } catch {
+    return { declared: false };
+  }
 }

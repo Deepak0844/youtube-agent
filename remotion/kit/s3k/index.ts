@@ -7,6 +7,7 @@ export { World, resolvePreset } from "./World";
 export { CutawayBox, buildCutFace, strataUV } from "./Cutaway";
 export { Finish, resolveFinish } from "./Finish";
 export { CameraRig } from "./Rig";
+export { Hero } from "./Hero";
 export { frameFocus, coverage, glideTimes, resolveShots, rigPose, heroWeight } from "./framing";
 export { Captions, Ruler, captionPhase } from "./Overlays";
 export { useT, useStable, TimeContext } from "./time";

@@ -2,7 +2,7 @@
 // for hundreds of bricks (one draw call), particles with makeParticles, seeded randomness (rnd), a loop with a constant bound, a camera glide.
 import React, { useMemo } from "react";
 import * as THREE from "three";
-import { CameraRig, Finish, World, glideTimes, instance, lerp, makeParticles, placeSlots, ramp, rnd, smooth, std, useT } from "s3k";
+import { CameraRig, Finish, Hero, World, glideTimes, instance, lerp, makeParticles, placeSlots, ramp, rnd, smooth, std, useT } from "s3k";
 import type { SceneProps } from "s3k";
 
 const ROWS = 24, PER_ROW = 8, BRICK = { w: 1.2, h: 0.6, d: 1.2 };
@@ -40,7 +40,7 @@ export default function Scene({ durationS }: SceneProps) {
   return (
     <>
       <World focus={FOCUS} preset="haze" ground={{ y: 0, kind: "pave" }} sea={false} />
-      <primitive object={parts.bricks} />
+      <Hero><primitive object={parts.bricks} /></Hero>
       <primitive object={parts.dust.points} />
       <CameraRig shots={shots} floor={1.5} />
       <Finish />

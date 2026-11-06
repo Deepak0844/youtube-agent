@@ -383,10 +383,10 @@ describe("scene3d kind", () => {
 
 describe("scene3d_code kind (3D story, AI-written scene)", () => {
   const f = { requireEvidence: true, paidGeneration: false };
-  it("runs draft, tts, scene3d_author, scene3d_stills, render, voice, sfx, qa: the author comes AFTER the narration so it sees real beat times", () => {
+  it("runs draft, tts, scene3d_author, scene3d_stills, scene3d_review, render, voice, sfx, qa: the author comes AFTER the narration so it sees real beat times", () => {
     const plan = stagePlan("scene3d_code", "short", { ...f, paidGeneration: true });
-    expect(plan.map((s) => s.stage)).toEqual(["draft", "tts", "scene3d_author", "scene3d_stills", "render", "voice", "sfx", "qa"]);
-    expect(plan.filter((s) => s.gateAfter || s.gateBefore).map((s) => [s.stage, s.gateAfter ?? s.gateBefore])).toEqual([["draft", "script"], ["scene3d_stills", "look"], ["qa", "video"]]);
+    expect(plan.map((s) => s.stage)).toEqual(["draft", "tts", "scene3d_author", "scene3d_stills", "scene3d_review", "render", "voice", "sfx", "qa"]);
+    expect(plan.filter((s) => s.gateAfter || s.gateBefore).map((s) => [s.stage, s.gateAfter ?? s.gateBefore])).toEqual([["draft", "script"], ["scene3d_review", "look"], ["qa", "video"]]);
     expect(isScene3dKind("scene3d_code") && isScene3dKind("scene3d") && !isScene3dKind("tsx")).toBe(true);
   });
   it("pins the author and stills hashes; the kind is never part of a hash", () => {
@@ -394,6 +394,32 @@ describe("scene3d_code kind (3D story, AI-written scene)", () => {
     expect(expectedInputHash(v, "scene3d_author", "t")).toBe(stageInputHash("scene3d_author", { prev: "t", script: "s", narration: "n" }, {}));
     expect(expectedInputHash(v, "scene3d_stills", "a")).toBe(stageInputHash("scene3d_stills", { prev: "a", scenes: "sc", narration: "n" }, {}));
     expect(expectedInputHash(v, "render", "p")).toBe(stageInputHash("render", { prev: "p", beats: "b", narration: "n", scenes: "sc" }, {}));
+    // the review reads the scene and the pictures; Render chains on it
+    expect(expectedInputHash({ ...v, content: { ...v.content, previews: "pv" } }, "scene3d_review", "s")).toBe(stageInputHash("scene3d_review", { prev: "s", scenes: "sc", previews: "pv" }, {}));
+    const plan = stagePlan("scene3d_code", "short", f);
+    expect(chainPrev(plan, plan.findIndex((x) => x.stage === "render"))?.stage).toBe("scene3d_review");
+  });
+  it("the review round and the owner's send-back count make the author run again, and change no other hash", () => {
+    const v = base({ kind: "scene3d_code", content: { script: "s", beats: "b", narration: "n", scenes: "sc", previews: "pv" } });
+    const plain = expectedInputHash(v, "scene3d_author", "t");
+    expect(expectedInputHash({ ...v, reviewRound: 0, lookFeedback: null }, "scene3d_author", "t")).toBe(plain); // nothing asked for: the hash is the pre-existing one
+    const r1 = expectedInputHash({ ...v, reviewRound: 1 }, "scene3d_author", "t");
+    const r2 = expectedInputHash({ ...v, reviewRound: 2 }, "scene3d_author", "t");
+    expect(new Set([plain, r1, r2]).size).toBe(3);
+    expect(r1).toBe(stageInputHash("scene3d_author", { prev: "t", script: "s", narration: "n", review_round: "1" }, {}));
+    const n1 = expectedInputHash({ ...v, lookFeedback: { count: 1, note: "more water" } }, "scene3d_author", "t");
+    expect(n1).not.toBe(plain);
+    expect(expectedInputHash({ ...v, lookFeedback: { count: 2, note: "more water" } }, "scene3d_author", "t")).not.toBe(n1); // the same note twice still runs again
+    for (const stage of ["draft", "tts", "scene3d_stills", "scene3d_review", "render", "voice", "qa"] as const) {
+      expect(expectedInputHash({ ...v, reviewRound: 2, lookFeedback: { count: 1, note: "x" } }, stage, "p"), stage).toBe(expectedInputHash(v, stage, "p"));
+    }
+    // the director of the other 3D kind and every other kind ignore the review round
+    expect(expectedInputHash({ ...v, kind: "scene3d", reviewRound: 3 }, "direct_scene3d", "d")).toBe(expectedInputHash({ ...v, kind: "scene3d" }, "direct_scene3d", "d"));
+  });
+  it("a review that asks for a revision queues the author before anything else; once the author ran, the pictures and the review follow", () => {
+    const first = walk(base({ kind: "scene3d_code" }), { approve: true }).v;
+    const asked = { ...first, approved: new Set<GateId>(["script"]), reviewRound: 1 };
+    expect(nextActions(asked)).toMatchObject([{ kind: "enqueue", stage: "scene3d_author" }]);
   });
   it("tolerates a plan with no beats content: Render's hash uses the stable word 'none' and stays deterministic", () => {
     const v = base({ kind: "scene3d_code", content: { script: "s", narration: "n", scenes: "sc" } });
@@ -404,10 +430,10 @@ describe("scene3d_code kind (3D story, AI-written scene)", () => {
   });
   it("walks the gates in order and never queues Render before the look is approved", () => {
     const { trail } = walk(base({ kind: "scene3d_code" }));
-    expect(trail).toEqual(["draft", "gate:script", "tts", "scene3d_author", "scene3d_stills", "gate:look", "render", "voice", "sfx", "qa", "gate:video", "gate:evidence", "gate:publish", "done"]);
+    expect(trail).toEqual(["draft", "gate:script", "tts", "scene3d_author", "scene3d_stills", "scene3d_review", "gate:look", "render", "voice", "sfx", "qa", "gate:video", "gate:evidence", "gate:publish", "done"]);
     const held = walk(base({ kind: "scene3d_code" }), { approve: false });
     const stopped = walk({ ...held.v, approved: new Set<GateId>(["script"]) }, { approve: false });
-    expect(stopped.trail.slice(-2)).toEqual(["scene3d_stills", "gate:look"]);
+    expect(stopped.trail.slice(-2)).toEqual(["scene3d_review", "gate:look"]);
     expect(stopped.v.runs.render).toBeUndefined();
   });
 });

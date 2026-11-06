@@ -10,6 +10,7 @@ import { Stage } from "./Stage";
 import { Captions } from "./Overlays";
 import type { SceneBeat } from "./meta";
 import type { ModelResolver } from "./models";
+import { setHeroProbe } from "./Hero";
 
 /** inputProps written by the host (props.json, validated again by render-entry.mjs). `models` maps a catalogue id to its staged file (models/<file>.glb). */
 export type AuthorInput = {
@@ -18,9 +19,12 @@ export type AuthorInput = {
   durationS: number;
   models: Record<string, string>;
   frames: number;
+  /** Preview pictures only (render-entry.mjs sets it after validating props.json): the <Hero> reports where it sits, as console lines the host reads. */
+  probeHero?: boolean;
 };
 
-export const S3kAuthor: React.FC<AuthorInput> = ({ beats, captions, durationS, models }) => {
+export const S3kAuthor: React.FC<AuthorInput> = ({ beats, captions, durationS, models, probeHero }) => {
+  setHeroProbe(probeHero === true);
   const resolver = useMemo<ModelResolver>(
     () => ({ resolve: (ref) => ("catalog" in ref && Object.hasOwn(models, ref.catalog) ? { url: staticFile(models[ref.catalog]!) } : null) }),
     [models],
