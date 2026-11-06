@@ -1,7 +1,7 @@
 // EXAMPLE A (catalogue models): a crane lifts a container onto a ship. COPY: a world that reaches the horizon (quay + sea), models through
 // useModels, every object placed with rest(), motion as a pure function of t, a camera glide through three framed shots.
 import React, { useMemo } from "react";
-import { CameraRig, Finish, World, glideTimes, lerp, ramp, rest, shadowize, smooth, useModels, useT } from "s3k";
+import { CameraRig, Finish, Hero, World, glideTimes, lerp, ramp, rest, shadowize, smooth, useModels, useT } from "s3k";
 import type { SceneProps } from "s3k";
 
 const CRANE = "pp_crane_17ab", BOX = "pp_shipping_container_dqxr", SHIP = "pp_sail_ship_cizo";
@@ -37,7 +37,7 @@ export default function Scene({ resolver, durationS }: SceneProps) {
   return (
     <>
       <World focus={FOCUS} preset="clear" ground={{ y: 0, kind: "pave", zMin: -4 }} sea={{ y: SEA_Y, zMax: -4 }} />
-      <primitive object={parts.crane} />
+      <Hero><primitive object={parts.crane} /></Hero>
       <primitive object={parts.ship} />
       <primitive object={parts.box} />
       <CameraRig shots={shots} floor={2} />

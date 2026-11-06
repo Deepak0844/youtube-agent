@@ -3,6 +3,7 @@ import type { SceneDoc } from "@/shared/scene";
 import type { Scale3dScene } from "@/shared/scale3d";
 import type { Scene3d } from "@/shared/scene3d";
 import type { SceneProps } from "@/server/core/scene3d-code-body";
+import type { HeroReport } from "@/server/core/scene3d-look-check";
 
 // The TSX path (ADR 0009): called by the tsx_author stage (src/worker/stages/tsx-author.ts).
 export type { TsxRenderer, TsxRenderInput, TsxRenderResult, TsxRenderFailure, TsxFailureKind } from "./tsx-render";
@@ -50,7 +51,7 @@ export interface Scene3dStillsArgs {
 /** Draws a few frames of a 3D scene as 540x960 PNGs (native renderer only). */
 export interface Scene3dStillsRenderer {
   /** Writes <attemptDir>/stills/01.png ... and returns those names (relative to the attempt folder). */
-  stills(ctx: StageContext, a: Scene3dStillsArgs): Promise<{ files: string[]; image?: string }>;
+  stills(ctx: StageContext, a: Scene3dStillsArgs): Promise<{ files: string[]; image?: string; /** AI-written scenes only: where the scene's <Hero> sat in each picture (same order as files). */ hero?: HeroReport[] }>;
 }
 
 // Turns a scene document into an mp4 inside ctx.attemptDir.

@@ -6,7 +6,7 @@
 //        node <repo>/remotion/kit/render-entry.mjs <inDir> <outFile> --scene3d --native   the general 3D scene composition (props.json: scene; models/ staged in <inDir>), native ONLY
 //        node <repo>/remotion/kit/render-entry.mjs <inDir> <outDir> --scene3d-stills --native   preview pictures of that scene: <inDir> also holds stills.json ({frames}); writes still-01.png ... at 540x960 into <outDir>; native ONLY
 //        node <repo>/remotion/kit/render-entry.mjs <inDir> <outFile> --scene3d-code --native   an AI-written 3D scene: <inDir> holds scene.tsx (re-checked on the host), props.json and models/; native ONLY; guarded page (net-guard.mjs)
-//        node <repo>/remotion/kit/render-entry.mjs <inDir> <outDir> --scene3d-code-stills --native   preview pictures of that scene (stills.json {frames}); native ONLY
+//        node <repo>/remotion/kit/render-entry.mjs <inDir> <outDir> --scene3d-code-stills --native   preview pictures of that scene (stills.json {frames}); also still-NN.hero.json per picture (where the scene's <Hero> sits); native ONLY
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --tsx           one checked TSX file (video.tsx)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outDir> --tsx-stills     its preflight stills (still-<n>.png)
 // Kit mode: <inDir> (read-only) holds props.json (built and validated on the host) plus the staged narration and asset
@@ -78,6 +78,10 @@ if (tsx) {
       || !Array.isArray(p.captions) || p.captions.length > 30 || !p.captions.every(okCap) || !okModels || Object.keys(p).sort().join() !== "beats,captions,durationS,frames,models") throw new Error("props.json: bad scene props");
   }
 }
+
+// AI-written scene, preview pictures only: ask every <Hero> to report where it sits in the frame (console lines the page prints, read below).
+// Set AFTER props.json was validated; the render itself never gets this flag.
+if (mode === "--scene3d-code-stills") inputProps = { ...inputProps, probeHero: true };
 
 // TSX only: "tsx-scene" (exactly) resolves to the checked file, and "yt-kit" (exactly) to our vetted drawing library
 // (tsxlib/index.ts, trusted code from the read-only kit mount; the scene may import only the names checkTsx allows).
@@ -175,11 +179,25 @@ if (mode === "--tsx-stills") {
   // The frames come from the host (stills.json); each must lie inside the composition. Half size: 540x960. Names are by position, never by frame.
   const frames = readJson("stills.json").frames;
   if (!Array.isArray(frames) || frames.length < 1 || frames.length > 8 || !frames.every((f) => Number.isInteger(f) && f >= 0 && f < composition.durationInFrames)) throw new Error("stills.json: bad frames");
+  // Hero reports (AI-written scenes only): the last "S3K_HERO {frame,width,height,clipped}" line per frame. The page is untrusted, so the numbers are
+  // re-checked here and again on the host; the file is advice for the owner, never a permission.
+  const heroLog = new Map();
+  const onBrowserLog = (l) => {
+    const m = author && typeof l?.text === "string" ? /^S3K_HERO (\{[^\n]{0,200}\})$/.exec(l.text) : null;
+    if (!m) return;
+    try {
+      const o = JSON.parse(m[1]);
+      if (Number.isInteger(o.frame) && Number.isFinite(o.width) && Number.isFinite(o.height) && typeof o.clipped === "boolean") heroLog.set(o.frame, { width: o.width, height: o.height, clipped: o.clipped });
+    } catch { /* not ours */ }
+  };
   for (const [i, frame] of frames.entries()) {
+    const name = String(i + 1).padStart(2, "0");
+    heroLog.clear();
     await renderStill({
-      composition, serveUrl, frame, output: path.join(outArg, `still-${String(i + 1).padStart(2, "0")}.png`), imageFormat: "png", inputProps, browserExecutable,
-      chromiumOptions, scale: 0.5, overwrite: true, ...(guarded ? { puppeteerInstance: guarded } : {}),
+      composition, serveUrl, frame, output: path.join(outArg, `still-${name}.png`), imageFormat: "png", inputProps, browserExecutable,
+      chromiumOptions, scale: 0.5, overwrite: true, onBrowserLog, ...(guarded ? { puppeteerInstance: guarded } : {}),
     });
+    if (author) writeFileSync(path.join(outArg, `still-${name}.hero.json`), JSON.stringify(heroLog.has(frame) ? { declared: true, ...heroLog.get(frame) } : { declared: false }), { mode: 0o600 });
     console.log(`PROGRESS ${Math.floor((100 * (i + 1)) / frames.length)}`);
   }
 } else {

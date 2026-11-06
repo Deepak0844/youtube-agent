@@ -30,6 +30,17 @@ export function coverage(box: Box, eye: V3, target: V3, aspect: number, safe: Sa
   return { fits: inFront && inside, width, height, fill: Math.max(width, height) };
 }
 
+/** Where a hero sits in the picture: its box corners in screen space (-1..1, `behind` = at or behind the camera) -> width and height as a share of the whole frame, and whether any part is cut off or out of view. */
+export type HeroShot = { width: number; height: number; clipped: boolean };
+export function heroShot(pts: readonly { x: number; y: number; behind: boolean }[]): HeroShot {
+  if (pts.length === 0) return { width: 0, height: 0, clipped: true };
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const r = (n: number) => Math.round(n * 1000) / 1000;
+  const out = x0 < -1.005 || x1 > 1.005 || y0 < -1.005 || y1 > 1.005;
+  return { width: r(Math.min(4, (x1 - x0) / 2)), height: r(Math.min(4, (y1 - y0) / 2)), clipped: out || pts.some((p) => p.behind) };
+}
+
 export type FrameInput = {
   box: Box;
   /** Where the camera stands: 0 = on +z looking at -z, 90 = on +x. */

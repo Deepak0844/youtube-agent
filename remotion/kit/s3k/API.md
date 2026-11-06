@@ -130,6 +130,8 @@ export const FINISH_LIMITS: Readonly<Record<string, readonly [number, number]>>;
 ```ts
 /** One glide through shot keys (monotone spline, rest at both ends). Shots: { t, at, look } or { t, frame: { box, yawDeg, pitchDeg } } fitted into the portrait safe area. floor keeps the eye above ground/water. hero leans look-at to a moving object. Needs 2+ shots, increasing t. */
 export const CameraRig: FC<{ shots: readonly RigShot[]; floor?: number | ((x: number, z: number) => number); hero?: { at: (t: number) => V3; from: number; to: number; strength?: number; fade?: number }; safe?: Safe; fov?: number; onReport?: (r: { index: number; fill: number; fits: boolean }[]) => void }>;
+/** Wrap the ONE hero (the thing the story is about) in <Hero>...</Hero>; it changes nothing on screen. The app measures it in the preview pictures: it must be declared, 25 to 60 percent of the frame width, and never cut off by the frame. */
+export const Hero: FC<{ children: ReactNode }>;
 /** Nearest camera along yaw/pitch that fits the box in the safe area, never below minY; returns position, target, coverage, pitch. */
 export function frameFocus(i: { box: Box; yawDeg: number; pitchDeg: number; aspect: number; safe?: Safe; fovDeg?: number; minY?: number; distanceMul?: number }): { position: V3; target: V3; coverage: Coverage; pitchDeg: number };
 /** How much of the safe area a box covers from a camera: fits, width, height, fill (aim 0.7..1 hero, 0.3..0.6 establishing). */
