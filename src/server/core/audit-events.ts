@@ -33,6 +33,8 @@ export const AUDIT_EVENTS = {
   "comment.reply_resolved": "The owner checked YouTube and settled an unclear or stuck reply by hand; nothing was sent (detail: reply id, outcome, session id)",
   "retention.cleaned": "Old working files of an uploaded video were deleted (detail: video id, who asked, counts and bytes only; never a path)",
   "youtube.refresh_failed": "Google refused a saved channel token, so the channel needs reconnecting (detail: channel id, reason)",
+  "api_token.created": "An API token was created (detail: ref, name, prefix, scopes, daily draft cap, session id; never the secret)",
+  "api_token.revoked": "An API token was revoked (detail: ref, name, prefix, session id)",
   "vault.init": "The vault master key was initialised",
   "vault.unreadable": "A vault entry could not be decrypted",
   // Phase 2 gates (detail: video id, gate, short hash prefix only)

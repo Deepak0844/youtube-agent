@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { agoLabel, attentionText, gateLabel, spendSentence, stageLabel } from "@/server/core/home-view";
+import { setupIncomplete } from "@/server/core/onboarding";
+import { loadOnboardingFacts } from "@/server/db/onboarding";
 import { getPool } from "@/server/db/pool";
 import { loadActive, loadAttention, loadBreakers, loadKpis, loadRecent, loadUpNext } from "@/server/db/home-data";
 import { loadQueue } from "@/server/db/queue-data";
@@ -40,6 +42,7 @@ async function Owned() {
           <Button asChild variant="secondary"><Link href="/videos">Library</Link></Button>
         </div>
       </div>
+      <Suspense fallback={null}><FirstRun /></Suspense>
       <LiveFeed />
       <Panel id="breakers" title="Paused steps" bare><Breakers /></Panel>
       <Panel id="kpis" title="This month"><Kpis /></Panel>
@@ -55,6 +58,23 @@ async function Owned() {
         </aside>
       </div>
     </div>
+  );
+}
+
+/** First-run link: shown while any setup step is open. A failed read just hides it. */
+async function FirstRun() {
+  let open = false;
+  try {
+    open = setupIncomplete(await loadOnboardingFacts(getPool()));
+  } catch {
+    return null;
+  }
+  if (!open) return null;
+  return (
+    <p data-testid="first-run" className="m-0 flex flex-wrap items-center gap-3 rounded-card bg-pill-warning-bg p-pad text-body text-pill-warning-ink">
+      Setup is not finished yet.
+      <Link href="/onboarding" className="font-medium underline underline-offset-2">Continue setup</Link>
+    </p>
   );
 }
 
