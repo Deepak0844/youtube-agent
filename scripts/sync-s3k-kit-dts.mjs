@@ -1,5 +1,5 @@
 // Copies the s3k authoring kit texts into src/server/core/s3k-kit-dts.ts (server/core may not read files, so the text is embedded):
-// the typed manifest (api.d.ts: the ONE list of names a scene may import from "s3k"), the generated reference (API.md) and the two
+// the typed manifest (api.d.ts: the ONE list of names a scene may import from "s3k"), the generated reference (API.md) and the three
 // example scenes shown to the model. Run after editing any of them: node scripts/sync-s3k-kit-dts.mjs
 // tests/unit/scene3d-code-check.test.ts fails when the embedded copy differs from the files.
 import { readFileSync, writeFileSync } from "node:fs";
@@ -10,5 +10,6 @@ export const S3K_API_DTS: string = ${JSON.stringify(read("api.d.ts"))};
 export const S3K_API_MD: string = ${JSON.stringify(read("API.md"))};
 export const S3K_EXAMPLE_A: string = ${JSON.stringify(read("authoring/harbour-crane.scene.tsx"))};
 export const S3K_EXAMPLE_B: string = ${JSON.stringify(read("authoring/rising-tower.scene.tsx"))};
+export const S3K_EXAMPLE_C: string = ${JSON.stringify(read("authoring/engine-cutaway.scene.tsx"))};
 `;
 writeFileSync(new URL("../src/server/core/s3k-kit-dts.ts", import.meta.url), out);
