@@ -12,6 +12,19 @@ describe("typeCheckScene3d", () => {
     expect(await typeCheckScene3d(S3K_EXAMPLE_B, B)).toMatchObject({ ok: true, problems: [] });
   }, 120_000);
 
+  it("reads an array element as the element, not as maybe-undefined (the prompt tells the model to index with arr[i])", async () => {
+    const src = `import { World } from "s3k";
+const a = [1, 2, 3];
+export default function S() {
+  let sum = 0;
+  for (let i = 0; i < 3; i++) sum += Math.sin(a[i]);
+  return <World focus={{ min: [0, 0, 0], max: [1, 1, 1] }} data-sum={sum} />;
+}
+`;
+    const r = await typeCheckScene3d(src, B);
+    expect(r.problems.join("\n")).not.toMatch(/undefined/);
+  }, 60_000);
+
   it("names a wrong kit import and offers the closest allowed names", async () => {
     const r = await typeCheckScene3d(`import { Wrold } from "s3k";\nexport default function S() { return null; }\n`, B);
     expect(r.ok).toBe(false);

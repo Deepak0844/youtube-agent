@@ -15,7 +15,8 @@ const AMBIENT = path.join(DIR, "ambient.ts"); // loads react-three-fiber's JSX e
 const S3K_DTS = path.join(DIR, "s3k.d.ts");
 const ALLOWED = new Set(["react", "react/jsx-runtime", "remotion", "three", "@react-three/fiber"]);
 const OPTIONS = {
-  strict: true, noUncheckedIndexedAccess: true, noEmit: true, jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler,
+  strict: true, noUncheckedIndexedAccess: false, // false: the prompt tells the model to index with arr[i], and the code checker already limits which arrays may be indexed
+   noEmit: true, jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler,
   target: ts.ScriptTarget.ES2022, lib: ["lib.es2022.d.ts", "lib.dom.d.ts"], types: [], skipLibCheck: true, isolatedModules: true, esModuleInterop: true, allowJs: false,
 };
 const libCache = new Map();
