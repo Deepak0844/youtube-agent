@@ -1,8 +1,11 @@
-import { readFile, statfs } from "node:fs/promises";
+import { readdir, readFile, stat, statfs } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { Queue } from "bullmq";
 import { Redis } from "ioredis";
 import type pg from "pg";
 import appPkg from "../../../package.json";
+import { cpuLoadFraction, sumQueues, type QueueCounts } from "@/server/core/health";
 import { loadKeyring } from "@/server/db/master-key";
 import { vaultStatus, type VaultStatus } from "@/server/db/vault";
 import { storageRoot } from "@/server/storage/paths";
@@ -16,6 +19,12 @@ export interface SystemStatus {
   redis: { ok: boolean; ms: number | null };
   vault: VaultStatus;
   disk: { root: string; freeBytes: number; totalBytes: number };
+  cpuLoad: number;
+  memory: { usedBytes: number; totalBytes: number };
+  /** null when Redis is down or not configured. */
+  queue: QueueCounts | null;
+  /** null when unknown. Cached estimate, see storageUsedBytes. */
+  storageBytes: number | null;
 }
 
 async function timed<T>(work: Promise<T>, ms: number): Promise<{ ok: true; value: T; ms: number } | { ok: false }> {
@@ -79,6 +88,52 @@ async function diskFor(root: string): Promise<SystemStatus["disk"]> {
   return { root: displayPath(root), freeBytes: 0, totalBytes: 0 };
 }
 
+const QUEUES = ["stages", "uploads", "ingest"] as const;
+
+async function queueCounts(url: string | undefined): Promise<QueueCounts | null> {
+  if (!url) return null;
+  const qs = QUEUES.map((n) => {
+    const q = new Queue(n, { connection: { url, maxRetriesPerRequest: null, enableOfflineQueue: false, connectTimeout: 1000, retryStrategy: () => null } });
+    q.on("error", () => undefined);
+    return q;
+  });
+  try {
+    const r = await timed(Promise.all(qs.map((q) => q.getJobCounts("waiting", "active", "failed"))), 2000);
+    return r.ok ? sumQueues(r.value) : null;
+  } catch {
+    return null;
+  } finally {
+    await Promise.allSettled(qs.map((q) => q.disconnect()));
+  }
+}
+
+// Folder size is a walk, so it is never done per request: one walk per minute at most, capped at MAX_ENTRIES files.
+const STORAGE_TTL_MS = 60_000;
+const MAX_ENTRIES = 20_000;
+let storageCache: { root: string; at: number; bytes: number } | undefined;
+
+export async function storageUsedBytes(root: string): Promise<number | null> {
+  if (storageCache && storageCache.root === root && Date.now() - storageCache.at < STORAGE_TTL_MS) return storageCache.bytes;
+  let bytes = 0;
+  let seen = 0;
+  const stack = [root];
+  try {
+    while (stack.length > 0 && seen < MAX_ENTRIES) {
+      const dir = stack.pop()!;
+      for (const e of await readdir(dir, { withFileTypes: true })) {
+        if (++seen > MAX_ENTRIES) break;
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) stack.push(full);
+        else if (e.isFile()) bytes += (await stat(full)).size;
+      }
+    }
+  } catch {
+    if (seen === 0) return null;
+  }
+  storageCache = { root, at: Date.now(), bytes };
+  return bytes;
+}
+
 export async function getSystemStatus(db: pg.Pool, opts: { redisUrl?: string } = {}): Promise<SystemStatus> {
   const pgRes = await timed(db.query<{ v: string }>("select current_setting('server_version') as v"), 2000);
   let vault: VaultStatus;
@@ -87,7 +142,10 @@ export async function getSystemStatus(db: pg.Pool, opts: { redisUrl?: string } =
   } catch {
     vault = { status: "unreadable", unreadable: [] };
   }
-  const [redis, disk] = await Promise.all([checkRedis(opts.redisUrl ?? process.env.REDIS_URL), diskFor(storageRoot())]);
+  const redisUrl = opts.redisUrl ?? process.env.REDIS_URL;
+  const root = storageRoot();
+  const [redis, disk, queue, storageBytes] = await Promise.all([checkRedis(redisUrl), diskFor(root), queueCounts(redisUrl), storageUsedBytes(root)]);
+  const totalMem = os.totalmem();
   return {
     versions: {
       app: appPkg.version,
@@ -99,5 +157,9 @@ export async function getSystemStatus(db: pg.Pool, opts: { redisUrl?: string } =
     redis,
     vault,
     disk,
+    cpuLoad: cpuLoadFraction(os.loadavg()[0] ?? 0, os.availableParallelism()),
+    memory: { usedBytes: totalMem - os.freemem(), totalBytes: totalMem },
+    queue: redis.ok ? queue : null,
+    storageBytes,
   };
 }
