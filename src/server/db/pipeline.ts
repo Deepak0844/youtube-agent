@@ -45,6 +45,8 @@ export interface PipelineReaders {
   feedback(db: pg.PoolClient, videoId: string): Promise<string | null>;
   /** 3D stories: how often the Look was sent back and the latest note, or null. Optional: readers without it mean "never sent back". */
   lookFeedback?(db: pg.PoolClient, videoId: string): Promise<{ count: number; note: string } | null>;
+  /** AI-written 3D stories: how many automatic revisions the look review has asked for (0 = none). Optional: readers without it mean 0. */
+  reviewRound?(db: pg.PoolClient, videoId: string): Promise<number>;
 }
 export const NO_DECISIONS: PipelineReaders = {
   approvedGates: async () => new Set<GateId>(),
@@ -114,7 +116,8 @@ async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineRead
     flags: { requireEvidence, paidGeneration: paid },
     paramsHash: sha256Hex(canonicalJson({ format: v.format, kind: v.kind_origin ?? v.kind, language: v.language, topic: v.topic, notes: v.notes })),
     feedback: await readers.feedback(c, v.id),
-    ...(v.kind === "scene3d" && readers.lookFeedback ? { lookFeedback: await readers.lookFeedback(c, v.id) } : {}),
+    ...((v.kind === "scene3d" || v.kind === "scene3d_code") && readers.lookFeedback ? { lookFeedback: await readers.lookFeedback(c, v.id) } : {}),
+    ...(v.kind === "scene3d_code" && readers.reviewRound ? { reviewRound: await readers.reviewRound(c, v.id) } : {}),
     content: shas,
     runs,
     approved: await readers.approvedGates(c, v.id),

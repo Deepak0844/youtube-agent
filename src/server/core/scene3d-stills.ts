@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Message } from "@/server/core/agent-loop";
 import { cleanModelText } from "@/server/core/frame-review";
+import { heroReportSchema, type HeroReport } from "@/server/core/scene3d-look-check";
 import { scene3dFrames, type Scene3d } from "@/shared/scene3d";
 
 // Preview pictures of a 3D story (Phase 5d slice D2): which moments to draw, what is stored about them, and the optional vision check.
@@ -120,10 +121,12 @@ export const previewsBodySchema = z.object({
   /** Files in the video folder (stills/NN.png) and their fingerprints: part of what the owner approves. */
   stills: z.array(z.object({ file: z.string().regex(/^stills\/[0-9]{2}\.png$/), sha256: z.string().regex(/^[0-9a-f]{64}$/) })).min(1).max(MAX_STILLS),
   advice: adviceStored,
+  /** AI-written scenes only: where the scene's <Hero> sat in each picture (same order as `stills`). Absent for the other 3D kind and for older records. */
+  hero: z.array(heroReportSchema).max(MAX_STILLS).optional(),
 });
 export type PreviewsBody = z.infer<typeof previewsBodySchema>;
 
-export function buildPreviewsBody(a: { sceneSha256: string; picks: readonly StillPick[]; shas: readonly string[]; advice: Advice }): PreviewsBody {
+export function buildPreviewsBody(a: { sceneSha256: string; picks: readonly StillPick[]; shas: readonly string[]; advice: Advice; hero?: readonly HeroReport[] }): PreviewsBody {
   return {
     kind: "scene3d_previews",
     scene_sha256: a.sceneSha256,
@@ -131,6 +134,7 @@ export function buildPreviewsBody(a: { sceneSha256: string; picks: readonly Stil
     shots: a.picks.map((p) => ({ id: p.shotId, caption: p.caption })),
     stills: a.picks.map((_, i) => ({ file: `stills/${String(i + 1).padStart(2, "0")}.png`, sha256: a.shas[i]! })),
     advice: a.advice,
+    ...(a.hero && a.hero.length === a.picks.length ? { hero: [...a.hero] } : {}),
   };
 }
 

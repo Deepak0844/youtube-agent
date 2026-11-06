@@ -7,11 +7,15 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { SCENE_MAX_S, sceneProps, type AuthorBeat } from "@/server/core/scene3d-author-prompt";
 import { authorScene3d } from "@/server/core/scene3d-author";
 import { sceneModelIds } from "@/server/core/scene3d-code-check";
-import type { Scene3dCodeBody } from "@/server/core/scene3d-code-body";
+import { feedbackFrom } from "@/server/core/scene3d-review";
+import { readSceneCodeBody, type Scene3dCodeBody } from "@/server/core/scene3d-code-body";
 import { pickCandidates } from "@/server/core/scene3d-direct";
 import { STORY_LIMITS, storyBeatSchema } from "@/server/core/script-contract";
 import { beatTimings, type PromptBeat, type PromptWord } from "@/server/core/tsx-prompt";
+import { lookFeedbackOf } from "@/server/db/approval-readers";
+import { activeReviewOf } from "@/server/db/review-state";
 import { approvedScript } from "@/server/db/stage-content";
+import { latestContent } from "@/server/db/videos";
 import type { LlmClient, LlmStageContext } from "@/server/llm/client";
 import { typeCheckScene3d } from "@/server/render/scene3d-typecheck";
 import { ALLOWED_LICENSES } from "@/shared/assets3d/schema";
@@ -66,12 +70,27 @@ export function scene3dAuthorAttempt(deps: StageDeps): AttemptHandler {
     const candidates = pickCandidates(catalog, story.data.map((b) => ({ id: b.id, visual: b.visual, line: b.line })));
     ctx.log(`author: ${candidates.length} catalogue candidates for ${beats.length} story beats; film length ${props.durationS.toFixed(2)} s`);
 
+    // A revision: the automatic look review asked for another round (its problems), and/or the owner sent the Look back (a note). Both are fenced as DATA in the prompt.
+    const review = feedbackFrom(await activeReviewOf(deps.db, video.id));
+    const note = (await lookFeedbackOf(deps.db, video.id))?.note;
+    const previous = review || note ? readSceneCodeBody((await latestContent(deps.db, video.id, "scenes"))?.body) : null;
+    if (review || note) ctx.log(`author: revising the previous scene${review ? ` (automatic round ${review.round}, ${review.problems.length} measured problems)` : ""}${note ? " with the owner's note" : ""}`);
+
     const llm = deps.makeLlm(await videoMoneyScopes(deps.db, video));
     const typeCheck = deps.sceneTypeCheck ?? typeCheckScene3d;
-    const out = await authorScene3d(
-      { ask: authorAsk(llm, ctx), typeCheck, log: ctx.log },
-      { title: typeof script.script.title === "string" ? script.script.title : "", story: beats, candidates, narrationS, durationS: props.durationS },
-    );
+    let out: Awaited<ReturnType<typeof authorScene3d>>;
+    try {
+      out = await authorScene3d(
+        { ask: authorAsk(llm, ctx), typeCheck, log: ctx.log },
+        { title: typeof script.script.title === "string" ? script.script.title : "", story: beats, candidates, narrationS, durationS: props.durationS, ...(note ? { feedback: note } : {}), review, previous: previous?.source ?? null },
+      );
+    } catch (e) {
+      // An AUTOMATIC revision that the model could not get past the checks must not stop the video: the previous scene (which passed them) stays and the loop moves on.
+      // The owner's own send-back still fails loudly: a note that changes nothing would be a silent no.
+      if (!(review && previous && e instanceof KnownFailure && e.message.startsWith("scene3d_author_invalid"))) throw e;
+      ctx.log("author: the revision did not pass the code checks; keeping the previous scene");
+      out = { source: previous.source, attempts: previous.attempts, typecheckedSha256: previous.typechecked_sha256 };
+    }
 
     const models = sceneModelIds(out.source, (id) => {
       const e = catalog.getById(id);

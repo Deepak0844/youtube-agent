@@ -12,6 +12,7 @@ export const STAGE_LABEL: Record<string, string> = {
   direct_scene3d: "Directing the 3D scene",
   scene3d_stills: "Drawing preview pictures",
   scene3d_author: "Writing the 3D scene code",
+  scene3d_review: "Reviewing the preview pictures",
   voice: "Mixing the voice",
   sfx: "Adding sound",
   qa: "Checking the video",

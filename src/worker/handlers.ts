@@ -51,6 +51,7 @@ import { tsxAuthorAttempt } from "./stages/tsx-author";
 import { directScene3dAttempt } from "./stages/direct-scene3d";
 import { scene3dStillsAttempt } from "./stages/scene3d-stills";
 import { scene3dAuthorAttempt } from "./stages/scene3d-author";
+import { scene3dReviewAttempt } from "./stages/scene3d-review";
 import { loadRepoCatalog } from "@/server/providers/renderer/scene3d-models";
 import { sfxHandler } from "./stages/sfx";
 import { ttsAttempt } from "./stages/tts";
@@ -98,6 +99,7 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     direct_scene3d: withAttempt(fin, directScene3dAttempt(deps)),
     scene3d_stills: withAttempt(fin, scene3dStillsAttempt(deps)),
     scene3d_author: withAttempt(fin, scene3dAuthorAttempt(deps)),
+    scene3d_review: withAttempt(fin, scene3dReviewAttempt(deps)),
     voice: withAttempt(fin, voiceAttempt(deps)),
     sfx: sfxHandler(fin, deps),
     qa: withAttempt(fin, qaAttempt(deps)),
@@ -251,6 +253,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     direct_scene3d: refuseDryRunVideos(pool, directScene3d),
     scene3d_stills: refuseDryRunVideos(pool, scene3dStills),
     scene3d_author: refuseDryRunVideos(pool, scene3dAuthor),
+    scene3d_review: refuseDryRunVideos(pool, withAttempt(fin, scene3dReviewAttempt(deps))),
     voice: refuseDryRunVideos(pool, withAttempt(fin, voiceAttempt(deps))),
     sfx: refuseDryRunVideos(pool, sfxHandler(fin, deps)),
     qa: refuseDryRunVideos(pool, withAttempt(fin, qaAttempt(deps))),
