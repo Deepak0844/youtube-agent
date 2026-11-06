@@ -77,8 +77,13 @@ describe("hero checks", () => {
   });
   it("flags a hero under 20 percent of the width in at least half of the pictures, not in fewer", () => {
     const small: HeroReport = { declared: true, width: 0.12, height: 0.1, clipped: false };
-    expect(lookProblems(six, [small, small, small, heroOk, heroOk, heroOk])).toEqual(["The hero is under 20 percent of the frame width in frames 1, 2 and 3. Make it bigger or move the camera closer."]);
+    expect(lookProblems(six, [small, small, small, heroOk, heroOk, heroOk])).toEqual(["The hero is too small in frames 1, 2 and 3 (under 20 percent of the frame width). Make it bigger or move the camera closer."]);
     expect(lookProblems(six, [small, small, heroOk, heroOk, heroOk, heroOk])).toEqual([]);
+  });
+  it("counts a tall, thin hero by its height (a crane 8 percent wide and half the frame high is fine)", () => {
+    const crane: HeroReport = { declared: true, width: 0.08, height: 0.5, clipped: false };
+    expect(lookProblems(six, Array(6).fill(crane))).toEqual([]);
+    expect(lookProblems(six, Array(6).fill({ declared: true, width: 0.08, height: 0.2, clipped: false }))[0]).toMatch(/^The hero is too small in frames 1, 2, 3, 4, 5 and 6/);
   });
   it("flags a hero cut off by the frame in two or more pictures, not in one", () => {
     const cut: HeroReport = { declared: true, width: 0.5, height: 0.4, clipped: true };

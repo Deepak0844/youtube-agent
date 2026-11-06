@@ -14,12 +14,15 @@ export const LOOK_THRESHOLDS = {
   VOID_DARK_SHARE: 0.7,
   /** The middle band (where the subject and the caption-free part of the picture are): one colour taking more than this share = empty middle. */
   MIDDLE_DOMINANT: 0.85,
+  /** ...in at least this share of the pictures (a build-up that starts bare is fine for a frame or two). */
+  MIDDLE_MIN_SHARE: 0.5,
   /** Subject cut off at a side edge: a thin strip along that edge, in the upper part of the picture, differs strongly from the top corner colour, and the opposite edge does not. */
   EDGE_DIFF: 170,
   EDGE_SHARE: 0.45,
-  /** The hero (from the scene's <Hero>) must be at least this share of the frame width in at least half of the pictures. */
+  /** The hero (from the scene's <Hero>) must be at least this share of the frame width, in at least half of the pictures. A tall, thin hero (a crane) counts by its height: height x HERO_HEIGHT_TO_WIDTH is its width-equivalent in a portrait frame. */
   HERO_MIN_WIDTH: 0.2,
   HERO_MIN_SHARE: 0.5,
+  HERO_HEIGHT_TO_WIDTH: 0.5625,
   /** The hero is cut off by the frame in this many pictures or more. */
   HERO_CLIPPED_MIN_FRAMES: 2,
 } as const;
@@ -139,7 +142,7 @@ export function lookProblems(metrics: readonly StillMetrics[], hero: ReadonlyArr
   const black = pick(isBlack);
   if (black.length) out.push(`${framesPhrase(black)} show${black.length === 1 ? "s" : ""} mostly empty black background: no ground or horizon. Light the scene and add a ground or sea.`);
   const empty = pick((m) => m.middleDominantShare > T.MIDDLE_DOMINANT).filter((i) => !flat.includes(i) && !white.includes(i) && !black.includes(i));
-  if (empty.length) out.push(`The middle of ${lower(framesPhrase(empty))} is empty: the main subject is not there.`);
+  if (empty.length >= Math.max(1, Math.ceil(metrics.length * T.MIDDLE_MIN_SHARE))) out.push(`The middle of ${lower(framesPhrase(empty))} is empty: the main subject is not there.`);
   // A subject cut off by the frame touches ONE side; a ground or sea that runs across the frame touches both, so a side counts only when the other is clear.
   const left = pick((m) => m.edgeLeft > T.EDGE_SHARE && m.edgeRight < T.EDGE_SHARE / 2), right = pick((m) => m.edgeRight > T.EDGE_SHARE && m.edgeLeft < T.EDGE_SHARE / 2);
   if (left.length) out.push(`The main subject looks cut off at the left edge in ${lower(framesPhrase(left))}.`);
@@ -151,8 +154,8 @@ export function lookProblems(metrics: readonly StillMetrics[], hero: ReadonlyArr
     else {
       const missing = reps.flatMap((h, i) => (h ? [] : [i]));
       if (missing.length) out.push(`The hero is not in ${lower(framesPhrase(missing))}.`);
-      const small = declared.filter((i) => (reps[i] as { width: number }).width < T.HERO_MIN_WIDTH);
-      if (small.length >= Math.max(1, Math.ceil(declared.length * T.HERO_MIN_SHARE))) out.push(`The hero is under 20 percent of the frame width in ${lower(framesPhrase(small))}. Make it bigger or move the camera closer.`);
+      const small = declared.filter((i) => { const h = reps[i] as { width: number; height: number }; return Math.max(h.width, h.height * T.HERO_HEIGHT_TO_WIDTH) < T.HERO_MIN_WIDTH; });
+      if (small.length >= Math.max(1, Math.ceil(declared.length * T.HERO_MIN_SHARE))) out.push(`The hero is too small in ${lower(framesPhrase(small))} (under 20 percent of the frame width). Make it bigger or move the camera closer.`);
       const cut = declared.filter((i) => (reps[i] as { clipped: boolean }).clipped);
       if (cut.length >= T.HERO_CLIPPED_MIN_FRAMES) out.push(`The hero is cut off by the edge of the picture in ${lower(framesPhrase(cut))}. Frame it so all of it fits.`);
     }

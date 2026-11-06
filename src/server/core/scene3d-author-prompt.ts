@@ -67,7 +67,7 @@ const HARD_RULES = `HARD RULES (a program rejects the file on any breach and you
 
 /** What the app measures in the preview pictures after you write the scene (scene3d-look-check.ts). Fixed text: no data goes in here. */
 export const AUTOMATIC_CHECKS = `AUTOMATIC PICTURE CHECKS (after you write the file the app draws 6 to 8 pictures and measures them; each failed check sends you a revision round, at most 3, so pass them the first time):
-- HERO: wrap the one main subject in <Hero>...</Hero> (it changes nothing on screen). In the pictures it must be declared, take 25 to 60 percent of the frame width (under 20 percent in half of the pictures fails) and must not be cut off by the frame edges.
+- HERO: wrap the one main subject in <Hero>...</Hero> (it changes nothing on screen). In the pictures it must be declared, take 25 to 60 percent of the frame width, or the matching share of the height for a tall thin hero (under 20 percent in half of the pictures fails) and must not be cut off by the frame edges.
 - NO VOID: a ground and/or sea reaches the horizon in every picture; a mostly white or mostly black picture fails ("no ground or horizon").
 - NOT FLAT: no picture may be almost one flat colour, and the middle of the picture (where the subject is) must not be empty.
 - CAPTION SAFE AREA: the top quarter of the portrait frame is kept for the host's caption; keep the subject below it, centred, and not touching the left or right edge.
