@@ -45,6 +45,8 @@ export async function stageCatalogModel(id: string, catalog: Catalog3d, assetsDi
     if ((await checkFile(assetsDir, e)) === "bad") throw new KnownFailure(`The 3D model file ${e.file} does not match the catalogue (wrong size or checksum). Run \`npm run assets3d:fetch\` again.`);
     await mkdir(destDir, { recursive: true, mode: 0o700 });
     await copyFile(src, path.join(destDir, e.file));
+    // the bytes the sandbox will read are the DESTINATION copy: check them against the manifest again (a file swapped between the check and the copy)
+    if ((await checkFile(destDir, e)) !== "ok") throw new KnownFailure(`The staged copy of the 3D model file ${e.file} does not match the catalogue. Nothing was rendered.`);
     done.add(e.file);
   }
   return e.file;
