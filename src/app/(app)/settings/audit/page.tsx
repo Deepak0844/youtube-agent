@@ -10,7 +10,7 @@ import {
   parseAuditQuery,
   relativeTime,
   truncateText,
-  utcStamp,
+  istStamp,
 } from "@/server/core/audit-view";
 import { listAudit, type AuditRow } from "@/server/db/audit";
 import { getPool } from "@/server/db/pool";
@@ -183,7 +183,7 @@ function Entry({ row, now }: { row: AuditRow; now: Date }) {
         <time dateTime={iso} className="block text-body font-medium">
           {relativeTime(row.at, now)}
         </time>
-        <span className="block font-mono text-small whitespace-nowrap text-faint tabular-nums">{utcStamp(row.at)}</span>
+        <span className="block font-mono text-small whitespace-nowrap text-faint tabular-nums">{istStamp(row.at)}</span>
       </div>
       <div className="min-w-0">
         <p className="m-0 flex flex-wrap items-center gap-2 text-body [overflow-wrap:anywhere]">

@@ -23,7 +23,7 @@ test("home loads every panel (none failed, none stuck loading) and shows the qui
 test("top bar carries real spend from budgets, review count and a disabled search", async ({ page }) => {
   await page.goto("/");
   const bar = page.getByRole("banner");
-  await expect(bar.getByText(/^\$\d+\.\d{2} of \$\d+\.\d{2} today$/)).toBeVisible();
+  await expect(bar.getByText(/^\$\d+\.\d{2} \(₹[\d,]+\.\d\) of \$\d+\.\d{2} \(₹[\d,]+\.\d\) today$/)).toBeVisible();
   await expect(bar.getByText("0 to review")).toBeAttached();
   if (!phone(page)) {
     await expect(bar.getByRole("searchbox", { name: "Search" })).toBeDisabled();
