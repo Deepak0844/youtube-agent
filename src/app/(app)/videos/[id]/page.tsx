@@ -16,6 +16,7 @@ import { FORMAT_WORDS, KIND_WORDS, LANGUAGE_WORDS, STATUS_WORDS } from "@/server
 import { getPool } from "@/server/db/pool";
 import { jobCheckers } from "../../queue/job-checkers";
 import { loadQueue, mediaSigner } from "@/server/db/queue-data";
+import { loadInrRate } from "@/server/db/system-settings";
 import { loadVideoPage, type VideoPage } from "@/server/db/video-page";
 import { loadPreview } from "@/server/db/video-preview";
 import type { PreviewData } from "@/shared/preview";
@@ -85,7 +86,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
       <LiveFeed />
       <StageStrip p={p} live={live} />
 
-      {card ? card.kind === "gate" ? <GateCard item={card} index={0} /> : <DecisionCard item={card} /> : null}
+      {card ? card.kind === "gate" ? <GateCard item={card} index={0} rate={await loadInrRate(db)} /> : <DecisionCard item={card} /> : null}
       {live && !card ? <CancelForm videoId={p.head.id} topic={p.head.topic} /> : null}
 
       {p.videoSrc ? (

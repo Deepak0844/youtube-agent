@@ -112,6 +112,7 @@ export const SETTINGS = {
     safety: true,
     label: "Routes to restore when Claude Code is switched off",
   },
+  "display.inr_rate": { schema: z.number().positive().max(10_000), default: 95.05, safety: false, label: "Rupees per US dollar (display only)" },
   "display.currency": { schema: z.string().min(1), default: "USD", safety: false, label: "Display currency" },
 } satisfies Record<string, SettingDef>;
 

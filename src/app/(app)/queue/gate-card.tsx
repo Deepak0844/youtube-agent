@@ -1,3 +1,4 @@
+import { formatMoney } from "@/server/core/display-format";
 import { microToUsd } from "@/server/core/llm-catalog";
 import { reviewSummary } from "@/server/core/scene3d-review";
 import { timeLabel } from "@/server/core/scene3d-view";
@@ -143,7 +144,7 @@ function LookContent({ c }: { c: Extract<GateContent, { kind: "look" }> }) {
   );
 }
 
-function Content({ c, lang, videoId }: { c: GateContent; lang: string; videoId: string }) {
+function Content({ c, lang, videoId, rate }: { c: GateContent; lang: string; videoId: string; rate: number }) {
   switch (c.kind) {
     case "script":
       return (
@@ -167,7 +168,7 @@ function Content({ c, lang, videoId }: { c: GateContent; lang: string; videoId: 
     case "cost":
       return (
         <div className="flex min-w-0 flex-col gap-3">
-          <p className="m-0 flex flex-wrap items-baseline gap-3"><span data-testid="cost-total" className="text-kpi font-semibold tabular-nums">{money(c.totalMicroUsd)}</span><span className="text-body text-muted">most this video can spend on paid generation</span></p>
+          <p className="m-0 flex flex-wrap items-baseline gap-3"><span data-testid="cost-total" className="text-kpi font-semibold tabular-nums">{money(c.totalMicroUsd)}</span><span data-testid="cost-inr" className="text-body text-muted tabular-nums">{formatMoney(c.totalMicroUsd, rate).replace(/^\S+ /, "")}</span><span className="text-body text-muted">most this video can spend on paid generation</span></p>
           <dl className="m-0 grid gap-x-6 gap-y-1 text-body sm:grid-cols-[max-content_1fr]">
             <dt className="text-muted">Way of making it</dt><dd className="m-0">{c.path}</dd>
             {c.models.map(([k, v]) => (
@@ -225,7 +226,7 @@ function Content({ c, lang, videoId }: { c: GateContent; lang: string; videoId: 
   }
 }
 
-export function GateCard({ item, index }: { item: GateItem; index: number }) {
+export function GateCard({ item, index, rate }: { item: GateItem; index: number; rate: number }) {
   const g = GATE_LABEL[item.gate];
   const sentBack = item.sentBackNote !== null;
   return (
@@ -246,7 +247,7 @@ export function GateCard({ item, index }: { item: GateItem; index: number }) {
           ? `Approving sends exactly this video to ${item.content.channelTitle ?? (item.content.channel || "no channel chosen")} as ${VIS[item.content.visibility] ?? "(not chosen)"}, ${kidsWord(item.content.madeForKids)}. It happens once.`
           : g.ask}
       </p>
-      <Content c={item.content} lang={item.language} videoId={item.videoId} />
+      <Content c={item.content} lang={item.language} videoId={item.videoId} rate={rate} />
       {sentBack ? (
         <p role="note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">You sent this back: &ldquo;{item.sentBackNote}&rdquo;. It stays on hold until the new version arrives.</p>
       ) : null}

@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import { Bell, Search } from "lucide-react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { getPool } from "@/server/db/pool";
+import { loadInrRate } from "@/server/db/system-settings";
+import { formatMoney } from "@/server/core/display-format";
 import { getBudget } from "@/server/db/spend";
 import { logoutAction } from "@/app/_actions/logout";
 import { cn, focusRing } from "../lib/cn";
@@ -10,10 +12,10 @@ import { AccountMenu } from "./account-menu";
 import { Mark } from "./mark";
 
 const DEFAULT_DAY_CAP_USD = 15; // Doc 2 §4.5; used only until the budgets row is seeded
-const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`;
 
 /** The top-bar sentence. A missing row uses the default cap; a null cap is "no limit" (never $0). */
-export function spendTodayText(b: { spentMicroUsd: number; capMicroUsd: number | null } | null): string {
+export function spendTodayText(b: { spentMicroUsd: number; capMicroUsd: number | null } | null, rate: number | null = null): string {
+  const usd = (micro: number) => formatMoney(micro, rate);
   const cap = b ? b.capMicroUsd : DEFAULT_DAY_CAP_USD * 1_000_000;
   const spent = usd(b?.spentMicroUsd ?? 0);
   return cap === null ? `${spent} today, no limit` : `${spent} of ${usd(cap)} today`;
@@ -25,7 +27,7 @@ async function SpendToday() {
   let text: string;
   try {
     const b = await getBudget(getPool(), "day");
-    text = spendTodayText(b);
+    text = spendTodayText(b, await loadInrRate(getPool()));
   } catch {
     text = "Spend unavailable";
   }

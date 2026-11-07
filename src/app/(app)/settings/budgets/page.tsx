@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
+import { formatIst } from "@/server/core/display-format";
 import { microToDollars } from "@/server/core/spend";
 import { BUDGET_LABELS } from "@/server/core/settings-registry";
 import { listAudit } from "@/server/db/audit";
@@ -83,7 +84,7 @@ async function Owned() {
                 <li key={r.id} data-testid="budget-audit-row" className="text-body">
                   {title}: {cap(d.oldCapMicroUsd)} to {cap(d.newCapMicroUsd)}
                   <time dateTime={r.at.toISOString()} className="ml-2 text-small text-muted">
-                    {r.at.toISOString().slice(0, 19).replace("T", " ")} UTC
+                    {formatIst(r.at)}
                   </time>
                 </li>
               );
