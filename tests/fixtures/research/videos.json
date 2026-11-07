@@ -1,0 +1,5 @@
+{"items":[
+ {"id":"vid00000001","snippet":{"channelId":"UCaaaaaaaaaaaaaaaaaaaaaa","title":"How Rust borrow checker works","publishedAt":"2026-11-05T10:00:00Z","tags":["rust","memory"]},"statistics":{"viewCount":"90000"},"contentDetails":{"duration":"PT45S"}},
+ {"id":"vid00000002","snippet":{"channelId":"UCaaaaaaaaaaaaaaaaaaaaaa","title":"Old one","publishedAt":"2026-08-01T10:00:00Z"},"statistics":{"viewCount":"1000"},"contentDetails":{"duration":"PT1M2S"}},
+ {"id":"vid00000003","snippet":{"title":"no stats"},"contentDetails":{}}
+]}
