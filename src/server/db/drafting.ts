@@ -29,7 +29,7 @@ export async function budgetLeftMicro(db: pg.Pool): Promise<number | null> {
   return left;
 }
 
-async function waitingForOwner(db: pg.Pool): Promise<number> {
+export async function waitingForOwner(db: pg.Pool): Promise<number> {
   const { rows } = await db.query<{ n: string }>("select count(*) as n from videos where status = 'waiting'");
   return Number(rows[0]!.n);
 }
