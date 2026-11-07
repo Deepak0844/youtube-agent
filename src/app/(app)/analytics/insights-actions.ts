@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { assertActionOrigin } from "@/lib/auth/action-origin";
 import { requireOwner } from "@/lib/auth/require-owner";
-import { decideProposal, runWeeklyReview } from "@/server/db/insights";
+import { decideProposal, runOptimizer, runWeeklyReview } from "@/server/db/insights";
 import { createInsightsModel } from "@/server/db/insights-model";
 import { loadKeyring } from "@/server/db/master-key";
 import { defaultModelDeps } from "@/server/llm/default-deps";
@@ -26,6 +26,21 @@ export async function runReviewAction(): Promise<InsightState> {
     return { ok: true, message: r.message };
   } catch {
     return { ok: false, message: "The review could not be written. Try again." };
+  }
+}
+
+// Same rules as the review: owner session only, one capped text-model call, proposals only (nothing is changed for you).
+export async function runOptimizerAction(): Promise<InsightState> {
+  const owner = await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { ok: false, message: origin };
+  try {
+    const db = getPool();
+    const r = await runOptimizer(db, createInsightsModel(db, () => defaultModelDeps(db, loadKeyring)), { kind: "session", sessionId: owner.sessionId });
+    refresh();
+    return { ok: true, message: r.message };
+  } catch {
+    return { ok: false, message: "The optimizer could not run. Try again." };
   }
 }
 
