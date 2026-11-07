@@ -105,6 +105,7 @@ describe("no code path in src writes a safety setting as anything but a session"
       "src/server/db/queue-data.ts": ["getSetting"],
       "src/server/db/ingest-jobs.ts": ["getSetting"],
       "src/server/db/comments.ts": ["getSetting"],
+      "src/server/db/targets.ts": ["pauseDraftingForTargets"],
       "src/worker/stages/voice-for.ts": ["getSetting"],
       "src/server/llm/default-deps.ts": ["getSetting"],
     });
@@ -115,6 +116,7 @@ describe("no code path in src writes a safety setting as anything but a session"
       "src/app/(app)/settings/assets/actions.ts": ["saveAssetSettings"],
       "src/app/(app)/engagement/actions.ts": ["saveUploadSwitches"],
       "src/app/(app)/settings/schedule/actions.ts": ["saveSchedulerSettings"],
+      "src/app/(app)/targets/actions.ts": ["saveTargetSettings"],
     });
     for (const names of [...Object.values(SETTINGS_IMPORT_ALLOW), ...Object.values(SESSION_WRITER_IMPORT_ALLOW)]) expect(names.length).toBeGreaterThan(0);
   });

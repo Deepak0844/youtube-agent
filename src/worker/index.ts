@@ -12,7 +12,9 @@ import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
 import { throttledCommentSync } from "@/server/db/comments";
 import { pullAnalytics, pullMessage } from "@/server/db/analytics";
 import { runCompetitorsJob, throttledResearchPurge } from "@/server/db/research";
+import { noInsightsModel, runOptimizer, runWeeklyReview } from "@/server/db/insights";
 import { throttledScheduler } from "@/server/db/scheduler";
+import { checkTargetPause } from "@/server/db/targets";
 import { defaultGoogleHttp } from "@/server/db/youtube-channels";
 import { throttledRetention } from "@/server/db/retention";
 import { storageRoot } from "@/server/storage/paths";
@@ -65,7 +67,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           scheduleTick ??= throttledScheduler(
             p,
             {
-              analytics: async () => pullMessage(await pullAnalytics(p, loadKeyring, defaultGoogleHttp, { kind: "worker" })),
+              analytics: async () => {
+                const message = pullMessage(await pullAnalytics(p, loadKeyring, defaultGoogleHttp, { kind: "worker" }));
+                await checkTargetPause(p, send); // fresh numbers: may switch overnight drafting off, once
+                return message;
+              },
+              // No text model is wired to insights yet (no one-shot call outside a stage), so the review has its numbers only and
+              // the optimizer skips quietly. Swap noInsightsModel for a paid-call backed model when one exists.
+              weekly_review: async () => (await runWeeklyReview(p, noInsightsModel, { kind: "worker" }, { send })).message,
+              optimizer: async () => (await runOptimizer(p, noInsightsModel, { kind: "worker" })).message,
               // Research (read only): competitor stats and trend lists, quota guarded; also deletes research rows older than 30 days.
               competitors: () => runCompetitorsJob(p, loadKeyring, defaultGoogleHttp),
             },

@@ -39,6 +39,15 @@ export const AUDIT_EVENTS = {
   "research.refreshed": "Watched channels' public stats were refreshed from YouTube (detail: who asked, owner channel id, channels and videos counted)",
   "research.trends": "Trend lists were refreshed from Hacker News and Wikimedia (detail: who asked, item counts, sources that failed)",
   "research.purged": "Research rows not refreshed within 30 days were deleted (detail: counts per table)",
+  "review.generated": "A weekly review was written (detail: week, who asked, shorts with data, whether a model added observations, model cost in micro-USD)",
+  "optimizer.ran": "The optimizer looked at the numbers and wrote proposals (detail: who asked, proposals made, model cost in micro-USD)",
+  "proposal.decided": "The owner accepted or dismissed an optimizer proposal; nothing else changes (detail: proposal id, kind, decision, session id)",
+  "title_test.planned": "A title test was planned for an uploaded video; nothing on YouTube changes (detail: experiment id, video id)",
+  "title_test.window_recorded": "The views of one title test window were read from saved snapshots (detail: experiment id, window label, views, days)",
+  "title_test.concluded": "A title test was evaluated; the verdict is advice only (detail: experiment id, verdict)",
+  "target.saved": "The owner saved a target (detail: channel id or all, metric, direction, value, session id)",
+  "target.deleted": "The owner deleted a target (detail: target id, metric, session id)",
+  "target.pause_fired": "Unattended drafting was switched off because cost per 1,000 views stayed over its target (detail: target dollars, shorts counted)",
   "retention.cleaned": "Old working files of an uploaded video were deleted (detail: video id, who asked, counts and bytes only; never a path)",
   "youtube.refresh_failed": "Google refused a saved channel token, so the channel needs reconnecting (detail: channel id, reason)",
   "api_token.created": "An API token was created (detail: ref, name, prefix, scopes, daily draft cap, session id; never the secret)",
@@ -106,6 +115,10 @@ export const AUDIT_EVENTS = {
   // Phase 4 sound tab (detail: video id, session id, library item id or stage run id; never a file path)
   "sound.bed_chosen": "The owner picked the music bed for a video (or removed it)",
   "sound.ear_ok": "The owner listened and ticked that the sound is OK",
+  // Phase 6.3 ideas (detail: idea id, video id, session id, counts; never idea text or source links)
+  "idea.added": "The owner added an idea to the backlog (detail: idea id, source count, session id)",
+  "idea.dismissed": "The owner dismissed an idea (detail: idea id, session id)",
+  "idea.drafted": "The owner turned an idea into a normal video draft; nothing was approved or uploaded (detail: idea id, video id, kind, session id)",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",

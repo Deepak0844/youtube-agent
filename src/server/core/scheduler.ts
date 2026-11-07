@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isoWeek } from "./insights";
 
 // Scheduler settings (Phase 6, parity with the old agent/scheduler.py DEFAULTS) and the pure "what is due now" rule. No IO.
 // Hours are IST (Asia/Kolkata, UTC+5:30, no daylight saving), the zone the app shows everywhere. weekly_day: 0 = Monday ... 6 = Sunday.
@@ -44,7 +45,7 @@ export const ANALYTICS_FROM_HOUR = 9;
 
 export const COMPETITORS_FROM_MINUTE = 9 * 60 + 30; // 09:30 IST, after the analytics pull
 
-export type JobName = "analytics" | "competitors";
+export type JobName = "analytics" | "competitors" | "weekly_review" | "optimizer";
 export interface DueJob {
   job: JobName;
   /** One value per run period; a job with this (job, runKey) already logged is never started again, even if it failed. */
@@ -65,5 +66,10 @@ export function dueJobs(s: SchedulerSettings, now: Date): DueJob[] {
   if (s.analytics && h >= ANALYTICS_FROM_HOUR) out.push({ job: "analytics", runKey: date });
   const minutes = h * 60 + new Date(now.getTime() + IST_OFFSET_MS).getUTCMinutes();
   if (s.competitors && minutes >= COMPETITORS_FROM_MINUTE) out.push({ job: "competitors", runKey: date });
+  // Weekly review: the chosen IST weekday (0 = Monday) from the chosen hour, once per ISO week.
+  const weekday = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
+  if (s.weekly_review && weekday === s.weekly_day && h >= s.weekly_hour) out.push({ job: "weekly_review", runKey: isoWeek(date) });
+  // Optimizer: proposals only; once per IST day from its hour.
+  if (s.optimizer && h >= s.optimizer_hour) out.push({ job: "optimizer", runKey: date });
   return out;
 }
