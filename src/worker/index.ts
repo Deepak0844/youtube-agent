@@ -12,7 +12,9 @@ import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
 import { throttledCommentSync } from "@/server/db/comments";
 import { pullAnalytics, pullMessage } from "@/server/db/analytics";
 import { runCompetitorsJob, throttledResearchPurge } from "@/server/db/research";
-import { noInsightsModel, runOptimizer, runWeeklyReview } from "@/server/db/insights";
+import { runOptimizer, runWeeklyReview } from "@/server/db/insights";
+import { createInsightsModel } from "@/server/db/insights-model";
+import { defaultModelDeps } from "@/server/llm/default-deps";
 import { throttledScheduler } from "@/server/db/scheduler";
 import { checkTargetPause } from "@/server/db/targets";
 import { defaultGoogleHttp } from "@/server/db/youtube-channels";
@@ -27,6 +29,7 @@ export function startWorker(opts: WorkerOptions | ((message: string) => void) = 
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const log = (line: string) => process.stdout.write(`${line}\n`);
+  const insightsModel = (p: ReturnType<typeof createPool>) => createInsightsModel(p, () => defaultModelDeps(p, () => loadKeyring()));
   if (!process.env.DATABASE_URL || !process.env.REDIS_URL) {
     const missing = !process.env.DATABASE_URL ? "DATABASE_URL" : "REDIS_URL";
     process.stderr.write(`${missing} is not set; configure .env.local before starting the worker\n`);
@@ -72,10 +75,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
                 await checkTargetPause(p, send); // fresh numbers: may switch overnight drafting off, once
                 return message;
               },
-              // No text model is wired to insights yet (no one-shot call outside a stage), so the review has its numbers only and
-              // the optimizer skips quietly. Swap noInsightsModel for a paid-call backed model when one exists.
-              weekly_review: async () => (await runWeeklyReview(p, noInsightsModel, { kind: "worker" }, { send })).message,
-              optimizer: async () => (await runOptimizer(p, noInsightsModel, { kind: "worker" })).message,
+              // One paid text call per job and period through the paid-call path; with no priced "Titles and insights" model it
+              // skips quietly (numbers only for the review).
+              weekly_review: async () => (await runWeeklyReview(p, insightsModel(p), { kind: "worker" }, { send })).message,
+              optimizer: async () => (await runOptimizer(p, insightsModel(p), { kind: "worker" })).message,
               // Research (read only): competitor stats and trend lists, quota guarded; also deletes research rows older than 30 days.
               competitors: () => runCompetitorsJob(p, loadKeyring, defaultGoogleHttp),
             },

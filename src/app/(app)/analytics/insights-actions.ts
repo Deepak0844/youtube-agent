@@ -3,7 +3,10 @@
 import { refresh } from "next/cache";
 import { assertActionOrigin } from "@/lib/auth/action-origin";
 import { requireOwner } from "@/lib/auth/require-owner";
-import { decideProposal, noInsightsModel, runWeeklyReview } from "@/server/db/insights";
+import { decideProposal, runWeeklyReview } from "@/server/db/insights";
+import { createInsightsModel } from "@/server/db/insights-model";
+import { loadKeyring } from "@/server/db/master-key";
+import { defaultModelDeps } from "@/server/llm/default-deps";
 import { getPool } from "@/server/db/pool";
 
 export interface InsightState {
@@ -17,8 +20,8 @@ export async function runReviewAction(): Promise<InsightState> {
   const origin = await assertActionOrigin();
   if (origin) return { ok: false, message: origin };
   try {
-    // shortcut: no text model is wired here yet (no one-shot call outside a stage), so only the numbers are produced.
-    const r = await runWeeklyReview(getPool(), noInsightsModel, { kind: "session", sessionId: owner.sessionId });
+    const db = getPool();
+    const r = await runWeeklyReview(db, createInsightsModel(db, () => defaultModelDeps(db, loadKeyring)), { kind: "session", sessionId: owner.sessionId });
     refresh();
     return { ok: true, message: r.message };
   } catch {
