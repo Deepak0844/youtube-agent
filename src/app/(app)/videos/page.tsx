@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { FORMAT_WORDS, FORMATS, KIND_WORDS, KINDS, LANGUAGE_ORDER, LANGUAGE_WORDS, STATUSES, STATUS_WORDS, ageLabel, libraryHref, parseLibraryQuery, type LibraryFilter } from "@/server/core/videos-view";
 import { getPool } from "@/server/db/pool";
+import { loadInrRate } from "@/server/db/system-settings";
 import { listVideos } from "@/server/db/videos-list";
 import { EmptyFrame } from "@/ui/domain/empty-frame";
 import { formatUsd } from "@/ui/domain/spend-line";
@@ -43,7 +44,8 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/videos">["sea
   await requireOwner();
   const f = parseLibraryQuery(await searchParams);
   const { rows, hasNext } = await listVideos(getPool(), f);
-  const filtered = Boolean(f.format || f.status || f.language || f.kind);
+  const rate = await loadInrRate(getPool());
+  const filtered =Boolean(f.format || f.status || f.language || f.kind);
   const to = (over: Partial<Record<keyof LibraryFilter, string | undefined>>) => libraryHref(f, { ...over, page: undefined });
   const now = new Date();
 
@@ -87,7 +89,7 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/videos">["sea
                     <Pill tone={s.tone}>{s.label}</Pill>
                     <span>{LANGUAGE_WORDS[v.language]}</span>
                     <span>{FORMAT_WORDS[v.format]}</span>
-                    <span className="tabular-nums">{formatUsd(v.costMicroUsd)} so far</span>
+                    <span className="tabular-nums">{formatUsd(v.costMicroUsd, rate)} so far</span>
                     <span>
                       <time dateTime={v.lastActivity.toISOString()}>{ageLabel(v.lastActivity, now)}</time>
                     </span>

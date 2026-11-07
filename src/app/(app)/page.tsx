@@ -6,6 +6,7 @@ import { setupIncomplete } from "@/server/core/onboarding";
 import { loadOnboardingFacts } from "@/server/db/onboarding";
 import { getPool } from "@/server/db/pool";
 import { loadActive, loadAttention, loadBreakers, loadKpis, loadRecent, loadUpNext } from "@/server/db/home-data";
+import { loadInrRate } from "@/server/db/system-settings";
 import { loadQueue } from "@/server/db/queue-data";
 import { DecisionRow } from "@/ui/domain/decision-row";
 import { KpiStrip } from "@/ui/domain/kpi-strip";
@@ -127,7 +128,7 @@ function Breakers() {
 }
 
 function Kpis() {
-  return soft("kpis", () => loadKpis(getPool()), (k) => (
+  return soft("kpis", async () => ({ k: await loadKpis(getPool()), rate: await loadInrRate(getPool()) }), ({ k, rate }) => (
     <>
       <KpiStrip
         lead={{ label: "In production", value: k.inProduction }}
@@ -137,15 +138,15 @@ function Kpis() {
         ]}
       />
       <div className="flex min-w-0 flex-col gap-2">
-        {k.today.capMicroUsd === null ? <p className="m-0 text-body tabular-nums">{`${spendSentence(k.today, formatUsd)} today`}</p> : <SpendLine spentMicroUsd={k.today.spentMicroUsd} capMicroUsd={k.today.capMicroUsd} />}
-        <p className="m-0 text-body tabular-nums text-muted">{`${spendSentence(k.month, formatUsd)} this month`}</p>
+        {k.today.capMicroUsd === null ? <p className="m-0 text-body tabular-nums">{`${spendSentence(k.today, (m) => formatUsd(m, rate))} today`}</p> : <SpendLine spentMicroUsd={k.today.spentMicroUsd} capMicroUsd={k.today.capMicroUsd} rate={rate} />}
+        <p className="m-0 text-body tabular-nums text-muted">{`${spendSentence(k.month, (m) => formatUsd(m, rate))} this month`}</p>
       </div>
     </>
   ));
 }
 
 function Queue() {
-  return soft("queue", () => loadQueue(getPool()), (q) => {
+  return soft("queue", async () => ({ q: await loadQueue(getPool()), rate: await loadInrRate(getPool()) }), ({ q, rate }) => {
     const gates = q.items.flatMap((i) => (i.kind === "gate" ? [i] : [])); // oldest first already
     if (gates.length === 0) return <Empty hint="Scripts, costs and videos that need your say-so will line up here, oldest first.">Nothing is waiting at a gate.</Empty>;
     return (
@@ -160,7 +161,7 @@ function Queue() {
             aspect={aspectFor("short")}
             stages={cutStages(g.strip)}
             gateLabel={gateLabel(g.gate)}
-            costLabel={g.content.kind === "cost" ? formatUsd(g.content.totalMicroUsd) : "–"}
+            costLabel={g.content.kind === "cost" ? formatUsd(g.content.totalMicroUsd, rate) : "–"}
             ageLabel={agoLabel(g.waitingSince)}
             href="/queue"
             channelName={g.channelId ?? "No channel"}

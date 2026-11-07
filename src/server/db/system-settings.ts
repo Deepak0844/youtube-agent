@@ -3,6 +3,7 @@ import type pg from "pg";
 import { z } from "zod";
 import { LIVE_PHRASE } from "@/server/core/comments";
 import { CUTOVER_PHRASE } from "@/server/core/channel-safety";
+import { DEFAULT_INR_RATE } from "@/server/core/display-format";
 import { redactDetail } from "@/server/core/audit-events";
 import { ownServicePorts, parseLocalServicesInput, validateLocalService } from "@/server/core/local-services";
 import { SETTINGS } from "@/server/core/settings-registry";
@@ -101,6 +102,25 @@ export async function saveUploadSwitches(db: pg.Pool, input: { killSwitch?: bool
   if (writes.length === 0) return { ok: false, error: GENERIC };
   try {
     return { ok: true, changed: await writeAudited(db, writes) };
+  } catch {
+    return { ok: false, error: GENERIC };
+  }
+}
+
+/** The saved rupee rate; a hand-edited bad value falls back to the default. */
+export async function loadInrRate(db: pg.Pool): Promise<number> {
+  const v = await getSetting(db, "display.inr_rate");
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : DEFAULT_INR_RATE;
+}
+
+/** Saves the rupees-per-dollar rate used for display only. Text must be a plain positive decimal. */
+export async function saveInrRate(db: pg.Pool, raw: unknown): Promise<SaveResult> {
+  const bad = { ok: false, error: "Enter a rate above 0, such as 95.05." } as const;
+  if (typeof raw !== "string" || !/^\d{1,5}(\.\d{1,4})?$/.test(raw.trim())) return bad;
+  const rate = Number(raw.trim());
+  if (!(rate > 0) || rate > 10_000) return bad;
+  try {
+    return { ok: true, changed: await writeAudited(db, [{ key: "display.inr_rate", value: rate }]) };
   } catch {
     return { ok: false, error: GENERIC };
   }

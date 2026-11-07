@@ -4,6 +4,7 @@ import { requireOwner } from "@/lib/auth/require-owner";
 import { jobCheckers } from "./job-checkers";
 import { getPool } from "@/server/db/pool";
 import { dryRunRefusal } from "@/worker/stages/guard";
+import { loadInrRate } from "@/server/db/system-settings";
 import { loadQueue } from "@/server/db/queue-data";
 import { listUploads } from "@/server/db/upload-actions";
 import { Pill } from "@/ui/primitives/pill";
@@ -30,6 +31,7 @@ async function Owned() {
   // The starter shows only when the opt-in is set AND the database guard agrees (throwaway database, no provider key).
   const dryRun = dryRunAllowed() && (await dryRunRefusal(getPool(), process.env).catch(() => "unchecked")) === null;
   const uploads = await listUploads(getPool());
+  const rate = await loadInrRate(getPool());
   const waiting = q.items.length;
   return (
     <div className="flex min-w-0 flex-col gap-layout">
@@ -74,7 +76,7 @@ async function Owned() {
             <p className="mt-1 mb-0 text-small text-faint">Scripts, costs, videos and publishes that need your say-so will line up here, oldest first.</p>
           </div>
         ) : (
-          q.items.map((item, i) => (item.kind === "gate" ? <GateCard key={`${item.videoId}-${item.gate}`} item={item} index={i} /> : <DecisionCard key={`${item.videoId}-decision`} item={item} />))
+          q.items.map((item, i) => (item.kind === "gate" ? <GateCard key={`${item.videoId}-${item.gate}`} item={item} index={i} rate={rate} /> : <DecisionCard key={`${item.videoId}-decision`} item={item} />))
         )}
       </section>
 

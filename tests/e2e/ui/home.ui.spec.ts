@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { visibleNav } from "@/ui/shell/nav-config";
 import { OWNER_PASSWORD, OWNER_USERNAME } from "../fixtures/owner";
 
 // Runs with the seeded owner's storageState (playwright.config.mts), i.e. reuse of a real session.
@@ -23,7 +24,7 @@ test("home loads every panel (none failed, none stuck loading) and shows the qui
 test("top bar carries real spend from budgets, review count and a disabled search", async ({ page }) => {
   await page.goto("/");
   const bar = page.getByRole("banner");
-  await expect(bar.getByText(/^\$\d+\.\d{2} of \$\d+\.\d{2} today$/)).toBeVisible();
+  await expect(bar.getByText(/^\$\d+\.\d{2} \(₹[\d,]+\.\d\) of \$\d+\.\d{2} \(₹[\d,]+\.\d\) today$/)).toBeVisible();
   await expect(bar.getByText("0 to review")).toBeAttached();
   if (!phone(page)) {
     await expect(bar.getByRole("searchbox", { name: "Search" })).toBeDisabled();
@@ -88,10 +89,11 @@ test("keyboard: landmarks exist and the nav links are reachable by Tab", async (
   await page.waitForLoadState("networkidle");
   for (const role of ["banner", "main"] as const) await expect(page.getByRole(role)).toBeVisible();
   const side = page.getByRole("navigation", { name: "Primary" });
-  await expect(side.getByRole("link")).toHaveCount(17);
+  // Derived from the nav config so adding a page does not break this test. "Assets" appears twice, so check by position.
+  const labels = visibleNav().flatMap((g) => g.items.map((i) => i.label));
+  await expect(side.getByRole("link")).toHaveCount(labels.length);
   await side.getByRole("link", { name: "Home" }).focus();
-  // "Assets" appears twice (the library and its settings), so check by position, not by name.
-  const names = ["Queue", "Library", "New", "Assets", "Engagement", "Analytics", "Models", "Providers", "Keys", "Google app", "API tokens", "Channels", "Budgets", "Assets", "Audit", "System"];
+  const names = labels.slice(1);
   for (const [i, name] of names.entries()) {
     await page.keyboard.press("Tab");
     await expect(side.getByRole("link").nth(i + 1)).toBeFocused();

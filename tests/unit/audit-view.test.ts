@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AUDIT_EVENTS } from "@/server/core/audit-events";
-import { AUDIT_FILTERS, MAX_CURSOR, auditHref, describeDetail, parseAuditQuery, relativeTime, truncateText, utcStamp } from "@/server/core/audit-view";
+import { AUDIT_FILTERS, MAX_CURSOR, auditHref, describeDetail, parseAuditQuery, relativeTime, truncateText, istStamp } from "@/server/core/audit-view";
 
 describe("parseAuditQuery", () => {
   it("accepts_digit_cursors_and_known_filters", () => {
@@ -40,7 +40,7 @@ describe("auditHref", () => {
   });
 });
 
-describe("relativeTime and utcStamp", () => {
+describe("relativeTime and istStamp", () => {
   const now = new Date("2026-10-27T12:00:00Z");
   it("reads_naturally", () => {
     expect(relativeTime(new Date("2026-10-27T11:59:50Z"), now)).toBe("just now");
@@ -50,8 +50,8 @@ describe("relativeTime and utcStamp", () => {
     expect(relativeTime(new Date("2026-08-01T12:00:00Z"), now)).toBe("1 Aug 2026");
     expect(relativeTime(new Date("2026-10-27T12:05:00Z"), now)).toBe("just now"); // clock skew never prints a negative
   });
-  it("utc_stamp_is_fixed_format", () => {
-    expect(utcStamp(new Date("2026-03-04T05:06:07Z"))).toBe("2026-03-04 05:06:07 UTC");
+  it("ist_stamp_is_fixed_format", () => {
+    expect(istStamp(new Date("2026-03-04T05:06:07Z"))).toBe("2026-03-04 10:36:07 IST");
   });
 });
 

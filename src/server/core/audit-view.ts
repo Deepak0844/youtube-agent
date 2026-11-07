@@ -73,9 +73,9 @@ export function relativeTime(then: Date, now: Date): string {
   return `${then.getUTCDate()} ${then.toLocaleString("en-GB", { month: "short", timeZone: "UTC" })} ${then.getUTCFullYear()}`;
 }
 
-const p2 = (n: number) => String(n).padStart(2, "0");
-export const utcStamp = (d: Date): string =>
-  `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())} ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}:${p2(d.getUTCSeconds())} UTC`;
+import { formatIst } from "@/server/core/display-format";
+
+export const istStamp = (d: Date): string => formatIst(d, true);
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
