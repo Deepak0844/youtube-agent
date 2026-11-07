@@ -19,7 +19,7 @@ export const FLAGS: Record<string, boolean> = {
   // Not built yet (later phases).
   ideas: true, // Phase 6.3
   series: false, // Phase 6b
-  "plan.calendar": false,
+  "plan.calendar": true, // Phase 6.7
   "plan.research": true, // Phase 6.4
   "plan.targets": true, // Phase 6
   "publish.uploads": false,

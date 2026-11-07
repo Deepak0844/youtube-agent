@@ -6,6 +6,7 @@ import { getPool } from "@/server/db/pool";
 import { Pill } from "@/ui/primitives/pill";
 import { Insights } from "./insights";
 import { PullForm } from "./pull-form";
+import { TitleTests } from "./title-tests";
 
 export default function AnalyticsPage() {
   return (
@@ -91,6 +92,7 @@ async function Owned() {
         </ul>
       )}
       <Insights />
+      <TitleTests />
     </div>
   );
 }
