@@ -10,6 +10,8 @@ import { loadKeyring } from "@/server/db/master-key";
 import { createFakeUploader } from "@/server/providers/uploader/fake";
 import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
 import { throttledCommentSync } from "@/server/db/comments";
+import { pullAnalytics, pullMessage } from "@/server/db/analytics";
+import { throttledScheduler } from "@/server/db/scheduler";
 import { defaultGoogleHttp } from "@/server/db/youtube-channels";
 import { throttledRetention } from "@/server/db/retention";
 import { storageRoot } from "@/server/storage/paths";
@@ -50,12 +52,20 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         const retentionTick = throttledRetention(pool, storageRoot());
         // Comment sync: read only, at most once every 6 h; drafts it queues wait held for the owner. Posting is never done here.
         let syncTick: (() => Promise<void>) | undefined;
+        // Scheduler (Phase 6): daily analytics pull (read only). Other jobs join as their pieces land.
+        let scheduleTick: (() => Promise<void>) | undefined;
         hooks.advanceAll = async (p, queue, readers, send) => {
           const r = await advanceAll(p, queue, readers, { send });
           await autoSeoSweep(p, queue).catch(() => undefined);
           void retentionTick();
           syncTick ??= throttledCommentSync(p, loadKeyring, defaultGoogleHttp, queue);
           void syncTick();
+          scheduleTick ??= throttledScheduler(
+            p,
+            { analytics: async () => pullMessage(await pullAnalytics(p, loadKeyring, defaultGoogleHttp, { kind: "worker" })) },
+            send,
+          );
+          void scheduleTick();
           return r;
         };
       }

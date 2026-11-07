@@ -56,8 +56,10 @@ export const SESSION_WRITER_IMPORT_ALLOW: ImportAllow = {
   "src/app/(app)/settings/assets/actions.ts": ["saveAssetSettings"],
   // Engagement page: the dry-run switch for comment replies (comments.dry_run), after requireOwner and the origin check.
   "src/app/(app)/engagement/actions.ts": ["saveUploadSwitches"],
+  // Schedule page: scheduler settings (overnight drafting spends money), after requireOwner.
+  "src/app/(app)/settings/schedule/actions.ts": ["saveSchedulerSettings"],
 };
-export const SESSION_WRITERS = ["saveLocalServices", "saveSystemSettings", "saveAssetSettings", "saveVoiceServer", "saveUploadSwitches"] as const;
+export const SESSION_WRITERS = ["saveLocalServices", "saveSystemSettings", "saveAssetSettings", "saveVoiceServer", "saveUploadSwitches", "saveSchedulerSettings"] as const;
 const GUARDED: readonly string[] = ["setSetting", "setSessionSettings", ...SESSION_WRITERS];
 
 const SETTINGS_MODULE = "src/server/db/settings";

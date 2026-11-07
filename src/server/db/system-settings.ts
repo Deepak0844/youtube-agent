@@ -6,6 +6,7 @@ import { CUTOVER_PHRASE } from "@/server/core/channel-safety";
 import { DEFAULT_INR_RATE } from "@/server/core/display-format";
 import { redactDetail } from "@/server/core/audit-events";
 import { ownServicePorts, parseLocalServicesInput, validateLocalService } from "@/server/core/local-services";
+import { SCHEDULER_DEFAULTS, schedulerSchema, type SchedulerSettings } from "@/server/core/scheduler";
 import { SETTINGS } from "@/server/core/settings-registry";
 import { secretName, type ProviderId } from "@/server/core/provider-keys";
 import { ENGINE_KEYS } from "@/server/core/engine-config";
@@ -282,4 +283,36 @@ export async function saveEngineNumbers(db: pg.Pool, input: Record<string, unkno
   } catch {
     return { ok: false, error: GENERIC };
   }
+}
+
+/**
+ * Saves /settings/schedule. Turning overnight drafting ON (it was off) needs the owner's explicit "I understand it spends money"
+ * confirmation; the form sends it as `confirmSpend`. Everything else in the file is already validated by the schema.
+ */
+export async function saveSchedulerSettings(db: pg.Pool, input: unknown, confirmSpend: boolean): Promise<SaveResult> {
+  const p = schedulerSchema.safeParse(input);
+  if (!p.success) return { ok: false, error: "Check the values: hours are 0 to 23, drafts per night 0 to 5, waiting drafts 1 to 10." };
+  try {
+    let refused = false;
+    const changed = await writeAudited(db, [
+      {
+        key: "scheduler",
+        value: (cur: unknown) => {
+          const was = (cur as { enabled?: boolean } | null)?.enabled === true;
+          if (p.data.enabled && !was && !confirmSpend) refused = true;
+          return refused ? cur : p.data;
+        },
+      },
+    ]);
+    if (refused) return { ok: false, error: "Tick the box to confirm that overnight drafting spends money (up to your limits). Nothing was saved." };
+    return { ok: true, changed };
+  } catch {
+    return { ok: false, error: GENERIC };
+  }
+}
+
+/** The saved scheduler settings; a hand-edited bad value falls back to the defaults. */
+export async function loadScheduler(db: pg.Pool): Promise<SchedulerSettings> {
+  const p = schedulerSchema.safeParse(await getSetting(db, "scheduler"));
+  return p.success ? p.data : SCHEDULER_DEFAULTS;
 }
