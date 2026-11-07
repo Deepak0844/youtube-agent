@@ -1,10 +1,10 @@
 import type pg from "pg";
-import type { GateActor } from "@/server/core/approvals";
+import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { findSimilar, type IdeaInput } from "@/server/core/ideas";
 import { newVideoSchema } from "@/server/core/videos-view";
 import { recordAudit } from "@/server/db/audit";
 import type { EnqueueOnly } from "@/server/db/pipeline";
-import { startNewVideo } from "@/server/db/video-create";
+import { startVideo } from "@/server/db/video-create";
 
 // The idea backlog. Text is untrusted and was cleaned by parseIdeaForm; every query is parameterised.
 // Draft now only starts a normal video (startNewVideo). Nothing here approves or uploads.
@@ -52,6 +52,12 @@ export async function dismissIdea(db: pg.Pool, actor: GateActor, id: string): Pr
 
 /** Claims the idea (proposed -> drafting) so a double click makes one video, starts a normal video, then links it. */
 export async function draftIdea(db: pg.Pool, queue: EnqueueOnly, actor: GateActor, id: string, choice: { kind: string; language: string }): Promise<{ ok: true; videoId: string } | { ok: false; message: string }> {
+  if (actorProblem(actor)) return { ok: false, message: ACTOR_REASON };
+  return draftIdeaAs(db, queue, actor.sessionId, id, choice);
+}
+
+/** Draft now for the owner (session id) or the overnight scheduler (null): one path, so both make the same normal video. */
+export async function draftIdeaAs(db: pg.Pool, queue: EnqueueOnly, sessionId: string | null, id: string, choice: { kind: string; language: string }): Promise<{ ok: true; videoId: string } | { ok: false; message: string }> {
   const claim = await db.query<{ topic: string; hook: string; why: string }>(
     "update ideas set status = 'drafting', updated_at = now() where id = $1 and status = 'proposed' returning topic, hook, why",
     [id],
@@ -67,7 +73,7 @@ export async function draftIdea(db: pg.Pool, queue: EnqueueOnly, actor: GateActo
   }
   let r;
   try {
-    r = await startNewVideo(db, queue, actor, input.data);
+    r = await startVideo(db, queue, sessionId, input.data);
   } catch {
     await release();
     return { ok: false, message: "Could not start the video. Nothing was saved. Try again in a minute." };
@@ -77,6 +83,6 @@ export async function draftIdea(db: pg.Pool, queue: EnqueueOnly, actor: GateActo
     return r;
   }
   await db.query("update ideas set status = 'drafted', video_id = $2, updated_at = now() where id = $1", [id, r.videoId]);
-  await recordAudit(db, "idea.drafted", { ideaId: id, videoId: r.videoId, kind: input.data.kind, sessionId: actor.sessionId });
+  await recordAudit(db, "idea.drafted", { ideaId: id, videoId: r.videoId, kind: input.data.kind, sessionId });
   return r;
 }

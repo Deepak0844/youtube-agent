@@ -45,12 +45,16 @@ export const ANALYTICS_FROM_HOUR = 9;
 
 export const COMPETITORS_FROM_MINUTE = 9 * 60 + 30; // 09:30 IST, after the analytics pull
 
-export type JobName = "analytics" | "competitors" | "weekly_review" | "optimizer";
+export type JobName = "drafting" | "analytics" | "competitors" | "weekly_review" | "optimizer";
 export interface DueJob {
   job: JobName;
   /** One value per run period; a job with this (job, runKey) already logged is never started again, even if it failed. */
   runKey: string;
 }
+
+export const DRAFT_WINDOW_HOURS = 3;
+export const MAX_FAILURES_PER_NIGHT = 2;
+export const MIN_DAY_BUDGET_LEFT_MICRO = 1_000_000; // $1
 
 const IST_OFFSET_MS = 5.5 * 3600_000;
 
@@ -63,6 +67,12 @@ export function istParts(now: Date): { date: string; hour: number } {
 export function dueJobs(s: SchedulerSettings, now: Date): DueJob[] {
   const { date, hour: h } = istParts(now);
   const out: DueJob[] = [];
+  // Overnight drafting: [hour, hour + 3) IST, wrapping past midnight. The key is the date the window STARTED, so one run per night.
+  if (s.enabled && (h - s.hour + 24) % 24 < DRAFT_WINDOW_HOURS) {
+    const startedYesterday = h < s.hour;
+    const key = startedYesterday ? new Date(Date.parse(`${date}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10) : date;
+    out.push({ job: "drafting", runKey: key });
+  }
   if (s.analytics && h >= ANALYTICS_FROM_HOUR) out.push({ job: "analytics", runKey: date });
   const minutes = h * 60 + new Date(now.getTime() + IST_OFFSET_MS).getUTCMinutes();
   if (s.competitors && minutes >= COMPETITORS_FROM_MINUTE) out.push({ job: "competitors", runKey: date });
@@ -72,4 +82,23 @@ export function dueJobs(s: SchedulerSettings, now: Date): DueJob[] {
   // Optimizer: proposals only; once per IST day from its hour.
   if (s.optimizer && h >= s.optimizer_hour) out.push({ job: "optimizer", runKey: date });
   return out;
+}
+
+export interface DraftState {
+  started: number; // drafts started in this run
+  failed: number; // failed starts in this run
+  waiting: number; // videos waiting for the owner at a gate right now
+  /** Money left today (and this month) in micro-USD, the smaller of the two; null = no limit. */
+  budgetLeftMicro: number | null;
+}
+export type DraftStop = "disabled" | "max_drafts" | "max_pending" | "low_budget" | "failures";
+
+/** Whether one more draft may start. Videos started in this run count as waiting: they will reach a gate. Pure. */
+export function draftStop(s: Pick<SchedulerSettings, "enabled" | "max_drafts" | "max_pending">, st: DraftState): DraftStop | null {
+  if (!s.enabled) return "disabled";
+  if (st.failed >= MAX_FAILURES_PER_NIGHT) return "failures";
+  if (st.started >= s.max_drafts) return "max_drafts";
+  if (st.waiting + st.started >= s.max_pending) return "max_pending";
+  if (st.budgetLeftMicro !== null && st.budgetLeftMicro < MIN_DAY_BUDGET_LEFT_MICRO) return "low_budget";
+  return null;
 }
