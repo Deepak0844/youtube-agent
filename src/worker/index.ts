@@ -12,6 +12,7 @@ import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
 import { throttledCommentSync } from "@/server/db/comments";
 import { pullAnalytics, pullMessage } from "@/server/db/analytics";
 import { throttledScheduler } from "@/server/db/scheduler";
+import { checkTargetPause } from "@/server/db/targets";
 import { defaultGoogleHttp } from "@/server/db/youtube-channels";
 import { throttledRetention } from "@/server/db/retention";
 import { storageRoot } from "@/server/storage/paths";
@@ -62,7 +63,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           void syncTick();
           scheduleTick ??= throttledScheduler(
             p,
-            { analytics: async () => pullMessage(await pullAnalytics(p, loadKeyring, defaultGoogleHttp, { kind: "worker" })) },
+            {
+              analytics: async () => {
+                const message = pullMessage(await pullAnalytics(p, loadKeyring, defaultGoogleHttp, { kind: "worker" }));
+                await checkTargetPause(p, send); // fresh numbers: may switch overnight drafting off, once
+                return message;
+              },
+            },
             send,
           );
           void scheduleTick();

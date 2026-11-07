@@ -27,6 +27,8 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
   // transaction with the routes and an audit row. Called only from the Models page action after requireOwner.
   "src/server/db/claude-code.ts": ["getSetting", "setSessionSettings", "Actor"],
   "src/server/db/system-settings.ts": ["getSetting", "getStoredSettings", "setSessionSettings"],
+  // The pause rule's narrow write: turns the scheduler's drafting OFF only, once, as the system.
+  "src/server/db/targets.ts": ["pauseDraftingForTargets"],
   // Reads the asset day counts and limits with getSetting; its writer goes through system-settings (writeAudited).
   "src/server/db/asset-settings.ts": ["getSetting"],
   // Reads policy.require_evidence to decide whether the route has an evidence gate; never writes.
@@ -58,8 +60,10 @@ export const SESSION_WRITER_IMPORT_ALLOW: ImportAllow = {
   "src/app/(app)/engagement/actions.ts": ["saveUploadSwitches"],
   // Schedule page: scheduler settings (overnight drafting spends money), after requireOwner.
   "src/app/(app)/settings/schedule/actions.ts": ["saveSchedulerSettings"],
+  // Targets page: the pause rule and revenue rate, after requireOwner.
+  "src/app/(app)/targets/actions.ts": ["saveTargetSettings"],
 };
-export const SESSION_WRITERS = ["saveLocalServices", "saveSystemSettings", "saveAssetSettings", "saveVoiceServer", "saveUploadSwitches", "saveSchedulerSettings"] as const;
+export const SESSION_WRITERS = ["saveLocalServices", "saveSystemSettings", "saveAssetSettings", "saveVoiceServer", "saveUploadSwitches", "saveSchedulerSettings", "saveTargetSettings"] as const;
 const GUARDED: readonly string[] = ["setSetting", "setSessionSettings", ...SESSION_WRITERS];
 
 const SETTINGS_MODULE = "src/server/db/settings";
