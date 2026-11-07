@@ -106,6 +106,33 @@ test.describe("/metrics", () => {
   });
 });
 
+test.describe("/login when already signed in", () => {
+  // Pages under cacheComponents stream the redirect inside a 200 response, so accept either form.
+  const redirectsTo = async (res: { status(): number; headers(): Record<string, string>; text(): Promise<string> }, path: string) =>
+    (res.status() === 307 && new URL(res.headers().location ?? "", ORIGIN).pathname === path) || (await res.text()).includes(`NEXT_REDIRECT;replace;${path};307;`);
+  test("a valid session is sent to the home page", async ({ request }) => {
+    const res = await request.get("/login", { headers: cookie(await mintSession()), maxRedirects: 0 });
+    expect(await redirectsTo(res, "/")).toBe(true);
+  });
+  test("a valid session follows a same-site ?next=", async ({ request }) => {
+    const res = await request.get("/login?next=%2Fqueue", { headers: cookie(await mintSession()), maxRedirects: 0 });
+    expect(await redirectsTo(res, "/queue")).toBe(true);
+  });
+  test("a valid session with an off-site ?next= still goes home", async ({ request }) => {
+    const res = await request.get("/login?next=https%3A%2F%2Fevil.test", { headers: cookie(await mintSession()), maxRedirects: 0 });
+    expect(await redirectsTo(res, "/")).toBe(true);
+  });
+  test("no, garbage or revoked session still shows the sign-in form", async ({ request }) => {
+    const revoked = await mintSession();
+    await revokeSession(revoked);
+    for (const headers of [{}, cookie("garbage"), cookie(revoked)]) {
+      const res = await request.get("/login", { headers, maxRedirects: 0 });
+      expect(res.status()).toBe(200);
+      expect(await res.text()).not.toContain("NEXT_REDIRECT");
+    }
+  });
+});
+
 test.describe("session cookie checks", () => {
   test("/api/me: garbage, expired, revoked cookies -> 401; valid -> 200; query param never counts", async ({ request }) => {
     expect((await request.get("/api/me", { headers: cookie("garbage") })).status()).toBe(401);
