@@ -100,6 +100,10 @@ export const AUDIT_EVENTS = {
   // Phase 4 sound tab (detail: video id, session id, library item id or stage run id; never a file path)
   "sound.bed_chosen": "The owner picked the music bed for a video (or removed it)",
   "sound.ear_ok": "The owner listened and ticked that the sound is OK",
+  // Phase 6.3 ideas (detail: idea id, video id, session id, counts; never idea text or source links)
+  "idea.added": "The owner added an idea to the backlog (detail: idea id, source count, session id)",
+  "idea.dismissed": "The owner dismissed an idea (detail: idea id, session id)",
+  "idea.drafted": "The owner turned an idea into a normal video draft; nothing was approved or uploaded (detail: idea id, video id, kind, session id)",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",
