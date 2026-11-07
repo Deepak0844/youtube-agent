@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { ENGINE_NUMBER_KEYS } from "@/server/core/engine-numbers";
 import { SETTINGS, isSettingKey, parseSetting, type SettingDef } from "@/server/core/settings-registry";
 
 export type Actor = "session" | "token" | "system";
@@ -86,6 +87,8 @@ export const SESSION_BATCH_KEYS: readonly string[] = [
   "claude_code.enabled",
   // Last backup result, written by Back up now (src/server/db/backup.ts) after requireOwner. Not a safety key.
   "backup.last_run",
+  // The engine numbers form on /settings/system (src/server/core/engine-numbers.ts).
+  ...ENGINE_NUMBER_KEYS,
 ];
 
 export interface SessionWrite {

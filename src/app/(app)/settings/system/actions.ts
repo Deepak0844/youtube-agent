@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { getPool } from "@/server/db/pool";
+import { ENGINE_NUMBER_FIELDS } from "@/server/core/engine-numbers";
 import { hostPortOf, isVoiceField } from "@/server/providers/voice/endpoints";
-import { loadLocalServices, loadVoiceServers, saveLocalServices, saveSystemSettings, saveUploadSwitches } from "@/server/db/system-settings";
+import { loadLocalServices, loadVoiceServers, saveEngineNumbers, saveLocalServices, saveSystemSettings, saveUploadSwitches } from "@/server/db/system-settings";
 
 export interface FormState {
   ok?: boolean;
@@ -72,4 +73,18 @@ export async function addVoiceServiceAction(_prev: FormState, form: FormData): P
     revalidatePath("/settings/providers");
   }
   return r.ok ? { ok: true } : { error: r.error, lines: r.lines };
+}
+
+// Engine numbers (retries, time limits, breaker, QA). Reset-to-default is done in the form (it refills the field); this saves what was sent.
+export async function saveEngineNumbersAction(_prev: FormState, form: FormData): Promise<FormState> {
+  await requireOwner();
+  const input: Record<string, unknown> = {};
+  for (const f of ENGINE_NUMBER_FIELDS) {
+    const v = text(form.get(f.key), 200);
+    if (v === null) return { error: TOO_LONG };
+    input[f.key] = v;
+  }
+  const r = await saveEngineNumbers(getPool(), input);
+  if (r.ok) revalidatePath("/settings/system");
+  return r.ok ? { ok: true } : { error: r.error };
 }

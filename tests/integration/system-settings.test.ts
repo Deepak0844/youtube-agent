@@ -235,10 +235,10 @@ describe("system settings form (app role)", () => {
 
 describe("setSessionSettings is limited to the keys this page writes", () => {
   const noAudit = async () => undefined;
-  it.each(["policy.allow_public", "policy.require_evidence", "display.currency", "engine.retry_attempts", "breaker.threshold"])(
+  it.each(["policy.allow_public", "policy.require_evidence", "display.currency", "engine.log_cap_bytes", "breaker.stages"])(
     "refuses %s and touches nothing",
     async (key) => {
-      const value = key.startsWith("policy") ? true : key === "display.currency" ? "EUR" : 9;
+      const value = key.startsWith("policy") ? true : key === "display.currency" ? "EUR" : key === "breaker.stages" ? ["draft"] : 99;
       await expect(setSessionSettings(db.pool, [{ key, value }], noAudit)).rejects.toThrow(/not writable here/);
       expect((await db.pool.query("select count(*)::int n from settings where key = $1", [key])).rows[0].n).toBe(0);
     },
