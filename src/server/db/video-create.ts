@@ -12,8 +12,8 @@ export async function startNewVideo(db: pg.Pool, queue: EnqueueOnly, actor: Gate
 }
 
 /** The same start for the overnight scheduler (sessionId null). Creates a draft only: no gate is approved, nothing is uploaded. */
-export async function startVideo(db: pg.Pool, queue: EnqueueOnly, sessionId: string | null, i: NewVideoInput): Promise<{ ok: true; videoId: string } | { ok: false; message: string }> {
-  const v = await createVideo(db, { format: i.format, kind: i.kind, language: i.language, topic: i.topic, notes: i.notes ?? null, style: i.style ?? null, captionStyle: i.captionStyle ?? null });
+export async function startVideo(db: pg.Pool, queue: EnqueueOnly, sessionId: string | null, i: NewVideoInput, channelId: string | null = null): Promise<{ ok: true; videoId: string } | { ok: false; message: string }> {
+  const v = await createVideo(db, { channelId, format: i.format, kind: i.kind, language: i.language, topic: i.topic, notes: i.notes ?? null, style: i.style ?? null, captionStyle: i.captionStyle ?? null });
   await recordAudit(db, "video.created", { videoId: v.id, language: v.language, kind: v.kind, format: v.format, sessionId });
   try {
     await advanceVideo(db, queue, v.id, approvalReaders);

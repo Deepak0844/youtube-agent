@@ -1,6 +1,8 @@
 import type pg from "pg";
 import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { findSimilar, type IdeaInput } from "@/server/core/ideas";
+import { channelLang } from "@/server/core/idea-research";
+import type { Lang } from "@/server/core/lang";
 import { newVideoSchema } from "@/server/core/videos-view";
 import { recordAudit } from "@/server/db/audit";
 import type { EnqueueOnly } from "@/server/db/pipeline";
@@ -18,37 +20,50 @@ export interface IdeaRow {
   score: number;
   status: string;
   videoId: string | null;
+  /** The channel the idea is for (null = none), its title, and the narration language Draft now starts with. */
+  channelId: string | null;
+  channelTitle: string;
+  language: Lang;
 }
 
 type Result = { ok: true } | { ok: false; message: string };
 
 export async function listIdeas(db: pg.Pool): Promise<IdeaRow[]> {
-  const { rows } = await db.query<Omit<IdeaRow, "videoId" | "score"> & { video_id: string | null; score: string }>(
-    "select id, topic, hook, why, sources, score, status, video_id from ideas where status <> 'dismissed' order by (status = 'proposed') desc, score desc, created_at",
+  const { rows } = await db.query<Omit<IdeaRow, "videoId" | "score" | "channelId" | "channelTitle" | "language"> & { video_id: string | null; score: string; channel_id: string | null; title: string | null; lang: string | null }>(
+    `select i.id, i.topic, i.hook, i.why, i.sources, i.score, i.status, i.video_id, i.channel_id, c.title, c.default_language as lang
+       from ideas i left join youtube_channels c on c.channel_id = i.channel_id
+      where i.status <> 'dismissed' order by (i.status = 'proposed') desc, i.score desc, i.created_at`,
   );
-  return rows.map(({ video_id, score, ...r }) => ({ ...r, score: Number(score), videoId: video_id }));
+  return rows.map(({ video_id, score, channel_id, title, lang, ...r }) => ({ ...r, score: Number(score), videoId: video_id, channelId: channel_id, channelTitle: title ?? "", language: channelLang(lang) }));
+}
+
+/** Connected channels, for the channel selects. */
+export async function connectedChannelOptions(db: pg.Pool): Promise<Array<{ channelId: string; title: string }>> {
+  const { rows } = await db.query<{ channel_id: string; title: string }>("select channel_id, title from youtube_channels where status = 'connected' order by created_at, id");
+  return rows.map((r) => ({ channelId: r.channel_id, title: r.title }));
 }
 
 /** Rejects a topic that is too like any idea ever held (dismissed ones too, as the old app did) or any video topic. */
-export async function addIdea(db: pg.Pool, actor: GateActor, i: IdeaInput): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
-  return insertIdea(db, i, "manual", actor.sessionId);
+export async function addIdea(db: pg.Pool, actor: GateActor, i: IdeaInput, channelId: string | null = null): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  if (channelId && !(await db.query("select 1 from youtube_channels where channel_id = $1", [channelId])).rowCount) return { ok: false, message: "That channel is not connected." };
+  return insertIdea(db, i, "manual", actor.sessionId, channelId);
 }
 
 /** The idea researcher's door: the same checks and table as addIdea, marked origin 'research' (the owner's session id, or null for the worker). */
-export async function addResearchIdea(db: pg.Pool, i: IdeaInput, sessionId: string | null): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
-  return insertIdea(db, i, "research", sessionId);
+export async function addResearchIdea(db: pg.Pool, i: IdeaInput, sessionId: string | null, channelId: string | null = null): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  return insertIdea(db, i, "research", sessionId, channelId);
 }
 
-async function insertIdea(db: pg.Pool, i: IdeaInput, origin: "manual" | "research", sessionId: string | null): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+async function insertIdea(db: pg.Pool, i: IdeaInput, origin: "manual" | "research", sessionId: string | null, channelId: string | null): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
   const { rows: known } = await db.query<{ topic: string }>("select topic from ideas union all select topic from videos");
   const dup = findSimilar(i.topic, known.map((k) => k.topic));
   if (dup) return { ok: false, message: `Too like a topic you already have: "${dup.slice(0, 80)}".` };
   const { rows } = await db.query<{ id: string }>(
-    "insert into ideas (topic, hook, why, sources, score, origin) values ($1, $2, $3, $4::jsonb, $5, $6) returning id",
-    [i.topic, i.hook, i.why, JSON.stringify(i.sources), i.score, origin],
+    "insert into ideas (topic, hook, why, sources, score, origin, channel_id) values ($1, $2, $3, $4::jsonb, $5, $6, $7) returning id",
+    [i.topic, i.hook, i.why, JSON.stringify(i.sources), i.score, origin, channelId],
   );
   const id = rows[0]!.id;
-  await recordAudit(db, "idea.added", { ideaId: id, sources: i.sources.length, origin, sessionId });
+  await recordAudit(db, "idea.added", { ideaId: id, sources: i.sources.length, origin, sessionId, channelId });
   return { ok: true, id };
 }
 
@@ -67,8 +82,8 @@ export async function draftIdea(db: pg.Pool, queue: EnqueueOnly, actor: GateActo
 
 /** Draft now for the owner (session id) or the overnight scheduler (null): one path, so both make the same normal video. */
 export async function draftIdeaAs(db: pg.Pool, queue: EnqueueOnly, sessionId: string | null, id: string, choice: { kind: string; language: string }): Promise<{ ok: true; videoId: string } | { ok: false; message: string }> {
-  const claim = await db.query<{ topic: string; hook: string; why: string }>(
-    "update ideas set status = 'drafting', updated_at = now() where id = $1 and status = 'proposed' returning topic, hook, why",
+  const claim = await db.query<{ topic: string; hook: string; why: string; channel_id: string | null }>(
+    "update ideas set status = 'drafting', updated_at = now() where id = $1 and status = 'proposed' returning topic, hook, why, channel_id",
     [id],
   );
   const idea = claim.rows[0];
@@ -82,7 +97,7 @@ export async function draftIdeaAs(db: pg.Pool, queue: EnqueueOnly, sessionId: st
   }
   let r;
   try {
-    r = await startVideo(db, queue, sessionId, input.data);
+    r = await startVideo(db, queue, sessionId, input.data, idea.channel_id);
   } catch {
     await release();
     return { ok: false, message: "Could not start the video. Nothing was saved. Try again in a minute." };

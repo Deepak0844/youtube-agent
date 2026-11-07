@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { channelLang } from "@/server/core/idea-research";
 import { findSimilar } from "@/server/core/ideas";
 import { draftStop, type DraftStop } from "@/server/core/scheduler";
 import { recordAudit } from "@/server/db/audit";
@@ -58,13 +59,17 @@ export async function runOvernightDrafting(db: pg.Pool, queue: EnqueueOnly): Pro
     state.budgetLeftMicro = await budgetLeftMicro(db);
     stop = draftStop(s, state);
     if (stop) break;
-    const { rows } = await db.query<{ topic: string }>("select topic from ideas where id = $1 and status = 'proposed'", [id]);
+    // The video follows the idea's channel: its language (one of the six, else English). An idea with no channel stays English.
+    const { rows } = await db.query<{ topic: string; lang: string | null }>(
+      "select i.topic, c.default_language as lang from ideas i left join youtube_channels c on c.channel_id = i.channel_id where i.id = $1 and i.status = 'proposed'",
+      [id],
+    );
     const topic = rows[0]?.topic;
     if (!topic) continue; // dismissed or drafted since we looked
     if (findSimilar(topic, known)) { skipped++; continue; }
     let r: { ok: true; videoId: string } | { ok: false; message: string };
     try {
-      r = await draftIdeaAs(db, queue, null, id, { kind: s.tracks[0] ?? "tsx", language: "en" });
+      r = await draftIdeaAs(db, queue, null, id, { kind: s.tracks[0] ?? "tsx", language: channelLang(rows[0]!.lang) });
     } catch {
       r = { ok: false, message: "error" };
     }

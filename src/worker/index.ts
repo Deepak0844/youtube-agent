@@ -13,6 +13,7 @@ import { throttledCommentSync } from "@/server/db/comments";
 import { pullAnalytics, pullMessage } from "@/server/db/analytics";
 import { runCompetitorsJob, throttledResearchPurge } from "@/server/db/research";
 import { runOptimizer, runWeeklyReview } from "@/server/db/insights";
+import { refreshChannelDescription } from "@/server/db/channel-description";
 import { runIdeaResearch } from "@/server/db/idea-research";
 import { createInsightsModel } from "@/server/db/insights-model";
 import { defaultModelDeps } from "@/server/llm/default-deps";
@@ -85,7 +86,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
               optimizer: async () => (await runOptimizer(p, insightsModel(p), { kind: "worker" })).message,
               // Idea researcher: one capped model call over our own data, nothing fetched; adds proposed ideas only. Skips quietly with no
               // priced "Titles and insights" model or at a spend limit.
-              research: async () => (await runIdeaResearch(p, insightsModel(p), { kind: "worker" })).message,
+              research: async () => (await runIdeaResearch(p, insightsModel(p), { kind: "worker" }, { refreshDescription: (id) => refreshChannelDescription(p, loadKeyring, defaultGoogleHttp, id, { sessionId: null }) })).message,
               // Research (read only): competitor stats and trend lists, quota guarded; also deletes research rows older than 30 days.
               competitors: () => runCompetitorsJob(p, loadKeyring, defaultGoogleHttp),
             },
