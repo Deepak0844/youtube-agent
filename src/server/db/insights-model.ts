@@ -10,6 +10,7 @@ import { getModel, listRoutes, localServices } from "@/server/db/llm-models";
 import { createPgPaidCallPorts } from "@/server/db/paid-call-adapter";
 import { commitStage, failStage, markStageNeedsDecision, type Claim } from "@/server/db/stages";
 import { createAiSdkStep, type ToolDecl } from "@/server/llm/ai-sdk-step";
+import { RESEARCH_SYSTEM } from "@/server/core/idea-research";
 import { ModelUnavailable, type InsightsModel } from "./insights";
 
 // The one door from the weekly review and the optimizer to a paid text model (Phase 6.5). Rules:
@@ -59,10 +60,10 @@ export function insightsStageId(kind: string, period: string): string {
 /** `deps` is called once per run (it reads the owner's current settings and builds the vault reader). */
 export function createInsightsModel(db: pg.Pool, deps: () => Promise<InsightsDeps>): InsightsModel {
   return {
-    async run({ kind, prompt, maxUsd }) {
+    async run({ kind, prompt, maxUsd, period: given }) {
       const d = await deps();
       const now = (d.now ?? (() => new Date()))();
-      const period = kind === "review" ? isoWeekOf(now) : now.toISOString().slice(0, 10);
+      const period = given ?? (kind === "review" ? isoWeekOf(now) : now.toISOString().slice(0, 10));
       const stageRunId = insightsStageId(kind, period);
       const key = callKey(stageRunId, 0, 0);
 
@@ -81,7 +82,7 @@ export function createInsightsModel(db: pg.Pool, deps: () => Promise<InsightsDep
       const price = priceCardFor(row, local);
       if (!usable.ok || !price) throw new ModelUnavailable(usable.ok ? "the model has no price, so paid calls are refused" : usable.reason);
 
-      const messages: Message[] = [{ role: "system", content: SYSTEM }, { role: "user", content: prompt }];
+      const messages: Message[] = [{ role: "system", content: kind === "research" ? RESEARCH_SYSTEM : SYSTEM }, { role: "user", content: prompt }];
       const capMicro = Math.round(maxUsd * 1_000_000);
       const reserveMicroUsd = worstCaseMicroUsd(price, { inputTokens: estimateInputTokens(messages), maxOutputTokens: INSIGHTS_MAX_OUTPUT_TOKENS });
       if (reserveMicroUsd > capMicro) throw new ModelUnavailable(`the call could cost up to ${microToUsd(reserveMicroUsd)} USD, over the ${microToUsd(capMicro)} USD limit, so it was not sent`);

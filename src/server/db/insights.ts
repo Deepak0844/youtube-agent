@@ -18,7 +18,7 @@ const byDetail = (by: By) => ({ by: by.kind, sessionId: by.kind === "session" ? 
 /** The one door to a text model for insights. The implementation must reserve and record the spend through the app's paid-call path and
  *  must refuse (throw ModelUnavailable) when the model is unpriced, missing or disabled. `maxUsd` is the cap for this one call. */
 export interface InsightsModel {
-  run(a: { kind: "review" | "optimizer"; prompt: string; maxUsd: number }): Promise<{ text: string; costUsd: number }>;
+  run(a: { kind: "review" | "optimizer" | "research"; prompt: string; maxUsd: number; /** research only: one attempt per period, so the caller counts runs into it */ period?: string }): Promise<{ text: string; costUsd: number }>;
 }
 /** A refusal with a plain sentence that is safe to show (no model, unpriced model, over budget). */
 export class ModelUnavailable extends Error {

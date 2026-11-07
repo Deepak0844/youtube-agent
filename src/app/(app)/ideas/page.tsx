@@ -3,6 +3,7 @@ import { requireOwner } from "@/lib/auth/require-owner";
 import { listIdeas } from "@/server/db/ideas";
 import { getPool } from "@/server/db/pool";
 import { AddIdeaForm, IdeaCard } from "./idea-parts";
+import { ResearchNowForm } from "./research-now";
 
 // The idea backlog. requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function IdeasPage() {
@@ -24,6 +25,7 @@ async function Owned() {
           Topics to make next. Draft now starts a normal video that stops at its first approval step: nothing is approved or uploaded for you. Ideas too like an old idea or an existing video are refused.
         </p>
       </header>
+      <ResearchNowForm />
       <AddIdeaForm />
       <section aria-labelledby="backlog-h" className="flex flex-col gap-3">
         <h2 id="backlog-h" className="text-title font-semibold">Backlog</h2>
