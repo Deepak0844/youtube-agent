@@ -108,7 +108,7 @@ export async function runBackup(db: pg.Pool, sessionId: string, deps: BackupDeps
     await save(db, result).catch(() => undefined);
     await recordAudit(db, "backup.failed", { sessionId, reason: cls }).catch(() => undefined);
     // In-app notification row only: the web process has no desktop or webhook sender (those plug in on the worker side).
-    await notifyTransition(db, { channels: {} }, { event: "backup_failed", from: "ok", to: "backup_failed", transitionId: `backup-${now.toISOString()}`, detail: result.error }).catch(() => undefined);
+    await notifyTransition(db, { channels: {}, inAppOnly: true }, { event: "backup_failed", from: "ok", to: "backup_failed", transitionId: `backup-${now.toISOString()}`, detail: result.error }).catch(() => undefined);
   }
   return result;
 }
