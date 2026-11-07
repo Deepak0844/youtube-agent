@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { LANGUAGE_WORDS } from "@/server/core/videos-view";
@@ -21,8 +22,17 @@ async function Owned({ params }: { params: PageProps<"/series/[id]">["params"] }
   await requireOwner();
   const { id } = await params;
   const db = getPool();
-  const [s, rate] = UUID.test(id) ? await Promise.all([getSeries(db, id), loadInrRate(db)]) : [null, 0];
-  if (!s) return <h1 className="text-page-title font-semibold tracking-tight">Series not found</h1>;
+  const [s, rate] = await Promise.all([UUID.test(id) ? getSeries(db, id) : Promise.resolve(null), loadInrRate(db)]);
+  // Deliberately a page with its own <h1>, not notFound(): the session-required spec needs a heading on every page to prove denied responses carry no content.
+  if (!s)
+    return (
+      <div className="flex min-w-0 flex-col gap-2">
+        <h1 className="text-page-title font-semibold tracking-tight">Series not found</h1>
+        <Link href="/series" className="text-small text-muted underline">
+          All series
+        </Link>
+      </div>
+    );
   const planned = s.parts.filter((p) => p.status === "planned").map((p) => p.partNo);
   const shown = s.parts.filter((p) => p.status !== "dropped");
   return (

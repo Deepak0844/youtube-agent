@@ -3,7 +3,7 @@ import { latestReview, listProposals } from "@/server/db/insights";
 import { getPool } from "@/server/db/pool";
 import { loadInrRate } from "@/server/db/system-settings";
 import { Pill } from "@/ui/primitives/pill";
-import { DecideForm, RunReviewForm } from "./insights-forms";
+import { DecideForm, RunOptimizerForm, RunReviewForm } from "./insights-forms";
 
 const pct = (v: number | null) => (v === null ? "—" : `${v.toFixed(1)}%`);
 
@@ -92,6 +92,7 @@ export async function Insights() {
       <div className="flex flex-col gap-2">
         <h2 className="text-title font-semibold">Proposals</h2>
         <p className="max-w-[68ch] text-body text-muted">Ideas from the optimizer. Accept or dismiss records your decision only; nothing is changed for you.</p>
+        <RunOptimizerForm />
         {proposals.length === 0 ? (
           <p className="rounded-card bg-surface p-pad text-body text-muted">No proposals yet. The optimizer is off until you turn it on in Settings, Schedule, and it stays quiet below {r?.minSample ?? 10} shorts.</p>
         ) : (

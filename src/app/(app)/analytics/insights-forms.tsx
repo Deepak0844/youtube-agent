@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { Button } from "@/ui/primitives/button";
-import { decideProposalAction, runReviewAction, type InsightState } from "./insights-actions";
+import { decideProposalAction, runOptimizerAction, runReviewAction, type InsightState } from "./insights-actions";
 
 function Note({ state, testId }: { state: InsightState; testId: string }) {
   if (!state.message) return null;
@@ -10,6 +10,18 @@ function Note({ state, testId }: { state: InsightState; testId: string }) {
     <p role="status" data-testid={testId} className={state.ok ? "text-body text-pill-positive-ink" : "text-body text-pill-negative-ink"}>
       {state.message}
     </p>
+  );
+}
+
+export function RunOptimizerForm() {
+  const [state, run, pending] = useActionState<InsightState, FormData>(() => runOptimizerAction(), {});
+  return (
+    <form action={run} className="flex flex-wrap items-center gap-3">
+      <Button type="submit" variant="ghost" disabled={pending}>
+        {pending ? "Thinking…" : "Run optimizer now"}
+      </Button>
+      <Note state={state} testId="optimizer-note" />
+    </form>
   );
 }
 
