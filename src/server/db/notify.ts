@@ -17,7 +17,7 @@ export interface NotifyPorts {
   now?: () => Date;
   /** A channel that does not answer in this long counts as failed. Default 5000. */
   channelTimeoutMs?: number;
-  /** Web-process callers: write the in-app row only. Desktop popups come from the worker, so nothing is logged as failed here. */
+  /** Web-process callers have no desktop or webhook sender: write the in-app row only, and log no delivery attempt (a fake failure would raise the delivery banner). */
   inAppOnly?: boolean;
 }
 
@@ -64,7 +64,6 @@ export async function notifyTransition(db: pg.Pool, ports: NotifyPorts, e: Trans
   if (ins.rows.length === 0) return { fired: false };
   const id = ins.rows[0]!.id;
 
-  if (ports.inAppOnly) return { fired: true, notificationId: id };
   // Everything below is best-effort: nothing here may throw into the pipeline.
   try {
     const settings = await loadNotifySettings(db);
@@ -72,7 +71,7 @@ export async function notifyTransition(db: pg.Pool, ports: NotifyPorts, e: Trans
     const decisions = decideDelivery(e.event, settings, localMinutes(now, settings.quietHours.tz));
     const msg: ChannelMessage = { title, text, message: text ? `${title}: ${text}` : title };
     for (const d of decisions) {
-      if (d.channel === "in_app") continue;
+      if (d.channel === "in_app" || ports.inAppOnly) continue;
       if (d.held) {
         await logAttempt(db, id, d.channel, "held", null);
         continue;
