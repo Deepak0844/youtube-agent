@@ -76,7 +76,7 @@ describe("runOvernightDrafting", () => {
   });
   it("stops_after_two_failed_starts", async () => {
     // Blank topics pass the table check but fail the new video rules, so each start fails.
-    await db.ownerPool.query("insert into ideas (topic, score) values ('        ', 9), ('         ', 8), ('          ', 7), ($1, 1)", [TOPICS[0]]);
+    await db.ownerPool.query("insert into ideas (topic, score) values ('        ', 9), ('         ', 8), ('          ', 7), ($1, 2)", [TOPICS[0]]);
     await setSettings({});
     const msg = await runOvernightDrafting(db.pool, queue);
     expect(msg).toContain("2 failed");
