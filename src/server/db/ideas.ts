@@ -31,15 +31,24 @@ export async function listIdeas(db: pg.Pool): Promise<IdeaRow[]> {
 
 /** Rejects a topic that is too like any idea ever held (dismissed ones too, as the old app did) or any video topic. */
 export async function addIdea(db: pg.Pool, actor: GateActor, i: IdeaInput): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  return insertIdea(db, i, "manual", actor.sessionId);
+}
+
+/** The idea researcher's door: the same checks and table as addIdea, marked origin 'research' (the owner's session id, or null for the worker). */
+export async function addResearchIdea(db: pg.Pool, i: IdeaInput, sessionId: string | null): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  return insertIdea(db, i, "research", sessionId);
+}
+
+async function insertIdea(db: pg.Pool, i: IdeaInput, origin: "manual" | "research", sessionId: string | null): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
   const { rows: known } = await db.query<{ topic: string }>("select topic from ideas union all select topic from videos");
   const dup = findSimilar(i.topic, known.map((k) => k.topic));
   if (dup) return { ok: false, message: `Too like a topic you already have: "${dup.slice(0, 80)}".` };
   const { rows } = await db.query<{ id: string }>(
-    "insert into ideas (topic, hook, why, sources, score) values ($1, $2, $3, $4::jsonb, $5) returning id",
-    [i.topic, i.hook, i.why, JSON.stringify(i.sources), i.score],
+    "insert into ideas (topic, hook, why, sources, score, origin) values ($1, $2, $3, $4::jsonb, $5, $6) returning id",
+    [i.topic, i.hook, i.why, JSON.stringify(i.sources), i.score, origin],
   );
   const id = rows[0]!.id;
-  await recordAudit(db, "idea.added", { ideaId: id, sources: i.sources.length, sessionId: actor.sessionId });
+  await recordAudit(db, "idea.added", { ideaId: id, sources: i.sources.length, origin, sessionId });
   return { ok: true, id };
 }
 

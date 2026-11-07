@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { researchDue, type ResearchState } from "./idea-research";
 import { isoWeek } from "./insights";
 
 // Scheduler settings (Phase 6, parity with the old agent/scheduler.py DEFAULTS) and the pure "what is due now" rule. No IO.
@@ -45,7 +46,7 @@ export const ANALYTICS_FROM_HOUR = 9;
 
 export const COMPETITORS_FROM_MINUTE = 9 * 60 + 30; // 09:30 IST, after the analytics pull
 
-export type JobName = "drafting" | "analytics" | "competitors" | "weekly_review" | "optimizer";
+export type JobName = "drafting" | "analytics" | "competitors" | "research" | "weekly_review" | "optimizer";
 export interface DueJob {
   job: JobName;
   /** One value per run period; a job with this (job, runKey) already logged is never started again, even if it failed. */
@@ -64,7 +65,8 @@ export function istParts(now: Date): { date: string; hour: number } {
   return { date: d.toISOString().slice(0, 10), hour: d.getUTCHours() };
 }
 
-export function dueJobs(s: SchedulerSettings, now: Date): DueJob[] {
+/** `research` is the idea backlog state; without it the idea researcher is never due (the caller reads it from the database). */
+export function dueJobs(s: SchedulerSettings, now: Date, research?: ResearchState & { runsToday: number }): DueJob[] {
   const { date, hour: h } = istParts(now);
   const out: DueJob[] = [];
   // Overnight drafting: [hour, hour + 3) IST, wrapping past midnight. The key is the date the window STARTED, so one run per night.
@@ -76,6 +78,8 @@ export function dueJobs(s: SchedulerSettings, now: Date): DueJob[] {
   if (s.analytics && h >= ANALYTICS_FROM_HOUR) out.push({ job: "analytics", runKey: date });
   const minutes = h * 60 + new Date(now.getTime() + IST_OFFSET_MS).getUTCMinutes();
   if (s.competitors && minutes >= COMPETITORS_FROM_MINUTE) out.push({ job: "competitors", runKey: date });
+  // Idea researcher: backlog under 5 and none in the last 20 hours; the key is the IST date plus a counter, so it can run again tomorrow.
+  if (s.research && research && researchDue(research)) out.push({ job: "research", runKey: `${date}.${research.runsToday + 1}` });
   // Weekly review: the chosen IST weekday (0 = Monday) from the chosen hour, once per ISO week.
   const weekday = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
   if (s.weekly_review && weekday === s.weekly_day && h >= s.weekly_hour) out.push({ job: "weekly_review", runKey: isoWeek(date) });

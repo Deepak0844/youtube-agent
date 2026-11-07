@@ -1,5 +1,6 @@
 import type pg from "pg";
-import { dueJobs, type JobName } from "@/server/core/scheduler";
+import { dueJobs, istParts, type JobName } from "@/server/core/scheduler";
+import { researchState } from "@/server/db/idea-research";
 import { notifySafe, type NotifySend } from "@/server/db/notify";
 import { loadScheduler } from "@/server/db/system-settings";
 
@@ -14,7 +15,7 @@ const failure = (e: unknown): string => `The job failed (${e instanceof Error ? 
 
 export async function runDueJobs(db: pg.Pool, runners: JobRunners, send: NotifySend | undefined, now: Date = new Date()): Promise<JobName[]> {
   const ran: JobName[] = [];
-  for (const { job, runKey } of dueJobs(await loadScheduler(db), now)) {
+  for (const { job, runKey } of dueJobs(await loadScheduler(db), now, await researchState(db, istParts(now).date))) {
     const run = runners[job];
     if (!run) continue;
     const claim = await db.query<{ id: string }>(
