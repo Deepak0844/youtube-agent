@@ -1,9 +1,10 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { createWriteStream } from "node:fs";
 import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type pg from "pg";
-import { backupName, backupResultSchema, backupsToDelete, type BackupResult } from "@/server/core/backup";
+import { DEFAULT_DB_CONTAINER, backupName, backupResultSchema, backupsToDelete, dumpPlan, type BackupResult } from "@/server/core/backup";
 import { recordAudit } from "@/server/db/audit";
 import { notifyTransition } from "@/server/db/notify";
 import { getSetting, setSessionSettings } from "@/server/db/settings";
@@ -67,6 +68,40 @@ export async function lastBackup(db: pg.Pool): Promise<BackupResult | null> {
   return parsed.success ? parsed.data : null;
 }
 
+const ok = (cmd: string, args: string[]) => run(cmd, args, { timeout: 10_000, windowsHide: true }).then((r) => r.stdout, () => null);
+
+/** pg_dump on PATH if present, else pg_dump inside the database container, streamed to the file. No password is ever an argument. */
+async function dumpDatabase(file: string, deps: BackupDeps, exec: NonNullable<BackupDeps["exec"]>): Promise<void> {
+  const url = deps.databaseUrl ?? process.env.MIGRATE_DATABASE_URL ?? process.env.DATABASE_URL;
+  const container = process.env.BACKUP_DB_CONTAINER || DEFAULT_DB_CONTAINER;
+  const pgDump = (await ok("pg_dump", ["--version"])) !== null;
+  const containerRunning = !pgDump && (await ok("docker", ["inspect", "-f", "{{.State.Running}}", container]))?.trim() === "true";
+  // The container's own login: its POSTGRES_USER / POSTGRES_DB (read with printenv, no shell).
+  const user = containerRunning ? (await ok("docker", ["exec", container, "printenv", "POSTGRES_USER"]))?.trim() || "postgres" : "postgres";
+  let dbName = user;
+  try {
+    dbName = decodeURIComponent(new URL(url ?? "").pathname.slice(1)) || user;
+  } catch {
+    /* container default */
+  }
+  const plan = dumpPlan({ pgDump, containerRunning }, { container, user, db: dbName });
+  if (plan.kind === "none") throw new BackupError(plan.message);
+  if (plan.kind === "local") return exec("pg_dump", ["--format=custom", "--no-password", "--file", file], pgEnv(url));
+  await new Promise<void>((resolve, reject) => {
+    const out = createWriteStream(file, { mode: 0o600 });
+    const child = spawn("docker", plan.args, { stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+    const timer = setTimeout(() => child.kill(), DUMP_TIMEOUT_MS);
+    child.stdout.pipe(out);
+    child.on("error", reject);
+    out.on("error", reject);
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) out.end(resolve);
+      else reject(new Error("dump exited with an error"));
+    });
+  });
+}
+
 async function backupNow(root: string, now: Date, deps: BackupDeps): Promise<{ name: string; bytes: number; pruned: number }> {
   const exec = deps.exec ?? defaultExec;
   const dir = path.join(root, BACKUPS_DIR);
@@ -75,7 +110,7 @@ async function backupNow(root: string, now: Date, deps: BackupDeps): Promise<{ n
   await mkdir(target, { recursive: true, mode: 0o700 });
   try {
     const dump = path.join(target, "db.dump");
-    await exec("pg_dump", ["--format=custom", "--no-password", "--file", dump], pgEnv(deps.databaseUrl ?? process.env.MIGRATE_DATABASE_URL ?? process.env.DATABASE_URL));
+    await dumpDatabase(dump, deps, exec);
     // Everything in the storage folder except the backups folder itself.
     const members = (await readdir(root)).filter((n) => n !== BACKUPS_DIR);
     const archive = path.join(target, "storage.tar.gz");

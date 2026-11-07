@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backupName, backupResultSchema, backupsToDelete, describeBackup, formatBytes, isBackupName } from "@/server/core/backup";
+import { backupName, backupResultSchema, backupsToDelete, describeBackup, dumpPlan, formatBytes, isBackupName } from "@/server/core/backup";
 
 describe("backup rules", () => {
   it("names_a_backup_folder_from_the_utc_time", () => {
@@ -29,5 +29,21 @@ describe("backup rules", () => {
 
   it("result_schema_refuses_extra_fields", () => {
     expect(backupResultSchema.safeParse({ ok: false, at: "2026-11-07T08:30:00.000Z", error: "x", secret: "y" }).success).toBe(false);
+  });
+});
+
+describe("dumpPlan", () => {
+  const o = { container: "ytstudio-dev-pg", user: "ytstudio", db: "ytstudio" };
+  it("prefers_pg_dump_on_path", () => {
+    expect(dumpPlan({ pgDump: true, containerRunning: true }, o)).toEqual({ kind: "local" });
+  });
+  it("falls_back_to_docker_exec_with_no_password_argument", () => {
+    expect(dumpPlan({ pgDump: false, containerRunning: true }, o)).toEqual({
+      kind: "docker",
+      args: ["exec", "-i", "ytstudio-dev-pg", "pg_dump", "--format=custom", "-U", "ytstudio", "ytstudio"],
+    });
+  });
+  it("says_what_to_do_when_neither_exists", () => {
+    expect(dumpPlan({ pgDump: false, containerRunning: false }, o)).toEqual({ kind: "none", message: "Install Postgres client tools or start the database container." });
   });
 });

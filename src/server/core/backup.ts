@@ -49,3 +49,15 @@ export function describeBackup(r: BackupResult | null): BackupView {
   if (r.ok) return { tone: "ok", text: `Last backup ${formatIst(new Date(r.at))}, ${formatBytes(r.bytes)}.` };
   return { tone: "failed", text: `Backup failed at ${formatIst(new Date(r.at))}. ${r.error}` };
 }
+
+export const NO_DUMP_MESSAGE = "Install Postgres client tools or start the database container.";
+export const DEFAULT_DB_CONTAINER = "ytstudio-dev-pg";
+
+export type DumpPlan = { kind: "local" } | { kind: "docker"; args: string[] } | { kind: "none"; message: string };
+
+/** Which way to dump: pg_dump on PATH first, else pg_dump inside the running database container (its own local trust login, no password). */
+export function dumpPlan(a: { pgDump: boolean; containerRunning: boolean }, o: { container: string; user: string; db: string }): DumpPlan {
+  if (a.pgDump) return { kind: "local" };
+  if (a.containerRunning) return { kind: "docker", args: ["exec", "-i", o.container, "pg_dump", "--format=custom", "-U", o.user, o.db] };
+  return { kind: "none", message: NO_DUMP_MESSAGE };
+}
