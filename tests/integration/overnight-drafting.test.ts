@@ -4,6 +4,7 @@ import { runOvernightDrafting } from "@/server/db/drafting";
 import { recentRuns, runDueJobs } from "@/server/db/scheduler";
 import { saveSchedulerSettings } from "@/server/db/system-settings";
 import { createVideoRow } from "@/server/db/videos";
+import { ensureChannel } from "../support/channel-fixture";
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;
@@ -136,5 +137,35 @@ describe("drafting through the scheduler", () => {
     await seed(TOPICS);
     await setSettings({ enabled: false });
     expect(await runDueJobs(db.pool, { drafting: async () => "x" }, undefined, NIGHT)).toEqual([]);
+  });
+});
+
+describe("overnight drafting follows each idea's channel", () => {
+  const forChannel = async (channelId: string, language: string, topic: string) => {
+    await ensureChannel(db.ownerPool, channelId);
+    await db.ownerPool.query("update youtube_channels set default_language = $2 where channel_id = $1", [channelId, language]);
+    await db.ownerPool.query("insert into ideas (topic, score, channel_id) values ($1, 9, $2)", [topic, channelId]);
+  };
+  const video = async (topic: string) => (await db.ownerPool.query("select language, channel_id from videos where topic = $1", [topic])).rows[0];
+
+  it("a_hindi_channels_idea_starts_a_hi_video_with_that_channel", async () => {
+    await forChannel("UChindi", "hi", TOPICS[0]!);
+    await setSettings({ max_drafts: 1 });
+    await runOvernightDrafting(db.pool, queue);
+    expect(await video(TOPICS[0]!)).toEqual({ language: "hi", channel_id: "UChindi" });
+  });
+  it("an_unsupported_or_empty_channel_language_falls_back_to_english_but_keeps_the_channel", async () => {
+    await forChannel("UCfrench", "fr", TOPICS[0]!);
+    await forChannel("UCempty", "", TOPICS[1]!);
+    await setSettings({ max_drafts: 2 });
+    await runOvernightDrafting(db.pool, queue);
+    expect(await video(TOPICS[0]!)).toEqual({ language: "en", channel_id: "UCfrench" });
+    expect(await video(TOPICS[1]!)).toEqual({ language: "en", channel_id: "UCempty" });
+  });
+  it("an_idea_with_no_channel_stays_english_with_no_channel", async () => {
+    await seed([TOPICS[0]!]);
+    await setSettings({ max_drafts: 1 });
+    await runOvernightDrafting(db.pool, queue);
+    expect(await video(TOPICS[0]!)).toEqual({ language: "en", channel_id: null });
   });
 });

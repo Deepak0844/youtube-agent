@@ -9,6 +9,7 @@ import { PRESETS, STYLE_IDS } from "../../../../../remotion/kit/presets";
 import { LANGUAGE_ORDER, LANGUAGE_WORDS } from "@/server/core/videos-view";
 import { Input } from "@/ui/primitives/input";
 import { Label } from "@/ui/primitives/label";
+import { RefreshDescription } from "./refresh-description";
 import { confirmChannelAction, connectChannelAction, disconnectChannelAction, saveChannelSettingsAction } from "./actions";
 
 export default function ChannelsPage({ searchParams }: PageProps<"/settings/channels">) {
@@ -97,6 +98,7 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/settings/chan
                       Disconnect
                     </Button>
                   </form>
+                  {c.status === "connected" ? <RefreshDescription id={c.id} /> : null}
                   <details className="basis-full">
                     <summary className="min-h-11 cursor-pointer py-2 text-body font-medium">Safety and defaults</summary>
                     <form action={saveChannelSettingsAction} className="flex flex-col gap-4 pt-2">

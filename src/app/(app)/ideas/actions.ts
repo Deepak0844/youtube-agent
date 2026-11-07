@@ -24,7 +24,9 @@ export async function addIdeaAction(_prev: IdeaFormState, form: FormData): Promi
   if (origin) return { error: origin };
   const p = parseIdeaForm(form);
   if (!p.ok) return { error: p.message };
-  const r = await addIdea(getPool(), { kind: "session", sessionId: owner.sessionId }, p.value);
+  const channel = text(form, "channel");
+  if (channel && !/^[A-Za-z0-9_-]{1,64}$/.test(channel)) return { error: "Pick a channel from the list." };
+  const r = await addIdea(getPool(), { kind: "session", sessionId: owner.sessionId }, p.value, channel || null);
   if (!r.ok) return { error: r.message };
   refresh();
   return { ok: true };
