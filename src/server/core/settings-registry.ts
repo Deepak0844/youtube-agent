@@ -33,6 +33,10 @@ export const SETTINGS = {
   "backup.last_run": { schema: backupResultSchema, default: null, safety: false, label: "Last backup result" },
   // Scheduler (Phase 6). Safety: it decides whether the app drafts videos and spends money while the owner is away.
   scheduler: { schema: schedulerSchema, default: SCHEDULER_DEFAULTS, safety: true, label: "Scheduler" },
+  // Targets (Phase 6.2). pause_fired is written only by pauseDraftingForTargets (settings.ts) and cleared when the owner saves the rule.
+  "targets.pause_n": { schema: nonNegInt.max(50), default: 0, safety: false, label: "Pause drafting after this many shorts over the cost target (0 = off)" },
+  "targets.rpm_usd": { schema: z.number().finite().min(0).max(1000), default: 0, safety: false, label: "Revenue per 1,000 views, dollars (estimate only)" },
+  "targets.pause_fired": { schema: z.string().nullable(), default: null, safety: false, label: "When the pause rule last paused drafting" },
   "jobs.concurrent_renders": { schema: posInt, default: 1, safety: false, label: "Concurrent renders" },
   "jobs.concurrent_jobs": { schema: posInt, default: 2, safety: false, label: "Concurrent jobs" },
   "storage.warn_gb": { schema: posInt, default: 50, safety: false, label: "Storage warning (GB)" },

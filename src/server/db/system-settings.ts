@@ -316,3 +316,43 @@ export async function loadScheduler(db: pg.Pool): Promise<SchedulerSettings> {
   const p = schedulerSchema.safeParse(await getSetting(db, "scheduler"));
   return p.success ? p.data : SCHEDULER_DEFAULTS;
 }
+
+export interface TargetSettings {
+  pauseN: number;
+  rpmUsd: number;
+  pauseFired: string | null;
+}
+
+/** The pause rule's N, the manual revenue rate and when the rule last fired; hand-edited bad values fall back to off / 0 / never. */
+export async function loadTargetSettings(db: pg.Pool): Promise<TargetSettings> {
+  const m = await getStoredSettings(db, ["targets.pause_n", "targets.rpm_usd", "targets.pause_fired"]);
+  const n = m.get("targets.pause_n");
+  const r = m.get("targets.rpm_usd");
+  const f = m.get("targets.pause_fired");
+  return {
+    pauseN: typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 50 ? n : 0,
+    rpmUsd: typeof r === "number" && r >= 0 && r <= 1000 ? r : 0,
+    pauseFired: typeof f === "string" ? f : null,
+  };
+}
+
+/** Saves the pause rule and the revenue rate. Saving the rule clears "fired", so it can pause drafting once more. */
+export async function saveTargetSettings(db: pg.Pool, input: { pauseN: unknown; rpmUsd: unknown }): Promise<SaveResult> {
+  const n = typeof input.pauseN === "string" && /^\d{1,2}$/.test(input.pauseN.trim()) ? Number(input.pauseN.trim()) : NaN;
+  const rpmRaw = typeof input.rpmUsd === "string" ? input.rpmUsd.trim() : "";
+  const rpm = /^\d{1,4}(\.\d{1,4})?$/.test(rpmRaw) ? Number(rpmRaw) : NaN;
+  if (!(n >= 0 && n <= 50)) return { ok: false, error: "Use a whole number from 0 (off) to 50 shorts." };
+  if (!(rpm >= 0 && rpm <= 1000)) return { ok: false, error: "Enter the revenue per 1,000 views in dollars, such as 0.50. Use 0 to hide the estimate." };
+  try {
+    return {
+      ok: true,
+      changed: await writeAudited(db, [
+        { key: "targets.pause_n", value: n },
+        { key: "targets.rpm_usd", value: rpm },
+        { key: "targets.pause_fired", value: null },
+      ]),
+    };
+  } catch {
+    return { ok: false, error: GENERIC };
+  }
+}

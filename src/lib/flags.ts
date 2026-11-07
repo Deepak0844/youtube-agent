@@ -21,7 +21,7 @@ export const FLAGS: Record<string, boolean> = {
   series: false, // Phase 6b
   "plan.calendar": false,
   "plan.research": false,
-  "plan.targets": false,
+  "plan.targets": true, // Phase 6
   "publish.uploads": false,
   "publish.engagement": true, // Phase 5 slice 5b
   "publish.analytics": true, // Phase 5 slice 5a
