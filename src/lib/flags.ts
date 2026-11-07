@@ -18,7 +18,7 @@ export const FLAGS: Record<string, boolean> = {
   "settings.assets": true,
   // Not built yet (later phases).
   ideas: true, // Phase 6.3
-  series: false, // Phase 6b
+  series: true, // Phase 6b.1
   "plan.calendar": true, // Phase 6.7
   "plan.research": true, // Phase 6.4
   "plan.targets": true, // Phase 6
