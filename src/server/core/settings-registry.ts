@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { backupResultSchema } from "@/server/core/backup";
 import { checkWebhookUrl } from "@/server/core/notify-send";
+import { SCHEDULER_DEFAULTS, schedulerSchema } from "@/server/core/scheduler";
 import { DEFAULT_EVENT_SWITCHES, NOTIFY_EVENT_IDS, isHhmm, isTimeZone } from "@/server/core/notify";
 
 // Pure registry of owner settings (Docs 02 4.5-4.7, 07 3). `safety` keys weaken protections when changed, so only a
@@ -30,6 +31,8 @@ const quietHours = z
 export const SETTINGS = {
   // Result of the last backup (Phase 7). Written only by the session-only Back up now action; not a safety key.
   "backup.last_run": { schema: backupResultSchema, default: null, safety: false, label: "Last backup result" },
+  // Scheduler (Phase 6). Safety: it decides whether the app drafts videos and spends money while the owner is away.
+  scheduler: { schema: schedulerSchema, default: SCHEDULER_DEFAULTS, safety: true, label: "Scheduler" },
   "jobs.concurrent_renders": { schema: posInt, default: 1, safety: false, label: "Concurrent renders" },
   "jobs.concurrent_jobs": { schema: posInt, default: 2, safety: false, label: "Concurrent jobs" },
   "storage.warn_gb": { schema: posInt, default: 50, safety: false, label: "Storage warning (GB)" },

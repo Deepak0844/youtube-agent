@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { withTestDb, type TestDb } from "../support/db";
+import { SCHEDULER_DEFAULTS } from "@/server/core/scheduler";
 import { SAFETY_KEYS, SETTINGS, type SettingKey } from "@/server/core/settings-registry";
 import { getSetting, setSetting, type Actor } from "@/server/db/settings";
 
@@ -25,6 +26,7 @@ const ALTERNATE: Record<string, unknown> = {
   "uploads.kill_switch": true,
   "comments.dry_run": false,
   "youtube.cutover_done": true,
+  scheduler: { ...SCHEDULER_DEFAULTS, hour: 5 },
   "network.local_services": ["localhost:11434"],
   "voice.local_url": "http://127.0.0.1:8880",
   "voice.voicestudio_url": "http://127.0.0.1:8881",

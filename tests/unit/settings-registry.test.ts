@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SCHEDULER_DEFAULTS } from "@/server/core/scheduler";
 import { ENGINE_KEYS } from "@/server/core/engine-config";
 import { BUDGET_DEFAULTS, SETTINGS, SAFETY_KEYS, parseSetting } from "@/server/core/settings-registry";
 
@@ -25,7 +26,7 @@ describe("settings registry", () => {
   it("safety_keys_are_exactly_the_reviewed_list", () => {
     expect([...SAFETY_KEYS].sort()).toEqual(
       [
-        "network.local_services", "policy.allow_public", "policy.require_evidence", "uploads.kill_switch", "youtube.cutover_done", "comments.dry_run",
+        "scheduler", "network.local_services", "policy.allow_public", "policy.require_evidence", "uploads.kill_switch", "youtube.cutover_done", "comments.dry_run",
         "assets.max_image_bytes", "assets.max_audio_bytes", "assets.max_pixels", "assets.max_batch_files", "assets.total_bytes_cap",
         "assets.retention_days", "assets.unused_days", "assets.trash_days", "voice.local_url", "voice.voicestudio_url",
         "notify.webhook_url", "llm.call_gap_ms", "claude_code.enabled", "claude_code.daily_cap", "ai.previous_routes",
@@ -38,6 +39,7 @@ describe("settings registry", () => {
     const d = Object.fromEntries(Object.entries(SETTINGS).filter(([k]) => !ENGINE_KEYS.includes(k as never) && !k.startsWith("notify.")).map(([k, v]) => [k, v.default]));
     expect(d).toEqual({
       "backup.last_run": null,
+      scheduler: SCHEDULER_DEFAULTS,
       "jobs.concurrent_renders": 1,
       "jobs.concurrent_jobs": 2,
       "storage.warn_gb": 50,

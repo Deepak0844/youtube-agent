@@ -114,6 +114,7 @@ describe("no code path in src writes a safety setting as anything but a session"
       "src/app/(app)/settings/providers/voice-actions.ts": ["saveVoiceServer"],
       "src/app/(app)/settings/assets/actions.ts": ["saveAssetSettings"],
       "src/app/(app)/engagement/actions.ts": ["saveUploadSwitches"],
+      "src/app/(app)/settings/schedule/actions.ts": ["saveSchedulerSettings"],
     });
     for (const names of [...Object.values(SETTINGS_IMPORT_ALLOW), ...Object.values(SESSION_WRITER_IMPORT_ALLOW)]) expect(names.length).toBeGreaterThan(0);
   });
