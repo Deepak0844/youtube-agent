@@ -56,6 +56,9 @@ async function getSettingForUpdate(client: pg.PoolClient, key: string): Promise<
 export const SESSION_BATCH_KEYS: readonly string[] = [
   "network.local_services",
   "scheduler",
+  "targets.pause_n",
+  "targets.rpm_usd",
+  "targets.pause_fired",
   "display.inr_rate",
   "voice.voicestudio_url",
   "voice.local_url",
@@ -135,6 +138,39 @@ export async function setSessionSettings(
     }
     await client.query("commit");
     return out;
+  } catch (err) {
+    await client.query("rollback").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * The pause rule's only write to the scheduler: turns overnight drafting OFF (never on) and records when, once, under one lock.
+ * Returns true only when it changed something (drafting was on and the rule had not fired since the owner last saved it).
+ */
+export async function pauseDraftingForTargets(db: pg.Pool): Promise<boolean> {
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext('ytstudio.targets.pause'))");
+    const sched = await getSettingForUpdate(client, "scheduler");
+    const fired = await getSettingForUpdate(client, "targets.pause_fired");
+    if ((sched as { enabled?: boolean } | null)?.enabled !== true || fired !== null) {
+      await client.query("rollback");
+      return false;
+    }
+    const write = (key: string, value: unknown) =>
+      client.query(
+        `insert into settings (key, value, updated_at, updated_by) values ($1, $2::jsonb, now(), 'system')
+         on conflict (key) do update set value = excluded.value, updated_at = now(), updated_by = excluded.updated_by`,
+        [key, JSON.stringify(value)],
+      );
+    await write("scheduler", { ...(sched as object), enabled: false });
+    await write("targets.pause_fired", new Date().toISOString());
+    await client.query("commit");
+    return true;
   } catch (err) {
     await client.query("rollback").catch(() => {});
     throw err;

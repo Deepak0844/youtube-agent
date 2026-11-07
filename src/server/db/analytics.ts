@@ -135,6 +135,7 @@ export interface AnalyticsRow {
   videoId: string;
   topic: string;
   channelTitle: string | null;
+  channelId: string | null;
   youtubeId: string;
   day: string | null;
   views: number | null;
@@ -161,10 +162,10 @@ const n = (v: string | null): number | null => (v === null ? null : Number(v));
 /** Every uploaded video with its newest snapshot, its spend so far, and its drop-off mapped to its beats. */
 export async function loadAnalytics(db: Pick<pg.Pool, "query">): Promise<AnalyticsView> {
   const { rows } = await db.query<{
-    video_id: string; topic: string; youtube_id: string; channel_title: string | null; day: string | null; views: string | null; likes: string | null; comments: string | null;
+    video_id: string; topic: string; youtube_id: string; channel_title: string | null; channel_id: string | null; day: string | null; views: string | null; likes: string | null; comments: string | null;
     minutes: string | null; pct: string | null; retention: Curve | null; error: string | null; pulled_ist: string | null; spend: string;
   }>(
-    `select u.video_id, v.topic, u.youtube_id, c.title as channel_title, a.day::text as day, a.views::text as views, a.likes::text as likes, a.comments::text as comments,
+    `select u.video_id, v.topic, u.youtube_id, c.title as channel_title, u.channel_id, a.day::text as day, a.views::text as views, a.likes::text as likes, a.comments::text as comments,
             a.minutes_watched::text as minutes, a.avg_view_pct::text as pct, a.retention, a.error,
             to_char(a.pulled_at at time zone 'Asia/Kolkata', 'DD Mon YYYY, HH24:MI') as pulled_ist,
             coalesce((select sum(si.actual_micro_usd) from spend_intents si join stage_runs sr on sr.id = si.stage_run_id where sr.video_id = u.video_id and si.status = 'done'), 0)::text as spend
@@ -189,7 +190,7 @@ export async function loadAnalytics(db: Pick<pg.Pool, "query">): Promise<Analyti
     const d = dropOff(curve, beatSpans(beats, body(r.video_id, "scenes")));
     if (curve.length > 0) shortsWithCurve++;
     return {
-      videoId: r.video_id, topic: r.topic, channelTitle: r.channel_title, youtubeId: r.youtube_id, day: r.day, views: n(r.views), likes: n(r.likes), comments: n(r.comments),
+      videoId: r.video_id, topic: r.topic, channelTitle: r.channel_title, channelId: r.channel_id, youtubeId: r.youtube_id, day: r.day, views: n(r.views), likes: n(r.likes), comments: n(r.comments),
       minutesWatched: n(r.minutes), avgViewPct: n(r.pct), spendMicroUsd: Number(r.spend), pulledAtIst: r.pulled_ist, error: r.error,
       retentionAt10: d.retentionAt10, biggestDropBeat: d.biggestDropBeat, biggestDrop: d.biggestDrop, hasCurve: curve.length > 0,
     };
