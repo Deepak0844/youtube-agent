@@ -9,6 +9,7 @@ import { getBudget } from "@/server/db/spend";
 import { logoutAction } from "@/app/_actions/logout";
 import { cn, focusRing } from "../lib/cn";
 import { AccountMenu } from "./account-menu";
+import { NotificationBell } from "./bell";
 import { Mark } from "./mark";
 
 const DEFAULT_DAY_CAP_USD = 15; // Doc 2 §4.5; used only until the budgets row is seeded
@@ -65,14 +66,9 @@ export function TopBar() {
           </Suspense>
         </p>
         <p className="hidden text-body whitespace-nowrap text-muted md:block">0 to review</p>
-        <button
-          type="button"
-          disabled
-          aria-label="Notifications, none"
-          className="hidden size-9 items-center justify-center rounded-control text-faint md:flex"
-        >
-          <Bell size={18} aria-hidden />
-        </button>
+        <Suspense fallback={<Bell size={18} aria-hidden className="text-faint" />}>
+          <NotificationBell />
+        </Suspense>
         <AccountMenu signOut={logoutAction} />
       </div>
     </header>
