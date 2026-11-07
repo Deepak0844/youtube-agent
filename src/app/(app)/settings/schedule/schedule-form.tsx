@@ -41,7 +41,7 @@ export function ScheduleForm({ s }: { s: SchedulerSettings }) {
         <h2 id="draft-h" className="text-title font-semibold">Overnight drafting</h2>
         <p className="max-w-[60ch] text-body text-muted">
           Drafts videos while you sleep and stops at your first approval step. It never approves anything and never uploads. Paid steps still obey your spending limits.
-          This switch only saves the setting: the drafting itself arrives in a later piece of Phase 6.
+          At the start hour it takes the best ideas from your backlog, one at a time, up to the limits below.
         </p>
         <label className="flex min-w-0 items-start gap-3">
           <input type="checkbox" name="enabled" checked={on} onChange={(e) => setOn(e.target.checked)} className={`${box} mt-0.5`} />
@@ -60,13 +60,13 @@ export function ScheduleForm({ s }: { s: SchedulerSettings }) {
           <Num name="max_pending" label="Most drafts waiting for you" note="Drafting pauses when this many wait. 1 to 10." value={s.max_pending} min={1} max={10} />
         </div>
         <p className="text-small text-muted">Video kind: code-scene (tsx) only. Other kinds arrive in a later phase.</p>
-        <Check name="research" label="Look for new ideas when the backlog runs low" note="Needs the research piece of Phase 6." defaultChecked={s.research} />
+        <Check name="research" label="Look for new ideas when the backlog runs low" note="Not built yet: this is saved but does nothing. Research runs only when you press its button on the Research page." defaultChecked={s.research} />
       </section>
       <section aria-labelledby="auto-h" className="flex flex-col gap-4 rounded-card bg-surface p-pad">
         <h2 id="auto-h" className="text-title font-semibold">Automatic jobs</h2>
         <Check name="analytics" label="Pull analytics once a day (after 09:00 IST)" note="Read only. Uses a little YouTube quota." defaultChecked={s.analytics} />
-        <Check name="competitors" label="Refresh watched competitors once a day" note="Needs the research piece of Phase 6." defaultChecked={s.competitors} />
-        <Check name="weekly_review" label="Weekly review" note="Needs the insights piece of Phase 6." defaultChecked={s.weekly_review} />
+        <Check name="competitors" label="Refresh watched competitors once a day" note="Checks the channels you watch for new videos, for the Research page. Free of paid calls; uses a little YouTube quota." defaultChecked={s.competitors} />
+        <Check name="weekly_review" label="Weekly review" note="Writes a short report of last week's numbers on the Analytics page. Uses one small paid text call." defaultChecked={s.weekly_review} />
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-2">
             <Label htmlFor="weekly_day">Review day</Label>
@@ -76,7 +76,7 @@ export function ScheduleForm({ s }: { s: SchedulerSettings }) {
           </div>
           <Num name="weekly_hour" label="Review hour (IST)" note="0 to 23." value={s.weekly_hour} min={0} max={23} />
         </div>
-        <Check name="optimizer" label="Nightly optimizer" note="Proposes changes only; you accept or dismiss them. Off by default." defaultChecked={s.optimizer} />
+        <Check name="optimizer" label="Nightly optimizer" note="Suggests changes (titles, topics) on the Analytics page; you accept or dismiss them. Uses a small paid text call. Off by default." defaultChecked={s.optimizer} />
         <div className="grid gap-4 sm:grid-cols-2">
           <Num name="optimizer_hour" label="Optimizer hour (IST)" note="0 to 23." value={s.optimizer_hour} min={0} max={23} />
         </div>
