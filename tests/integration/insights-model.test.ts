@@ -67,9 +67,9 @@ describe("insights model", () => {
 
   it("refuses_an_unpriced_model_before_anything_is_written_or_sent", async () => {
     // The database never lets an enabled model be unpriced, so it happens the other way: a free local model whose address
-    // leaves the local-service list becomes unpriced again.
-    await db.ownerPool.query("update settings set value = '[\"localhost:11434\"]'::jsonb where key = 'network.local_services'");
-    await routed({ provider: "ollama", modelId: "q-7b", baseUrl: "http://localhost:11434/v1", prices: null, isFree: true });
+    // leaves the local-service list becomes unpriced again. A private IP depends on the list (a host named localhost never does).
+    await db.ownerPool.query("update settings set value = '[\"192.168.1.50:11434\"]'::jsonb where key = 'network.local_services'");
+    await routed({ provider: "ollama", modelId: "q-7b", baseUrl: "http://192.168.1.50:11434/v1", prices: null, isFree: true });
     await db.ownerPool.query("update settings set value = '[]'::jsonb where key = 'network.local_services'");
     const m = okModel();
     await expect(run(createInsightsModel(db.pool, depsFor(m)))).rejects.toThrow(/no price/);
