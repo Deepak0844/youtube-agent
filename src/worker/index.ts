@@ -11,6 +11,7 @@ import { createFakeUploader } from "@/server/providers/uploader/fake";
 import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
 import { throttledCommentSync } from "@/server/db/comments";
 import { pullAnalytics, pullMessage } from "@/server/db/analytics";
+import { noInsightsModel, runOptimizer, runWeeklyReview } from "@/server/db/insights";
 import { throttledScheduler } from "@/server/db/scheduler";
 import { defaultGoogleHttp } from "@/server/db/youtube-channels";
 import { throttledRetention } from "@/server/db/retention";
@@ -62,7 +63,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           void syncTick();
           scheduleTick ??= throttledScheduler(
             p,
-            { analytics: async () => pullMessage(await pullAnalytics(p, loadKeyring, defaultGoogleHttp, { kind: "worker" })) },
+            {
+              analytics: async () => pullMessage(await pullAnalytics(p, loadKeyring, defaultGoogleHttp, { kind: "worker" })),
+              // No text model is wired to insights yet (no one-shot call outside a stage), so the review has its numbers only and
+              // the optimizer skips quietly. Swap noInsightsModel for a paid-call backed model when one exists.
+              weekly_review: async () => (await runWeeklyReview(p, noInsightsModel, { kind: "worker" }, { send })).message,
+              optimizer: async () => (await runOptimizer(p, noInsightsModel, { kind: "worker" })).message,
+            },
             send,
           );
           void scheduleTick();
