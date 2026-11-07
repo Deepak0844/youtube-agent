@@ -5,6 +5,7 @@ import { recordAudit } from "@/server/db/audit";
 import { channelCaps, readUploadTarget, recheckPublishStart } from "@/server/db/publish";
 import { runUpload } from "@/server/db/upload-job";
 import { isUnclearReason, manualRetry, startUpload, unclearCleared } from "@/server/db/uploads";
+import type { NotifySend } from "@/server/db/notify";
 import type { Uploader } from "@/server/providers/uploader";
 
 // The `uploads` queue consumer's handler (Task 21). The job payload is ONLY an upload id. Everything that decides whether
@@ -19,6 +20,8 @@ export interface PublishUploadDeps {
   caps?: UploadCaps;
   /** Test seam: runs between the job-time read and the start transaction (to inject a send-back, a rewrite, a setting change). */
   afterRead?: () => Promise<void>;
+  /** Worker delivery for the "upload ended" notification. */
+  notify?: NotifySend;
 }
 
 const QUIET = new Set(["not_publish_approved", "not_found"]); // a duplicate delivery is normal, not news
@@ -54,7 +57,7 @@ async function handleRetry(pool: pg.Pool, deps: PublishUploadDeps, uploadId: str
   await recordAudit(pool, "upload.retry_started", { uploadId, videoId: value.target.videoId, approvalId: value.approvalId, attempt: started.attempt }).catch(() => undefined);
   await runUpload(
     pool,
-    { startCtx: () => { throw new Error("startCtx is not used after the start"); }, uploader: { upload: (id, onProgress, signal) => deps.uploader.upload(id, onProgress, signal, value.target) } },
+    { startCtx: () => { throw new Error("startCtx is not used after the start"); }, uploader: { upload: (id, onProgress, signal) => deps.uploader.upload(id, onProgress, signal, value.target) }, notify: deps.notify },
     uploadId,
     started.attempt,
   );
@@ -115,6 +118,7 @@ export async function handlePublishUpload(pool: pg.Pool, deps: PublishUploadDeps
         throw new Error("startCtx is not used after the start");
       },
       uploader: { upload: (id, onProgress, signal) => deps.uploader.upload(id, onProgress, signal, value.target) },
+      notify: deps.notify,
     },
     uploadId,
     started.attempt,

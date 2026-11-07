@@ -50,8 +50,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         const retentionTick = throttledRetention(pool, storageRoot());
         // Comment sync: read only, at most once every 6 h; drafts it queues wait held for the owner. Posting is never done here.
         let syncTick: (() => Promise<void>) | undefined;
-        hooks.advanceAll = async (p, queue, readers) => {
-          const r = await advanceAll(p, queue, readers);
+        hooks.advanceAll = async (p, queue, readers, send) => {
+          const r = await advanceAll(p, queue, readers, { send });
           await autoSeoSweep(p, queue).catch(() => undefined);
           void retentionTick();
           syncTick ??= throttledCommentSync(p, loadKeyring, defaultGoogleHttp, queue);

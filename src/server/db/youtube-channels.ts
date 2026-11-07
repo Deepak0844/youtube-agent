@@ -3,6 +3,7 @@
 // channel ids and reasons only). Every Google call goes through the injected `GoogleHttp` (default: safeFetch), so tests use fakes.
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
+import { notifySafe } from "@/server/db/notify";
 import { redirectUriFor, SECRET_NAME } from "@/server/core/google-app";
 import {
   CHANNELS_URL,
@@ -265,7 +266,11 @@ export async function getAccessToken(pool: pg.Pool, ring: Ring, http: GoogleHttp
          and (select updated_at::text from secrets where name = token_secret_name) is not distinct from $2::text`,
       [id, ch.token_version],
     );
-    if ((u.rowCount ?? 0) > 0) await recordAudit(pool, "youtube.refresh_failed", { channelId: ch.channel_id, reason: "invalid_grant" });
+    if ((u.rowCount ?? 0) > 0) {
+      await recordAudit(pool, "youtube.refresh_failed", { channelId: ch.channel_id, reason: "invalid_grant" });
+      // In-app row only (this runs in either process); a new token version means a new expiry, so one per expiry.
+      await notifySafe(pool, undefined, { event: "google_login_expired", from: "connected", to: "google_login_expired", transitionId: `reconnect.${ch.channel_id}.${ch.token_version}` });
+    }
     return { ok: false, reason: (u.rowCount ?? 0) > 0 ? "needs_reconnect" : "unavailable" };
   }
   return { ok: false, reason: "unavailable" };

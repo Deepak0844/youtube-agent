@@ -24,6 +24,7 @@ import { admitStage, releaseProbe } from "@/server/db/breakers";
 import { resolveRoute } from "@/server/db/media-registry";
 import { getSetting } from "@/server/db/settings";
 import { cancelQueuedStage, requestCancel } from "@/server/db/stages";
+import { gateWaitInput, notifySafe, type NotifySend, type TransitionInput } from "@/server/db/notify";
 import { createVideoRow, type VideoInput, type VideoRow } from "@/server/db/videos";
 
 // Moves a video along its route exactly once. One transaction decides and inserts the stage_runs row (the video row is
@@ -167,10 +168,10 @@ async function inTx<T>(db: pg.Pool, fn: (c: pg.PoolClient) => Promise<T>): Promi
 
 const LIVE_VIDEO = ["active", "waiting"];
 
-export async function advanceVideo(db: pg.Pool, queue: EnqueueOnly, videoId: string, readers: PipelineReaders = NO_DECISIONS): Promise<AdvanceResult> {
+export async function advanceVideo(db: pg.Pool, queue: EnqueueOnly, videoId: string, readers: PipelineReaders = NO_DECISIONS, send?: NotifySend): Promise<AdvanceResult> {
   const decided = await inTx(db, async (c) => {
     const v = await lockVideo(c, videoId);
-    if (!LIVE_VIDEO.includes(v.status)) return { created: [], action: null as Action | null };
+    if (!LIVE_VIDEO.includes(v.status)) return { created: [], action: null as Action | null, gateNotice: null as TransitionInput | null };
     const view = await buildView(c, v, readers);
     const [action] = nextActions(view);
     const created: Array<{ id: string; inputHash: string }> = [];
@@ -189,10 +190,15 @@ export async function advanceVideo(db: pg.Pool, queue: EnqueueOnly, videoId: str
     if (next !== v.status) await c.query("update videos set status = $2, updated_at = now() where id = $1", [videoId, next]);
     // Live feed rows are written in the same transaction as the transition they describe, so a rolled-back advance
     // says nothing. Only a change INTO waiting speaks: repeated sweeps over a parked video stay quiet.
-    if (next !== v.status && action?.kind === "wait_gate") await insertEvent(c, { type: "gate.waiting", videoId, payload: { gate: action.gate } });
+    let gateNotice: TransitionInput | null = null;
+    if (next !== v.status && action?.kind === "wait_gate") {
+      const eventId = await insertEvent(c, { type: "gate.waiting", videoId, payload: { gate: action.gate } });
+      gateNotice = gateWaitInput(videoId, action.gate, v.status, `gate.${eventId}`); // the feed row id is unique per transition
+    }
     if (next !== v.status && action?.kind === "done") await insertEvent(c, { type: "video.done", videoId });
-    return { created, action: action ?? null, held };
+    return { created, action: action ?? null, held, gateNotice };
   });
+  if (decided.gateNotice) await notifySafe(db, send, decided.gateNotice); // after commit; never fails the advance
   return { ...(await deliver(queue, decided.created)), action: decided.action, ...(decided.held ? { held: decided.held } : {}) };
 }
 
@@ -204,12 +210,12 @@ export interface SweepResult {
 }
 
 /** Sweep: advance every live video. Catches a video stranded between "stage committed" and "next stage created". */
-export async function advanceAll(db: pg.Pool, queue: EnqueueOnly, readers: PipelineReaders = NO_DECISIONS, opts: { limit?: number } = {}): Promise<SweepResult> {
+export async function advanceAll(db: pg.Pool, queue: EnqueueOnly, readers: PipelineReaders = NO_DECISIONS, opts: { limit?: number; send?: NotifySend } = {}): Promise<SweepResult> {
   const { rows } = await db.query<{ id: string }>("select id from videos where status = any($1::text[]) order by updated_at, id limit $2", [LIVE_VIDEO, opts.limit ?? 500]);
   const out: SweepResult = { videos: rows.length, enqueued: [], enqueueFailed: [], errors: [] };
   for (const { id } of rows) {
     try {
-      const r = await advanceVideo(db, queue, id, readers);
+      const r = await advanceVideo(db, queue, id, readers, opts.send);
       out.enqueued.push(...r.enqueued);
       out.enqueueFailed.push(...r.enqueueFailed);
     } catch (e) {

@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { safeReason } from "@/server/core/paid-call";
+import { notifyUploadEnd, type NotifySend } from "./notify";
 import { finishUpload, reportProgress, startUpload, STUDIO_FIRST_PREFIX, type InternalOutcome, type StartCtx, type UploadOutcome } from "./uploads";
 
 export interface UploadJobDeps {
@@ -14,6 +15,8 @@ export interface UploadJobDeps {
   warn?(line: string): void;
   // Wait before the single retry of a failed DB call (default 200 ms).
   retryDelayMs?: number;
+  /** Worker delivery for the "upload ended" notification; absent means in-app row only. */
+  notify?: NotifySend;
 }
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -77,7 +80,8 @@ export async function runUpload(pool: pg.Pool, deps: UploadJobDeps, uploadId: st
       : { kind: "failed", reason: safeReason(err) };
   }
   try {
-    await retryOnce(deps, () => finishUpload(pool, uploadId, attempt, outcome));
+    const recorded = await retryOnce(deps, () => finishUpload(pool, uploadId, attempt, outcome));
+    if (recorded) await notifyUploadEnd(pool, deps.notify, uploadId, outcome.kind === "uploaded");
   } catch (err) {
     // the DB is down: never lose the id of a video that may be live
     const youtubeId = (outcome.kind === "uploaded" || outcome.kind === "duplicate_skipped") && outcome.youtubeId ? safeReason(outcome.youtubeId) : null;
