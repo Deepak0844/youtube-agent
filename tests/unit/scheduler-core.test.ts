@@ -22,6 +22,18 @@ describe("dueJobs", () => {
     expect(dueJobs(SCHEDULER_DEFAULTS, new Date("2026-11-07T03:30:00Z"))).toEqual([{ job: "analytics", runKey: "2026-11-07" }]);
   });
   it("analytics_off_means_nothing_due", () => {
-    expect(dueJobs({ ...SCHEDULER_DEFAULTS, analytics: false }, new Date("2026-11-07T12:00:00Z"))).toEqual([]);
+    expect(dueJobs({ ...SCHEDULER_DEFAULTS, analytics: false, competitors: false }, new Date("2026-11-07T12:00:00Z"))).toEqual([]);
+  });
+  it("competitors_are_not_due_before_09_30_ist", () => {
+    expect(dueJobs(SCHEDULER_DEFAULTS, new Date("2026-11-07T03:59:00Z")).map((j) => j.job)).toEqual(["analytics"]); // 09:29 IST
+  });
+  it("competitors_are_due_from_09_30_ist_with_a_per_day_key", () => {
+    expect(dueJobs(SCHEDULER_DEFAULTS, new Date("2026-11-07T04:00:00Z"))).toEqual([
+      { job: "analytics", runKey: "2026-11-07" },
+      { job: "competitors", runKey: "2026-11-07" },
+    ]);
+  });
+  it("competitors_off_means_only_analytics_is_due", () => {
+    expect(dueJobs({ ...SCHEDULER_DEFAULTS, competitors: false }, new Date("2026-11-07T12:00:00Z")).map((j) => j.job)).toEqual(["analytics"]);
   });
 });

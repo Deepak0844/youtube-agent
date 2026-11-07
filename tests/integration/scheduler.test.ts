@@ -40,6 +40,23 @@ describe("runDueJobs", () => {
     const { rows } = await db.ownerPool.query("select event from notifications where event = 'run_failed'");
     expect(rows).toHaveLength(1);
   });
+  it("runs_competitors_once_per_day_after_09_30_ist_and_not_when_the_setting_is_off", async () => {
+    let n = 0;
+    const runners = { competitors: async () => { n++; return "1 suggestion"; } };
+    expect(await runDueJobs(db.pool, runners, undefined, new Date("2026-11-07T03:59:00Z"))).toEqual([]); // 09:29 IST
+    expect(await runDueJobs(db.pool, runners, undefined, DUE)).toEqual(["competitors"]);
+    expect(await runDueJobs(db.pool, runners, undefined, DUE)).toEqual([]);
+    expect(n).toBe(1);
+    expect(await recentRuns(db.pool)).toMatchObject([{ job: "competitors", status: "ok", message: "1 suggestion" }]);
+    await db.ownerPool.query("truncate schedule_runs");
+    await saveSchedulerSettings(db.pool, { ...SCHEDULER_DEFAULTS, competitors: false }, false);
+    expect(await runDueJobs(db.pool, runners, undefined, DUE)).toEqual([]);
+  });
+  it("a_failed_competitors_run_sends_run_failed", async () => {
+    await runDueJobs(db.pool, { competitors: async () => { throw new Error("quota text"); } }, undefined, DUE);
+    const { rows } = await db.ownerPool.query("select event from notifications where event = 'run_failed'");
+    expect(rows).toHaveLength(1);
+  });
   it("analytics_switched_off_runs_nothing", async () => {
     await saveSchedulerSettings(db.pool, { ...SCHEDULER_DEFAULTS, analytics: false }, false);
     expect(await runDueJobs(db.pool, { analytics: async () => undefined }, undefined, DUE)).toEqual([]);

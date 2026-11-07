@@ -11,6 +11,7 @@ import { createFakeUploader } from "@/server/providers/uploader/fake";
 import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
 import { throttledCommentSync } from "@/server/db/comments";
 import { pullAnalytics, pullMessage } from "@/server/db/analytics";
+import { runCompetitorsJob, throttledResearchPurge } from "@/server/db/research";
 import { throttledScheduler } from "@/server/db/scheduler";
 import { defaultGoogleHttp } from "@/server/db/youtube-channels";
 import { throttledRetention } from "@/server/db/retention";
@@ -54,6 +55,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         let syncTick: (() => Promise<void>) | undefined;
         // Scheduler (Phase 6): daily analytics pull (read only). Other jobs join as their pieces land.
         let scheduleTick: (() => Promise<void>) | undefined;
+        let purgeTick: (() => Promise<void>) | undefined;
         hooks.advanceAll = async (p, queue, readers, send) => {
           const r = await advanceAll(p, queue, readers, { send });
           await autoSeoSweep(p, queue).catch(() => undefined);
@@ -62,10 +64,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           void syncTick();
           scheduleTick ??= throttledScheduler(
             p,
-            { analytics: async () => pullMessage(await pullAnalytics(p, loadKeyring, defaultGoogleHttp, { kind: "worker" })) },
+            {
+              analytics: async () => pullMessage(await pullAnalytics(p, loadKeyring, defaultGoogleHttp, { kind: "worker" })),
+              // Research (read only): competitor stats and trend lists, quota guarded; also deletes research rows older than 30 days.
+              competitors: () => runCompetitorsJob(p, loadKeyring, defaultGoogleHttp),
+            },
             send,
           );
           void scheduleTick();
+          purgeTick ??= throttledResearchPurge(p);
+          void purgeTick();
           return r;
         };
       }

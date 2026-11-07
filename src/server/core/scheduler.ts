@@ -42,7 +42,9 @@ export const SCHEDULER_DEFAULTS: SchedulerSettings = {
 
 export const ANALYTICS_FROM_HOUR = 9;
 
-export type JobName = "analytics";
+export const COMPETITORS_FROM_MINUTE = 9 * 60 + 30; // 09:30 IST, after the analytics pull
+
+export type JobName = "analytics" | "competitors";
 export interface DueJob {
   job: JobName;
   /** One value per run period; a job with this (job, runKey) already logged is never started again, even if it failed. */
@@ -61,5 +63,7 @@ export function dueJobs(s: SchedulerSettings, now: Date): DueJob[] {
   const { date, hour: h } = istParts(now);
   const out: DueJob[] = [];
   if (s.analytics && h >= ANALYTICS_FROM_HOUR) out.push({ job: "analytics", runKey: date });
+  const minutes = h * 60 + new Date(now.getTime() + IST_OFFSET_MS).getUTCMinutes();
+  if (s.competitors && minutes >= COMPETITORS_FROM_MINUTE) out.push({ job: "competitors", runKey: date });
   return out;
 }
