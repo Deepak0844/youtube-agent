@@ -40,6 +40,9 @@ describe("settings registry", () => {
     expect(d).toEqual({
       "backup.last_run": null,
       scheduler: SCHEDULER_DEFAULTS,
+      "targets.pause_n": 0,
+      "targets.rpm_usd": 0,
+      "targets.pause_fired": null,
       "jobs.concurrent_renders": 1,
       "jobs.concurrent_jobs": 2,
       "storage.warn_gb": 50,
