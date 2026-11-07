@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SCHEDULER_DEFAULTS, dueJobs, istParts, schedulerSchema } from "@/server/core/scheduler";
+import { SCHEDULER_DEFAULTS, draftStop, dueJobs, istParts, schedulerSchema } from "@/server/core/scheduler";
 
 describe("scheduler settings", () => {
   it("defaults_match_the_old_app_and_overnight_drafting_is_off", () => {
@@ -63,5 +63,42 @@ describe("dueJobs: weekly review and optimizer", () => {
   });
   it("switched_off_means_nothing", () => {
     expect(dueJobs({ ...on, weekly_review: false, optimizer: false }, MON_21_IST)).toEqual([]);
+  });
+});
+
+describe("drafting window", () => {
+  const on = { ...SCHEDULER_DEFAULTS, enabled: true, hour: 2, analytics: false, competitors: false, weekly_review: false };
+  it("is_due_from_hour_for_three_hours_keyed_by_the_start_date", () => {
+    const at = (iso: string) => dueJobs(on, new Date(iso));
+    expect(at("2026-11-06T20:30:00Z")).toEqual([{ job: "drafting", runKey: "2026-11-07" }]); // 02:00 IST
+    expect(at("2026-11-06T23:29:00Z")).toEqual([{ job: "drafting", runKey: "2026-11-07" }]); // 04:59 IST
+    expect(at("2026-11-06T23:30:00Z")).toEqual([]); // 05:00 IST
+    expect(at("2026-11-06T20:29:00Z")).toEqual([]); // 01:59 IST
+  });
+  it("wraps_past_midnight_and_keeps_the_start_date", () => {
+    const w = { ...on, hour: 23 };
+    expect(dueJobs(w, new Date("2026-11-07T18:00:00Z"))).toEqual([{ job: "drafting", runKey: "2026-11-07" }]); // 23:30 IST
+    expect(dueJobs(w, new Date("2026-11-07T19:00:00Z"))).toEqual([{ job: "drafting", runKey: "2026-11-07" }]); // 00:30 IST next day
+    expect(dueJobs(w, new Date("2026-11-07T20:00:00Z"))).toEqual([{ job: "drafting", runKey: "2026-11-07" }]); // 01:30 IST
+    expect(dueJobs(w, new Date("2026-11-07T21:00:00Z"))).toEqual([]); // 02:30 IST
+  });
+  it("is_never_due_when_disabled", () => {
+    expect(dueJobs({ ...on, enabled: false }, new Date("2026-11-06T21:00:00Z"))).toEqual([]);
+  });
+});
+
+describe("draftStop", () => {
+  const s = { enabled: true, max_drafts: 2, max_pending: 3 };
+  const st = { started: 0, failed: 0, waiting: 0, budgetLeftMicro: null as number | null };
+  it("allows_a_draft_when_every_cap_has_room_and_no_limit_counts_as_enough", () => {
+    expect(draftStop(s, st)).toBeNull();
+    expect(draftStop(s, { ...st, budgetLeftMicro: 1_000_000 })).toBeNull();
+  });
+  it("stops_for_each_cap", () => {
+    expect(draftStop({ ...s, enabled: false }, st)).toBe("disabled");
+    expect(draftStop(s, { ...st, started: 2 })).toBe("max_drafts");
+    expect(draftStop(s, { ...st, waiting: 2, started: 1 })).toBe("max_pending");
+    expect(draftStop(s, { ...st, budgetLeftMicro: 999_999 })).toBe("low_budget");
+    expect(draftStop(s, { ...st, failed: 2 })).toBe("failures");
   });
 });

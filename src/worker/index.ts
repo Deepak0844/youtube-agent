@@ -15,6 +15,7 @@ import { runCompetitorsJob, throttledResearchPurge } from "@/server/db/research"
 import { runOptimizer, runWeeklyReview } from "@/server/db/insights";
 import { createInsightsModel } from "@/server/db/insights-model";
 import { defaultModelDeps } from "@/server/llm/default-deps";
+import { runOvernightDrafting } from "@/server/db/drafting";
 import { throttledScheduler } from "@/server/db/scheduler";
 import { checkTargetPause } from "@/server/db/targets";
 import { defaultGoogleHttp } from "@/server/db/youtube-channels";
@@ -70,6 +71,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           scheduleTick ??= throttledScheduler(
             p,
             {
+              // Overnight drafting: starts normal drafts only (capped, one at a time); never approves, uploads or publishes.
+              drafting: () => runOvernightDrafting(p, queue),
               analytics: async () => {
                 const message = pullMessage(await pullAnalytics(p, loadKeyring, defaultGoogleHttp, { kind: "worker" }));
                 await checkTargetPause(p, send); // fresh numbers: may switch overnight drafting off, once

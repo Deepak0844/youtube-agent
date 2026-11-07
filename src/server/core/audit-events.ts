@@ -118,6 +118,7 @@ export const AUDIT_EVENTS = {
   // Phase 6.3 ideas (detail: idea id, video id, session id, counts; never idea text or source links)
   "idea.added": "The owner added an idea to the backlog (detail: idea id, source count, session id)",
   "idea.dismissed": "The owner dismissed an idea (detail: idea id, session id)",
+  "scheduler.draft_started": "Overnight drafting started a normal draft from an idea; nothing was approved or uploaded (detail: idea id, video id, kind, number this night)",
   "idea.drafted": "The owner turned an idea into a normal video draft; nothing was approved or uploaded (detail: idea id, video id, kind, session id)",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
