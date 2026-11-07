@@ -7,7 +7,7 @@ test("Schedule: drafting needs the spend confirmation, other settings save", asy
 
   await page.getByLabel("Draft videos overnight").check();
   await page.getByRole("button", { name: "Save schedule" }).click();
-  await expect(page.getByRole("alert")).toContainText("confirm that overnight drafting spends money");
+  await expect(page.getByText("Tick the box to confirm that overnight drafting spends money")).toBeVisible();
 
   await page.getByLabel(/I understand overnight drafting spends money/).check();
   await page.getByLabel("Drafts per night").fill("1");
