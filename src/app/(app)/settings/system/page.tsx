@@ -9,6 +9,7 @@ import { Pill } from "@/ui/primitives/pill";
 import { EngineNumbersSection } from "./engine-numbers-section";
 import { RateForm } from "./rate-form";
 import { RunNowForms } from "./run-now";
+import { BackupSection } from "./backup-section";
 import { CutoverForm, KillSwitchForm, LimitsForm, LocalServicesForm } from "./forms";
 
 // Reads the session (cookies) and live server facts, so everything sits inside <Suspense> with a static frame.
@@ -32,6 +33,7 @@ async function Owned() {
     <div className="flex min-w-0 flex-col gap-layout">
       <h1 className="text-page-title font-semibold tracking-tight">System</h1>
       <Status s={status} />
+      <BackupSection />
       <RateForm rate={await loadInrRate(db)} />
       <section aria-labelledby="limits-h" className="rounded-card bg-surface p-pad">
         <h2 id="limits-h" className="text-title font-semibold">Limits</h2>

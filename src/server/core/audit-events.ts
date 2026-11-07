@@ -31,6 +31,8 @@ export const AUDIT_EVENTS = {
   "comment.reply_posted": "A reply was approved by the owner and posted to YouTube (detail: reply id, YouTube comment id, session id, text hash)",
   "comment.reply_failed": "A reply post failed or its outcome is unclear, so it is never retried automatically (detail: reply id, reason class)",
   "comment.reply_resolved": "The owner checked YouTube and settled an unclear or stuck reply by hand; nothing was sent (detail: reply id, outcome, session id)",
+  "backup.completed": "A backup was made (detail: session id, folder name, bytes, folders pruned; never a path or connection detail)",
+  "backup.failed": "A backup failed (detail: session id, reason class; never a path or connection detail)",
   "retention.cleaned": "Old working files of an uploaded video were deleted (detail: video id, who asked, counts and bytes only; never a path)",
   "youtube.refresh_failed": "Google refused a saved channel token, so the channel needs reconnecting (detail: channel id, reason)",
   "api_token.created": "An API token was created (detail: ref, name, prefix, scopes, daily draft cap, session id; never the secret)",
