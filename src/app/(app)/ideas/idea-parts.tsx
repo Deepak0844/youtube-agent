@@ -16,7 +16,7 @@ function Msg({ s }: { s: IdeaFormState }) {
   return s.error ? <p role="alert" className="m-0 text-body text-pill-negative-ink">{s.error}</p> : s.ok ? <p role="status" className="m-0 text-body text-pill-positive-ink">Done.</p> : null;
 }
 
-export function AddIdeaForm() {
+export function AddIdeaForm({ channels }: { channels: ReadonlyArray<{ channelId: string; title: string }> }) {
   const [state, run, pending] = useActionState<IdeaFormState, FormData>(addIdeaAction, {});
   return (
     <form action={run} className="flex min-w-0 max-w-xl flex-col gap-4 rounded-card bg-surface p-pad">
@@ -41,6 +41,15 @@ export function AddIdeaForm() {
         <Label htmlFor="idea-score">Score (2 to 10)</Label>
         <Input id="idea-score" name="score" type="number" inputMode="decimal" min={2} max={10} step={0.5} defaultValue={6} />
       </div>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="idea-channel">Channel (optional)</Label>
+        <select id="idea-channel" name="channel" defaultValue="" className={selectClass}>
+          <option value="">No channel</option>
+          {channels.map((c) => (
+            <option key={c.channelId} value={c.channelId}>{c.title || c.channelId}</option>
+          ))}
+        </select>
+      </div>
       <div className="flex flex-wrap items-center gap-4">
         <Button type="submit" disabled={pending}>Add idea</Button>
         <Msg s={state} />
@@ -59,6 +68,7 @@ export function IdeaCard({ idea }: { idea: IdeaRow }) {
         <h3 className="m-0 min-w-0 break-words text-body font-semibold">{idea.topic}</h3>
         <span className="text-small text-muted">Score {idea.score}</span>
       </div>
+      <p className="m-0 text-small text-muted" data-testid="idea-channel">{idea.channelId ? `Channel: ${idea.channelTitle || idea.channelId}` : "No channel"}</p>
       {idea.hook ? <p className="m-0 break-words text-body"><span className="font-medium">Hook:</span> {idea.hook}</p> : null}
       {idea.why ? <p className="m-0 break-words text-body text-muted"><span className="font-medium">Why:</span> {idea.why}</p> : null}
       {idea.sources.length > 0 ? (
@@ -81,7 +91,7 @@ export function IdeaCard({ idea }: { idea: IdeaRow }) {
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor={`lang-${idea.id}`}>Language</Label>
-              <select id={`lang-${idea.id}`} name="language" defaultValue="en" className={selectClass}>
+              <select id={`lang-${idea.id}`} name="language" defaultValue={idea.language} className={selectClass}>
                 {LANGUAGE_ORDER.map((l) => (
                   <option key={l} value={l}>{LANGUAGE_WORDS[l]} ({l})</option>
                 ))}
