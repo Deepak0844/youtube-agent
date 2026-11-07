@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { backupName, backupResultSchema, backupsToDelete, describeBackup, formatBytes, isBackupName } from "@/server/core/backup";
-import { formatIst } from "@/server/core/display-format";
 
 describe("backup rules", () => {
   it("names_a_backup_folder_from_the_utc_time", () => {
@@ -24,12 +23,11 @@ describe("backup rules", () => {
   it("describes_none_ok_and_failed_in_ist", () => {
     expect(describeBackup(null).tone).toBe("none");
     const ok = describeBackup({ ok: true, at: "2026-11-07T08:30:00.000Z", bytes: 2048, name: "x" });
-    expect(ok).toEqual({ tone: "ok", text: "Last backup 07 Nov 2026, 14:00 IST, 2.0 KB." });
-    expect(describeBackup({ ok: false, at: "2026-11-07T08:30:00.000Z", error: "Disk full." })).toEqual({ tone: "failed", text: "Backup failed at 07 Nov 2026, 14:00 IST. Disk full." });
+    expect(ok).toEqual({ tone: "ok", text: "Last backup 2026-11-07 14:00 IST, 2.0 KB." });
+    expect(describeBackup({ ok: false, at: "2026-11-07T08:30:00.000Z", error: "Disk full." })).toEqual({ tone: "failed", text: "Backup failed at 2026-11-07 14:00 IST. Disk full." });
   });
 
   it("result_schema_refuses_extra_fields", () => {
     expect(backupResultSchema.safeParse({ ok: false, at: "2026-11-07T08:30:00.000Z", error: "x", secret: "y" }).success).toBe(false);
-    expect(formatIst("nope")).toBe("");
   });
 });

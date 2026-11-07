@@ -46,6 +46,6 @@ export interface BackupView {
 
 export function describeBackup(r: BackupResult | null): BackupView {
   if (!r) return { tone: "none", text: "No backup has been made yet." };
-  if (r.ok) return { tone: "ok", text: `Last backup ${formatIst(r.at)}, ${formatBytes(r.bytes)}.` };
-  return { tone: "failed", text: `Backup failed at ${formatIst(r.at)}. ${r.error}` };
+  if (r.ok) return { tone: "ok", text: `Last backup ${formatIst(new Date(r.at))}, ${formatBytes(r.bytes)}.` };
+  return { tone: "failed", text: `Backup failed at ${formatIst(new Date(r.at))}. ${r.error}` };
 }

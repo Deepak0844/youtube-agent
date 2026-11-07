@@ -117,3 +117,23 @@ test("layout: no horizontal scroll, 44 px touch targets on phone, labels on ever
   }
   await page.screenshot({ path: `test-results/system-${phone(page) ? "390" : "1440"}.png`, fullPage: true });
 });
+
+test("the rupee rate is editable, refuses bad values, and costs show a rupee figure", async ({ page }) => {
+  await open(page);
+  const rate = page.getByLabel("Rupees per US dollar");
+  const save = async (v: string) => {
+    await rate.fill(v);
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/settings/system")),
+      page.getByRole("region", { name: "Rupee rate" }).getByRole("button", { name: "Save" }).click(),
+    ]);
+  };
+  await save("0");
+  await expect(page.getByRole("alert").filter({ hasText: "above 0" })).toBeVisible();
+  await save("100");
+  await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+  await page.goto("/");
+  await expect(page.getByRole("banner").getByText(/₹[\d,]+\.\d/).first()).toBeVisible();
+  await open(page);
+  await save("95.05");
+});

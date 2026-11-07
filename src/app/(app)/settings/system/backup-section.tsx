@@ -14,7 +14,7 @@ export async function BackupSection() {
         A copy of the database and the storage folder, kept in the backups folder inside storage. The newest 7 are kept.
       </p>
       {view.tone === "failed" ? (
-        <p role="alert" data-testid="backup-failed" className="mb-4 max-w-[60ch] rounded-card bg-pill-negative-bg p-4 text-body text-pill-negative-ink">
+        <p role="note" data-testid="backup-failed" className="mb-4 max-w-[60ch] rounded-card bg-pill-negative-bg p-4 text-body text-pill-negative-ink">
           <strong>Backup failed.</strong> {view.text}
         </p>
       ) : (

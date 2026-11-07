@@ -22,7 +22,7 @@ async function open(page: Page, query = "") {
   await expect(heading(page)).toBeVisible();
 }
 
-test("shows the log newest first with relative and absolute UTC time, and no horizontal scroll", async ({ page }) => {
+test("shows the log newest first with relative and absolute IST time, and no horizontal scroll", async ({ page }) => {
   const marker = `order-${Date.now()}`;
   await insertAudit(db, "setting.changed", { marker, n: 1 });
   await insertAudit(db, "setting.changed", { marker, n: 2 });
@@ -33,7 +33,7 @@ test("shows the log newest first with relative and absolute UTC time, and no hor
   await expect(rows.nth(1)).toContainText(/n\s*1/);
   await expect(rows.first().getByText("just now")).toBeVisible();
   await expect(rows.first().locator("time")).toHaveAttribute("datetime", /^\d{4}-\d{2}-\d{2}T/);
-  await expect(rows.first()).toContainText(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/);
+  await expect(rows.first()).toContainText(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} IST/);
   await expect(page.getByRole("navigation", { name: phone(page) ? "Bottom" : "Primary" })).toBeVisible();
   await noPageScroll(page);
 });

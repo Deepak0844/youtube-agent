@@ -3,9 +3,10 @@ import { requireOwner } from "@/lib/auth/require-owner";
 import { localServiceBlockers, MAX_LOCAL_SERVICES, ownServiceConfigProblem } from "@/server/core/local-services";
 import { getPool } from "@/server/db/pool";
 import { checkNativeRenderReady } from "@/server/providers/renderer/native-preflight";
-import { loadSystemSettings } from "@/server/db/system-settings";
+import { loadInrRate, loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
 import { Pill } from "@/ui/primitives/pill";
+import { RateForm } from "./rate-form";
 import { RunNowForms } from "./run-now";
 import { BackupSection } from "./backup-section";
 import { CutoverForm, KillSwitchForm, LimitsForm, LocalServicesForm } from "./forms";
@@ -32,6 +33,7 @@ async function Owned() {
       <h1 className="text-page-title font-semibold tracking-tight">System</h1>
       <Status s={status} />
       <BackupSection />
+      <RateForm rate={await loadInrRate(db)} />
       <section aria-labelledby="limits-h" className="rounded-card bg-surface p-pad">
         <h2 id="limits-h" className="text-title font-semibold">Limits</h2>
         <p className="mt-1 mb-5 text-body text-muted">How much the studio does at once, and how long a video may run.</p>
