@@ -1,4 +1,3 @@
-import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { LANGUAGE_WORDS } from "@/server/core/videos-view";
@@ -21,10 +20,9 @@ export default function SeriesPage({ params }: PageProps<"/series/[id]">) {
 async function Owned({ params }: { params: PageProps<"/series/[id]">["params"] }) {
   await requireOwner();
   const { id } = await params;
-  if (!UUID.test(id)) notFound();
   const db = getPool();
-  const [s, rate] = await Promise.all([getSeries(db, id), loadInrRate(db)]);
-  if (!s) notFound();
+  const [s, rate] = UUID.test(id) ? await Promise.all([getSeries(db, id), loadInrRate(db)]) : [null, 0];
+  if (!s) return <h1 className="text-page-title font-semibold tracking-tight">Series not found</h1>;
   const planned = s.parts.filter((p) => p.status === "planned").map((p) => p.partNo);
   const shown = s.parts.filter((p) => p.status !== "dropped");
   return (
