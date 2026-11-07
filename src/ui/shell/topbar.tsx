@@ -25,14 +25,22 @@ export function spendTodayText(b: { spentMicroUsd: number; capMicroUsd: number |
 // Real figure from `budgets` (scope "day"). Reads the session first (request-time data, so it sits inside <Suspense>).
 async function SpendToday() {
   await requireOwner();
-  let text: string;
+  let phone: string;
+  let wide: string;
   try {
     const b = await getBudget(getPool(), "day");
-    text = spendTodayText(b, await loadInrRate(getPool()));
+    phone = spendTodayText(b);
+    wide = spendTodayText(b, await loadInrRate(getPool()));
   } catch {
-    text = "Spend unavailable";
+    phone = wide = "Spend unavailable";
   }
-  return <>{text}</>;
+  // Phone: dollars only (the rupee text does not fit 390 px). md and up: dollars and rupees.
+  return (
+    <>
+      <span className="md:hidden">{phone}</span>
+      <span className="hidden md:inline">{wide}</span>
+    </>
+  );
 }
 
 export function TopBar() {

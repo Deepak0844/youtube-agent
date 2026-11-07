@@ -133,7 +133,8 @@ test("the rupee rate is editable, refuses bad values, and costs show a rupee fig
   await save("100");
   await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
   await page.goto("/");
-  await expect(page.getByRole("banner").getByText(/₹[\d,]+\.\d/).first()).toBeVisible();
+  // The phone top bar is dollars only (rupee text overflows 390 px); wider screens show the rupee figure.
+  if ((page.viewportSize()?.width ?? 0) >= 768) await expect(page.getByRole("banner").getByText(/₹[\d,]+\.\d/).first()).toBeVisible();
   await open(page);
   await save("95.05");
 });
