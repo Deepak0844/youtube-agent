@@ -1,0 +1,5 @@
+{"items":[
+ {"id":"UCaaaaaaaaaaaaaaaaaaaaaa","snippet":{"title":"Rust Explained","description":"Rust programming explained in shorts","defaultLanguage":"en"},"statistics":{"subscriberCount":"5400"}},
+ {"id":"UCbbbbbbbbbbbbbbbbbbbbbb","snippet":{"title":"Cooking Daily","description":"recipes"},"statistics":{"subscriberCount":"900000"}},
+ {"id":"bad id!","snippet":{"title":"x"},"statistics":{}}
+]}

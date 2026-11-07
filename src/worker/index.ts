@@ -11,6 +11,7 @@ import { createFakeUploader } from "@/server/providers/uploader/fake";
 import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
 import { throttledCommentSync } from "@/server/db/comments";
 import { pullAnalytics, pullMessage } from "@/server/db/analytics";
+import { runCompetitorsJob, throttledResearchPurge } from "@/server/db/research";
 import { noInsightsModel, runOptimizer, runWeeklyReview } from "@/server/db/insights";
 import { throttledScheduler } from "@/server/db/scheduler";
 import { checkTargetPause } from "@/server/db/targets";
@@ -56,6 +57,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         let syncTick: (() => Promise<void>) | undefined;
         // Scheduler (Phase 6): daily analytics pull (read only). Other jobs join as their pieces land.
         let scheduleTick: (() => Promise<void>) | undefined;
+        let purgeTick: (() => Promise<void>) | undefined;
         hooks.advanceAll = async (p, queue, readers, send) => {
           const r = await advanceAll(p, queue, readers, { send });
           await autoSeoSweep(p, queue).catch(() => undefined);
@@ -74,10 +76,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
               // the optimizer skips quietly. Swap noInsightsModel for a paid-call backed model when one exists.
               weekly_review: async () => (await runWeeklyReview(p, noInsightsModel, { kind: "worker" }, { send })).message,
               optimizer: async () => (await runOptimizer(p, noInsightsModel, { kind: "worker" })).message,
+              // Research (read only): competitor stats and trend lists, quota guarded; also deletes research rows older than 30 days.
+              competitors: () => runCompetitorsJob(p, loadKeyring, defaultGoogleHttp),
             },
             send,
           );
           void scheduleTick();
+          purgeTick ??= throttledResearchPurge(p);
+          void purgeTick();
           return r;
         };
       }

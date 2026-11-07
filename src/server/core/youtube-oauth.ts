@@ -79,6 +79,7 @@ export const QUOTA_COSTS = {
   // 1600 units, secondary sources say about 100 units plus a separate uploads-per-day bucket. 1600 is the safe (high) value.
   "videos.insert": 1600,
   "playlistItems.list": 1,
+  "search.list": 100, // research; the app also stops itself at 90 searches a day (research_searches)
   "thumbnails.set": 50, // verify
   "videos.update": 50, // verify
   "playlistItems.insert": 50, // verify
