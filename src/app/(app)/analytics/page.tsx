@@ -4,6 +4,7 @@ import { MIN_SHORTS_FOR_SIGNAL } from "@/server/core/analytics";
 import { loadAnalytics, type AnalyticsRow } from "@/server/db/analytics";
 import { getPool } from "@/server/db/pool";
 import { Pill } from "@/ui/primitives/pill";
+import { Insights } from "./insights";
 import { PullForm } from "./pull-form";
 
 export default function AnalyticsPage() {
@@ -89,6 +90,7 @@ async function Owned() {
           ))}
         </ul>
       )}
+      <Insights />
     </div>
   );
 }
