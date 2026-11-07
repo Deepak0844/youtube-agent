@@ -26,7 +26,7 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
   // The AI source switch (setAiSource): writes ai.previous_routes and claude_code.enabled through setSessionSettings, in one
   // transaction with the routes and an audit row. Called only from the Models page action after requireOwner.
   "src/server/db/claude-code.ts": ["getSetting", "setSessionSettings", "Actor"],
-  "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],
+  "src/server/db/system-settings.ts": ["getSetting", "getStoredSettings", "setSessionSettings"],
   // Reads the asset day counts and limits with getSetting; its writer goes through system-settings (writeAudited).
   "src/server/db/asset-settings.ts": ["getSetting"],
   // Reads policy.require_evidence to decide whether the route has an evidence gate; never writes.
@@ -49,7 +49,7 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
 
 /** The only file(s) that may import the system-settings writers: the guarded server actions (requireOwner first). */
 export const SESSION_WRITER_IMPORT_ALLOW: ImportAllow = {
-  "src/app/(app)/settings/system/actions.ts": ["saveLocalServices", "saveSystemSettings", "saveUploadSwitches"],
+  "src/app/(app)/settings/system/actions.ts": ["saveEngineNumbers", "saveLocalServices", "saveSystemSettings", "saveUploadSwitches"],
   "src/app/(app)/settings/providers/voice-actions.ts": ["saveVoiceServer"],
   "src/app/(app)/settings/assets/actions.ts": ["saveAssetSettings"],
   // Engagement page: the dry-run switch for comment replies (comments.dry_run), after requireOwner and the origin check.

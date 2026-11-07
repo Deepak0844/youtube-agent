@@ -94,7 +94,7 @@ describe("no code path in src writes a safety setting as anything but a session"
       "src/server/db/engine-config.ts": ["getStoredSettings"],
       "src/server/db/llm-models.ts": ["getSetting", "Actor"],
       "src/server/db/claude-code.ts": ["getSetting", "setSessionSettings", "Actor"],
-      "src/server/db/system-settings.ts": ["getSetting", "setSessionSettings"],
+      "src/server/db/system-settings.ts": ["getSetting", "getStoredSettings", "setSessionSettings"],
       "src/server/db/asset-settings.ts": ["getSetting"],
       "src/server/db/pipeline.ts": ["getSetting"],
       "src/server/db/notify.ts": ["getSetting"],
@@ -109,7 +109,7 @@ describe("no code path in src writes a safety setting as anything but a session"
     });
     for (const names of Object.values(SETTINGS_IMPORT_ALLOW)) expect(names).not.toContain("setSetting");
     expect(SESSION_WRITER_IMPORT_ALLOW).toEqual({
-      "src/app/(app)/settings/system/actions.ts": ["saveLocalServices", "saveSystemSettings", "saveUploadSwitches"],
+      "src/app/(app)/settings/system/actions.ts": ["saveEngineNumbers", "saveLocalServices", "saveSystemSettings", "saveUploadSwitches"],
       "src/app/(app)/settings/providers/voice-actions.ts": ["saveVoiceServer"],
       "src/app/(app)/settings/assets/actions.ts": ["saveAssetSettings"],
       "src/app/(app)/engagement/actions.ts": ["saveUploadSwitches"],

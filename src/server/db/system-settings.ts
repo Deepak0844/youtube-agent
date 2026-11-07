@@ -6,8 +6,11 @@ import { CUTOVER_PHRASE } from "@/server/core/channel-safety";
 import { DEFAULT_INR_RATE } from "@/server/core/display-format";
 import { redactDetail } from "@/server/core/audit-events";
 import { ownServicePorts, parseLocalServicesInput, validateLocalService } from "@/server/core/local-services";
+import { SETTINGS } from "@/server/core/settings-registry";
 import { secretName, type ProviderId } from "@/server/core/provider-keys";
-import { getSetting, setSessionSettings } from "@/server/db/settings";
+import { ENGINE_KEYS } from "@/server/core/engine-config";
+import { ENGINE_NUMBER_KEYS, ENGINE_NUMBER_FIELDS, parseEngineNumbers } from "@/server/core/engine-numbers";
+import { getSetting, getStoredSettings, setSessionSettings } from "@/server/db/settings";
 import { recordAudit } from "@/server/db/audit";
 import { hasSecret } from "@/server/db/vault";
 import { checkVoiceField, VOICE_FIELDS, isVoiceField } from "@/server/providers/voice/endpoints";
@@ -262,4 +265,21 @@ export async function loadSystemSettings(db: pg.Pool): Promise<SystemSettingsVie
     getSetting(db, "youtube.cutover_done"),
   ]);
   return { renders, jobs, warnGb, longMinutes, renderTimeoutS, native3d: native3d === true, nativeTimeoutS, sceneKit: tracks.scene_kit, services, killSwitch: killSwitch !== false, cutoverDone: cutoverDone === true };
+}
+
+/** Engine numbers form: the stored value of each field (default when no row), as the text the form shows. */
+export async function loadEngineNumbers(db: pg.Pool): Promise<Record<string, unknown>> {
+  const stored = await getStoredSettings(db, ENGINE_NUMBER_KEYS);
+  return Object.fromEntries(ENGINE_NUMBER_FIELDS.map((f) => [f.key, stored.has(f.key) ? stored.get(f.key) : SETTINGS[f.key].default]));
+}
+
+/** input: setting key -> text. Range-checked by the registry, cross-checked like the engine, audited as setting.changed. */
+export async function saveEngineNumbers(db: pg.Pool, input: Record<string, unknown>): Promise<SaveResult> {
+  const p = parseEngineNumbers(input, await getStoredSettings(db, ENGINE_KEYS));
+  if (!p.ok) return { ok: false, error: `${p.error} Nothing was saved.` };
+  try {
+    return { ok: true, changed: await writeAudited(db, p.values) };
+  } catch {
+    return { ok: false, error: GENERIC };
+  }
 }
