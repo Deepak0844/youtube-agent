@@ -53,6 +53,8 @@ import { StyleFontCtx } from "./ScriptText";
 import { LookProvider } from "./LookParts";
 import { inkOf } from "./ink";
 import { HookCard } from "./HookCard";
+import { LandscapeFrame, type LandscapeExtras } from "./LandscapeFrame";
+import { frameLayout, landscapeFrames } from "./frameLayout";
 import { firstPictureId, HOOK_FRAMES, hashString, lookBackground, pickLook, sceneCaptionAllowed } from "./look";
 import { collageStarts, docFrames, introSkipFrames, loopOpacity, loopOverlay, mediaOf, msToFrame, sceneRange, sequenceFrames, transitionIn, type CaptionWord } from "./timeline";
 import type { Scene, SceneDoc } from "../../src/shared/scene";
@@ -393,6 +395,20 @@ export const KitVideo: React.FC<KitVideoProps> = ({ doc, seed, assets, resolveAs
   );
 };
 
+const LANDSCAPE_SIZE = frameLayout("landscape");
+
+export type LandscapeVideoProps = KitVideoProps & LandscapeExtras;
+
+// Long-form 1920x1080: the same scene data as KitVideo, framed for landscape with chapter cards, lower thirds and a progress bar.
+export const LandscapeVideo: React.FC<LandscapeVideoProps> = ({ chapters, lowerThirds, ...video }) => {
+  const fps = video.fps ?? theme.fps;
+  return (
+    <LandscapeFrame chapters={chapters} lowerThirds={lowerThirds} fps={fps} totalMs={(docFrames(video.doc.scenes, fps) / fps) * 1000}>
+      <KitVideo {...video} />
+    </LandscapeFrame>
+  );
+};
+
 export const KitRoot: React.FC = () => (
   <>
     {kitCompositions.map((c) => (
@@ -450,6 +466,16 @@ export const KitRoot: React.FC = () => (
       calculateMetadata={({ props }) => ({ durationInFrames: docFrames(props.doc.scenes, props.fps ?? theme.fps), fps: props.fps ?? theme.fps })}
       width={theme.width}
       height={theme.height}
+      fps={theme.fps}
+      durationInFrames={120}
+    />
+    <Composition
+      id="kit-video-landscape"
+      component={LandscapeVideo}
+      defaultProps={{ doc: { version: 1, scenes: [{ id: "demo", kind: "terminal", beat: "b1", startMs: 0, durationMs: 4000, lines: [{ text: "npm run kit:video", prompt: "$", output: false }] }] } as unknown as SceneDoc } as LandscapeVideoProps}
+      calculateMetadata={({ props }) => ({ durationInFrames: landscapeFrames(props.doc.scenes, props.fps ?? theme.fps), fps: props.fps ?? theme.fps })}
+      width={LANDSCAPE_SIZE.width}
+      height={LANDSCAPE_SIZE.height}
       fps={theme.fps}
       durationInFrames={120}
     />

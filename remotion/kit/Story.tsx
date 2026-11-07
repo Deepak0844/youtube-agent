@@ -17,7 +17,8 @@ export type StoryProps = {
 // The whole picture sits sharp inside the safe area over a blurred copy of itself; zoom is capped at 6%.
 export const Story: React.FC<StoryProps> = ({ image, motion, caption, captionZone = "lower_safe" }) => {
   const frame = useCurrentFrame();
-  const { durationInFrames, width, height } = useVideoConfig();
+  const { durationInFrames } = useVideoConfig();
+  const { width, height } = theme; // the 1080x1920 stage, even when a landscape frame hosts it
   const showCaption = useSceneCaptions();
   const { scale, x, y } = kenBurns(frame, durationInFrames, gentleMotion(keepMoving(motion, durationInFrames)));
   const { top, bottom, side } = theme.safe;
