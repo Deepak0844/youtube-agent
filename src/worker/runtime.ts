@@ -13,7 +13,7 @@ import { reconcile, type ReconcileResult } from "@/server/db/reconciler";
 import { advanceAll } from "@/server/db/pipeline";
 import { NO_DECISIONS, type PipelineReaders } from "@/server/db/pipeline";
 import { afterReconcile, afterStageOutcome, sweepRetries } from "@/server/db/retry";
-import { notifyTransition, type NotifyPorts } from "@/server/db/notify";
+import { notifyTransition, notifyUploadEnd, type NotifyPorts, type NotifySend } from "@/server/db/notify";
 import { realNotifyPorts } from "@/server/providers/notify/ports";
 import { getStage } from "@/server/db/stages";
 import type { StageOutcome } from "@/server/core/stage-runner";
@@ -46,7 +46,7 @@ export interface WorkerHooks {
   loadSettings(pool: pg.Pool): Promise<WorkerSettings>;
   checkVault(pool: pg.Pool): Promise<string>;
   reconcile(pool: pg.Pool, queue: StageQueue, config: EngineConfig): Promise<unknown>;
-  advanceAll(pool: pg.Pool, queue: StageQueue, readers?: PipelineReaders): Promise<unknown>;
+  advanceAll(pool: pg.Pool, queue: StageQueue, readers?: PipelineReaders, send?: NotifySend): Promise<unknown>;
   /** Retries for confirmed provider rejections: repairs a crash between "failed" and "retry row" and releases held ones. */
   sweepRetries(pool: pg.Pool, queue: StageQueue, readers?: PipelineReaders): Promise<unknown>;
   sweepLostAttempts(db: pg.Pool, opts: { root: string }): Promise<unknown>;
@@ -110,7 +110,7 @@ const defaults: WorkerHooks = {
   loadSettings: getWorkerSettings,
   checkVault: async (pool) => (await vaultStatus(pool, loadKeyring)).status,
   reconcile: (pool, queue, config) => reconcile(pool, queue, { maxAttempts: config.retryAttempts - 1, attemptBasis: "claim" }),
-  advanceAll,
+  advanceAll: (pool, queue, readers, send) => advanceAll(pool, queue, readers, { send }),
   sweepRetries: (pool, queue, readers) => sweepRetries(pool, queue, readers),
   sweepLostAttempts,
   afterOutcome: afterStageOutcome,
@@ -217,6 +217,8 @@ export function startRuntime(opts: WorkerOptions = {}) {
     const renderStageNames = [...stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }), ...stagePlan("tsx", "short", { paidGeneration: false, requireEvidence: false }), ...stagePlan("scene3d", "short", { paidGeneration: false, requireEvidence: false }), ...stagePlan("scene3d_code", "short", { paidGeneration: false, requireEvidence: false })].filter((s) => s.resource === "render").map((s) => s.stage);
     // Reconciler paths that park (unknown paid outcome) or fail (too many attempts) a stage tell the owner too.
     // Same (stage id, fence) key as the runner path, so one stage state notifies once.
+    // Worker-side delivery: the hook adds the real desktop and webhook senders.
+    const workerSend = (database: pg.Pool): NotifySend => (e) => hooks.notify(database, { channels: {} }, e);
     const notifyBreaker = async (database: pg.Pool, opened: { stage: string; openedAtMs: number }) => {
       try {
         await hooks.notify(database, { channels: {} }, {
@@ -260,7 +262,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
             await notifyReconciled(db, result);
             // Without handlers every stage would fail as "missing handler"; leave rows queued instead.
             if (!stopping && hasHandlers) {
-              await hooks.advanceAll(db, connected, readers);
+              await hooks.advanceAll(db, connected, readers, workerSend(db));
               const swept = (await hooks.sweepRetries(db, connected, readers)) as { gaveUp?: string[] } | undefined;
               // A retry the sweep gave up on is the moment the owner hears "video failed" (same key as the runner path, so once).
               for (const id of swept?.gaveUp ?? []) {
@@ -283,7 +285,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
             lastAttemptSweep = Date.now();
             await hooks.sweepLostAttempts(db, { root: opts.storageRoot ?? storageRoot() });
           }),
-          guard("mark stalled uploads", () => hooks.markStalled(db)),
+          guard("mark stalled uploads", async () => { const ids = await hooks.markStalled(db); if (Array.isArray(ids)) for (const id of ids) await notifyUploadEnd(db, workerSend(db), String(id), false); }),
           guard("prune", () => hooks.prune(db)),
         ]);
         if (failures.length) throw new Error(failures.join("; "));
@@ -311,7 +313,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
                 // Throw, never return: returning would acknowledge (and delete) a job that did not run. A failed job is
                 // replaced by requeueUpload; the row is still publish_approved.
                 if (stopping) throw new Error("worker is stopping; the upload was not started");
-                const whole = handlePublishUpload(db, { uploader, root: opts.storageRoot }, uploadId).then(() => undefined);
+                const whole = handlePublishUpload(db, { uploader, root: opts.storageRoot, notify: workerSend(db) }, uploadId).then(() => undefined);
                 active.add(whole);
                 try { await whole; } finally { active.delete(whole); }
               }, { concurrency: 1, onError: () => log("waiting for Redis") });

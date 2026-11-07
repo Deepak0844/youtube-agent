@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { NOTIFY_EVENTS, decideDelivery, isNotifyEvent, localMinutes, scrubText, type NotifySettings, type NotifyEventId } from "@/server/core/notify";
+import { NOTIFY_EVENTS, eventForState, decideDelivery, isNotifyEvent, localMinutes, scrubText, type NotifySettings, type NotifyEventId } from "@/server/core/notify";
 import { recordAudit } from "@/server/db/audit";
 import { getSetting } from "@/server/db/settings";
 
@@ -146,4 +146,32 @@ export async function recentChannelFailures(db: pg.Pool): Promise<ChannelFailure
       group by f.channel order by f.channel`,
   );
   return rows.map((r) => ({ channel: r.channel, count: r.n, lastAt: r.last_at }));
+}
+
+export type NotifySend = (e: TransitionInput) => Promise<unknown>;
+
+/** Pipeline callers use this: a notify failure is audited and swallowed, never thrown into the step that changed state. */
+export async function notifySafe(db: pg.Pool, send: NotifySend | undefined, e: TransitionInput): Promise<void> {
+  try {
+    await (send ?? ((x) => notifyTransition(db, { channels: {}, inAppOnly: true }, x)))(e);
+  } catch (err) {
+    await recordAudit(db, "notify.delivery_failed", { event: e.event, channel: "pipeline", error: err instanceof Error ? err.name : "Error" }).catch(() => undefined);
+  }
+}
+
+/** A video moved INTO a gate wait. Gates with no event (look, thumbnail, allow_public, live_title) say nothing. */
+export const gateWaitInput = (videoId: string, gate: string, from: string, transitionId: string): TransitionInput | null => {
+  const event = eventForState(`gate.${gate}`);
+  return event ? { event, videoId, from, to: `gate.${gate}`, transitionId } : null;
+};
+
+/** An upload ended: failed (any way) or uploaded. One notification per (upload, attempt). */
+export async function notifyUploadEnd(db: pg.Pool, send: NotifySend | undefined, uploadId: string, ok: boolean): Promise<void> {
+  try {
+    const { rows } = await db.query<{ video_id: string; attempt: number }>("select video_id, attempt from uploads where id = $1", [uploadId]);
+    const u = rows[0];
+    if (!u) return;
+    const to = ok ? "uploaded_private" : "upload_failed";
+    await notifySafe(db, send, { event: ok ? "uploaded_private" : "upload_failed", videoId: u.video_id, from: "uploading", to, transitionId: `upload.${uploadId}.${u.attempt}` });
+  } catch { /* best-effort */ }
 }

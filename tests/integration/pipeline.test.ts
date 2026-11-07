@@ -97,6 +97,23 @@ describe("advanceVideo", () => {
     const rows = (await db.pool.query("select type, video_id, payload from events order by id")).rows;
     expect(rows).toEqual([{ type: "gate.waiting", video_id: v.id, payload: { gate: "script" } }]);
   });
+  it("parking_at_a_gate_makes_exactly_one_notification_even_when_swept_again", async () => {
+    const v = await createVideoRow(db.pool, input);
+    const q = fakeQueue();
+    await draftDone(v.id, q);
+    for (let i = 0; i < 3; i++) await advanceVideo(db.pool, q, v.id, readers());
+    const rows = (await db.pool.query("select event, video_id, to_state from notifications")).rows;
+    expect(rows).toEqual([{ event: "script_review", video_id: v.id, to_state: "gate.script" }]);
+    expect((await db.pool.query("select count(*)::int n from notification_log")).rows[0].n).toBe(0); // web side: in-app only, nothing logged as failed
+  });
+  it("a_throwing_sender_does_not_break_the_gate_transition", async () => {
+    const v = await createVideoRow(db.pool, input);
+    const q = fakeQueue();
+    await draftDone(v.id, q);
+    await advanceVideo(db.pool, q, v.id, readers(), async () => { throw new Error("sender down"); });
+    expect((await db.pool.query("select status from videos where id = $1", [v.id])).rows[0].status).toBe("waiting");
+    expect((await db.pool.query("select count(*)::int n from audit_log where event = 'notify.delivery_failed'")).rows[0].n).toBe(1);
+  });
   it("two_concurrent_advances_create_one_stage_row", async () => {
     const v = await createVideoRow(db.pool, input);
     const q = fakeQueue();

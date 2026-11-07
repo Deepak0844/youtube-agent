@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { NOTIFY_EVENTS, NOTIFY_EVENT_IDS, decideDelivery, defaultSwitches, eventForState, localMinutes, scrubText, type NotifySettings } from "@/server/core/notify";
 import { SETTINGS } from "@/server/core/settings-registry";
+import { gateWaitInput } from "@/server/db/notify";
 import { isAuditEvent } from "@/server/core/audit-events";
 
 const base = (over: Partial<NotifySettings> = {}): NotifySettings => ({
@@ -126,5 +127,13 @@ describe("scrubText", () => {
     const clean = scrubText(dirty);
     for (const bad of ["sk-ant", "AIzaSy", "Bearer abc", "X-Amz", "token=abc", "0123456789abcdef0123"]) expect(clean, bad).not.toContain(bad);
     expect(scrubText("Script ready for review")).toBe("Script ready for review");
+  });
+});
+
+describe("gateWaitInput", () => {
+  it("maps_a_waiting_gate_to_its_event_and_ignores_gates_without_one", () => {
+    expect(gateWaitInput("v", "script", "active", "t")).toEqual({ event: "script_review", videoId: "v", from: "active", to: "gate.script", transitionId: "t" });
+    expect(gateWaitInput("v", "comment_reply", "active", "t")?.event).toBe("comment_replies");
+    expect(gateWaitInput("v", "look", "active", "t")).toBeNull();
   });
 });
