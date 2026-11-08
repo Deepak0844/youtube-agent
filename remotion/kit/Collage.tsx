@@ -1,6 +1,6 @@
 import { lookBg } from "./look";
 import React from "react";
-import { AbsoluteFill, OffthreadVideo, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, OffthreadVideo, useCurrentFrame } from "remotion";
 import { collageRects, enterState, type CollageEnter, type CollageLayout } from "./helpers";
 import { PhotoFit, useLook, useSceneCaptions } from "./LookParts";
 import { theme } from "./theme";
@@ -18,7 +18,7 @@ export type CollageProps = { layout: CollageLayout; tiles: CollageTile[] };
 
 export const Collage: React.FC<CollageProps> = ({ layout, tiles }) => {
   const frame = useCurrentFrame();
-  const { width, height } = useVideoConfig();
+  const { width, height } = theme; // the 1080x1920 stage, even when a landscape frame hosts it
   const showCaption = useSceneCaptions();
   const look = useLook();
   const { top, bottom, side } = theme.safe;

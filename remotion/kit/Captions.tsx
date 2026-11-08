@@ -17,7 +17,8 @@ const PillCaptions: React.FC<{ words: CaptionWord[]; cs?: CaptionStyle }> = ({ w
   const frame = useCurrentFrame();
   const look = useLook();
   const ink = useInk();
-  const { fps, width, height } = useVideoConfig();
+  const { fps } = useVideoConfig();
+  const { width, height } = theme; // the 1080x1920 stage, even when a landscape frame hosts it
   const maxWidth = Math.min(width - theme.safe.side * 2, theme.copy.maxCharsPerLine * CHAR_W);
   const pages = useMemo(() => paginate(words.map((w) => w.word), maxWidth, measure, 2), [words, maxWidth]);
   const cur = currentWord(words, frame / fps);
@@ -52,7 +53,8 @@ const PillCaptions: React.FC<{ words: CaptionWord[]; cs?: CaptionStyle }> = ({ w
 const PagedCaptions: React.FC<{ words: CaptionWord[]; cs: CaptionStyle }> = ({ words, cs }) => {
   const frame = useCurrentFrame();
   const look = useLook();
-  const { fps, height } = useVideoConfig();
+  const { fps } = useVideoConfig();
+  const { height } = theme;
   const pages = useMemo(() => pageWords(words, cs.wordsPerPage), [words, cs.wordsPerPage]);
   const cur = currentWord(words, frame / fps);
   if (cur < 0) return null;
@@ -82,7 +84,8 @@ const rise = (frame: number, start: number, frames: number) => Math.min(1, Math.
 /** Paper cutout: one torn paper tag per word, tilted a little differently each time, popping in. */
 const TagCaptions: React.FC<{ words: CaptionWord[]; cs: CaptionStyle }> = ({ words, cs }) => {
   const frame = useCurrentFrame();
-  const { fps, height } = useVideoConfig();
+  const { fps } = useVideoConfig();
+  const { height } = theme;
   const cur = currentWord(words, frame / fps);
   if (cur < 0 || banned(words[cur]!.word)) return null;
   const w = words[cur]!;
@@ -100,7 +103,8 @@ const TagCaptions: React.FC<{ words: CaptionWord[]; cs: CaptionStyle }> = ({ wor
 /** Kinetic type: the page's words stacked big in capitals, each rising out of a mask a few frames after the one before. */
 const KineticCaptions: React.FC<{ words: CaptionWord[]; cs: CaptionStyle }> = ({ words, cs }) => {
   const frame = useCurrentFrame();
-  const { fps, height } = useVideoConfig();
+  const { fps } = useVideoConfig();
+  const { height } = theme;
   const pages = useMemo(() => pageWords(words, cs.wordsPerPage), [words, cs.wordsPerPage]);
   const cur = currentWord(words, frame / fps);
   if (cur < 0) return null;
