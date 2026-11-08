@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { Button, type ButtonProps } from "@/ui/primitives/button";
 import { Label } from "@/ui/primitives/label";
-import { approveGateAction, cancelVideoAction, checkOnYoutubeAction, retryUploadAction, savePublishChoiceAction, requeueUploadAction, resetBreakerAction, resolveDecisionAction, sendBackAction, startDryRunAction, type QueueState } from "./actions";
+import { approveGateAction, cancelVideoAction, checkOnYoutubeAction, editOutlineAction, retryUploadAction, savePublishChoiceAction, requeueUploadAction, resetBreakerAction, resolveDecisionAction, sendBackAction, startDryRunAction, type QueueState } from "./actions";
 
 type Act = (prev: QueueState, form: FormData) => Promise<QueueState>;
 
@@ -196,6 +196,42 @@ export function PublishChoiceForm({ videoId, visibility, publishAtIst, channelId
       </label>
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" variant="secondary" disabled={pending}>Save these choices</Button>
+        <Result state={state} />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Long videos, outline gate: change chapter titles, one-liners and seconds, then save. Saving makes a NEW outline (any earlier
+ * approval no longer counts); the owner reads it again and approves. Nothing is spent. `key` on the form resets the boxes when a
+ * new version arrives.
+ */
+export function OutlineEditForm({ fields, chapters }: { fields: Omit<GateFields, "gate">; chapters: Array<{ title: string; line: string; targetS: number }> }) {
+  const [state, run, pending] = useActionState<QueueState, FormData>(editOutlineAction, {});
+  return (
+    <form key={fields.seenHash} action={run} data-testid="outline-edit" className="flex min-w-0 max-w-[68ch] flex-col gap-4">
+      <input type="hidden" name="videoId" value={fields.videoId} />
+      <input type="hidden" name="seenHash" value={fields.seenHash} />
+      <input type="hidden" name="seenVersions" value={fields.seenVersions} />
+      <input type="hidden" name="chapter_count" value={chapters.length} />
+      <h4 className="m-0 text-small font-medium text-muted">Edit the chapters</h4>
+      {chapters.map((c, i) => (
+        <fieldset key={i} className="m-0 flex min-w-0 flex-col gap-2 rounded-card bg-raised p-3 border-0">
+          <legend className="px-0 text-small font-medium text-muted">Chapter {i + 1}</legend>
+          <label className="flex flex-col gap-1 text-body">Title
+            <input name={`title_${i}`} defaultValue={c.title} required maxLength={80} className={FIELD} />
+          </label>
+          <label className="flex flex-col gap-1 text-body">One line
+            <input name={`line_${i}`} defaultValue={c.line} required maxLength={200} className={FIELD} />
+          </label>
+          <label className="flex flex-col gap-1 text-body">Seconds of narration
+            <input name={`seconds_${i}`} type="number" inputMode="numeric" min={20} step={1} defaultValue={c.targetS} required className={FIELD} />
+          </label>
+        </fieldset>
+      ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" variant="secondary" disabled={pending}>Save the edited outline</Button>
         <Result state={state} />
       </div>
     </form>

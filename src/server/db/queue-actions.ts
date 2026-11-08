@@ -1,6 +1,8 @@
 import type pg from "pg";
 import { captionsNeedTick, actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
-import { STALE_MESSAGE, versionsKey, type BreakerStage, type DecisionInput, type GateInput } from "@/server/core/queue-input";
+import { STALE_MESSAGE, versionsKey, type BreakerStage, type DecisionInput, type GateInput, type OutlineEditInput } from "@/server/core/queue-input";
+import { validateOutline } from "@/server/core/long-form";
+import { addContent, latestContent } from "@/server/db/videos";
 import { lookSendBackProblem } from "@/server/core/scene3d-view";
 import { approvalReaders, lookFeedbackOf } from "@/server/db/approval-readers";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
@@ -117,12 +119,12 @@ export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: Ga
     }
     const r = await sendBack(db, { videoId: i.videoId, gate: i.gate, seenHash: i.seenHash, note: i.note ?? "", actor });
     if (!r.ok) return refuse(say(r.reason));
-    if (i.gate === "script" || i.gate === "look") await advance(db, q.stage, i.videoId);
+    if (i.gate === "script" || i.gate === "look" || i.gate === "outline") await advance(db, q.stage, i.videoId);
     // An AI-written scene is rewritten by the scene author with the note (the automatic picture checks start again, 3 fresh tries); the other 3D kind goes back to the director.
     const lookMessage = (await db.query<{ kind: string }>("select kind from videos where id = $1", [i.videoId])).rows[0]?.kind === "scene3d_code"
       ? "Sent back. The scene author will rewrite the scene with your note, check the new pictures itself, then show you the result."
       : "Sent back. The director will redo the scene with your note, then new preview pictures will follow.";
-    return { ok: true, message: i.gate === "script" ? "Sent back. A new draft will follow your note." : i.gate === "look" ? lookMessage : "Sent back. This video is held until it is rebuilt or cancelled." };
+    return { ok: true, message: i.gate === "outline" ? "Sent back. A new outline will follow your note." : i.gate === "script" ? "Sent back. A new draft will follow your note." : i.gate === "look" ? lookMessage : "Sent back. This video is held until it is rebuilt or cancelled." };
   }
 
   if (i.gate === "publish") {
@@ -151,6 +153,33 @@ export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: Ga
   if (!r.ok) return refuse(say(r.reason));
   await advance(db, q.stage, i.videoId);
   return { ok: true, message: "Approved." };
+}
+
+/**
+ * The owner edits the chapters at the outline gate. Only the outline the owner is looking at (hash and version ids) can be edited.
+ * The edit is a NEW outline version, so any earlier approval is void by the hash and the draft after it goes stale on its own;
+ * the owner reviews and approves the edited outline. Nothing is spent here.
+ */
+export async function editOutline(db: pg.Pool, q: Queues, actor: GateActor, i: OutlineEditInput): Promise<ActionResult> {
+  if (actorProblem(actor)) return refuse(ACTOR_REASON);
+  const v = await db.query<{ status: string; format: string; length_min_minutes: number | null; length_max_minutes: number | null }>("select status, format, length_min_minutes, length_max_minutes from videos where id = $1", [i.videoId]);
+  const row = v.rows[0];
+  if (!row || !["active", "waiting"].includes(row.status)) return refuse("This video is no longer in production.");
+  if (row.format !== "long" || row.length_min_minutes === null || row.length_max_minutes === null) return refuse("Only a long video has an outline.");
+  const next = await readNextAction(db, i.videoId, approvalReaders);
+  if (next?.kind !== "wait_gate" || next.gate !== "outline") return refuse(NOT_WAITING);
+  const live = await liveGateHash(db, i.videoId, "outline");
+  if (!live || live.hash !== i.seenHash || versionsKey(live.versions) !== i.seenVersions) return refuse(STALE_MESSAGE);
+  const ok = validateOutline({ chapters: i.chapters }, { min: row.length_min_minutes, max: row.length_max_minutes });
+  if (!ok.ok) return refuse(`${ok.problems[0]!.charAt(0).toUpperCase()}${ok.problems[0]!.slice(1)}${/[.!?]$/.test(ok.problems[0]!) ? "" : "."}`);
+  const body = ok.outline;
+  const sha = sha256Hex(canonicalJson(body));
+  const cur = await latestContent(db, i.videoId, "outline");
+  if (cur?.sha256 === sha) return refuse("Nothing changed in the outline.");
+  await addContent(db, i.videoId, "outline", { sha256: sha, body });
+  await recordAudit(db, "outline.edited", { videoId: i.videoId, sessionId: actor.sessionId, chapters: body.chapters.length });
+  await advance(db, q.stage, i.videoId);
+  return { ok: true, message: "Saved. Read the new outline and approve it when it is right." };
 }
 
 export async function decideParkedStage(db: pg.Pool, q: Queues, actor: GateActor, i: DecisionInput, checkers: JobCheckers = {}): Promise<ActionResult> {

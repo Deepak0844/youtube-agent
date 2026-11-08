@@ -2,6 +2,7 @@ import { renderLimitNote, scaleRows } from "@/server/core/scale3d-view";
 import { LOOK_SEND_BACK_CAP, lookView, type LookSummary, type LookStill } from "@/server/core/scene3d-view";
 import { getEngineConfig } from "@/server/db/engine-config";
 import { claimsOf as evidenceClaims } from "@/server/core/evidence-edit";
+import { outlineEstimate, outlineSchema } from "@/server/core/long-form";
 import type pg from "pg";
 import { STAGE_NAMES, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
 import { BREAKER_STAGES, versionsKey, type BreakerStage, type QueueGate, QUEUE_GATES } from "@/server/core/queue-input";
@@ -29,6 +30,11 @@ export interface GateClaim {
   detail: string;
 }
 export type GateContent =
+  | {
+      kind: "outline";
+      /** null when the stored outline could not be read in its usual shape */
+      outline: { chapters: Array<{ title: string; line: string; targetS: number; words: number }>; totalS: number; words: number; minMinutes: number; maxMinutes: number } | null;
+    }
   | { kind: "script"; title: string; description: string | null; narration: string; words: number; beats: number; beatRows: BeatRow[]; shownForReal: string | null; style: string | null; claims: GateClaim[]; readable: boolean; /** 3D scale scripts only: the heights to approve and the render-limit note. */ scale?: { rows: GateClaim[]; limitNote: string | null } }
   | { kind: "cost"; totalMicroUsd: number; path: string; models: Array<[string, string]>; items: Array<{ kind: string; provider: string; quoteMicroUsd: number }> }
   | {
@@ -63,6 +69,7 @@ export interface StripInput {
 
 export interface QueueVideo {
   videoId: string;
+  format: "short" | "long";
   topic: string;
   language: string;
   channelId: string | null;
@@ -151,6 +158,12 @@ async function uploadFor(db: pg.Pool, videoId: string): Promise<StripInput["uplo
 async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<ReturnType<typeof readSnapshot>>, "no_video">, lang: string, videoId: string, sign: Awaited<ReturnType<typeof mediaSigner>>, style: string | null): Promise<GateContent> {
   const c = snap.inputs.content;
   const src = (rel: string | null | undefined) => (sign ? sign(rel) : null);
+  if (gate === "outline") {
+    const p = outlineSchema.safeParse(c.outline?.body);
+    if (!p.success) return { kind: "outline", outline: null };
+    const e = outlineEstimate(p.data, isLang(lang) ? lang : "en");
+    return { kind: "outline", outline: { chapters: e.chapters, totalS: e.totalS, words: e.words, minMinutes: p.data.length.min_minutes, maxMinutes: p.data.length.max_minutes } };
+  }
   if (gate === "script") {
     const { parsed } = claimsOf(c.script?.body);
     if (!parsed.success) return { kind: "script", title: "Script", description: null, narration: JSON.stringify(c.script?.body ?? null), words: 0, beats: 0, beatRows: [], shownForReal: null, style, claims: [], readable: false };
@@ -201,8 +214,8 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
 
 export async function loadQueue(db: pg.Pool, checkable: ReadonlySet<string> = new Set(), only?: { videoId: string }): Promise<QueueData> {
   const sign = await mediaSigner(db);
-  const vids = await db.query<{ id: string; topic: string; language: string; channel_id: string | null; updated_at: Date; style: string | null }>(
-    "select id, topic, language, channel_id, updated_at, style from videos where status in ('waiting','active') and format = 'short' and ($2::uuid is null or id = $2) order by updated_at, id limit $1",
+  const vids = await db.query<{ id: string; format: "short" | "long"; topic: string; language: string; channel_id: string | null; updated_at: Date; style: string | null }>(
+    "select id, format, topic, language, channel_id, updated_at, style from videos where status in ('waiting','active') and ($2::uuid is null or id = $2) order by updated_at, id limit $1",
     [MAX_ITEMS * 2, only?.videoId ?? null],
   );
   const parked = await db.query<{ id: string; video_id: string }>("select id, video_id from stage_runs where status = 'needs_decision' order by created_at, id limit $1", [MAX_ITEMS]);
@@ -210,7 +223,7 @@ export async function loadQueue(db: pg.Pool, checkable: ReadonlySet<string> = ne
   const items: Array<GateItem | DecisionItem> = [];
   for (const v of vids.rows) {
     if (items.length >= MAX_ITEMS) break;
-    const base = { videoId: v.id, topic: v.topic, language: v.language, channelId: v.channel_id, waitingSince: v.updated_at.toISOString() };
+    const base = { videoId: v.id, format: v.format, topic: v.topic, language: v.language, channelId: v.channel_id, waitingSince: v.updated_at.toISOString() };
     const parkedId = parkedByVideo.get(v.id);
     if (parkedId) {
       const decision = await getDecision(db, parkedId, checkable);

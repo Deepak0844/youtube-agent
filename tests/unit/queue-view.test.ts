@@ -25,6 +25,15 @@ describe("cutStages", () => {
     expect(states(cutStages({ runs: { draft: "succeeded", build: "failed" }, openGate: null, upload: null }))).toContain("build:failed");
     expect(states(cutStages({ runs: { draft: "succeeded", build: "needs_decision" }, openGate: null, upload: null }))).toContain("build:held");
   });
+  it("a long video's strip starts with Outline: held at the outline gate, then the script gate holds Draft", () => {
+    expect(states(cutStages({ runs: { outline: "succeeded" }, openGate: "outline", upload: null }, "long"))).toBe("outline:held draft:todo build:todo voice:todo render:todo sound:todo check:todo review:todo publish:todo");
+    expect(states(cutStages({ runs: { outline: "succeeded", draft: "succeeded" }, openGate: "script", upload: null }, "long"))).toBe("outline:done draft:held build:todo voice:todo render:todo sound:todo check:todo review:todo publish:todo");
+    expect(states(cutStages({ runs: { qa: "succeeded" }, openGate: "video", upload: null }, "long"))).toBe("outline:done draft:done build:done voice:done render:done sound:done check:done review:held publish:todo");
+    expect(cutStages({ runs: { qa: "succeeded" }, openGate: null, upload: "uploaded" }, "long")[8]!.state).toBe("done");
+  });
+  it("a short's strip is unchanged by the long format", () => {
+    expect(cutStages({ runs: { draft: "succeeded" }, openGate: "script", upload: null }, "short")).toEqual(cutStages({ runs: { draft: "succeeded" }, openGate: "script", upload: null }));
+  });
   it("tracks the upload on the Publish segment", () => {
     const last = (u: Parameters<typeof cutStages>[0]["upload"]) => cutStages({ runs: { qa: "succeeded" }, openGate: null, upload: u })[7]!.state;
     expect(last("publish_approved")).toBe("running");

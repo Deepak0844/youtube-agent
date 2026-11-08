@@ -2,6 +2,7 @@ import { microToUsd } from "@/server/core/llm-catalog";
 import type { DecisionItem } from "@/server/db/queue-data";
 import { CutStrip } from "@/ui/domain/cut-strip";
 import { cutStages } from "@/ui/domain/queue-strip";
+import { aspectFor } from "@/ui/domain/stages";
 import { Pill } from "@/ui/primitives/pill";
 import { ageLabel } from "./gate-card";
 import { DecisionForm } from "./forms";
@@ -33,7 +34,7 @@ export function DecisionCard({ item }: { item: DecisionItem }) {
           <span className="text-small text-faint">parked {ageLabel(item.waitingSince)} ago</span>
         </div>
         <h2 lang={item.language} className="m-0 min-w-0 text-title font-semibold leading-tight [overflow-wrap:anywhere]">{item.topic}</h2>
-        <CutStrip format="short" aspect="9:16" stages={cutStages(item.strip)} thumbnail={false} layout="stack" />
+        <CutStrip format={item.format} aspect={aspectFor(item.format)} stages={cutStages(item.strip, item.format)} thumbnail={false} layout="stack" />
       </header>
       <p className="m-0 flex flex-wrap items-baseline gap-3">
         <span data-testid="decision-figure" className="text-kpi font-semibold tabular-nums">${microToUsd(d.maxCostMicroUsd)}</span>

@@ -3,6 +3,7 @@ import { AUDIT_EVENTS, isAuditEvent } from "@/server/core/audit-events";
 // Pure words and ordering for the Home screen. No IO: src/server/db/home-data.ts reads the rows, this says what they mean.
 
 export const STAGE_LABEL: Record<string, string> = {
+  outline: "Planning the chapters",
   draft: "Writing the script",
   build: "Building the scenes",
   generate: "Making paid images and clips",
@@ -20,6 +21,7 @@ export const STAGE_LABEL: Record<string, string> = {
 export const stageLabel = (name: string): string => STAGE_LABEL[name] ?? "A step";
 
 export const GATE_LABEL: Record<string, string> = {
+  outline: "Outline gate",
   script: "Script gate",
   cost: "Cost gate",
   look: "Look gate",
