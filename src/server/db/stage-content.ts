@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { LeaseLostError, type ClaimLike } from "@/server/core/paid-call";
+import { outlineSchema, type Outline } from "@/server/core/long-form";
 import { approvalState } from "./approvals";
 import type { ContentKind } from "./videos";
 
@@ -86,4 +87,19 @@ export async function approvedCostPlan(db: pg.Pool, videoId: string): Promise<Ap
   if (!state.approved || !ref) return { ok: false, reason: "The cost plan is not approved, or it changed after you approved it. Approve it again." };
   const r = await db.query<{ body: unknown }>("select body from video_content where id = $1 and video_id = $2 and kind = 'cost_plan'", [ref.id, videoId]);
   return r.rows[0] ? { ok: true, hash: state.hash, body: r.rows[0].body } : { ok: false, reason: "The approved cost plan could not be found." };
+}
+
+export type ApprovedOutline = { ok: true; hash: string; outline: Outline } | { ok: false; reason: string };
+
+/**
+ * The outline the owner approved, exactly (not the newest): a long video's script and render read the chapters from here, so an
+ * outline nobody approved yet (or one edited after approval) can never be written against or rendered.
+ */
+export async function approvedOutline(db: pg.Pool, videoId: string): Promise<ApprovedOutline> {
+  const state = await approvalState(db, videoId, "outline");
+  const ref = state.approved ? state.versions.outline : undefined;
+  if (!state.approved || !ref) return { ok: false, reason: "The outline is not approved, or it changed after you approved it. Approve it again." };
+  const r = await db.query<{ body: unknown }>("select body from video_content where id = $1 and video_id = $2 and kind = 'outline'", [ref.id, videoId]);
+  const p = outlineSchema.safeParse(r.rows[0]?.body);
+  return p.success ? { ok: true, hash: state.hash, outline: p.data } : { ok: false, reason: "The approved outline could not be read." };
 }

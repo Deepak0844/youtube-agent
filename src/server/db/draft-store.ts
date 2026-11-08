@@ -25,10 +25,13 @@ export interface DraftVideo {
   language: VideoLanguage;
   topic: string;
   notes: string | null;
+  /** long videos only */
+  length_min_minutes: number | null;
+  length_max_minutes: number | null;
 }
 
 export async function loadDraftVideo(db: pg.Pool, videoId: string): Promise<DraftVideo | null> {
-  const r = await db.query("select format, kind, language, topic, notes from videos where id = $1", [videoId]);
+  const r = await db.query("select format, kind, language, topic, notes, length_min_minutes, length_max_minutes from videos where id = $1", [videoId]);
   return (r.rows[0] as DraftVideo | undefined) ?? null;
 }
 
@@ -38,6 +41,18 @@ export async function pendingScriptFeedback(db: pg.Pool, videoId: string): Promi
     `select a.note from approvals a
       where a.video_id = $1 and a.gate = 'script' and a.decision = 'sent_back'
         and a.decided_at > coalesce((select max(created_at) from video_content where video_id = $1 and kind = 'script'), '-infinity'::timestamptz)
+      order by a.seq desc limit 1`,
+    [videoId],
+  );
+  return r.rows[0]?.note ?? null;
+}
+
+/** The note of the latest "send back" at the outline gate, if it is newer than the latest outline version (not yet addressed). */
+export async function pendingOutlineFeedback(db: pg.Pool, videoId: string): Promise<string | null> {
+  const r = await db.query<{ note: string }>(
+    `select a.note from approvals a
+      where a.video_id = $1 and a.gate = 'outline' and a.decision = 'sent_back'
+        and a.decided_at > coalesce((select max(created_at) from video_content where video_id = $1 and kind = 'outline'), '-infinity'::timestamptz)
       order by a.seq desc limit 1`,
     [videoId],
   );

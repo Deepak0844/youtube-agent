@@ -34,7 +34,7 @@ export function noteProblem(note: unknown): string | null {
 export const captionsNeedTick = (captions: unknown): boolean => isObj(captions) && captions.approximate === true && captions.checked_by_owner !== true;
 
 /** Gates whose action exists in Phase 2. The others are refused until their phase ships. */
-export const IMPLEMENTED_GATES = ["script", "cost", "look", "video", "evidence", "publish"] as const;
+export const IMPLEMENTED_GATES = ["outline", "script", "cost", "look", "video", "evidence", "publish"] as const;
 export type ImplementedGate = (typeof IMPLEMENTED_GATES)[number];
 export const isImplementedGate = (g: unknown): g is ImplementedGate => typeof g === "string" && (IMPLEMENTED_GATES as readonly string[]).includes(g);
 
@@ -45,7 +45,7 @@ export interface StoredContent {
 }
 export interface LiveInputs {
   /** Newest version of each content kind, absent when none exists. */
-  content: Partial<Record<"script" | "cost_plan" | "video" | "evidence" | "metadata" | "captions" | "previews" | "scenes", StoredContent>>;
+  content: Partial<Record<"outline" | "script" | "cost_plan" | "video" | "evidence" | "metadata" | "captions" | "previews" | "scenes", StoredContent>>;
   channelId: string | null;
 }
 export type LiveHash = { ok: true; hash: string } | { ok: false; reason: string };
@@ -84,6 +84,8 @@ export function liveHash(gate: GateId, i: LiveInputs): LiveHash {
 function liveHashUnsafe(gate: GateId, i: LiveInputs): LiveHash {
   const c = i.content;
   switch (gate) {
+    case "outline":
+      return c.outline ? { ok: true, hash: gateHash("outline", { outline: contentDigest(c.outline) }) } : NOTHING("outline");
     case "script":
       return c.script ? { ok: true, hash: gateHash("script", { script: contentDigest(c.script) }) } : NOTHING("script");
     case "video":
@@ -137,9 +139,10 @@ function liveHashUnsafe(gate: GateId, i: LiveInputs): LiveHash {
   }
 }
 
-export type GateContentKind = "script" | "cost_plan" | "video" | "evidence" | "metadata" | "captions" | "previews" | "scenes";
+export type GateContentKind = "outline" | "script" | "cost_plan" | "video" | "evidence" | "metadata" | "captions" | "previews" | "scenes";
 /** The content kinds each implemented gate's hash is computed from (and records in the approval row). */
 export const GATE_KINDS: Readonly<Record<ImplementedGate, readonly GateContentKind[]>> = Object.freeze({
+  outline: ["outline"],
   script: ["script"],
   cost: ["cost_plan"],
   look: ["previews", "scenes"],

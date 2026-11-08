@@ -5,7 +5,7 @@ import { createPgAgentStepStore } from "@/server/db/agent-steps";
 import { LeaseLostError } from "@/server/core/paid-call";
 import { judgeDraft } from "./evidence-check";
 import { queriesMessages, rejectionMessage, writeMessages, type PageExcerpt } from "./prompts";
-import { DRAFT_MAX_OUTPUT_TOKENS, DraftInvalidError, MAX_DRAFT_RETRIES, rawDraftSchema, type DraftDeps, type DraftInput, type DraftResult, type WebTools } from "./shared";
+import { draftMaxOutputTokens, DraftInvalidError, MAX_DRAFT_RETRIES, rawDraftSchema, type DraftDeps, type DraftInput, type DraftResult, type WebTools } from "./shared";
 
 // Search-then-write (Doc 2 §8): for models that cannot run a tool loop. The model is never given a tool. Call 1 returns
 // search queries; the APP runs them and fetches at most 6 distinct pages (only URLs the search returned); call 2 writes
@@ -78,7 +78,7 @@ async function gatherPages(web: WebTools, queries: string[], signal: AbortSignal
 }
 
 export async function searchThenWrite(ctx: StageContext, deps: DraftDeps, input: DraftInput & { format: "short" | "long" }): Promise<DraftResult> {
-  const prompt = { topic: input.topic, lang: input.lang, kind: input.kind, format: input.format, notes: input.notes, feedback: input.feedback };
+  const prompt = { topic: input.topic, lang: input.lang, kind: input.kind, format: input.format, notes: input.notes, feedback: input.feedback, long: input.long };
   const q = await deps.llm.generate(ctx, { stage: "draft", schema: queriesSchema, messages: queriesMessages(prompt), maxOutputTokens: 400, invalidRetries: 1 });
   let spent = q.spentMicroUsd;
 
@@ -88,9 +88,9 @@ export async function searchThenWrite(ctx: StageContext, deps: DraftDeps, input:
   const messages: Message[] = writeMessages({ ...prompt, pages });
 
   for (let attempt = 0; ; attempt++) {
-    const w = await deps.llm.generate(ctx, { stage: "draft", schema: rawDraftSchema, messages, maxOutputTokens: DRAFT_MAX_OUTPUT_TOKENS, invalidRetries: 1 });
+    const w = await deps.llm.generate(ctx, { stage: "draft", schema: rawDraftSchema, messages, maxOutputTokens: draftMaxOutputTokens(input.format), invalidRetries: 1 });
     spent += w.spentMicroUsd;
-    const verdict = judgeDraft(w.value, input.lang, input.format, fetched, input.kind);
+    const verdict = judgeDraft(w.value, input.lang, input.format, fetched, input.kind, input.long?.range);
     if (verdict.ok) return { script: verdict.script, spentMicroUsd: spent };
     if (attempt >= MAX_DRAFT_RETRIES) throw new DraftInvalidError(verdict.problems, spent);
     messages.push({ role: "assistant", content: JSON.stringify(w.value).slice(0, 4000), toolCalls: [] });

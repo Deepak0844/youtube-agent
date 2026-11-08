@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { kinds } from "./kinds";
-import { LIMITS, SCENE_SCHEMA_VERSION, sceneDocSchema, type SceneDoc } from "./schema";
+import { LIMITS, SCENE_SCHEMA_VERSION, longSceneDocSchema, sceneDocSchema, type SceneDoc } from "./schema";
 
 export type ValidateResult = { ok: true; doc: SceneDoc } | { ok: false; errors: string[] };
 
@@ -14,8 +14,8 @@ function where(path: PropertyKey[]): string {
 }
 
 /** Plain-text errors, one per line, ready to paste into a retry prompt. */
-export function validateScenes(input: unknown): ValidateResult {
-  const r = sceneDocSchema.safeParse(input);
+export function validateScenes(input: unknown, opts: { long?: boolean } = {}): ValidateResult {
+  const r = (opts.long ? longSceneDocSchema : sceneDocSchema).safeParse(input);
   if (r.success) return { ok: true, doc: r.data };
   const errors = r.error.issues.map((i) => {
     if (i.code === "invalid_union") return `${where(i.path)}: must be one of ${KINDS.join(", ")}`;

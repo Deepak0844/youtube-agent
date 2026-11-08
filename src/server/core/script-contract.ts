@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { checkBeatRoles } from "@/shared/scene/beat-roles";
 import { SCALE3D_KINDS, SCALE3D_LIMITS } from "@/shared/scale3d/schema";
+import { LONG_LIMITS } from "@/shared/scene/kinds/common";
 import { wordCount, wordRange, type Lang } from "./lang";
 
 const MAX_BYTES = 256 * 1024;
@@ -109,7 +110,7 @@ export function validateScript(
   script: unknown,
   lang: Lang,
   format: "short" | "long",
-  opts: { requireEvidence?: boolean; speakingRate?: number; kind?: string } = {},
+  opts: { requireEvidence?: boolean; speakingRate?: number; kind?: string; /** long videos: the narration word range derived from the chosen minutes */ longWords?: { min: number; max: number } } = {},
 ): { ok: true; script: Script } | { ok: false; problems: string[] } {
   const problems: string[] = [];
   let bytes = 0;
@@ -129,6 +130,11 @@ export function validateScript(
     const words = wordCount(s.narration);
     const { min, max } = wordRange(lang, opts.speakingRate);
     if (words < min || words > max) problems.push(`${words} spoken words (want ${min}-${max})`);
+  }
+  if (format === "long" && opts.longWords) {
+    const words = wordCount(s.narration);
+    if (words < opts.longWords.min || words > opts.longWords.max) problems.push(`${words} spoken words (want ${opts.longWords.min}-${opts.longWords.max} for the chosen length)`);
+    if (s.beats.length > LONG_LIMITS.maxScenes) problems.push(`${s.beats.length} beats (at most ${LONG_LIMITS.maxScenes})`);
   }
   if (format === "short" && opts.kind === "scene_kit") problems.push(...checkBeatRoles(s.beats.map((b) => b.id)));
   let evidence = s.evidence;

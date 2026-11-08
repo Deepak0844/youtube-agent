@@ -74,8 +74,24 @@ describe("parseNewVideoForm", () => {
     expect(parseNewVideoForm(form({ topic: "x".repeat(200), language: "en" })).ok).toBe(true);
     expect(parseNewVideoForm(form({ topic: "x", language: "fr" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "ai" })).ok).toBe(false);
-    expect(parseNewVideoForm(form({ topic: "x", language: "en", format: "long" })).ok).toBe(false);
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", format: "wide" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ language: "en" })).ok).toBe(false);
+  });
+  it("long: scene kit only, default 3 to 8 minutes, checked against the max-length setting", () => {
+    const long = (extra: Record<string, string> = {}) => form({ topic: "x", language: "en", kind: "scene_kit", format: "long", ...extra });
+    expect(parseNewVideoForm(long())).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "scene_kit", format: "long", notes: undefined, lengthMin: 3, lengthMax: 8 } });
+    const r = parseNewVideoForm(long({ minMinutes: "5", maxMinutes: "12" }), 15);
+    expect(r.ok && [r.value.lengthMin, r.value.lengthMax]).toEqual([5, 12]);
+    expect(parseNewVideoForm(long({ maxMinutes: "16" }), 15)).toMatchObject({ ok: false });
+    expect(parseNewVideoForm(long({ minMinutes: "9", maxMinutes: "8" }), 15)).toMatchObject({ ok: false });
+    expect(parseNewVideoForm(long({ minMinutes: "2" }), 15)).toMatchObject({ ok: false });
+    expect(parseNewVideoForm(long({ maxMinutes: "20" }), 20).ok).toBe(true); // the setting raises the ceiling
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", format: "long" }))).toMatchObject({ ok: false, message: expect.stringContaining("Scene kit") });
+  });
+  it("a Short never carries a length range", () => {
+    const r = parseNewVideoForm(form({ topic: "x", language: "en", minMinutes: "5", maxMinutes: "9" }));
+    expect(r.ok && Object.keys(r.value).sort()).toEqual(["captionStyle", "format", "kind", "language", "notes", "style", "topic"]);
+    expect(r.ok && r.value.lengthMin).toBeUndefined();
   });
   it("keeps notes up to 2000 characters", () => {
     expect(parseNewVideoForm(form({ topic: "x", language: "en", notes: "n".repeat(2001) })).ok).toBe(false);

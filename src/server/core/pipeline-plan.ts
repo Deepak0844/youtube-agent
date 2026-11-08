@@ -8,10 +8,10 @@ import type { GateId } from "@/server/core/gates";
 
 export type VideoFormat = "short" | "long";
 export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "scene3d" | "scene3d_code";
-export type ContentKindName = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "previews" | "review";
+export type ContentKindName = "outline" | "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "previews" | "review";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
-export const STAGE_NAMES = ["draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_author", "scene3d_stills", "scene3d_review", "voice", "sfx", "qa", "repair_scenes", "reframe", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
+export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_author", "scene3d_stills", "scene3d_review", "voice", "sfx", "qa", "repair_scenes", "reframe", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
 export type StageName = (typeof STAGE_NAMES)[number];
 
 /** The two 3D story kinds: the director writes scene data (scene3d), or the AI writes the scene code (scene3d_code). Both get the Look gate and the native render. */
@@ -36,7 +36,13 @@ export interface PlanFlags {
 }
 
 export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags): PlanStep[] {
-  if (format === "long") throw new Error("long format is not built yet (Phase 6b)");
+  // Long (Phase 6b.2): scene kit only. The short route with the outline step (and its gate) in front; the render stage picks the
+  // landscape composition. Every other kind keeps refusing until its own slice ships.
+  if (format === "long") {
+    if (kind !== "scene_kit") throw new Error("long videos are only available for the scene kit for now");
+    const head: PlanStep[] = flags.imported ? [] : [{ stage: "outline", gateAfter: "outline", resource: "net" }];
+    return [...head, ...stagePlan(kind, "short", flags)];
+  }
   // tsx: the model writes one Remotion file after narration exists (word times), then it is checked, previewed and rendered
   // in one stage that replaces build + render. It never uses pictures, so tsx has no pictures step (a fall-back to the scene kit gets it
   // from the scene_kit route). Every other kind keeps the route below exactly as it was.
@@ -127,6 +133,7 @@ export function postStageGates(plan: readonly PlanStep[], flags: PlanFlags): Gat
 /** Content a stage reads, beyond the previous stage's hash. A new version of any of these makes the stage stale. */
 // Render reads beats, narration and the scenes (scenes.json from Build): a new scenes version makes Render stale.
 export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKindName[]>> = {
+  outline: [],
   draft: [],
   pictures: ["script", "beats"],
   build: ["script"],
@@ -182,6 +189,8 @@ export interface PipelineView {
   style?: { style: string | null; captionStyle: string | null };
   /** latest owner send-back note for the script, or null */
   feedback: string | null;
+  /** long videos only: latest owner send-back note for the outline. Absent or null = never sent back, and then no hash changes. */
+  outlineFeedback?: string | null;
   /**
    * 3D stories only: how many times the owner sent the Look back, and the latest note. The director reads the note; both count in its hash,
    * so a repeated note still makes it run again. Absent or null = never sent back, and then no hash changes.
@@ -235,9 +244,18 @@ export type Action =
 /** The hash a stage must have to be up to date, given the previous stage's run hash. */
 export function expectedInputHash(view: PipelineView, stage: StageName, prevHash: string | null): string {
   const upstream: Record<string, string> = {};
-  if (stage === "draft") {
+  if (stage === "outline") {
+    upstream.params = view.paramsHash;
+    upstream.feedback = view.outlineFeedback ?? "";
+  } else if (stage === "draft") {
     upstream.params = view.paramsHash;
     upstream.feedback = view.feedback ?? "";
+    // A long script is written against the approved outline: the outline step's hash and the outline content both count, so editing or
+    // regenerating the outline makes the draft (and everything after it) stale. Short videos add nothing here.
+    if (view.format === "long") {
+      upstream.prev = prevHash ?? "";
+      upstream.outline = view.content.outline ?? "none";
+    }
   } else {
     upstream.prev = prevHash ?? "";
   }

@@ -45,6 +45,7 @@ import type { StageDeps } from "./stages/deps";
 import { dryRunDraftHandler } from "./stages/draft";
 import { generateAttempt } from "./stages/generate";
 import { dryRunPicturesHandler, picturesHandler } from "./stages/pictures";
+import { outlineAttempt } from "./stages/outline";
 import { qaAttempt } from "./stages/qa";
 import { renderAttempt } from "./stages/render";
 import { tsxAuthorAttempt } from "./stages/tsx-author";
@@ -89,6 +90,7 @@ export function defaultDryRunDeps(pool: pg.Pool, root: string = storageRoot()): 
 export function dryRunHandlers(deps: StageDeps): StageHandlers {
   const fin = { db: deps.db, root: deps.root };
   return {
+    outline: withAttempt(fin, outlineAttempt(deps)),
     draft: dryRunDraftHandler(deps.db),
     pictures: dryRunPicturesHandler,
     build: withAttempt(fin, buildAttempt(deps)),
@@ -192,6 +194,11 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     const models = await defaultModelDeps(pool, () => loadKeyring());
     return withAttempt(fin, buildAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
   };
+  // Long videos: the 'outline' model route and the video's budget scopes (the long-video cap); refuses before anything is reserved when none is routed.
+  const outline: StageHandler = async (ctx) => {
+    const models = await defaultModelDeps(pool, () => loadKeyring());
+    return withAttempt(fin, outlineAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
+  };
   // Code scenes: the Build model route and budget scopes (so Claude Code at $0 or any priced model works); refuses before anything is reserved when none is routed.
   const tsxAuthor: StageHandler = async (ctx) => {
     const models = await defaultModelDeps(pool, () => loadKeyring());
@@ -228,6 +235,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     return withAttempt(fin, replyDraftsAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
   };
   return {
+    outline: refuseDryRunVideos(pool, outline),
     draft: refuseDryRunVideos(pool, draft),
     pictures: refuseDryRunVideos(pool, picturesHandler({
       db: pool, root: deps.root, ingest: { runChild: (spec) => runChild(spec, { registry: env.childRegistry }) },

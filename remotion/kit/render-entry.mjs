@@ -1,6 +1,7 @@
 // Runs INSIDE the render container only (src/server/providers/renderer/remotion-container.ts starts it): node as a
 // non-root user, --network none, read-only root, this kit mounted read-only at /opt/render/kit.
 // usage: node /opt/render/kit/render-entry.mjs <inDir> <outFile>                 the scene kit (props.json)
+//        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --landscape     the 1920x1080 long-form scene kit, composition kit-video-landscape (props.json: the kit props plus chapters)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --scale3d       the 3D scale composition (props.json: scene, captions)
 //        node <repo>/remotion/kit/render-entry.mjs <inDir> <outFile> --scale3d --native   the same on the host Mac's GPU (remotion-native.ts, inside sandbox-exec)
 //        node <repo>/remotion/kit/render-entry.mjs <inDir> <outFile> --scene3d --native   the general 3D scene composition (props.json: scene; models/ staged in <inDir>), native ONLY
@@ -39,7 +40,7 @@ if (shaAt >= 0 && (shaAt !== extraAll.length - 2 || !/^[0-9a-f]{64}$/.test(expec
 // "--scene3d" is native ONLY: it is refused without --native, so the container can never be asked to draw it.
 const native = (mode === "--scale3d" || mode === "--scene3d" || mode === "--scene3d-stills" || mode === "--scene3d-code" || mode === "--scene3d-code-stills") && extra.length === 1 && extra[0] === "--native";
 // "--scene3d-stills" is native ONLY too (it draws the same composition, a few frames of it).
-if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || (extra.length > 0 && !native) || ((mode === "--scene3d" || mode === "--scene3d-stills" || mode === "--scene3d-code" || mode === "--scene3d-code-stills") && !native) || !["kit", "--scale3d", "--scene3d", "--scene3d-stills", "--scene3d-code", "--scene3d-code-stills", "--tsx", "--tsx-stills"].includes(mode)) {
+if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || (extra.length > 0 && !native) || ((mode === "--scene3d" || mode === "--scene3d-stills" || mode === "--scene3d-code" || mode === "--scene3d-code-stills") && !native) || !["kit", "--landscape", "--scale3d", "--scene3d", "--scene3d-stills", "--scene3d-code", "--scene3d-code-stills", "--tsx", "--tsx-stills"].includes(mode)) {
   throw new Error("usage: render-entry.mjs <abs inDir> <abs out> [--tsx | --tsx-stills]");
 }
 // Only the two TSX modes use meta.json, video.tsx and the TSX bundle. "--scale3d" and "--scene3d" are kit-style modes (props.json, the kit's index.ts, public dir = inDir) that renders another composition.
@@ -161,7 +162,7 @@ if (author) {
   guardBrowser(guarded, { origin: globalThis.__s3kOrigin, log: (line) => console.log(line), onViolation: () => { console.log("GUARD violation: the page opened something it may not; the render is stopped"); process.exit(3); } });
 }
 try {
-const composition = await selectComposition({ serveUrl, id: author ? "s3k-author" : tsx ? "tsx-video" : scene3d ? "scene3d" : mode === "--scale3d" ? "scale3d" : "kit-video", inputProps, browserExecutable, chromiumOptions, ...(guarded ? { puppeteerInstance: guarded } : {}) });
+const composition = await selectComposition({ serveUrl, id: author ? "s3k-author" : tsx ? "tsx-video" : scene3d ? "scene3d" : mode === "--landscape" ? "kit-video-landscape" : mode === "--scale3d" ? "scale3d" : "kit-video", inputProps, browserExecutable, chromiumOptions, ...(guarded ? { puppeteerInstance: guarded } : {}) });
 if (author && (composition.durationInFrames !== inputProps.frames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) throw new Error("the scene composition does not match props.json");
 if (tsx && (composition.durationInFrames !== meta.durationInFrames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) {
   throw new Error("the TSX composition does not match meta.json");

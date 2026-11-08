@@ -32,6 +32,10 @@ export interface RenderArgs {
   /** A plain file name, never a path. */
   outFile: string;
   size: { width: number; height: number };
+  /** "landscape" = the 1920x1080 long-form composition (kit-video-landscape); absent = the portrait kit-video. */
+  layout?: "landscape";
+  /** Landscape only: chapter title cards, in order, the first at 0 ms. Start times are on the real (narration-timed) timeline. */
+  chapters?: Array<{ title: string; startMs: number }>;
 }
 
 /** What the native renderer needs to draw an AI-written scene. `expectedSha256` is sceneCodeSha(source, props) as approved; the renderer refuses any difference. */

@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { KnownFailure } from "@/server/core/paid-call";
+import { approvedOutline } from "@/server/db/stage-content";
 import type { StageContext, StageHandler } from "@/server/core/stage-handler";
 import { draftModeForStage, ensureDraftScopes, loadDraftVideo, pendingScriptFeedback, saveDraftContent } from "@/server/db/draft-store";
 import type { LlmClient } from "@/server/llm/client";
@@ -30,11 +31,19 @@ export function createDraftHandler(d: { db: pg.Pool; makeLlm: (budgetScopes: str
     const scopes = await ensureDraftScopes(d.db, { stageRunId: ctx.stage.id, videoId, kind: video.kind, format: video.format }).catch((e: unknown) => {
       throw new KnownFailure(e instanceof Error ? e.message : "budget caps for Draft are not set up");
     });
+    // A long script is written against the outline the owner approved (never a newer one nobody has seen); without it nothing is spent.
+    let long: DraftInput["long"];
+    if (video.format === "long") {
+      const outline = await approvedOutline(d.db, videoId);
+      if (!outline.ok) throw new KnownFailure(outline.reason);
+      if (video.length_min_minutes === null || video.length_max_minutes === null) throw new KnownFailure("This long video has no length range saved.");
+      long = { outline: outline.outline, range: { min: video.length_min_minutes, max: video.length_max_minutes } };
+    }
     const feedback = await pendingScriptFeedback(d.db, videoId);
     const { script, spentMicroUsd } = await runDraft(
       ctx,
       { llm: d.makeLlm(scopes), web: d.makeWeb(), db: d.db },
-      { topic: video.topic, lang: video.language, kind: video.kind, format: video.format, ...(video.notes ? { notes: video.notes } : {}), ...(feedback ? { feedback } : {}) },
+      { topic: video.topic, lang: video.language, kind: video.kind, format: video.format, ...(video.notes ? { notes: video.notes } : {}), ...(feedback ? { feedback } : {}), ...(long ? { long } : {}) },
     );
     const versions = await saveDraftContent(d.db, videoId, ctx.claim, script);
     return { title: script.title, spentMicroUsd, versions };

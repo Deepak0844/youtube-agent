@@ -19,6 +19,8 @@ export interface RuleOpts {
   visualByBeat?: Record<string, string>;
   /** Run one rule only (tests). */
   only?: string;
+  /** A long video's scenes: the wider scene count and total length of the long schema. */
+  long?: boolean;
 }
 type Problem = { scene?: number; text: string };
 export interface Rule {
@@ -199,7 +201,7 @@ export type CheckResult = { ok: true; doc: SceneDoc } | { ok: false; errors: str
 
 /** Schema first; only a schema-valid doc gets the house rules. */
 export function validateAndCheck(input: unknown, opts: RuleOpts = {}): CheckResult {
-  const r = validateScenes(input);
+  const r = validateScenes(input, { long: opts.long });
   if (!r.ok) return r;
   const errors = checkSceneRules(r.doc, opts);
   return errors.length ? { ok: false, errors } : { ok: true, doc: r.doc };

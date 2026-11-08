@@ -1,4 +1,5 @@
 import type { Lang } from "@/server/core/lang";
+import { longWordRange, type LengthRange } from "@/server/core/long-form";
 import { validateScript, type Script } from "@/server/core/script-contract";
 
 // Evidence check for Draft (Doc 2 §8). Pure: no IO. A sourced claim only counts when its source_url is a page the app
@@ -78,8 +79,10 @@ export function judgeDraft(
   format: "short" | "long",
   fetched: ReadonlyMap<string, string>,
   kind?: string,
+  /** long videos: the minutes range, which sets the narration word range */
+  length?: LengthRange,
 ): { ok: true; script: Script } | { ok: false; problems: string[] } {
-  const v = validateScript(raw, lang, format, { kind });
+  const v = validateScript(raw, lang, format, { kind, ...(format === "long" && length ? { longWords: longWordRange(lang, length) } : {}) });
   if (!v.ok) return v;
   const e = checkEvidence(v.script, fetched);
   return e.ok ? { ok: true, script: v.script } : e;

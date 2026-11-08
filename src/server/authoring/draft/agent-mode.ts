@@ -4,7 +4,7 @@ import { createPgAgentStepStore } from "@/server/db/agent-steps";
 import { parseAnswer, type DeclaredTool } from "@/server/llm/client";
 import { judgeDraft } from "./evidence-check";
 import { agentMessages, fenceUntrusted, rejectionMessage } from "./prompts";
-import { DRAFT_MAX_OUTPUT_TOKENS, DraftInvalidError, MAX_DRAFT_RETRIES, rawDraftSchema, type DraftDeps, type DraftInput, type DraftResult, type WebTools } from "./shared";
+import { draftMaxOutputTokens, DraftInvalidError, MAX_DRAFT_RETRIES, rawDraftSchema, type DraftDeps, type DraftInput, type DraftResult, type WebTools } from "./shared";
 
 // Agent mode (Doc 2 §8): the model drives webSearch and fetchPage itself, through the shared agent loop with the Task 16
 // checkpoints, so a resumed run replays finished steps and their tools instead of repeating them. Only these two read-only
@@ -97,7 +97,7 @@ export function fetchedPages(messages: Message[]): Map<string, string> {
 export async function agentDraft(ctx: StageContext, deps: DraftDeps, input: DraftInput & { format: "short" | "long" }): Promise<DraftResult> {
   const store = deps.store === undefined ? createPgAgentStepStore(deps.db, ctx.stage.id) : deps.store;
   const tools = draftTools(deps.web);
-  let messages: Message[] = agentMessages({ topic: input.topic, lang: input.lang, kind: input.kind, format: input.format, notes: input.notes, feedback: input.feedback });
+  let messages: Message[] = agentMessages({ topic: input.topic, lang: input.lang, kind: input.kind, format: input.format, notes: input.notes, feedback: input.feedback, long: input.long });
   let spent = 0;
   let stepsLeft = AGENT_TOTAL_STEPS;
 
@@ -106,7 +106,7 @@ export async function agentDraft(ctx: StageContext, deps: DraftDeps, input: Draf
     const maxSteps = Math.min(AGENT_MAX_STEPS, stepsLeft);
     let run;
     try {
-      run = await deps.llm.agent(ctx, { stage: "draft", tools, messages, maxSteps, maxOutputTokens: DRAFT_MAX_OUTPUT_TOKENS, ...(store ? { checkpoint: { claim: ctx.claim, store, runOrdinal: attempt } } : {}) });
+      run = await deps.llm.agent(ctx, { stage: "draft", tools, messages, maxSteps, maxOutputTokens: draftMaxOutputTokens(input.format), ...(store ? { checkpoint: { claim: ctx.claim, store, runOrdinal: attempt } } : {}) });
     } catch (err) {
       if (err instanceof MaxStepsError) throw new DraftInvalidError([`the model did not finish within ${maxSteps} steps`], spent);
       throw err;
@@ -115,7 +115,7 @@ export async function agentDraft(ctx: StageContext, deps: DraftDeps, input: Draf
     stepsLeft -= run.steps;
     const fetched = fetchedPages(run.messages);
     const parsed = parseAnswer(run.text, rawDraftSchema);
-    const verdict = parsed.ok ? judgeDraft(parsed.value, input.lang, input.format, fetched, input.kind) : { ok: false as const, problems: [parsed.reason] };
+    const verdict = parsed.ok ? judgeDraft(parsed.value, input.lang, input.format, fetched, input.kind, input.long?.range) : { ok: false as const, problems: [parsed.reason] };
     if (verdict.ok) return { script: verdict.script, spentMicroUsd: spent };
     if (attempt >= MAX_DRAFT_RETRIES) throw new DraftInvalidError(verdict.problems, spent);
     messages = [...run.messages, { role: "user", content: rejectionMessage(verdict.problems, [...fetched.keys()]) }];
