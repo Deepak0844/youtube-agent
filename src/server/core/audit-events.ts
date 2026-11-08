@@ -123,6 +123,9 @@ export const AUDIT_EVENTS = {
   "idea.dismissed": "The owner dismissed an idea (detail: idea id, session id)",
   "scheduler.draft_started": "Overnight drafting started a normal draft from an idea; nothing was approved or uploaded (detail: idea id, video id, kind, number this night)",
   "idea.drafted": "The owner turned an idea into a normal video draft; nothing was approved or uploaded (detail: idea id, video id, kind, session id)",
+  // Phase 6b.1 series (detail: series id, part number, video id, session id; never titles or premise text)
+  "series.created": "The owner created a series (detail: series id, channel id, formats, whether it has a spend cap, session id)",
+  "series.part_started": "The owner started a series part as a normal video draft; nothing was approved or uploaded (detail: series id, part number, video id, session id)",
   // Already written by owner setup, login and TOTP code
   "owner.created": "Owner account created",
   "owner.reset_completed": "Owner account reset completed",

@@ -141,7 +141,7 @@ function claimsOf(script: unknown): { claims: GateClaim[]; parsed: ReturnType<ty
   return { claims, parsed };
 }
 
-async function runsFor(db: pg.Pool, videoId: string): Promise<StripInput["runs"]> {
+export async function runsFor(db: pg.Pool, videoId: string): Promise<StripInput["runs"]> {
   const r = await db.query<{ name: string; status: RunStatus }>(
     "select distinct on (name) name, status from stage_runs where video_id = $1 order by name, created_at desc, id desc",
     [videoId],
@@ -150,7 +150,7 @@ async function runsFor(db: pg.Pool, videoId: string): Promise<StripInput["runs"]
   for (const row of r.rows) if ((STAGE_NAMES as readonly string[]).includes(row.name)) out[row.name as StageName] = row.status;
   return out;
 }
-async function uploadFor(db: pg.Pool, videoId: string): Promise<StripInput["upload"]> {
+export async function uploadFor(db: pg.Pool, videoId: string): Promise<StripInput["upload"]> {
   const r = await db.query<{ status: "publish_approved" | "uploading" | "uploaded" | "upload_failed" }>("select status from uploads where video_id = $1 order by created_at desc limit 1", [videoId]);
   return r.rows[0]?.status ?? null;
 }
