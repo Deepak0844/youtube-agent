@@ -5,7 +5,7 @@ import { approvalReaders } from "@/server/db/approval-readers";
 import { recordAudit } from "@/server/db/audit";
 import { lengthRangeProblem } from "@/server/core/long-form";
 import { advanceVideo, createVideo, type EnqueueOnly } from "@/server/db/pipeline";
-import { getSetting } from "@/server/db/settings";
+import { maxLongMinutes } from "@/server/db/system-settings";
 
 /** Owner starts a new Short or Long video: row, audit, then the first pipeline step. The topic and notes stay out of the audit row. */
 export async function startNewVideo(db: pg.Pool, queue: EnqueueOnly, actor: GateActor, i: NewVideoInput): Promise<{ ok: true; videoId: string } | { ok: false; message: string }> {
@@ -18,7 +18,7 @@ export async function startVideo(db: pg.Pool, queue: EnqueueOnly, sessionId: str
   // A long video (scene kit only) carries its length range, re-checked here against the live max-length setting whoever called.
   if (i.format === "long") {
     if (i.kind !== "scene_kit") return { ok: false, message: "Long videos use the Scene kit for now." };
-    const problem = lengthRangeProblem(i.lengthMin, i.lengthMax, Number(await getSetting(db, "video.max_long_minutes")));
+    const problem = lengthRangeProblem(i.lengthMin, i.lengthMax, await maxLongMinutes(db));
     if (problem) return { ok: false, message: problem };
   }
   const v = await createVideo(db, { channelId, format: i.format, kind: i.kind, language: i.language, topic: i.topic, notes: i.notes ?? null, style: i.style ?? null, captionStyle: i.captionStyle ?? null, ...(i.format === "long" ? { lengthMinMinutes: i.lengthMin, lengthMaxMinutes: i.lengthMax } : {}) });

@@ -162,7 +162,7 @@ if (author) {
   guardBrowser(guarded, { origin: globalThis.__s3kOrigin, log: (line) => console.log(line), onViolation: () => { console.log("GUARD violation: the page opened something it may not; the render is stopped"); process.exit(3); } });
 }
 try {
-const composition = await selectComposition({ serveUrl, id: author ? "s3k-author" : tsx ? "tsx-video" : scene3d ? "scene3d" : mode === "--landscape" ? "kit-video-landscape" : mode === "--scale3d" ? "scale3d" : "kit-video", inputProps, browserExecutable, chromiumOptions, ...(guarded ? { puppeteerInstance: guarded } : {}) });
+const composition = await selectComposition({ serveUrl, id: mode === "--landscape" ? "kit-video-landscape" : author ? "s3k-author" : tsx ? "tsx-video" : scene3d ? "scene3d" : mode === "--scale3d" ? "scale3d" : "kit-video", inputProps, browserExecutable, chromiumOptions, ...(guarded ? { puppeteerInstance: guarded } : {}) });
 if (author && (composition.durationInFrames !== inputProps.frames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) throw new Error("the scene composition does not match props.json");
 if (tsx && (composition.durationInFrames !== meta.durationInFrames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) {
   throw new Error("the TSX composition does not match meta.json");
