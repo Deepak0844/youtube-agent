@@ -137,6 +137,8 @@ export const AUDIT_EVENTS = {
   "login.failure": "Owner sign-in failed",
   "password.changed": "Owner password changed",
   "password.change_failure": "Owner password change failed",
+  "session.revoked": "The owner signed out another session from the Account page (detail: that session id, the signed-in session id; never the token)",
+  "sessions.others_revoked": "The owner signed out every other session from the Account page (detail: how many, the signed-in session id)",
   "totp.enabled": "Two-factor sign-in enabled",
   "totp.disabled": "Two-factor sign-in disabled",
   "totp.backfilled": "Existing two-factor secrets were encrypted into the vault",
