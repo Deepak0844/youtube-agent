@@ -97,7 +97,7 @@ describe("approvals", () => {
     }
     expect(await approveGate(db.pool, { videoId: "00000000-0000-4000-8000-000000000000", gate: "script", seenHash: h, actor: session })).toMatchObject({ ok: false });
     expect(await approveGate(db.pool, { videoId: "not-a-uuid", gate: "script", seenHash: h, actor: session })).toMatchObject({ ok: false });
-    for (const gate of ["outline", "chapter", "thumbnail", "comment_reply", "allow_public", "live_title", "nope"]) {
+    for (const gate of ["outline", "chapter", "comment_reply", "allow_public", "live_title", "nope"]) {
       expect(await approveGate(db.pool, { videoId: v, gate: gate as never, seenHash: h, actor: session })).toMatchObject({ ok: false });
     }
     for (const seenHash of ["", "abc", h.toUpperCase(), `${h}0`, null as never]) {

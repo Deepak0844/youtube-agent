@@ -29,7 +29,7 @@ export async function seedVideo(db: pg.Pool): Promise<string> {
 export async function bumpContent(db: pg.Pool, videoId: string, kind: ContentKind): Promise<void> {
   const body = kind === "cost_plan" ? plan : kind === "metadata" ? meta : { text: "changed" };
   const n = Math.random().toString(36);
-  if (kind === "video" || kind === "evidence") await addContent(db, videoId, kind, { filePath: `f/${n}`, sha256: sha256Hex(`${kind}-${n}`) });
+  if (kind === "video" || kind === "evidence" || kind === "thumbnail") await addContent(db, videoId, kind, { filePath: `f/${n}`, sha256: sha256Hex(`${kind}-${n}`) });
   else await addContent(db, videoId, kind, { body, sha256: sha256Hex(`${kind}-${n}`) });
 }
 
@@ -39,6 +39,7 @@ export const STALE = "0".repeat(64);
 /** Builds the `act` function the harness needs: drives the real approveGate. Non-session actors are passed through untyped. */
 export async function gateFixture(db: pg.Pool, gate: GateId): Promise<{ videoId: string; seen: string; act: GateAct; resultOf: (r: Awaited<ReturnType<typeof approveGate>>) => GateResult }> {
   const videoId = await seedVideo(db);
+  if (gate === "thumbnail") await bumpContent(db, videoId, "thumbnail"); // the card of a long video
   if (gate === "look") for (const kind of ["previews", "scenes"] as const) await bumpContent(db, videoId, kind); // the preview pictures of a 3D story and the scene they show
   if (gate === "publish") return publishFixture(db, videoId);
   const seen = (await liveGateHash(db, videoId, gate))?.hash;

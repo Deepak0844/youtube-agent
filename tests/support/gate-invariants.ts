@@ -75,7 +75,7 @@ export const GATE_SUITES: Record<GateId, GateSuite> = {
   look: { suite: "tests/integration/gates/look.test.ts" },
   chapter: { todoPhase: GATE_ROADMAP_PHASE.chapter },
   video: { suite: "tests/integration/gates/video.test.ts" },
-  thumbnail: { todoPhase: GATE_ROADMAP_PHASE.thumbnail },
+  thumbnail: { suite: "tests/integration/gates/thumbnail.test.ts" },
   evidence: { suite: "tests/integration/gates/evidence.test.ts" },
   publish: { suite: "tests/integration/gates/publish.test.ts" },
   comment_reply: { todoPhase: GATE_ROADMAP_PHASE.comment_reply },

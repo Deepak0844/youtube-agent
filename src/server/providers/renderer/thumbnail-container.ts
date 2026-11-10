@@ -32,8 +32,10 @@ export function pngProblem(head: Buffer): string | null {
   return w === 1280 && h === 720 ? null : `The thumbnail is ${w}x${h}, expected 1280x720.`;
 }
 
+export type ThumbnailRenderer = { draw(ctx: StageContext, a: ThumbnailInput): Promise<{ outPath: string; image: string }> };
+
 export function createThumbnailRenderer(deps: Pick<ContainerRendererDeps, "root" | "kitDir" | "runChild" | "hostLimits" | "image" | "workerId" | "sweepDelayMs">) {
-  return {
+  const renderer: ThumbnailRenderer = {
     async draw(ctx: StageContext, a: ThumbnailInput): Promise<{ outPath: string; image: string }> {
       if (a.outFile === "" || a.outFile !== path.basename(a.outFile) || a.outFile.startsWith(".") || !a.outFile.endsWith(".png")) throw new Error("outFile must be a plain .png file name");
       if (a.title.trim() === "" || a.title.length > 300) throw new KnownFailure("The thumbnail needs a title of up to 300 characters.");
@@ -99,4 +101,5 @@ export function createThumbnailRenderer(deps: Pick<ContainerRendererDeps, "root"
       }
     },
   };
+  return renderer;
 }

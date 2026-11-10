@@ -12,6 +12,7 @@ const base = (): LiveInputs => ({
     cost_plan: { sha256: h("b"), body: plan },
     video: { sha256: h("c"), body: null },
     evidence: { sha256: h("d"), body: null },
+    thumbnail: { sha256: h("f"), body: null, filePath: "videos/v/thumbnail.png" },
     metadata: { sha256: h("e"), body: { visibility: "private", publish_at: null } },
   },
 });
@@ -58,7 +59,7 @@ describe("liveHash", () => {
     }
   });
   it("script, video and evidence follow only their own content", () => {
-    for (const [g, k] of [["script", "script"], ["video", "video"], ["evidence", "evidence"]] as const) {
+    for (const [g, k] of [["script", "script"], ["video", "video"], ["evidence", "evidence"], ["thumbnail", "thumbnail"]] as const) {
       const i = base();
       const before = hash(g, i);
       i.content[k] = { sha256: h("9"), body: i.content[k]!.body };

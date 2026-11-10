@@ -11,7 +11,7 @@ export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "sc
 export type ContentKindName = "outline" | "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "previews" | "review" | "thumbnail";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
-export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_author", "scene3d_stills", "scene3d_review", "voice", "sfx", "qa", "repair_scenes", "reframe", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
+export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_author", "scene3d_stills", "scene3d_review", "voice", "sfx", "qa", "repair_scenes", "reframe", "thumbnail", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
 export type StageName = (typeof STAGE_NAMES)[number];
 
 /** The two 3D story kinds: the director writes scene data (scene3d), or the AI writes the scene code (scene3d_code). Both get the Look gate and the native render. */
@@ -151,6 +151,7 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   qa: [],
   repair_scenes: ["scenes", "script"],
   reframe: [],
+  thumbnail: [],
   seo: ["script"],
   reply_drafts: [],
 };

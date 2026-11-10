@@ -6,6 +6,7 @@ import { getBudget } from "@/server/db/spend";
 import { latestContent, type ContentKind, type VideoFormat, type VideoKind, type VideoLanguage } from "@/server/db/videos";
 import type { ImageProvider } from "@/server/providers/media";
 import type { Renderer, Scene3dStillsRenderer, TsxRenderer } from "@/server/providers/renderer";
+import type { ThumbnailRenderer } from "@/server/providers/renderer/thumbnail-container";
 import type { CaptionsBody } from "@/server/core/alignment";
 import type { Lang } from "@/server/core/lang";
 import type { VoiceProvider } from "@/server/providers/voice";
@@ -41,6 +42,8 @@ export interface StageDeps {
   /** The routed hosted image provider by registry id (production). Refuses before any money is reserved when it is off, unpriced or has no key. */
   imageFor?: (providerId: string) => Promise<ImageProvider>;
   renderer: Renderer;
+  /** The thumbnail card renderer (on-demand `thumbnail` stage, long videos). Absent = that stage refuses with a plain sentence. */
+  thumbnails?: ThumbnailRenderer;
   /** The native (Mac GPU, sandbox-exec) renderer for 3D scale videos and its readiness check (Phase 5d). Absent = never used. */
   native?: { renderer: Renderer; /** preview pictures of a 3D story (scene3d_stills); absent = that stage refuses */ stills?: Scene3dStillsRenderer; ready(): Promise<{ ready: boolean; message: string }> };
   /** The sandboxed code-scene renderer (tsx_author only). Absent = that stage refuses with a plain sentence. */

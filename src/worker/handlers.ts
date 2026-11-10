@@ -23,6 +23,7 @@ import { createImageFor } from "@/server/providers/image/wire";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
 import { createContainerRenderer, resolveRenderImage, sweepRenderContainers } from "@/server/providers/renderer/remotion-container";
+import { createThumbnailRenderer } from "@/server/providers/renderer/thumbnail-container";
 import { createNativeRenderer } from "@/server/providers/renderer/remotion-native";
 import { checkNativeRenderReady } from "@/server/providers/renderer/native-preflight";
 import { createTsxRenderer } from "@/server/providers/renderer/tsx-render";
@@ -39,6 +40,7 @@ import { withAttempt } from "./stages/attempt";
 import { buildAttempt } from "./stages/build";
 import { repairScenesAttempt } from "./stages/repair-scenes";
 import { reframeAttempt } from "./stages/reframe";
+import { thumbnailAttempt } from "./stages/thumbnail";
 import { replyDraftsAttempt } from "./stages/reply-drafts";
 import { seoAttempt } from "./stages/seo";
 import type { StageDeps } from "./stages/deps";
@@ -107,6 +109,7 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     qa: withAttempt(fin, qaAttempt(deps)),
     repair_scenes: repairScenesAttempt(deps),
     reframe: withAttempt(fin, reframeAttempt(deps)),
+    thumbnail: withAttempt(fin, thumbnailAttempt(deps)),
     seo: withAttempt(fin, seoAttempt(deps)),
   };
 }
@@ -156,6 +159,8 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
     // Code scenes (tsx_author): the same container locks plus tighter limits (tsx-sandbox.ts); the model's file never touches the host shell.
     tsx: createTsxRenderer({ kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) }),
+    // The long-video thumbnail card: the same container locks, mode --thumbnail (thumbnail-container.ts).
+    thumbnails: createThumbnailRenderer({ root, kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId }),
     // Render runs in the locked-down render container (remotion-container.ts). The kit is read from the repo the worker runs in.
     renderer: createContainerRenderer({
       root, kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId,
@@ -252,6 +257,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     })),
     repair_scenes: refuseDryRunVideos(pool, repair),
     reframe: refuseDryRunVideos(pool, withAttempt(fin, reframeAttempt(deps))),
+    thumbnail: refuseDryRunVideos(pool, withAttempt(fin, thumbnailAttempt(deps))),
     seo: refuseDryRunVideos(pool, seo),
     reply_drafts: refuseDryRunVideos(pool, replyDrafts),
     build: refuseDryRunVideos(pool, build),
