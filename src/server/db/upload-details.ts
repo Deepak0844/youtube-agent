@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
+import { chapterTimestampLines } from "@/server/core/long-form";
 import { defaultDetails, validateUploadDetails, type UploadDetails } from "@/server/core/upload-details";
 import { recordAudit } from "./audit";
 import { addContent, latestContent } from "./videos";
@@ -17,6 +18,21 @@ export interface DetailsView {
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * Long videos: the YouTube chapter lines ("0:00 Title") for the description, from the chapter starts the newest successful render used.
+ * Null for a short, before a render, or when YouTube would ignore the chapters (fewer than 3, or one under 10 seconds).
+ */
+export async function loadChapterLines(db: pg.Pool, videoId: string): Promise<string | null> {
+  const r = await db.query<{ result: unknown }>(
+    "select r.result from stage_runs r join videos v on v.id = r.video_id where r.video_id = $1 and v.format = 'long' and r.name = 'render' and r.status = 'succeeded' order by r.created_at desc, r.id desc limit 1",
+    [videoId],
+  );
+  const res = r.rows[0]?.result;
+  if (!isObj(res) || !Array.isArray(res.chapters) || typeof res.totalMs !== "number") return null;
+  const marks = res.chapters.filter((c): c is { title: string; startMs: number } => isObj(c) && typeof c.title === "string" && typeof c.startMs === "number");
+  return marks.length === res.chapters.length ? chapterTimestampLines(marks, res.totalMs) : null;
+}
 
 export async function loadUploadDetails(db: pg.Pool, videoId: string): Promise<DetailsView | null> {
   const v = await db.query<{ language: string; topic: string; channel_id: string | null }>("select language, topic, channel_id from videos where id = $1", [videoId]);

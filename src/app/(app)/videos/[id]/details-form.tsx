@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 import type { UploadDetails } from "@/server/core/upload-details";
 import { Button } from "@/ui/primitives/button";
 import { saveDetailsAction, type DetailsState } from "./details-actions";
@@ -19,8 +19,15 @@ function YesNo({ name, label, hint, value }: { name: string; label: string; hint
 }
 
 /** Upload details: title, description, tags, category, language, made for kids, synthetic content. Saving never uploads anything. */
-export function UploadDetailsForm({ videoId, details, saved, channelTitle }: { videoId: string; details: UploadDetails; saved: boolean; channelTitle: string | null }) {
+export function UploadDetailsForm({ videoId, details, saved, channelTitle, chapterLines = null }: { videoId: string; details: UploadDetails; saved: boolean; channelTitle: string | null; chapterLines?: string | null }) {
   const [state, run, pending] = useActionState<DetailsState, FormData>(saveDetailsAction, {});
+  const description = useRef<HTMLTextAreaElement>(null);
+  // Adds the chapter lines once, at the end. The owner still reads, edits and saves the description: nothing changes by itself.
+  const addChapters = () => {
+    const el = description.current;
+    if (!el || !chapterLines || el.value.includes(chapterLines)) return;
+    el.value = `${el.value.trimEnd()}${el.value.trim() === "" ? "" : "\n\n"}${chapterLines}`;
+  };
   return (
     <form action={run} data-testid="details-form" className="flex min-w-0 flex-col gap-3">
       <input type="hidden" name="videoId" value={videoId} />
@@ -31,8 +38,15 @@ export function UploadDetailsForm({ videoId, details, saved, channelTitle }: { v
         <input name="title" defaultValue={details.title} maxLength={200} className={FIELD} required />
       </label>
       <label className="flex flex-col gap-1 text-body">Description (up to 5000 bytes)
-        <textarea name="description" defaultValue={details.description} rows={8} className={FIELD} />
+        <textarea ref={description} name="description" defaultValue={details.description} rows={8} className={FIELD} />
       </label>
+      {chapterLines ? (
+        <div className="flex max-w-[68ch] flex-col gap-2 rounded-card bg-surface p-pad">
+          <p className="m-0 text-small text-muted">Chapters from the finished video. YouTube shows them when they are in the description.</p>
+          <pre data-testid="chapter-lines" className="m-0 whitespace-pre-wrap text-body [overflow-wrap:anywhere]">{chapterLines}</pre>
+          <div><Button type="button" variant="secondary" onClick={addChapters}>Add chapters to the description</Button></div>
+        </div>
+      ) : null}
       <label className="flex flex-col gap-1 text-body">Tags (separated by commas, 500 characters in total, no &lt; or &gt;)
         <input name="tags" defaultValue={details.tags.join(", ")} className={FIELD} />
       </label>

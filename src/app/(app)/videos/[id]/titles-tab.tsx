@@ -1,7 +1,7 @@
 import type { Check } from "@/server/core/seo";
 import { getPool } from "@/server/db/pool";
 import { loadSeoTab } from "@/server/db/seo";
-import { loadUploadDetails } from "@/server/db/upload-details";
+import { loadChapterLines, loadUploadDetails } from "@/server/db/upload-details";
 import type { VideoPage } from "@/server/db/video-page";
 import { Pill } from "@/ui/primitives/pill";
 import { UploadDetailsForm } from "./details-form";
@@ -23,6 +23,7 @@ function Marks({ checks }: { checks: Check[] }) {
 export async function TitlesTabPanel({ p }: { p: VideoPage }) {
   const t = await loadSeoTab(getPool(), p.head.id);
   const details = await loadUploadDetails(getPool(), p.head.id);
+  const chapterLines = await loadChapterLines(getPool(), p.head.id);
   const lang = p.head.language;
   const b = t.body;
   return (
@@ -64,7 +65,7 @@ export async function TitlesTabPanel({ p }: { p: VideoPage }) {
       {details ? (
         <>
           <H>Upload details</H>
-          <UploadDetailsForm key={JSON.stringify(details.saved ?? details.draft)} videoId={p.head.id} details={details.saved ?? details.draft} saved={details.saved !== null} channelTitle={details.channelTitle} />
+          <UploadDetailsForm key={JSON.stringify(details.saved ?? details.draft)} videoId={p.head.id} details={details.saved ?? details.draft} saved={details.saved !== null} channelTitle={details.channelTitle} chapterLines={chapterLines} />
         </>
       ) : null}
       <p className="m-0 text-small text-muted">Nothing is uploaded from here. Uploading arrives in the next step of Phase 5; saving these details only stores them with the video.</p>
