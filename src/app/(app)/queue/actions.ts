@@ -5,9 +5,9 @@ import { notFound } from "next/navigation";
 import { assertActionOrigin } from "@/lib/auth/action-origin";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { dryRunAllowed } from "@/lib/dry-run";
-import { BAD_FORM, parseDecisionForm, parseGateForm, parseIdForm, parseStageForm } from "@/server/core/queue-input";
+import { BAD_FORM, parseDecisionForm, parseGateForm, parseIdForm, parseOutlineEditForm, parseStageForm } from "@/server/core/queue-input";
 import { getPool } from "@/server/db/pool";
-import { cancelVideoById, decideGate, decideParkedStage, resetBreakerFor, sendUploadAgain, startDryRun, type ActionResult } from "@/server/db/queue-actions";
+import { cancelVideoById, decideGate, decideParkedStage, editOutline, resetBreakerFor, sendUploadAgain, startDryRun, type ActionResult } from "@/server/db/queue-actions";
 import { jobCheckers } from "./job-checkers";
 import { loadKeyring } from "@/server/db/master-key";
 import { istToUtcIso } from "@/server/core/publish-rules";
@@ -43,6 +43,16 @@ export async function sendBackAction(_prev: QueueState, form: FormData): Promise
   const p = parseGateForm(form, "send_back");
   if (!p.ok) return bad(p.message); // a short note keeps what was typed: no refresh
   return done(await decideGate(getPool(), queues(), { kind: "session", sessionId: owner.sessionId }, p.value, "send_back"));
+}
+
+/** Long videos: the owner edits the chapters at the outline gate. A new outline version; the owner approves it afterwards. */
+export async function editOutlineAction(_prev: QueueState, form: FormData): Promise<QueueState> {
+  const owner = await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return bad(origin);
+  const p = parseOutlineEditForm(form);
+  if (!p.ok) return bad(p.message); // a typo keeps what was typed: no refresh
+  return done(await editOutline(getPool(), queues(), { kind: "session", sessionId: owner.sessionId }, p.value));
 }
 
 export async function resolveDecisionAction(_prev: QueueState, form: FormData): Promise<QueueState> {

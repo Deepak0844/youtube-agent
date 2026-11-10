@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CAPTION_STYLE_IDS, STYLE_IDS } from "../../../remotion/kit/presets";
 import { LANGS } from "@/server/core/lang";
+import { LONG_DEFAULT_RANGE, lengthRangeProblem } from "@/server/core/long-form";
 
 // Pure: the Library's filters and words, and the New form's input. No IO.
 
@@ -66,17 +67,35 @@ export const newVideoSchema = z.object({
   topic: z.string().trim().min(1, "Enter a topic.").max(200, "Keep the topic to 200 characters or fewer."),
   language: z.enum(LANGS, "Pick a narration language."),
   kind: z.enum(["scene_kit", "tsx", "scale3d", "scene3d", "scene3d_code"], "Pick a video type."),
-  format: z.literal("short", "Only Shorts are available for now."),
+  format: z.enum(["short", "long"], "Pick Short or Long."),
+  // Long only: the length range in whole minutes (blank = the default 3 to 8). Checked against the max-length setting in parseNewVideoForm.
+  minMinutes: z.coerce.number().optional(),
+  maxMinutes: z.coerce.number().optional(),
   notes: z.string().trim().max(2000, "Keep the notes to 2000 characters or fewer.").optional(),
   // Empty or missing = the default look (stored as null).
   style: z.enum(STYLE_IDS, "Pick one of the listed styles.").optional(),
   captionStyle: z.enum(CAPTION_STYLE_IDS, "Pick a listed caption style.").optional(),
 });
-export type NewVideoInput = z.infer<typeof newVideoSchema>;
+export type NewVideoInput = Omit<z.infer<typeof newVideoSchema>, "minMinutes" | "maxMinutes"> & {
+  /** Long only: the chosen minutes range (already checked against the max-length setting). Absent for shorts. */
+  lengthMin?: number;
+  lengthMax?: number;
+};
 
-export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
+/** `maxLongMinutes` is the video.max_long_minutes setting. */
+export function parseNewVideoForm(form: FormData, maxLongMinutes = 15): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
   const g = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
-  const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "scene_kit", format: g("format") ?? "short", notes: g("notes") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined });
+  const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "scene_kit", format: g("format") ?? "short", notes: g("notes") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined, minMinutes: g("minMinutes") || undefined, maxMinutes: g("maxMinutes") || undefined });
+  if (r.success && r.data.format === "long") {
+    const { topic, language, kind, notes, style, captionStyle, minMinutes, maxMinutes } = r.data;
+    // The long route exists for the scene kit only; the other kinds stay Shorts.
+    if (kind !== "scene_kit") return { ok: false, message: "Long videos use the Scene kit for now. Pick Short for this video type." };
+    const lengthMin = minMinutes ?? LONG_DEFAULT_RANGE.min;
+    const lengthMax = maxMinutes ?? LONG_DEFAULT_RANGE.max;
+    const problem = lengthRangeProblem(lengthMin, lengthMax, maxLongMinutes);
+    if (problem) return { ok: false, message: problem };
+    return { ok: true, value: { topic, language, kind, format: "long", notes, ...(style ? { style } : {}), ...(captionStyle ? { captionStyle } : {}), lengthMin, lengthMax } };
+  }
   // Custom animation (tsx) burns its own captions: the caption picker does not apply. The style does (it shapes the TSX look).
   if (r.success && r.data.kind === "tsx") {
     const { topic, language, kind, format, notes, style } = r.data;
@@ -88,5 +107,8 @@ export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoIn
     const { topic, language, kind, format, notes } = r.data;
     return { ok: true, value: { topic, language, kind, format, notes } };
   }
-  return r.success ? { ok: true, value: r.data } : { ok: false, message: r.error.issues[0]?.message ?? "Check the form and try again." };
+  if (!r.success) return { ok: false, message: r.error.issues[0]?.message ?? "Check the form and try again." };
+  // A Short has no length range: it is dropped, so the value is exactly what it always was.
+  const { topic, language, kind, format, notes, style, captionStyle } = r.data;
+  return { ok: true, value: { topic, language, kind, format, notes, style, captionStyle } };
 }

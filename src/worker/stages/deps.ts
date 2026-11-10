@@ -76,6 +76,8 @@ export interface StageDeps {
 export const DEFAULTS = { imageProvider: "fake-image", imageModel: "fake", imageQuoteMicroUsd: 4000, maxImages: 3 } as const;
 
 export const SIZE = { width: 1080, height: 1920 } as const;
+/** A long video is 16:9 (the landscape scene kit). */
+export const LANDSCAPE_SIZE = { width: 1920, height: 1080 } as const;
 
 export interface VideoInfo {
   id: string;

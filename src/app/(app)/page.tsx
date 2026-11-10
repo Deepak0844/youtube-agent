@@ -157,9 +157,9 @@ function Queue() {
             key={`${g.videoId}-${g.gate}`}
             title={g.topic}
             lang={g.language}
-            format="short"
-            aspect={aspectFor("short")}
-            stages={cutStages(g.strip)}
+            format={g.format}
+            aspect={aspectFor(g.format)}
+            stages={cutStages(g.strip, g.format)}
             gateLabel={gateLabel(g.gate)}
             costLabel={g.content.kind === "cost" ? formatUsd(g.content.totalMicroUsd, rate) : "–"}
             ageLabel={agoLabel(g.waitingSince)}

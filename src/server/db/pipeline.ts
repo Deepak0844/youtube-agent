@@ -48,6 +48,8 @@ export interface PipelineReaders {
   lookFeedback?(db: pg.PoolClient, videoId: string): Promise<{ count: number; note: string } | null>;
   /** AI-written 3D stories: how many automatic revisions the look review has asked for (0 = none). Optional: readers without it mean 0. */
   reviewRound?(db: pg.PoolClient, videoId: string): Promise<number>;
+  /** Long videos: the note on the newest outline send-back, or null. Optional: readers without it mean "never sent back". */
+  outlineFeedback?(db: pg.PoolClient, videoId: string): Promise<string | null>;
 }
 export const NO_DECISIONS: PipelineReaders = {
   approvedGates: async () => new Set<GateId>(),
@@ -81,10 +83,15 @@ interface VideoLocked {
   caption_style: string | null;
   status: string;
   stage_nonces: Partial<Record<StageName, string>>;
+  /** long videos only: the minutes range chosen in the New form */
+  length_min_minutes: number | null;
+  length_max_minutes: number | null;
 }
 
+const VIDEO_LOCK_COLS = "id, format, kind, kind_origin, language, topic, notes, style, caption_style, status, stage_nonces, length_min_minutes, length_max_minutes";
+
 async function lockVideo(c: pg.PoolClient, videoId: string): Promise<VideoLocked> {
-  const r = await c.query<VideoLocked>("select id, format, kind, kind_origin, language, topic, notes, style, caption_style, status, stage_nonces from videos where id = $1 for update", [videoId]);
+  const r = await c.query<VideoLocked>(`select ${VIDEO_LOCK_COLS} from videos where id = $1 for update`, [videoId]);
   const v = r.rows[0];
   if (!v) throw new Error(`video not found: ${videoId}`);
   return v;
@@ -115,8 +122,10 @@ async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineRead
     kind: v.kind,
     format: v.format,
     flags: { requireEvidence, paidGeneration: paid },
-    paramsHash: sha256Hex(canonicalJson({ format: v.format, kind: v.kind_origin ?? v.kind, language: v.language, topic: v.topic, notes: v.notes })),
+    // A long video's chosen length range is part of its parameters (a short adds nothing, so every short hash stays what it was).
+    paramsHash: sha256Hex(canonicalJson({ format: v.format, kind: v.kind_origin ?? v.kind, language: v.language, topic: v.topic, notes: v.notes, ...(v.format === "long" ? { length: [v.length_min_minutes, v.length_max_minutes] } : {}) })),
     feedback: await readers.feedback(c, v.id),
+    ...(v.format === "long" && readers.outlineFeedback ? { outlineFeedback: await readers.outlineFeedback(c, v.id) } : {}),
     ...((v.kind === "scene3d" || v.kind === "scene3d_code") && readers.lookFeedback ? { lookFeedback: await readers.lookFeedback(c, v.id) } : {}),
     ...(v.kind === "scene3d_code" && readers.reviewRound ? { reviewRound: await readers.reviewRound(c, v.id) } : {}),
     content: shas,
@@ -336,7 +345,7 @@ export { inTx };
 export async function readNextAction(db: pg.Pool, videoId: string, readers: PipelineReaders = NO_DECISIONS): Promise<Action | null> {
   const c = await db.connect();
   try {
-    const r = await c.query<VideoLocked>("select id, format, kind, kind_origin, language, topic, notes, style, caption_style, status, stage_nonces from videos where id = $1", [videoId]);
+    const r = await c.query<VideoLocked>(`select ${VIDEO_LOCK_COLS} from videos where id = $1`, [videoId]);
     const v = r.rows[0];
     if (!v || !LIVE_VIDEO.includes(v.status)) return null;
     return nextActions(await buildView(c, v, readers))[0] ?? null;

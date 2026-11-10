@@ -13,9 +13,15 @@ import { createVideoAction, type NewVideoState } from "./actions";
 
 const selectClass = cn("w-full rounded-control border border-control bg-surface px-4 text-body text-text disabled:opacity-50", control, fade, focusRing);
 
-export function NewForm({ scaleLimitNote, scene3dNote }: { scaleLimitNote: string | null; scene3dNote: string | null }) {
+export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes }: { scaleLimitNote: string | null; scene3dNote: string | null; maxLongMinutes: number }) {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
   const [kind, setKind] = useState<"scene_kit" | "tsx" | "scale3d" | "scene3d" | "scene3d_code">("scene_kit");
+  const [format, setFormat] = useState<"short" | "long">("short");
+  const long = format === "long"; // Long is offered for the Scene kit only: the other types stay Shorts for now
+  const pickFormat = (f: "short" | "long") => {
+    setFormat(f);
+    if (f === "long") setKind("scene_kit");
+  };
   const custom = kind === "tsx";
   const scale = kind === "scale3d" || kind === "scene3d" || kind === "scene3d_code"; // both draw their own look: no style or caption pickers
   // Custom animation has no Classic look: its default card is AI Studio. Scene kit keeps Classic ("" = no style).
@@ -41,12 +47,28 @@ export function NewForm({ scaleLimitNote, scene3dNote }: { scaleLimitNote: strin
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor="format">Format</Label>
-          <select id="format" name="format" defaultValue="short" className={selectClass}>
-            <option value="short">Short</option>
-            <option value="long" disabled>Long (Phase 6b)</option>
+          <select id="format" name="format" value={format} onChange={(e) => pickFormat(e.target.value === "long" ? "long" : "short")} className={selectClass}>
+            <option value="short">Short (9:16)</option>
+            <option value="long">Long (16:9, Scene kit only)</option>
           </select>
         </div>
       </div>
+      {long ? (
+        <fieldset data-testid="long-length" className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+          <legend className="mb-1 text-body font-medium">How long (minutes)</legend>
+          <div className="grid max-w-sm grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="minMinutes">Shortest</Label>
+              <Input id="minMinutes" name="minMinutes" type="number" inputMode="numeric" min={3} max={maxLongMinutes} step={1} defaultValue={3} required />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="maxMinutes">Longest</Label>
+              <Input id="maxMinutes" name="maxMinutes" type="number" inputMode="numeric" min={3} max={maxLongMinutes} step={1} defaultValue={Math.min(8, maxLongMinutes)} required />
+            </div>
+          </div>
+          <p className="m-0 max-w-[68ch] text-small text-muted">From 3 up to {maxLongMinutes} minutes (Settings, System sets the ceiling). The studio first writes a chapter outline and stops for your approval before it writes the script or pays for narration.</p>
+        </fieldset>
+      ) : null}
       <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
         <legend className="mb-1 text-body font-medium">Video type</legend>
         {(
@@ -58,8 +80,8 @@ export function NewForm({ scaleLimitNote, scene3dNote }: { scaleLimitNote: strin
             ["scene3d", "3D story (detailed)", "A 60 s illustrated 3D story built from free CC0 models. You approve the look from preview pictures before the long render. Needs 'Render 3D on this Mac' turned on in System settings."],
           ] as const
         ).map(([id, title, help]) => (
-          <label key={id} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-rule bg-surface p-3 has-checked:outline-2 has-checked:outline">
-            <input type="radio" name="kind" value={id} checked={kind === id} onChange={() => setKind(id)} className="mt-1" />
+          <label key={id} className={cn("flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-rule bg-surface p-3 has-checked:outline-2 has-checked:outline", long && id !== "scene_kit" && "opacity-50")}>
+            <input type="radio" name="kind" value={id} checked={kind === id} disabled={long && id !== "scene_kit"} onChange={() => setKind(id)} className="mt-1" />
             <span className="flex min-w-0 flex-col gap-1">
               <span className="text-body font-medium">{title}</span>
               <span className="text-small text-muted">{help}</span>

@@ -20,7 +20,7 @@ export function reframeAttempt(deps: StageDeps): AttemptHandler {
     if (!isReframeFormat(format)) throw new KnownFailure("The re-frame request has no valid format.");
     const input = await promotedPath(deps.root, video.id, "final.mp4");
     if (!(await lstat(input).catch(() => null))?.isFile()) throw new KnownFailure("The finished video final.mp4 is missing. Run the check step again.");
-    const scenes = await readScenesFile(await promotedPath(deps.root, video.id, "scenes.json")).catch(() => null);
+    const scenes = await readScenesFile(await promotedPath(deps.root, video.id, "scenes.json"), video.format === "long").catch(() => null);
     const problem = reframeProblem(video.kind, scenes ? scenes.scenes.map((s) => s.kind) : []);
     if (problem) throw new KnownFailure(problem);
     const out = reframeFileName(format);

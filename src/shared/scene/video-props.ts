@@ -32,7 +32,7 @@ function parseCaptions(text: string): { ok: true; words: CaptionWord[] } | { ok:
 /** Validate the scene file (and optional captions); on success, the props for the kit-video composition. */
 export function buildVideoProps(
   sceneText: string,
-  opts: { captionsText?: string; audioSrc?: string; fps: number; assets?: Record<string, string>; seed?: string; title?: string; style?: string | null; captionStyle?: string | null },
+  opts: { captionsText?: string; audioSrc?: string; fps: number; assets?: Record<string, string>; seed?: string; title?: string; style?: string | null; captionStyle?: string | null; /** a long video: the long scene limits */ long?: boolean },
 ): { ok: true; props: VideoProps } | { ok: false; errors: string[] } {
   let json: unknown;
   try {
@@ -40,7 +40,7 @@ export function buildVideoProps(
   } catch (e) {
     return { ok: false, errors: [`not valid JSON: ${(e as Error).message}`] };
   }
-  const r = validateScenes(json);
+  const r = validateScenes(json, { long: opts.long });
   if (!r.ok) return r;
   const props: VideoProps = { doc: r.doc, fps: opts.fps };
   if (opts.audioSrc) props.audioSrc = opts.audioSrc;

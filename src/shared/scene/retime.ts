@@ -1,6 +1,6 @@
 // Render-time re-timing: Build times scenes from text length, before the narration exists. Here the real word times
 // decide where each scene starts. Pure: returns a new doc, never touches the input.
-import { LIMITS } from "./kinds/common";
+import { LIMITS, LONG_LIMITS } from "./kinds/common";
 import { validateAndCheck } from "./rules";
 import type { SceneDoc } from "./schema";
 
@@ -11,6 +11,8 @@ export interface RetimeInput {
   /** Video keeps playing this long after the last spoken word. Default 400. */
   tailMs?: number;
   minSceneMs?: number;
+  /** A long video: the long schema's total length applies. */
+  long?: boolean;
 }
 export type RetimeResult = { ok: true; doc: SceneDoc; mapped: boolean } | { ok: false; errors: string[] };
 
@@ -69,7 +71,8 @@ export function retimeScenes(doc: SceneDoc, inp: RetimeInput): RetimeResult {
   const totalMs = Math.round(inp.narrationDurationS * 1000 + Math.min(MAX_TAIL_MS, inp.tailMs ?? 400));
   const n = doc.scenes.length;
   if (!(totalMs > 0) || n === 0) return { ok: false, errors: ["no narration length or no scenes to retime"] };
-  if (totalMs > LIMITS.maxTotalMs) return { ok: false, errors: [`narration needs ${totalMs} ms, over the ${LIMITS.maxTotalMs} ms limit`] };
+  const maxTotalMs = inp.long ? LONG_LIMITS.maxTotalMs : LIMITS.maxTotalMs;
+  if (totalMs > maxTotalMs) return { ok: false, errors: [`narration needs ${totalMs} ms, over the ${maxTotalMs} ms limit`] };
   if (n * min > totalMs) return { ok: false, errors: [`${n} scenes cannot each last ${min} ms in ${totalMs} ms`] };
 
   let raw = wordStarts(doc, inp);
@@ -92,6 +95,6 @@ export function retimeScenes(doc: SceneDoc, inp: RetimeInput): RetimeResult {
   });
   const tooLong = scenes.findIndex((s) => s.durationMs > LIMITS.maxSceneMs);
   if (tooLong >= 0) return { ok: false, errors: [`scene ${tooLong + 1} would last ${scenes[tooLong]!.durationMs} ms, over the ${LIMITS.maxSceneMs} ms limit`] };
-  const v = validateAndCheck({ ...doc, scenes });
+  const v = validateAndCheck({ ...doc, scenes }, { long: inp.long });
   return v.ok ? { ok: true, doc: v.doc, mapped } : { ok: false, errors: v.errors };
 }

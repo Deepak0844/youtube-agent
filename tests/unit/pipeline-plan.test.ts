@@ -107,8 +107,9 @@ describe("stagePlan", () => {
     expect(p.some((s) => s.gateBefore === "cost")).toBe(false);
     expect(postStageGates(p, f)).toEqual(["video", "publish"]);
   });
-  it("plan_for_long_format_throws_until_phase_6b", () => {
-    expect(() => stagePlan("scene_kit", "long", flags)).toThrow(/not built yet/);
+  it("long_format_is_refused_for_every_kind_but_the_scene_kit", () => {
+    for (const k of ["tsx", "collage", "ai", "scale3d", "scene3d", "scene3d_code"] as const) expect(() => stagePlan(k, "long", flags), k).toThrow(/only available for the scene kit/);
+    expect(() => stagePlan("scene_kit", "long", flags)).not.toThrow();
   });
 });
 

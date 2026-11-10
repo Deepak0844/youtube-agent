@@ -18,7 +18,8 @@ const asObj = (v: unknown): Record<string, unknown> => (typeof v === "object" &&
 export async function loadPreview(db: pg.Pool, videoId: string): Promise<PreviewData | null> {
   const scenes = await latestContent(db, videoId, "scenes");
   if (!scenes) return null;
-  const v = validateScenes(scenes.body);
+  const long = (await db.query<{ format: string }>("select format from videos where id = $1", [videoId])).rows[0]?.format === "long";
+  const v = validateScenes(scenes.body, { long });
   const checks = v.ok ? { indexes: [] as number[], documentLevel: false } : failingScenes(v.errors);
   // Scenes that fail the checks may still be shown; the kit needs a doc shaped like a scene file, so use the stored one.
   let doc = (v.ok ? v.doc : scenes.body) as SceneDoc;
@@ -34,7 +35,7 @@ export async function loadPreview(db: pg.Pool, videoId: string): Promise<Preview
     try {
       const script = await approvedScript(db, videoId);
       const beats = script.ok ? script.beats.map((b, i) => ({ id: typeof b?.id === "string" && b.id !== "" ? b.id : `beat-${i + 1}`, text: typeof (b as { text?: unknown })?.text === "string" ? (b as { text: string }).text : "" })) : [];
-      const r = retimeScenes(doc, { words, beats, narrationDurationS: Math.max(...words.map((w) => w.endS)) + 0.3 });
+      const r = retimeScenes(doc, { words, beats, narrationDurationS: Math.max(...words.map((w) => w.endS)) + 0.3, ...(long ? { long } : {}) });
       if (r.ok) doc = r.doc;
     } catch {
       /* keep stored timing */

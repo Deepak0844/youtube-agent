@@ -250,6 +250,16 @@ export interface SystemSettingsView {
   cutoverDone: boolean;
 }
 
+/** video.max_long_minutes (read only), for the New form and for starting a long video. Read here so only this file touches the settings module. */
+export async function maxLongMinutes(db: pg.Pool | pg.PoolClient): Promise<number> {
+  return Number(await getSetting(db, "video.max_long_minutes"));
+}
+
+/** qa.long_min_s and qa.long_max_s (read only): the QA length limits a long video must fit, checked before the video is created. */
+export async function qaLongSeconds(db: pg.Pool | pg.PoolClient): Promise<{ minS: number; maxS: number }> {
+  return { minS: Number(await getSetting(db, "qa.long_min_s")), maxS: Number(await getSetting(db, "qa.long_max_s")) };
+}
+
 /** Everything the page shows, read here so only this file touches the settings module. */
 export async function loadSystemSettings(db: pg.Pool): Promise<SystemSettingsView> {
   const [renders, jobs, warnGb, longMinutes, renderTimeoutS, native3d, nativeTimeoutS, tracks, services, killSwitch, cutoverDone] = await Promise.all([

@@ -80,6 +80,7 @@ export const AUDIT_EVENTS = {
   "publish.choice_saved": "The owner chose visibility, schedule and channel for a publish (detail: video id, session id, visibility, publish time, channel id)",
   "upload.requeued": "An approved upload was sent to the uploader again",
   "video.created": "The owner started a new video",
+  "outline.edited": "The owner edited the chapters of a long video's outline (detail: video id, session id, chapter count; never the text)",
   "dryrun.started": "A development dry run was started",
   // Phase 2 notifications (detail: event, channel, error class only)
   "notify.delivery_failed": "A notification channel failed to deliver",

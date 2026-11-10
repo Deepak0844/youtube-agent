@@ -4,7 +4,8 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { readPreviews } from "@/server/core/scene3d-stills";
 import { approvalState, readSnapshot } from "@/server/db/approvals";
-import { approvedScript } from "@/server/db/stage-content";
+import { approvedOutline, approvedScript } from "@/server/db/stage-content";
+import { chapterMarks, outlineTotalS } from "@/server/core/long-form";
 import { validateScenes, type SceneDoc } from "@/shared/scene";
 import { retimeScenes } from "@/shared/scene/retime";
 import { retimeScale3d, validateScale3d, type Scale3dScene } from "@/shared/scale3d";
@@ -16,14 +17,14 @@ import { isScene3dKind } from "@/server/core/pipeline-plan";
 import { sha256Hex as sha256Text } from "@/server/core/content-hash";
 import type { Renderer } from "@/server/providers/renderer";
 import { openRegular, promotedPath, type AttemptHandler } from "./attempt";
-import { contentBody, loadVideo, SIZE, type StageDeps } from "./deps";
+import { contentBody, LANDSCAPE_SIZE, loadVideo, SIZE, type StageDeps } from "./deps";
 import { audioSeconds } from "./voice-audio";
 
 const isFile = async (f: string) => (await lstat(f).catch(() => null))?.isFile() === true;
 const MAX_SCENES_BYTES = 1024 * 1024;
 
 /** Reads and validates scenes.json: a plain file (no symlink, no FIFO), at most 1 MB, valid scene JSON. */
-export async function readScenesFile(file: string): Promise<SceneDoc> {
+export async function readScenesFile(file: string, long = false): Promise<SceneDoc> {
   let text: string;
   const fh = await openRegular(file).catch(() => {
     throw new KnownFailure("scenes.json is missing or not a plain file. Run the build step again.");
@@ -40,7 +41,7 @@ export async function readScenesFile(file: string): Promise<SceneDoc> {
   } catch {
     throw new KnownFailure("scenes.json is not valid JSON. Run the build step again.");
   }
-  const v = validateScenes(json);
+  const v = validateScenes(json, { long });
   if (!v.ok) throw new KnownFailure(`scenes_invalid: ${v.errors.slice(0, 3).join("; ")}. Run the build step again.`.slice(0, 600));
   return v.doc;
 }
@@ -117,11 +118,15 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
     if (scene3dRenderer) return video.kind === "scene3d_code" ? renderScene3dCode(scene3dRenderer, deps, ctx, video, approvedSceneSha!) : renderScene3d(scene3dRenderer, deps, ctx, video, audioFile, approvedSceneSha!);
     if (video.kind === "scale3d") return renderScale3d(scale3d!.renderer, deps, ctx, video, audioFile);
 
+    // A long video (scene kit only) is drawn in one pass on the landscape composition, with the chapter cards of the outline the owner approved.
+    const long = video.format === "long";
+    const outline = long ? await approvedOutline(deps.db, video.id) : null;
+    if (outline && !outline.ok) throw new KnownFailure(`${outline.reason} Nothing was rendered.`);
     const scenesFile = await promotedPath(deps.root, video.id, "scenes.json");
     let sceneFile = scenesFile;
     let doc: SceneDoc | undefined;
     if (await isFile(scenesFile)) {
-      doc = await readScenesFile(scenesFile);
+      doc = await readScenesFile(scenesFile, long);
     } else {
       sceneFile = await promotedPath(deps.root, video.id, "scene.json"); // fake/dry-run only, see above
       if (!(await isFile(sceneFile))) throw new KnownFailure("The file scenes.json from an earlier stage is missing. Run that stage again.");
@@ -143,17 +148,20 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
           : [];
         const lastEnd = Math.max(...words.map((w) => w.endS)) + 0.3;
         const durationS = await audioSeconds(deps.mix, ctx, audioFile).catch(() => lastEnd);
-        const res = retimeScenes(doc, { words, beats, narrationDurationS: durationS });
+        const res = retimeScenes(doc, { words, beats, narrationDurationS: durationS, ...(long ? { long } : {}) });
         if (!res.ok) throw new Error(res.errors.slice(0, 2).join("; "));
         doc = res.doc;
         retime = { retimed: true, fromMs, toMs: total(doc) };
       } catch (e) {
+        // A long video drawn on Build's rough timing would drift away from 10+ minutes of real narration and the chapter cards would land wrong: stop, do not guess.
+        if (long) throw new KnownFailure(`retime_failed: ${e instanceof Error ? e.message : "unknown"}. The scenes could not be fitted to the narration. Nothing was rendered.`.slice(0, 600));
         ctx.log(`render: scenes not re-timed, original timing kept (${e instanceof Error ? e.message : "unknown"})`.slice(0, 300));
       }
     }
     const title = (await deps.db.query<{ topic: string }>("select topic from videos where id = $1", [video.id]).catch(() => null))?.rows[0]?.topic;
+    const landscape = outline?.ok ? { layout: "landscape" as const, chapters: chapterMarks(outline.outline, doc ? total(doc) : outlineTotalS(outline.outline.chapters) * 1000) } : null;
     const r = await deps.renderer.render(ctx, {
-      sceneFile, doc, audioFile, videoId: video.id, title, style: video.style, captionStyle: video.captionStyle, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: SIZE,
+      sceneFile, doc, audioFile, videoId: video.id, title, style: video.style, captionStyle: video.captionStyle, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: landscape ? LANDSCAPE_SIZE : SIZE, ...(landscape ?? {}),
     });
     if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
     return { files: ["render.mp4"], result: { rendered: "render.mp4", scenes: doc ? doc.scenes.length : null, image: r.image ?? null, ...retime } };

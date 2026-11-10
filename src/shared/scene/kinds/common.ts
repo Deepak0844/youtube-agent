@@ -1,6 +1,9 @@
 // Shared building blocks for scene kinds. Kind files import from here, never from ../schema.
 import { z } from "zod";
 
+/** A long video (Phase 6b) has the same per-scene limits; only the scene count and total length are wider (one render pass, 30 minutes at most). */
+export const LONG_LIMITS = { maxScenes: 400, maxTotalMs: 30 * 60_000 } as const;
+
 /** Limits live in one place so errors, prompts and tests agree. */
 export const LIMITS = {
   maxScenes: 40,

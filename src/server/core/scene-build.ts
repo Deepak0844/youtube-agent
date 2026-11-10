@@ -1,6 +1,6 @@
 import type { Message } from "@/server/core/agent-loop";
 import { KnownFailure } from "@/server/core/paid-call";
-import { describeSceneFormat, kindBlurbs, LIMITS, usableKinds, validateScenes, type SceneDoc } from "@/shared/scene";
+import { describeSceneFormat, kindBlurbs, LIMITS, LONG_LIMITS, usableKinds, validateScenes, type SceneDoc } from "@/shared/scene";
 import { SVG_EXAMPLE } from "../../../remotion/kit/svgLogic";
 import { styleGuidance } from "../../../remotion/kit/presets";
 import { roleGuidance, roleOf } from "@/shared/scene/beat-roles";
@@ -160,7 +160,7 @@ export async function withRetries<T>(ask: AskScene, messages: Message[], check: 
   }
 }
 
-export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, opts: { assets?: readonly string[]; pictures?: Readonly<Record<string, readonly string[]>>; clips?: ReadonlySet<string>; language?: string; shownForReal?: string; style?: string | null } = {}): Promise<SceneDoc> {
+export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, opts: { assets?: readonly string[]; pictures?: Readonly<Record<string, readonly string[]>>; clips?: ReadonlySet<string>; language?: string; shownForReal?: string; style?: string | null; /** a long video: the wider scene count and total length */ long?: boolean } = {}): Promise<SceneDoc> {
   // With `pictures` (beat id -> linked asset ids) beats that have pictures are planned by the app and the rest never see image kinds.
   const perBeat = opts.pictures !== undefined;
   const limited = perBeat ? limitRepeats(beats.map((b) => (opts.pictures![b.id] ?? []).slice(0, MAX_PICTURES))) : [];
@@ -168,7 +168,8 @@ export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, 
   const assets = perBeat ? [...new Set(limited.flat())] : (opts.assets ?? []);
   const kinds = usableKinds(!perBeat && assets.length > 0);
   // Everything that can be checked for free is checked BEFORE the first paid call.
-  if (beats.length > LIMITS.maxScenes) throw new KnownFailure(`The script has ${beats.length} beats; the scene format allows at most ${LIMITS.maxScenes}. Shorten the script and draft again.`);
+  const maxScenes = opts.long ? LONG_LIMITS.maxScenes : LIMITS.maxScenes;
+  if (beats.length > maxScenes) throw new KnownFailure(`The script has ${beats.length} beats; the scene format allows at most ${maxScenes}. Shorten the script and draft again.`);
   for (const beat of beats) {
     if (!BEAT_ID.test(beat.id)) throw new KnownFailure(`Beat '${beat.id.slice(0, 40)}' has an id the scene format cannot use (1-32 chars of a-z, 0-9, _ or -). Fix the script and draft again.`);
   }
@@ -205,7 +206,7 @@ export async function buildSceneDoc(beats: readonly SceneBeat[], ask: AskScene, 
   }
   // Judge the assembled doc with the same per-beat visual briefs each scene was checked with, or the final check is stricter than the loop.
   const visualByBeat = Object.fromEntries(beats.flatMap((b) => (b.visual ? [[b.id, b.visual] as const] : [])));
-  const doc = validateAndCheck({ version: 1, scenes }, { beats: beats.map((b) => b.id), assetIds: [...assets], visualByBeat });
+  const doc = validateAndCheck({ version: 1, scenes }, { beats: beats.map((b) => b.id), assetIds: [...assets], visualByBeat, ...(opts.long ? { long: true } : {}) });
   if (!doc.ok) throw new KnownFailure(`scenes_invalid: the assembled scenes do not fit. ${doc.errors.slice(0, 3).join("; ")}`.slice(0, 600));
   return doc.doc;
 }

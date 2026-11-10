@@ -7,10 +7,13 @@ import { ChannelInitial } from "@/ui/domain/channel-initial";
 import { BeatTable } from "@/ui/domain/beat-table";
 import { CutStrip } from "@/ui/domain/cut-strip";
 import { cutStages } from "@/ui/domain/queue-strip";
+import { aspectFor } from "@/ui/domain/stages";
 import { Pill } from "@/ui/primitives/pill";
-import { CancelForm, GateForms, PublishChoiceForm } from "./forms";
+import { clock } from "@/server/core/long-form";
+import { CancelForm, GateForms, OutlineEditForm, PublishChoiceForm, type GateFields } from "./forms";
 
 const GATE_LABEL: Record<GateItem["gate"], { name: string; ask: string; approve: string }> = {
+  outline: { name: "Outline", ask: "Read the chapters. Approving lets the studio write the script from exactly this outline. Nothing is spent on narration yet.", approve: "Approve outline" },
   script: { name: "Script", ask: "Read the script. Approving lets the studio build the video from exactly this text.", approve: "Approve script" },
   cost: { name: "Cost", ask: "Approving lets the studio spend up to the total below on paid images and clips. It will not spend more.", approve: "Approve cost" },
   look: { name: "Look", ask: "Look at the preview pictures. Approving lets the studio draw the whole video from exactly this scene, which takes a long time on this Mac. Send it back with a note if something should look different.", approve: "Approve look" },
@@ -61,9 +64,9 @@ function Claims({ claims }: { claims: GateClaim[] }) {
   );
 }
 
-function Player({ src, label }: { src: string | null; label: string }) {
+function Player({ src, label, long = false }: { src: string | null; label: string; long?: boolean }) {
   if (!src) return <p className="m-0 text-body text-muted">The video player is not available right now (the media key is locked or the file has no path). Reload, or check Settings, Keys.</p>;
-  return <video controls preload="metadata" src={src} aria-label={label} className="aspect-[9/16] max-h-[520px] w-auto max-w-full rounded-card bg-raised" />;
+  return <video controls preload="metadata" src={src} aria-label={label} className={long ? "aspect-video max-h-[520px] w-auto max-w-full rounded-card bg-raised" : "aspect-[9/16] max-h-[520px] w-auto max-w-full rounded-card bg-raised"} />;
 }
 
 /** The contact sheet: each preview picture with its shot name, time and caption. Shared by the Look card and the video page Preview tab. */
@@ -144,8 +147,34 @@ function LookContent({ c }: { c: Extract<GateContent, { kind: "look" }> }) {
   );
 }
 
-function Content({ c, lang, videoId, rate }: { c: GateContent; lang: string; videoId: string; rate: number }) {
+/** The outline of a long video: chapters with their estimated length and narration words, the total, and the form to edit them. */
+function OutlineContent({ c, lang, fields }: { c: Extract<GateContent, { kind: "outline" }>; lang: string; fields: GateFields }) {
+  if (!c.outline) return <p data-testid="outline-unreadable" className="m-0 max-w-[68ch] text-body text-muted">This outline could not be read in its usual shape. Send it back with a note and a new one will be written.</p>;
+  const o = c.outline;
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <p data-testid="outline-total" className="m-0 text-small text-muted tabular-nums">
+        {o.chapters.length} chapters, about {clock(o.totalS)} ({Math.round(o.totalS / 60)} min) of narration, roughly {o.words} spoken words. You asked for {o.minMinutes} to {o.maxMinutes} minutes.
+      </p>
+      <ol data-testid="outline-chapters" className="m-0 flex list-none flex-col gap-3 p-0">
+        {o.chapters.map((ch, i) => (
+          <li key={i} className="flex min-w-0 flex-col gap-1 rounded-card bg-raised p-3">
+            <span lang={lang} className="text-section font-medium [overflow-wrap:anywhere]">{i + 1}. {ch.title}</span>
+            <span lang={lang} className="max-w-[68ch] text-body text-muted [overflow-wrap:anywhere]">{ch.line}</span>
+            <span className="text-small text-muted tabular-nums">About {clock(ch.targetS)} ({ch.targetS} s), roughly {ch.words} words</span>
+          </li>
+        ))}
+      </ol>
+      <p role="note" data-testid="outline-cost-note" className="m-0 max-w-[68ch] text-small text-muted">The voice cost depends on the voice you picked and is shown at the cost step, before any narration is paid for. Approving this outline spends nothing by itself.</p>
+      <OutlineEditForm fields={{ videoId: fields.videoId, seenHash: fields.seenHash, seenVersions: fields.seenVersions }} chapters={o.chapters} />
+    </div>
+  );
+}
+
+function Content({ c, lang, videoId, rate, long, fields }: { c: GateContent; lang: string; videoId: string; rate: number; long: boolean; fields: GateFields }) {
   switch (c.kind) {
+    case "outline":
+      return <OutlineContent c={c} lang={lang} fields={fields} />;
     case "script":
       return (
         <div className="flex min-w-0 flex-col gap-3">
@@ -189,7 +218,7 @@ function Content({ c, lang, videoId, rate }: { c: GateContent; lang: string; vid
     case "video":
       return (
         <div className="flex min-w-0 flex-col gap-2">
-          <Player src={c.src} label="Video to review" />
+          <Player src={c.src} label="Video to review" long={long} />
           {c.captions === "approximate" ? <p role="note" data-testid="captions-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">Captions approximate: listen and check</p> : null}
           {c.rewriteLines.length > 0 ? <p role="note" data-testid="rewrite-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{c.rewriteLines.length === 1 ? "One line is" : `${c.rewriteLines.length} lines are`} too long for the video even sped up: send this back and rewrite line{c.rewriteLines.length === 1 ? "" : "s"} {c.rewriteLines.map((n) => n + 1).join(", ")} shorter.</p> : null}
           {c.captions === "check" && c.rewriteLines.length === 0 ? <p role="note" data-testid="captions-note" className="m-0 max-w-[68ch] text-body text-muted">Some caption words are guesses: listen and check.</p> : null}
@@ -219,7 +248,7 @@ function Content({ c, lang, videoId, rate }: { c: GateContent; lang: string; vid
           </dl>
           {c.description ? <p className="m-0 max-w-[68ch] text-body text-muted [overflow-wrap:anywhere]">{c.description}</p> : null}
           <PublishChoiceForm videoId={videoId} visibility={c.visibility} publishAtIst={istInput(c.publishAt)} channelId={c.channel} channels={c.channels} publicOpen={c.publicOpen} />
-          <Player src={c.videoSrc} label="Video to publish" />
+          <Player src={c.videoSrc} label="Video to publish" long={long} />
           <p className="m-0 text-small text-faint">Evidence file fingerprint {c.evidenceShaPrefix}</p>
         </div>
       );
@@ -240,14 +269,14 @@ export function GateCard({ item, index, rate }: { item: GateItem; index: number;
           <span className="text-small text-faint">waiting {ageLabel(item.waitingSince)}</span>
         </div>
         <h2 lang={item.language} className="m-0 min-w-0 text-title font-semibold leading-tight [overflow-wrap:anywhere]">{item.topic}</h2>
-        <CutStrip format="short" aspect="9:16" stages={cutStages(item.strip)} thumbnail={false} layout="stack" />
+        <CutStrip format={item.format} aspect={aspectFor(item.format)} stages={cutStages(item.strip, item.format)} thumbnail={false} layout="stack" />
       </header>
       <p data-testid="gate-ask" className="m-0 max-w-[68ch] text-body text-muted">
         {item.content.kind === "publish"
           ? `Approving sends exactly this video to ${item.content.channelTitle ?? (item.content.channel || "no channel chosen")} as ${VIS[item.content.visibility] ?? "(not chosen)"}, ${kidsWord(item.content.madeForKids)}. It happens once.`
           : g.ask}
       </p>
-      <Content c={item.content} lang={item.language} videoId={item.videoId} rate={rate} />
+      <Content c={item.content} lang={item.language} videoId={item.videoId} rate={rate} long={item.format === "long"} fields={{ videoId: item.videoId, gate: item.gate, seenHash: item.hash, seenVersions: item.versions }} />
       {sentBack ? (
         <p role="note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">You sent this back: &ldquo;{item.sentBackNote}&rdquo;. It stays on hold until the new version arrives.</p>
       ) : null}

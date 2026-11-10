@@ -37,7 +37,7 @@ describe("parseGateForm", () => {
   });
   it("refuses missing versions, an unknown gate and a bad video id", () => {
     expect(parseGateForm(form({ ...ok, seenVersions: "" }), "approve").ok).toBe(false);
-    expect(parseGateForm(form({ ...ok, gate: "outline" }), "approve").ok).toBe(false);
+    expect(parseGateForm(form({ ...ok, gate: "thumbnail" }), "approve").ok).toBe(false);
     expect(parseGateForm(form({ ...ok, videoId: "nope" }), "approve").ok).toBe(false);
   });
   it("send back needs a 3 to 1000 character note; approve ignores any note", () => {

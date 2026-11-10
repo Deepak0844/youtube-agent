@@ -10,6 +10,8 @@ import { validateAndCheck } from "@/shared/scene/rules";
 export interface RepairOpts {
   beats?: string[];
   assets: string[];
+  /** A long video: the long schema's scene count and total length apply. */
+  long?: boolean;
 }
 export type SceneBody = { version: number; scenes: Record<string, unknown>[] };
 export type RepairResult = { ok: true; body: SceneBody; changed: string[] } | { ok: false; errors: string[] };
@@ -53,7 +55,7 @@ export async function repairSceneDoc(body: SceneBody, targets: readonly number[]
     const res = await withRetries<Record<string, unknown>>(ask, fixMessages(orig, mine, o.assets), (text) => {
       const raw = parseJson(text);
       if (raw === undefined) return { ok: false, errors: ["The answer was not valid JSON."] };
-      const r = validateScenes(raw);
+      const r = validateScenes(raw, { long: o.long });
       if (!r.ok) return { ok: false, errors: r.errors };
       if (r.doc.scenes.length !== 1) return { ok: false, errors: [`must have exactly 1 scene, got ${r.doc.scenes.length}`] };
       const fixed = { ...(r.doc.scenes[0] as unknown as Record<string, unknown>), id: orig.id, beat: orig.beat, startMs: orig.startMs, durationMs: orig.durationMs };
@@ -61,7 +63,7 @@ export async function repairSceneDoc(body: SceneBody, targets: readonly number[]
       if (bad.length > 0) return { ok: false, errors: [`asset id ${bad.join(", ")} does not exist for this video`] };
       // Judge the scene inside the whole document, but only its own problems count here (others are fixed in their own turn).
       const probe = scenes.map((s, j) => (j === i ? fixed : s));
-      const c = validateAndCheck({ version: body.version, scenes: probe }, { beats: o.beats, assetIds: o.assets });
+      const c = validateAndCheck({ version: body.version, scenes: probe }, { beats: o.beats, assetIds: o.assets, long: o.long });
       const own = c.ok ? [] : c.errors.filter((e) => e.startsWith(`scene ${i + 1}:`) || e.startsWith(`scene ${i + 1} `));
       return own.length ? { ok: false, errors: own } : { ok: true, value: fixed };
     });
@@ -69,6 +71,6 @@ export async function repairSceneDoc(body: SceneBody, targets: readonly number[]
     scenes[i] = res.value;
     changed.push(String(orig.id));
   }
-  const final = validateAndCheck({ version: body.version, scenes }, { beats: o.beats, assetIds: o.assets });
+  const final = validateAndCheck({ version: body.version, scenes }, { beats: o.beats, assetIds: o.assets, long: o.long });
   return final.ok ? { ok: true, body: { ...body, scenes }, changed } : { ok: false, errors: final.errors.slice(0, 5) };
 }

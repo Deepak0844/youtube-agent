@@ -241,6 +241,15 @@ export async function runRenderContainer(
   return { r, tail };
 }
 
+/** The chapter cards a landscape render draws: 1 to 12 titles in order, the first at 0 ms, starts never going back. Anything else is a plain refusal. */
+export function chapterProps(chapters: RenderArgs["chapters"]): Array<{ title: string; startMs: number }> {
+  const ok =
+    Array.isArray(chapters) && chapters.length >= 1 && chapters.length <= 12 && chapters[0]!.startMs === 0 &&
+    chapters.every((c, i) => typeof c?.title === "string" && c.title.trim() !== "" && c.title.length <= 80 && Number.isInteger(c.startMs) && c.startMs >= 0 && c.startMs <= 3_600_000 && (i === 0 || c.startMs >= chapters[i - 1]!.startMs));
+  if (!ok) throw new KnownFailure("The chapter list for the long video is not valid. Approve the outline again.");
+  return chapters!.map((c) => ({ title: c.title.trim(), startMs: c.startMs }));
+}
+
 /** props.json of the 3D scale composition: the checked scene, caption words (trimmed) and the chosen look. Shared with the native renderer. */
 export function scale3dProps(a: Pick<RenderArgs, "scale3d" | "captions" | "style" | "captionStyle">): unknown {
   const caps = (a.captions ?? [])
@@ -327,8 +336,12 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         let props: { ok: true; props: unknown } | { ok: false; errors: string[] };
         if (a.scale3d) {
           props = { ok: true, props: scale3dProps(a) };
-        } else props = buildVideoProps(JSON.stringify(a.doc), { fps: FPS, audioSrc, assets, captionsText: a.captions ? JSON.stringify(a.captions) : undefined, seed: a.videoId, title: a.title, style: a.style, captionStyle: a.captionStyle });
+        } else props = buildVideoProps(JSON.stringify(a.doc), { fps: FPS, audioSrc, assets, captionsText: a.captions ? JSON.stringify(a.captions) : undefined, seed: a.videoId, title: a.title, style: a.style, captionStyle: a.captionStyle, ...(a.layout === "landscape" ? { long: true } : {}) });
         if (!props.ok) throw new KnownFailure(`The scenes or captions are not valid: ${props.errors.slice(0, 3).join("; ")}`.slice(0, 600));
+        if (a.layout === "landscape") {
+          if (a.size.width !== 1920 || a.size.height !== 1080) throw new KnownFailure("A landscape render must be 1920x1080.");
+          props = { ok: true, props: { ...(props.props as object), chapters: chapterProps(a.chapters) } };
+        }
         await writeFile(path.join(inDir, "props.json"), JSON.stringify(props.props), { mode: 0o644, flag: "wx" });
         await realDir(inDir, "input");
         await realDir(outDir, "output");
@@ -337,7 +350,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         const host = await (deps.hostLimits ?? daemonLimits)();
         const image = deps.image ? await deps.image() : { ref: RENDER_IMAGE, pinned: false };
         if (!image.pinned) ctx.log(`render: image not pinned (could not resolve its id); running the tag ${image.ref}`);
-        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, ...(a.scale3d ? { entry: ["/in", "/out/out.mp4", "--scale3d"] } : {}) });
+        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, ...(a.scale3d ? { entry: ["/in", "/out/out.mp4", "--scale3d"] } : a.layout === "landscape" ? { entry: ["/in", "/out/out.mp4", "--landscape"] } : {}) });
         const { r, tail } = await runRenderContainer(deps, ctx, { name, args, timeoutMs: lim.timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES });
         if (r.aborted) throw ctx.signal.reason ?? new Error("render aborted");
         if (r.timedOut) throw new KnownFailure(`The render took longer than its ${Math.ceil(lim.timeoutS / 60)} min limit and was stopped.`);

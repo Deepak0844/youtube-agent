@@ -9,7 +9,7 @@ import { DECISION_CHOICES, type DecisionChoice } from "@/server/core/decision";
 export const STALE_MESSAGE = "This changed while you were looking. Review again.";
 export const BAD_FORM = "That request was not understood. Nothing was changed.";
 
-export const QUEUE_GATES = ["script", "cost", "look", "video", "evidence", "publish"] as const;
+export const QUEUE_GATES = ["outline", "script", "cost", "look", "video", "evidence", "publish"] as const;
 export type QueueGate = (typeof QUEUE_GATES)[number];
 export const BREAKER_STAGES = ["draft", "build", "voice"] as const;
 export type BreakerStage = (typeof BREAKER_STAGES)[number];
@@ -78,6 +78,34 @@ export function parseDecisionForm(f: FormLike): Parsed<DecisionInput> {
   if (!stageRunId.success || !choice.success) return { ok: false, message: BAD_FORM };
   if (!max.success || !reason.success) return { ok: false, message: STALE_MESSAGE };
   return { ok: true, value: { stageRunId: stageRunId.data, choice: choice.data, seenMaxMicroUsd: Number(max.data), seenReason: reason.data, confirmed: text(f.get("checked")) === "on" } };
+}
+
+export interface OutlineEditInput {
+  videoId: string;
+  seenHash: string;
+  seenVersions: string;
+  /** Raw chapters as typed; validateOutline (core/long-form) checks them against the video's length range. */
+  chapters: Array<{ title: string; line: string; target_s: number }>;
+}
+
+/** The outline edit form: chapter_count, then title_i, line_i, seconds_i for each chapter. Shape only; the rules live in validateOutline. */
+export function parseOutlineEditForm(f: FormLike): Parsed<OutlineEditInput> {
+  const videoId = uuid.safeParse(text(f.get("videoId")));
+  if (!videoId.success) return { ok: false, message: BAD_FORM };
+  const seenHash = hash.safeParse(text(f.get("seenHash")));
+  const seenVersions = versions.safeParse(text(f.get("seenVersions")));
+  if (!seenHash.success || !seenVersions.success) return { ok: false, message: STALE_MESSAGE };
+  const n = Number(text(f.get("chapter_count")));
+  if (!Number.isInteger(n) || n < 1 || n > 12) return { ok: false, message: BAD_FORM };
+  const chapters: OutlineEditInput["chapters"] = [];
+  for (let i = 0; i < n; i++) {
+    const title = text(f.get(`title_${i}`));
+    const line = text(f.get(`line_${i}`));
+    const secs = text(f.get(`seconds_${i}`));
+    if (title === undefined || line === undefined || secs === undefined || !/^[0-9]{1,5}$/.test(secs.trim())) return { ok: false, message: "Every chapter needs a title, a line and whole seconds." };
+    chapters.push({ title: title.trim(), line: line.trim(), target_s: Number(secs) });
+  }
+  return { ok: true, value: { videoId: videoId.data, seenHash: seenHash.data, seenVersions: seenVersions.data, chapters } };
 }
 
 export function parseIdForm(f: FormLike, field: string): Parsed<string> {

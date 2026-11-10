@@ -5,6 +5,7 @@ import { assertActionOrigin } from "@/lib/auth/action-origin";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { parseNewVideoForm } from "@/server/core/videos-view";
 import { getPool } from "@/server/db/pool";
+import { maxLongMinutes } from "@/server/db/system-settings";
 import { startNewVideo } from "@/server/db/video-create";
 import { webStageQueue } from "@/server/queue/web-queues";
 
@@ -17,7 +18,7 @@ export async function createVideoAction(_prev: NewVideoState, form: FormData): P
   const owner = await requireOwner();
   const origin = await assertActionOrigin();
   if (origin) return { message: origin };
-  const p = parseNewVideoForm(form);
+  const p = parseNewVideoForm(form, await maxLongMinutes(getPool()));
   if (!p.ok) return { message: p.message };
   let r;
   try {

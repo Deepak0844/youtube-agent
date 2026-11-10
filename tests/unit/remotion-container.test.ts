@@ -143,6 +143,42 @@ describe("container renderer", () => {
     expect(seen).toEqual({ scene, captions: [{ word: "hi", startS: 0, endS: 0.5 }] });
   });
 
+  const LANDSCAPE = { width: 1920, height: 1080 };
+  const chapters = [{ title: "Hook", startMs: 0 }, { title: "How it works", startMs: 1000 }];
+  const bigProbe = { probe: async () => ({ width: 1920, height: 1080, durationS: 2, hasAudio: true, meanDb: -20, peakDb: -1, loopDiff: 1 }) };
+
+  it("landscape: renders kit-video-landscape (--landscape) at 1920x1080 with the chapter list in props.json, same locks", async () => {
+    let seen: Record<string, unknown> | undefined;
+    await createContainerRenderer(deps((spec, outDir) => {
+      const inDir = mountOf(spec.args, "/in")!.split(":")[0]!;
+      seen = JSON.parse(readFileSync(path.join(inDir, "props.json"), "utf8"));
+      copyFileSync(GOOD, path.join(outDir, "out.mp4"));
+      return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
+    }, bigProbe)).render(ctx(), { ...args(), size: LANDSCAPE, layout: "landscape", chapters });
+    expect(run().args.slice(-4)).toEqual(["/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4", "--landscape"]);
+    expect(run().args).toContain("--network");
+    expect(seen).toMatchObject({ audioSrc: "narration.wav", chapters });
+  });
+
+  it("landscape: a short render has no --landscape flag and no chapters in its props", async () => {
+    let seen: Record<string, unknown> | undefined;
+    await createContainerRenderer(deps((spec, outDir) => {
+      seen = JSON.parse(readFileSync(path.join(mountOf(spec.args, "/in")!.split(":")[0]!, "props.json"), "utf8"));
+      copyFileSync(GOOD, path.join(outDir, "out.mp4"));
+      return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
+    })).render(ctx(), args());
+    expect(run().args.slice(-3)).toEqual(["/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4"]);
+    expect(seen).not.toHaveProperty("chapters");
+  });
+
+  it("landscape: refuses a bad chapter list or a portrait size before any container starts", async () => {
+    for (const bad of [undefined, [], [{ title: "A", startMs: 5 }], [{ title: "", startMs: 0 }], [{ title: "A", startMs: 0 }, { title: "B", startMs: -1 }], [{ title: "A", startMs: 0 }, { title: "B", startMs: 1.5 }]]) {
+      await expect(createContainerRenderer(deps(undefined, bigProbe)).render(ctx(), { ...args(), size: LANDSCAPE, layout: "landscape", chapters: bad as never }), JSON.stringify(bad)).rejects.toThrow(/chapter list/);
+    }
+    await expect(createContainerRenderer(deps()).render(ctx(), { ...args(), layout: "landscape", chapters })).rejects.toThrow(/1920x1080/);
+    expect(calls.filter((c) => c.args[0] === "run")).toHaveLength(0);
+  });
+
   it("scale3d: the same size check applies", async () => {
     const probe = { probe: async () => ({ width: 720, height: 1920, durationS: 2, hasAudio: true, meanDb: -20, peakDb: -1, loopDiff: 1 }) };
     await expect(createContainerRenderer(deps(undefined, probe)).render(ctx(), { ...args(), doc: undefined, scale3d: SCALE3D_DEMO })).rejects.toThrow(/720x1920/);
