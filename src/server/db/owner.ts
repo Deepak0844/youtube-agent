@@ -24,6 +24,12 @@ export async function ownerExists(db: Db): Promise<boolean> {
   return rows.length > 0;
 }
 
+/** The owner's username (it is not a secret: it is the sign-in name). Never any password or TOTP material. */
+export async function ownerUsername(db: Db): Promise<string | null> {
+  const { rows } = await db.query<{ username: string }>("select username from owner where id = 1");
+  return rows[0]?.username ?? null;
+}
+
 export async function revokeAllSessions(db: Db): Promise<number> {
   const r = await db.query("update sessions set revoked_at = clock_timestamp() where revoked_at is null");
   return r.rowCount ?? 0;
