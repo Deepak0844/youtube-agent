@@ -28,7 +28,7 @@ export const FLAGS: Record<string, boolean> = {
   "settings.account": true, // Phase 9 parity
   "settings.tokens": true,
   "settings.channels": true,
-  "settings.policies": false,
+  "settings.policies": true, // Phase 9 parity
   "settings.notifications": true, // Phase 7
   "settings.schedule": true, // Phase 6
   "settings.health": false,
