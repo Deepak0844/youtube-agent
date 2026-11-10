@@ -108,6 +108,12 @@ export async function saveUploadSwitches(db: pg.Pool, input: { killSwitch?: bool
   }
 }
 
+/** The publishing policy switches and the two upload switches that sit beside them, for the READ-ONLY /settings/policies page. A stored value that is not a boolean reads as the safe default. This file has no writer for the policy keys on purpose: they are not on SESSION_BATCH_KEYS. */
+export async function loadPolicies(db: pg.Pool): Promise<{ requireEvidence: boolean; allowPublic: boolean; killSwitch: boolean; cutoverDone: boolean }> {
+  const [e, p, k, c] = await Promise.all([getSetting(db, "policy.require_evidence"), getSetting(db, "policy.allow_public"), getSetting(db, "uploads.kill_switch"), getSetting(db, "youtube.cutover_done")]);
+  return { requireEvidence: e !== false, allowPublic: p === true, killSwitch: k === true, cutoverDone: c === true };
+}
+
 /** The saved rupee rate; a hand-edited bad value falls back to the default. */
 export async function loadInrRate(db: pg.Pool): Promise<number> {
   const v = await getSetting(db, "display.inr_rate");
