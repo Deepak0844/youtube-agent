@@ -1,8 +1,9 @@
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { buildMixGraph } from "@/server/core/mix-graph";
 import { bedAudibility, cueAudibility, type Verdict } from "@/server/core/sound-view";
 import { KnownFailure } from "@/server/core/paid-call";
+import { cutAudioArgs, type ClipWindow } from "@/server/core/derive-short";
 import { cueSheet, SfxPlan } from "@/server/core/sfx-plan";
 import type { StageContext } from "@/server/core/stage-handler";
 import { audioFilePaths } from "@/server/db/audio-library";
@@ -121,4 +122,18 @@ export async function joinClips(mix: MixDeps, ctx: StageContext, f: { clips: rea
   await writeFile(list, joinListText(f.clips), { mode: 0o600 });
   await run(mix, ctx, "ffmpeg", joinArgs(list, f.out), "Joining the chapters");
   return durationS(mix, ctx, f.out);
+}
+
+/**
+ * Cuts the clip's narration out of the long video's narration (both plain files in the attempt folder or the video folder). Returns the length of the
+ * cut in seconds; it must be within half a second of the window, else the cut is refused and removed.
+ */
+export async function cutNarration(mix: MixDeps, ctx: StageContext, f: { narration: string; out: string; window: Pick<ClipWindow, "startMs" | "durationMs"> }): Promise<number> {
+  await run(mix, ctx, "ffmpeg", cutAudioArgs(f.narration, f.out, f.window), "Cutting the narration");
+  const s = await durationS(mix, ctx, f.out);
+  if (Math.abs(s - f.window.durationMs / 1000) > 0.5) {
+    await rm(f.out, { force: true }).catch(() => undefined);
+    throw new KnownFailure(`The cut narration is ${s.toFixed(1)} s but the clip is ${(f.window.durationMs / 1000).toFixed(1)} s. The narration file may be shorter than the video. Nothing was kept.`);
+  }
+  return s;
 }
