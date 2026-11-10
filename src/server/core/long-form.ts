@@ -136,3 +136,24 @@ export function chapterTimestampLines(marks: readonly ChapterMark[], totalMs: nu
   const hours = totalMs >= 3_600_000;
   return marks.map((m) => `${stamp(m.startMs, hours)} ${m.title.replace(/[<>]/g, "")}`).join("\n");
 }
+
+/** One chunk of a long render: frames `from` to `to` (inclusive) of the whole composition; "end" = through its last frame. */
+export interface FrameChunk {
+  from: number;
+  to: number | "end";
+}
+
+/**
+ * Splits the video into one chunk per chapter, on the same timeline as the whole video (so chapter cards, the progress bar and the
+ * captions stay right). A chapter starts at the frame of its first scene; chapters that land on the same frame are merged. The chunks
+ * cover every frame once, from 0 to the end.
+ */
+export function chapterFrameChunks(marks: readonly Pick<ChapterMark, "startMs">[], fps: number): FrameChunk[] {
+  const froms: number[] = [];
+  for (const [i, m] of marks.entries()) {
+    const f = i === 0 ? 0 : Math.round((m.startMs * fps) / 1000);
+    if (froms.length === 0 || f > froms[froms.length - 1]!) froms.push(f);
+  }
+  if (froms.length === 0) froms.push(0);
+  return froms.map((from, i) => ({ from, to: i + 1 < froms.length ? froms[i + 1]! - 1 : ("end" as const) }));
+}

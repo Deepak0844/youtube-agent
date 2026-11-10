@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chapterMarks, chapterMarksFromScenes, chapterTimestampLines, clock, lengthRangeProblem, lengthVsQaProblem, longWordRange, outlineEstimate, validateOutline } from "@/server/core/long-form";
+import { chapterMarks, chapterFrameChunks, chapterMarksFromScenes, chapterTimestampLines, clock, lengthRangeProblem, lengthVsQaProblem, longWordRange, outlineEstimate, validateOutline } from "@/server/core/long-form";
 
 const ch = (title: string, target_s: number) => ({ title, line: `about ${title}`, target_s });
 const good = { chapters: [ch("Hook", 90), ch("How it works", 150), ch("Why it matters", 120)] }; // 360 s = 6 min
@@ -113,5 +113,17 @@ describe("chapterTimestampLines", () => {
     expect(chapterTimestampLines(marks.slice(0, 2), 360_000)).toBeNull(); // fewer than 3
     expect(chapterTimestampLines([{ title: "a", startMs: 0 }, { title: "b", startMs: 5_000 }, { title: "c", startMs: 60_000 }], 120_000)).toBeNull(); // 5 s chapter
     expect(chapterTimestampLines([{ title: "a", startMs: 1000 }, { title: "b", startMs: 60_000 }, { title: "c", startMs: 120_000 }], 200_000)).toBeNull(); // not 0:00
+  });
+});
+
+describe("chapterFrameChunks", () => {
+  const at = (...ms: number[]) => ms.map((startMs) => ({ startMs }));
+  it("cuts at the chapter starts and covers every frame once", () => {
+    expect(chapterFrameChunks(at(0, 100_000, 250_000), 30)).toEqual([{ from: 0, to: 2999 }, { from: 3000, to: 7499 }, { from: 7500, to: "end" }]);
+  });
+  it("one chapter is one chunk to the end", () => expect(chapterFrameChunks(at(0), 30)).toEqual([{ from: 0, to: "end" }]));
+  it("merges chapters that start on the same frame, and the first always starts at frame 0", () => {
+    expect(chapterFrameChunks(at(0, 10_000, 10_010, 20_000), 30)).toEqual([{ from: 0, to: 299 }, { from: 300, to: 599 }, { from: 600, to: "end" }]);
+    expect(chapterFrameChunks(at(500, 10_000), 30)).toEqual([{ from: 0, to: 299 }, { from: 300, to: "end" }]);
   });
 });

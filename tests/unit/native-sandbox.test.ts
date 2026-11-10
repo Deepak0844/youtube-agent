@@ -210,7 +210,9 @@ describe("the gl override and the container", () => {
 
   it("render-entry honours native (angle gl, concurrency 1) only for --scale3d or --scene3d with exactly --native", () => {
     expect(entry).toContain('const native = (mode === "--scale3d" || mode === "--scene3d" || mode === "--scene3d-stills" || mode === "--scene3d-code" || mode === "--scene3d-code-stills") && extra.length === 1 && extra[0] === "--native";');
-    expect(entry).toContain('(extra.length > 0 && !native)');
+    // Extra arguments are refused unless they are native's one flag, or a landscape chapter chunk (--frames=..., --muted): landscape is never native.
+    expect(entry).toContain('(extra.length > 0 && !native && !chunkArgs)');
+    expect(entry).toContain('const chunkArgs = mode === "--landscape" && CHUNK !== null');
     expect(entry).toContain('((mode === "--scene3d" || mode === "--scene3d-stills" || mode === "--scene3d-code" || mode === "--scene3d-code-stills") && !native)'); // the container can never be asked to draw a 3D scene or its preview pictures
     expect(entry).toContain('scene3d ? "scene3d" : mode === "--scale3d" ? "scale3d" : "kit-video"');
     expect(entry).toContain('gl: native ? "angle" : "swangle"');

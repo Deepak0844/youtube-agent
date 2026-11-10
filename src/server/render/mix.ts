@@ -18,13 +18,13 @@ export interface MixDeps {
   audioRoot: string;
 }
 
-async function run(mix: MixDeps, ctx: StageContext, command: "ffmpeg" | "ffprobe", args: string[]): Promise<string[]> {
+async function run(mix: MixDeps, ctx: StageContext, command: "ffmpeg" | "ffprobe", args: string[], what = "The sound mix"): Promise<string[]> {
   const out: string[] = [];
   const r = await mix.runChild({
     command, args, cwd: ctx.attemptDir, cwdRoot: ctx.attemptDir, timeoutMs: 600_000, maxOutputBytes: 4 * 1024 * 1024,
     signal: ctx.signal, onLine: (l) => out.push(l), stageRunId: ctx.claim.stageRunId,
   });
-  if (r.code !== 0 || r.truncated || r.timedOut || r.aborted) throw new KnownFailure(`The sound mix failed (${command} ${r.timedOut ? "timed out" : r.aborted ? "was stopped" : "returned an error"}).`);
+  if (r.code !== 0 || r.truncated || r.timedOut || r.aborted) throw new KnownFailure(`${what} failed (${command} ${r.timedOut ? "timed out" : r.aborted ? "was stopped" : "returned an error"}).`);
   return out;
 }
 
@@ -97,4 +97,28 @@ export async function mixPlan(mix: MixDeps, db: pg.Pool, ctx: StageContext, qa: 
   await writeFile(path.join(path.dirname(f.out), "cue-sheet.txt"), cueSheet(plan));
   const usedCues = new Set(plan.cues.filter((c) => !g.droppedCues.includes(c.id)).map((c) => c.itemId));
   return { droppedCues: [...dropped, ...g.droppedCues], usedItems: [...new Set([...usedCues, ...(plan.bed ? [plan.bed.item] : [])])], verdicts };
+}
+
+const CLIP_NAME = /^[A-Za-z0-9_-]{1,40}\.mp4$/;
+
+/** The ffmpeg concat list: one `file 'name'` line per clip. Only plain names made here (no quotes, slashes or dots-only) are allowed. */
+export function joinListText(clips: readonly string[]): string {
+  if (clips.length < 1 || !clips.every((c) => CLIP_NAME.test(c))) throw new KnownFailure("The chapter clips have an unusable file name.");
+  return clips.map((c) => `file '${c}'`).join("\n") + "\n";
+}
+
+/** Joins the clips without re-encoding (they all come from the same render settings, so the streams match). */
+export function joinArgs(listFile: string, out: string): string[] {
+  return ["-nostdin", "-hide_banner", "-y", "-f", "concat", "-safe", "1", "-protocol_whitelist", "file", "-i", listFile, "-c", "copy", "-movflags", "+faststart", out];
+}
+
+/**
+ * Joins the chapter clips (plain file names in the attempt folder, in order) into `out`. Returns the length of the joined video in seconds.
+ * Only the stage's own folder is touched; a failed ffmpeg is a plain failure that names no path.
+ */
+export async function joinClips(mix: MixDeps, ctx: StageContext, f: { clips: readonly string[]; out: string }): Promise<number> {
+  const list = path.join(ctx.attemptDir, "chapters.txt");
+  await writeFile(list, joinListText(f.clips), { mode: 0o600 });
+  await run(mix, ctx, "ffmpeg", joinArgs(list, f.out), "Joining the chapters");
+  return durationS(mix, ctx, f.out);
 }

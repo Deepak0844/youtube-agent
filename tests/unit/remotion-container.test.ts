@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -158,6 +158,34 @@ describe("container renderer", () => {
     expect(run().args.slice(-4)).toEqual(["/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4", "--landscape"]);
     expect(run().args).toContain("--network");
     expect(seen).toMatchObject({ audioSrc: "narration.wav", chapters });
+  });
+
+  it("landscape chunk: one chapter is a frame range of the same composition, muted, with no narration staged", async () => {
+    let seen: { files: string[]; props: Record<string, unknown> } | undefined;
+    const noSound = { probe: async () => ({ width: 1920, height: 1080, durationS: 2, hasAudio: false, meanDb: -91, peakDb: -91, loopDiff: 1 }) };
+    const r = await createContainerRenderer(deps((spec, outDir) => {
+      const inDir = mountOf(spec.args, "/in")!.split(":")[0]!;
+      seen = { files: readdirSync(inDir).sort(), props: JSON.parse(readFileSync(path.join(inDir, "props.json"), "utf8")) };
+      copyFileSync(GOOD, path.join(outDir, "out.mp4"));
+      return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
+    }, noSound)).render(ctx(), { ...args(), size: LANDSCAPE, layout: "landscape", chapters, outFile: "chapter-01.mp4", chunk: { from: 0, to: 2999 } });
+    expect(r.outPath).toBe(path.join(attemptDir, "chapter-01.mp4"));
+    expect(run().args.slice(-6)).toEqual(["/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4", "--landscape", "--frames=0-2999", "--muted"]);
+    expect(seen!.files).not.toContain("narration.wav");
+    expect(seen!.props).not.toHaveProperty("audioSrc");
+    expect(seen!.props).toMatchObject({ chapters }); // the whole chapter list stays, so the cards and the progress bar are right
+  });
+
+  it("landscape chunk: the last chapter runs to the end; a bad range or a non-landscape chunk is refused before any container starts", async () => {
+    await createContainerRenderer(deps(() => ({ code: 0, signal: null, truncated: false, timedOut: false, aborted: false }), { probe: async () => ({ width: 1920, height: 1080, durationS: 2, hasAudio: false, meanDb: -91, peakDb: -91, loopDiff: 1 }) }))
+      .render(ctx(), { ...args(), size: LANDSCAPE, layout: "landscape", chapters, chunk: { from: 3000, to: "end" } }).catch(() => undefined);
+    expect(run().args.slice(-3)).toEqual(["--landscape", "--frames=3000-end", "--muted"]);
+    calls.length = 0;
+    for (const bad of [{ from: -1, to: 5 }, { from: 5, to: 4 }, { from: 1.5, to: 9 }, { from: 0, to: 1e9 }, { from: 0, to: "x" }]) {
+      await expect(createContainerRenderer(deps(undefined, bigProbe)).render(ctx(), { ...args(), size: LANDSCAPE, layout: "landscape", chapters, chunk: bad as never }), JSON.stringify(bad)).rejects.toThrow(/frame range/);
+    }
+    await expect(createContainerRenderer(deps(undefined, bigProbe)).render(ctx(), { ...args(), chunk: { from: 0, to: 10 } })).rejects.toThrow(/landscape/);
+    expect(calls.filter((c) => c.args[0] === "run")).toHaveLength(0);
   });
 
   it("landscape: a short render has no --landscape flag and no chapters in its props", async () => {

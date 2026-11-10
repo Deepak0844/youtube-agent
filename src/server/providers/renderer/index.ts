@@ -36,6 +36,8 @@ export interface RenderArgs {
   layout?: "landscape";
   /** Landscape only: chapter title cards, in order, the first at 0 ms. Start times are on the real (narration-timed) timeline. */
   chapters?: Array<{ title: string; startMs: number }>;
+  /** Landscape only: draw just these frames (inclusive; "end" = the last) of the whole composition, without sound. One chapter of a long render. */
+  chunk?: { from: number; to: number | "end" };
 }
 
 /** What the native renderer needs to draw an AI-written scene. `expectedSha256` is sceneCodeSha(source, props) as approved; the renderer refuses any difference. */

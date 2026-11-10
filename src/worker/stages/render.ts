@@ -1,11 +1,11 @@
-import { lstat } from "node:fs/promises";
+import { lstat, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { KnownFailure } from "@/server/core/paid-call";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { readPreviews } from "@/server/core/scene3d-stills";
 import { approvalState, readSnapshot } from "@/server/db/approvals";
 import { approvedOutline, approvedScript } from "@/server/db/stage-content";
-import { chapterMarks, chapterMarksFromScenes, outlineTotalS } from "@/server/core/long-form";
+import { chapterFrameChunks, chapterMarks, chapterMarksFromScenes, outlineTotalS, type FrameChunk } from "@/server/core/long-form";
 import { validateScenes, type SceneDoc } from "@/shared/scene";
 import { retimeScenes } from "@/shared/scene/retime";
 import { retimeScale3d, validateScale3d, type Scale3dScene } from "@/shared/scale3d";
@@ -15,13 +15,16 @@ import { catalogModelResolver } from "@/server/core/scene3d-direct";
 import { readSceneCodeBody, sceneCodeSha, type Scene3dCodeBody } from "@/server/core/scene3d-code-body";
 import { isScene3dKind } from "@/server/core/pipeline-plan";
 import { sha256Hex as sha256Text } from "@/server/core/content-hash";
-import type { Renderer } from "@/server/providers/renderer";
+import type { RenderArgs, Renderer } from "@/server/providers/renderer";
+import { MAX_VIDEO_BYTES } from "@/server/providers/renderer/remotion-container";
+import { joinClips, type MixDeps } from "@/server/render/mix";
 import { openRegular, promotedPath, type AttemptHandler } from "./attempt";
 import { contentBody, LANDSCAPE_SIZE, loadVideo, SIZE, type StageDeps } from "./deps";
 import { audioSeconds } from "./voice-audio";
 
 const isFile = async (f: string) => (await lstat(f).catch(() => null))?.isFile() === true;
 const MAX_SCENES_BYTES = 1024 * 1024;
+const FPS = 30; // equal to remotion/kit/theme.ts
 
 /** Reads and validates scenes.json: a plain file (no symlink, no FIFO), at most 1 MB, valid scene JSON. */
 export async function readScenesFile(file: string, long = false): Promise<SceneDoc> {
@@ -162,12 +165,58 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
     // Chapter cards start where each chapter's first scene starts (beat ids c1_..., c2_...); without scenes or ids, at their share of the outline's seconds.
     const chapterInfo = outline?.ok ? (doc ? chapterMarksFromScenes(outline.outline, doc.scenes, total(doc)) : { marks: chapterMarks(outline.outline, outlineTotalS(outline.outline.chapters) * 1000), from: "estimate" as const }) : null;
     const landscape = chapterInfo ? { layout: "landscape" as const, chapters: chapterInfo.marks } : null;
-    const r = await deps.renderer.render(ctx, {
+    const args: RenderArgs = {
       sceneFile, doc, audioFile, videoId: video.id, title, style: video.style, captionStyle: video.captionStyle, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: landscape ? LANDSCAPE_SIZE : SIZE, ...(landscape ?? {}),
-    });
-    if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
-    return { files: ["render.mp4"], result: { rendered: "render.mp4", scenes: doc ? doc.scenes.length : null, image: r.image ?? null, ...retime, ...(chapterInfo ? { chapters: chapterInfo.marks, chaptersFrom: chapterInfo.from, totalMs: doc ? total(doc) : null } : {}) } };
+    };
+    // A long video with two or more chapters is drawn one chapter at a time (each its own container run with its own time limit and memory) and joined.
+    const chunks = landscape && doc && deps.mix ? chapterFrameChunks(landscape.chapters, FPS) : [];
+    let image: string | undefined;
+    let chaptersRendered = 0;
+    if (chunks.length > 1 && deps.mix && doc) {
+      const res = await renderInChapters(deps.renderer, deps.mix, ctx, args, chunks, Math.max(...doc.scenes.map((x) => x.startMs + x.durationMs)) / 1000);
+      image = res.image;
+      chaptersRendered = res.chunks;
+    } else {
+      const r = await deps.renderer.render(ctx, args);
+      if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
+      image = r.image;
+    }
+    return { files: ["render.mp4"], result: { rendered: "render.mp4", scenes: doc ? doc.scenes.length : null, image: image ?? null, ...retime, ...(chaptersRendered > 0 ? { chunks: chaptersRendered } : {}), ...(chapterInfo ? { chapters: chapterInfo.marks, chaptersFrom: chapterInfo.from, totalMs: doc ? total(doc) : null } : {}) } };
   };
+}
+
+/**
+ * Draws a long video one chapter at a time and joins the clips into render.mp4 (no sound: the voice step lays the narration on). Each chapter is its own
+ * renderer call, so each gets the full time limit and memory. The clips are removed whether it worked or not. A joined length more than 2 s away
+ * from the scenes (a chapter missing or drawn twice) fails the stage and keeps nothing.
+ */
+export async function renderInChapters(renderer: Renderer, mix: MixDeps, ctx: Parameters<AttemptHandler>[0], args: RenderArgs, chunks: readonly FrameChunk[], expectedS: number): Promise<{ chunks: number; image?: string }> {
+  const nameOf = (i: number) => `chapter-${String(i + 1).padStart(2, "0")}.mp4`;
+  const clips: string[] = [];
+  let image: string | undefined;
+  try {
+    for (const [i, chunk] of chunks.entries()) {
+      ctx.log(`render: chapter ${i + 1} of ${chunks.length}`);
+      const r = await renderer.render(ctx, { ...args, outFile: nameOf(i), chunk });
+      if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
+      image = r.image ?? image;
+      clips.push(nameOf(i));
+    }
+    const outFile = path.join(ctx.attemptDir, "render.mp4");
+    const joinedS = await joinClips(mix, ctx, { clips, out: outFile });
+    if ((await stat(outFile)).size > MAX_VIDEO_BYTES) {
+      await rm(outFile, { force: true }).catch(() => undefined);
+      throw new KnownFailure("The joined video is too big.");
+    }
+    if (Math.abs(joinedS - expectedS) > 2) {
+      await rm(path.join(ctx.attemptDir, "render.mp4"), { force: true }).catch(() => undefined);
+      throw new KnownFailure(`The joined video is ${joinedS.toFixed(1)} s but the scenes add up to ${expectedS.toFixed(1)} s. Nothing was kept.`);
+    }
+    return { chunks: clips.length, ...(image ? { image } : {}) };
+  } finally {
+    await Promise.all([...chunks.keys()].map((i) => rm(path.join(ctx.attemptDir, nameOf(i)), { force: true }))).catch(() => undefined);
+    await rm(path.join(ctx.attemptDir, "chapters.txt"), { force: true }).catch(() => undefined);
+  }
 }
 
 /** Render for a scale3d video: the checked description, re-timed to the real word times, through the same renderer and folder rules. */
