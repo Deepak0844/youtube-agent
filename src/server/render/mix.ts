@@ -31,7 +31,8 @@ async function run(mix: MixDeps, ctx: StageContext, command: "ffmpeg" | "ffprobe
 
 const IN = ["-protocol_whitelist", "file", "-i"];
 
-async function durationS(mix: MixDeps, ctx: StageContext, file: string): Promise<number> {
+/** Length of a media file in seconds, read with ffprobe (the file is not loaded into memory). */
+export async function durationS(mix: MixDeps, ctx: StageContext, file: string): Promise<number> {
   const out = await run(mix, ctx, "ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=duration", "-of", "csv=p=0", file]);
   const d = Number(out[0]);
   if (!Number.isFinite(d) || d <= 0) throw new KnownFailure("Could not read the length of the video.");

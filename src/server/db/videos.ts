@@ -18,8 +18,10 @@ export interface VideoInput {
   /** long videos only: the minutes range chosen in the New form (both or neither) */
   lengthMinMinutes?: number | null;
   lengthMaxMinutes?: number | null;
+  /** shorts cut from a long video: the long video and the run of its scenes (zero-based, inclusive) */
+  derive?: { sourceId: string; fromScene: number; toScene: number };
 }
-export interface VideoRow extends Required<Omit<VideoInput, never>> {
+export interface VideoRow extends Required<Omit<VideoInput, "derive">> {
   id: string;
   status: "active" | "waiting" | "done" | "failed" | "cancelled";
   createdAt: Date;
@@ -42,8 +44,8 @@ const CCOLS = "id, video_id, kind, version, sha256, body, file_path, produced_by
 
 export async function createVideoRow(db: Pick<pg.Pool, "query">, i: VideoInput): Promise<VideoRow> {
   const r = await db.query(
-    `insert into videos (format, kind, language, topic, notes, channel_id, style, caption_style, length_min_minutes, length_max_minutes) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning ${VCOLS}`,
-    [i.format, i.kind, i.language, i.topic, i.notes ?? null, i.channelId ?? null, i.style ?? null, i.captionStyle ?? null, i.lengthMinMinutes ?? null, i.lengthMaxMinutes ?? null],
+    `insert into videos (format, kind, language, topic, notes, channel_id, style, caption_style, length_min_minutes, length_max_minutes, derived_from, derive_from_scene, derive_to_scene) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning ${VCOLS}`,
+    [i.format, i.kind, i.language, i.topic, i.notes ?? null, i.channelId ?? null, i.style ?? null, i.captionStyle ?? null, i.lengthMinMinutes ?? null, i.lengthMaxMinutes ?? null, i.derive?.sourceId ?? null, i.derive?.fromScene ?? null, i.derive?.toScene ?? null],
   );
   const x = r.rows[0];
   return { id: x.id, format: x.format, kind: x.kind, language: x.language, topic: x.topic, notes: x.notes, channelId: x.channel_id, style: x.style, captionStyle: x.caption_style, lengthMinMinutes: x.length_min_minutes, lengthMaxMinutes: x.length_max_minutes, status: x.status, createdAt: x.created_at, updatedAt: x.updated_at };
