@@ -95,6 +95,12 @@ describe("render-entry.mjs landscape mode", () => {
     expect(src).toContain('["kit", "--landscape", "--scale3d"');
     expect(src).toContain('const native = (mode === "--scale3d" || mode === "--scene3d"'); // landscape is not in the native list
   });
+  it("takes a chapter chunk only in landscape mode, in one exact form, and checks the range against the composition", () => {
+    expect(src).toContain('const chunkArgs = mode === "--landscape" && CHUNK !== null && (extra.length === 1 || (extra.length === 2 && extra[1] === "--muted"));');
+    expect(src).toContain("(extra.length > 0 && !native && !chunkArgs)");
+    expect(src).toContain("chunk.from > to || to > composition.durationInFrames - 1");
+    expect(src).toContain("frameRange, muted: chunk.muted");
+  });
 });
 
 describe("long drafts: beat length and output size", () => {

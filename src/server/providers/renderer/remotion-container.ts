@@ -37,7 +37,7 @@ const ASSET_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/; // same rule as the scene schema
 const CONTAINER_ID = /^[0-9a-f]{12,64}$/;
 const MOUNT_SAFE = /^[^:,\0\r\n]+$/;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
-const MAX_VIDEO_BYTES = 2 * 1024 ** 3;
+export const MAX_VIDEO_BYTES = 2 * 1024 ** 3;
 const FPS = 30; // keep equal to remotion/kit/theme.ts
 export const NAME_PREFIX = "ytstudio-render-";
 const WORKER_LABEL = "ytstudio.worker";
@@ -241,6 +241,13 @@ export async function runRenderContainer(
   return { r, tail };
 }
 
+/** The `--frames` argument of one chapter chunk: whole numbers, from at most to. Anything else is a plain refusal. */
+export function chunkArg(chunk: NonNullable<RenderArgs["chunk"]>): string {
+  const ok = Number.isInteger(chunk.from) && chunk.from >= 0 && chunk.from <= 9_999_999 && (chunk.to === "end" || (Number.isInteger(chunk.to) && chunk.to >= chunk.from && chunk.to <= 9_999_999));
+  if (!ok) throw new KnownFailure("The chapter frame range is not valid. Nothing was rendered.");
+  return `--frames=${chunk.from}-${chunk.to}`;
+}
+
 /** The chapter cards a landscape render draws: 1 to 12 titles in order, the first at 0 ms, starts never going back. Anything else is a plain refusal. */
 export function chapterProps(chapters: RenderArgs["chapters"]): Array<{ title: string; startMs: number }> {
   const ok =
@@ -284,6 +291,7 @@ export async function collectOutput(
   if (p.width !== a.size.width || p.height !== a.size.height) throw new KnownFailure(`The render is ${p.width}x${p.height}, expected ${a.size.width}x${a.size.height}.`);
   if (!(p.durationS > 0)) throw new KnownFailure("The rendered video is empty.");
   if (expectAudio && !p.hasAudio) throw new KnownFailure("The rendered video has no sound although narration was given.");
+  if (a.chunk) return outPath; // one chapter of a long render: no narration, and its length is checked against the joined video by the stage
   const docS = a.scene3dCode ? a.scene3dCode.props.durationS : a.scene3d ? a.scene3d.shots.reduce((t, s) => t + s.duration_s, 0) : a.scale3d ? a.scale3d.beats.reduce((t, b) => t + b.duration_s, 0) : Math.max(...a.doc!.scenes.map((s) => s.startMs + s.durationMs)) / 1000;
   if (Math.abs(p.durationS - docS) > 1) ctx.log(`render: warning: the video is ${p.durationS.toFixed(1)} s but the scenes add up to ${docS.toFixed(1)} s`);
   return outPath;
@@ -327,7 +335,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
           assets[id] = `assets/${id}${ext}`;
         }
         let audioSrc: string | undefined;
-        if (a.audioFile && !a.scale3d) { // the 3D composition has no sound of its own: the voice step lays the narration over it
+        if (a.audioFile && !a.scale3d && !a.chunk) { // the 3D composition has no sound of its own: the voice step lays the narration over it
           const ext = path.extname(a.audioFile).toLowerCase();
           if (!AUDIO_EXT.has(ext)) throw new KnownFailure("The narration has a file type the renderer does not take.");
           audioSrc = `narration${ext}`;
@@ -341,7 +349,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         if (a.layout === "landscape") {
           if (a.size.width !== 1920 || a.size.height !== 1080) throw new KnownFailure("A landscape render must be 1920x1080.");
           props = { ok: true, props: { ...(props.props as object), chapters: chapterProps(a.chapters) } };
-        }
+        } else if (a.chunk) throw new KnownFailure("A chapter chunk needs the landscape layout.");
         await writeFile(path.join(inDir, "props.json"), JSON.stringify(props.props), { mode: 0o644, flag: "wx" });
         await realDir(inDir, "input");
         await realDir(outDir, "output");
@@ -350,7 +358,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         const host = await (deps.hostLimits ?? daemonLimits)();
         const image = deps.image ? await deps.image() : { ref: RENDER_IMAGE, pinned: false };
         if (!image.pinned) ctx.log(`render: image not pinned (could not resolve its id); running the tag ${image.ref}`);
-        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, ...(a.scale3d ? { entry: ["/in", "/out/out.mp4", "--scale3d"] } : a.layout === "landscape" ? { entry: ["/in", "/out/out.mp4", "--landscape"] } : {}) });
+        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, ...(a.scale3d ? { entry: ["/in", "/out/out.mp4", "--scale3d"] } : a.layout === "landscape" ? { entry: ["/in", "/out/out.mp4", "--landscape", ...(a.chunk ? [chunkArg(a.chunk), "--muted"] : [])] } : {}) });
         const { r, tail } = await runRenderContainer(deps, ctx, { name, args, timeoutMs: lim.timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES });
         if (r.aborted) throw ctx.signal.reason ?? new Error("render aborted");
         if (r.timedOut) throw new KnownFailure(`The render took longer than its ${Math.ceil(lim.timeoutS / 60)} min limit and was stopped.`);
