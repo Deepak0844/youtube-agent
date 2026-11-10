@@ -32,6 +32,7 @@ import { VideoBox } from "@/ui/domain/video-box";
 import { Pill } from "@/ui/primitives/pill";
 import { Skeleton } from "@/ui/primitives/skeleton";
 import { ForceRerunForm, ReframeButtons, RerunForm, SaveToLibraryForm, SceneButtons } from "./controls";
+import { MakeVersionForm } from "./version-form";
 import { SoundTabPanel } from "./sound-tab";
 import { EvidenceTabPanel } from "./evidence-tab";
 import { TitlesTabPanel } from "./titles-tab";
@@ -96,6 +97,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
       ) : null}
       {p.tsxLibrary && p.head.status !== "cancelled" ? <SaveToLibraryForm videoId={p.head.id} hash={p.tsxLibrary.hash} approved={p.tsxLibrary.approved} /> : null}
       {p.videoSrc && p.head.status !== "cancelled" ? <ReframeButtons videoId={p.head.id} links={p.reframed} /> : null}
+      {p.head.format === "short" ? <MakeVersionForm videoId={p.head.id} kind={p.head.kind} /> : null}
 
       <nav aria-label="Video sections" className="flex min-w-0 gap-5 overflow-x-auto border-b border-rule">
         {TABS.map((t) => (

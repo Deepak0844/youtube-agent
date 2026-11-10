@@ -112,3 +112,35 @@ export function parseNewVideoForm(form: FormData, maxLongMinutes = 15): { ok: tr
   const { topic, language, kind, format, notes, style, captionStyle } = r.data;
   return { ok: true, value: { topic, language, kind, format, notes, style, captionStyle } };
 }
+
+/** The video types a Short can be remade as (the New form's own list for Shorts). */
+export const VERSION_KINDS = ["scene_kit", "tsx", "scale3d", "scene3d", "scene3d_code"] as const;
+
+export interface VersionSource {
+  topic: string;
+  language: string;
+  notes: string | null;
+  style: string | null;
+  captionStyle: string | null;
+  format: string;
+  kind: string;
+}
+
+/**
+ * The input for a NEW Short on the same topic as `src` but another video type (the old app's "Re-draft as ..."), following the New form's rules per
+ * type: the Scene kit keeps the style and caption look, a custom animation keeps the style, the 3D types keep neither. The new video starts from the
+ * topic, notes and language only; nothing of the old video (its approvals, spend or files) is carried over. Or a plain sentence saying why not.
+ */
+export function versionInput(src: VersionSource, kind: unknown): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
+  if (src.format !== "short") return { ok: false, message: "Only a Short can be remade as another type. A long video uses the Scene kit." };
+  if (typeof kind !== "string" || !(VERSION_KINDS as readonly string[]).includes(kind)) return { ok: false, message: "Pick a video type from the list." };
+  if (kind === src.kind) return { ok: false, message: "That is the type this video already is. Pick a different one." };
+  if (!(LANGS as readonly string[]).includes(src.language)) return { ok: false, message: "This video has an unknown language." };
+  const k = kind as (typeof VERSION_KINDS)[number];
+  const base = { topic: src.topic, language: src.language as (typeof LANGS)[number], kind: k, format: "short" as const, notes: src.notes ?? undefined };
+  const style = src.style && (STYLE_IDS as readonly string[]).includes(src.style) ? (src.style as (typeof STYLE_IDS)[number]) : undefined;
+  const captionStyle = src.captionStyle && (CAPTION_STYLE_IDS as readonly string[]).includes(src.captionStyle) ? (src.captionStyle as (typeof CAPTION_STYLE_IDS)[number]) : undefined;
+  if (k === "scene_kit") return { ok: true, value: { ...base, ...(style ? { style } : {}), ...(captionStyle ? { captionStyle } : {}) } };
+  if (k === "tsx") return { ok: true, value: { ...base, ...(style ? { style } : {}) } };
+  return { ok: true, value: base };
+}
