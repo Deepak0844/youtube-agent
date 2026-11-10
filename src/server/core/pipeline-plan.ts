@@ -11,7 +11,7 @@ export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "sc
 export type ContentKindName = "outline" | "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "previews" | "review" | "thumbnail";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
-export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_author", "scene3d_stills", "scene3d_review", "voice", "sfx", "qa", "repair_scenes", "reframe", "thumbnail", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
+export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_author", "scene3d_stills", "scene3d_review", "voice", "sfx", "qa", "repair_scenes", "reframe", "thumbnail", "derive", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
 export type StageName = (typeof STAGE_NAMES)[number];
 
 /** The two 3D story kinds: the director writes scene data (scene3d), or the AI writes the scene code (scene3d_code). Both get the Look gate and the native render. */
@@ -33,9 +33,26 @@ export interface PlanFlags {
    * build) and the script gate are skipped. Nothing sets it yet.
    */
   imported?: boolean;
+  /**
+   * A short cut from a long video (Phase 6b.4): its script, beats, scenes, narration and captions come from the long video by the free `derive`
+   * step (no model, no voice), the owner still approves the script, and the video goes on through Render, Voice, Sound and QA.
+   */
+  derived?: boolean;
 }
 
 export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags): PlanStep[] {
+  // Derived short (Phase 6b.4): scene kit only, and never imported. Nothing is drafted, built or narrated: `derive` writes all of it from the long video.
+  if (flags.derived) {
+    if (kind !== "scene_kit" || format !== "short") throw new Error("only a scene-kit short can be derived from a long video");
+    if (flags.imported) throw new Error("imported derived videos are not supported");
+    return [
+      { stage: "derive", gateAfter: "script", resource: "cpu" },
+      { stage: "render", resource: "render" },
+      { stage: "voice", resource: "cpu" },
+      { stage: "sfx", resource: "cpu" },
+      { stage: "qa", gateAfter: "video", resource: "cpu" },
+    ];
+  }
   // Long (Phase 6b.2): scene kit only. The short route with the outline step (and its gate) in front; the render stage picks the
   // landscape composition. Every other kind keeps refusing until its own slice ships.
   if (format === "long") {
@@ -152,6 +169,7 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   repair_scenes: ["scenes", "script"],
   reframe: [],
   thumbnail: [],
+  derive: [],
   seo: ["script"],
   reply_drafts: [],
 };
@@ -191,6 +209,8 @@ export interface PipelineView {
   style?: { style: string | null; captionStyle: string | null };
   /** latest owner send-back note for the script, or null */
   feedback: string | null;
+  /** derived shorts only: a hash of the long video's scenes, beats, narration and captions the clip is made from. Absent = not derived (no hash changes). */
+  derivedSource?: string;
   /** long videos only: latest owner send-back note for the outline. Absent or null = never sent back, and then no hash changes. */
   outlineFeedback?: string | null;
   /**
@@ -249,6 +269,10 @@ export function expectedInputHash(view: PipelineView, stage: StageName, prevHash
   if (stage === "outline") {
     upstream.params = view.paramsHash;
     upstream.feedback = view.outlineFeedback ?? "";
+  } else if (stage === "derive") {
+    // The clip is made from the long video's finished content: a new version of any of it makes the clip (and everything after it) stale.
+    upstream.params = view.paramsHash;
+    upstream.source = view.derivedSource ?? "none";
   } else if (stage === "draft") {
     upstream.params = view.paramsHash;
     upstream.feedback = view.feedback ?? "";

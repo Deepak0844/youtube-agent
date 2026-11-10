@@ -40,6 +40,7 @@ import { withAttempt } from "./stages/attempt";
 import { buildAttempt } from "./stages/build";
 import { repairScenesAttempt } from "./stages/repair-scenes";
 import { reframeAttempt } from "./stages/reframe";
+import { deriveAttempt } from "./stages/derive";
 import { thumbnailAttempt } from "./stages/thumbnail";
 import { replyDraftsAttempt } from "./stages/reply-drafts";
 import { seoAttempt } from "./stages/seo";
@@ -110,6 +111,7 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     repair_scenes: repairScenesAttempt(deps),
     reframe: withAttempt(fin, reframeAttempt(deps)),
     thumbnail: withAttempt(fin, thumbnailAttempt(deps)),
+    derive: withAttempt(fin, deriveAttempt(deps)),
     seo: withAttempt(fin, seoAttempt(deps)),
   };
 }
@@ -258,6 +260,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     repair_scenes: refuseDryRunVideos(pool, repair),
     reframe: refuseDryRunVideos(pool, withAttempt(fin, reframeAttempt(deps))),
     thumbnail: refuseDryRunVideos(pool, withAttempt(fin, thumbnailAttempt(deps))),
+    derive: refuseDryRunVideos(pool, withAttempt(fin, deriveAttempt(deps))),
     seo: refuseDryRunVideos(pool, seo),
     reply_drafts: refuseDryRunVideos(pool, replyDrafts),
     build: refuseDryRunVideos(pool, build),
