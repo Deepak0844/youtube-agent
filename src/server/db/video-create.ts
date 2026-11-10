@@ -1,6 +1,6 @@
 import type pg from "pg";
 import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
-import type { NewVideoInput } from "@/server/core/videos-view";
+import { versionInput, type NewVideoInput } from "@/server/core/videos-view";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { recordAudit } from "@/server/db/audit";
 import { lengthRangeProblem, lengthVsQaProblem } from "@/server/core/long-form";
@@ -32,4 +32,25 @@ export async function startVideo(db: pg.Pool, queue: EnqueueOnly, sessionId: str
     /* best effort: the worker's sweep starts it */
   }
   return { ok: true, videoId: v.id };
+}
+
+/**
+ * The owner remakes a Short as another video type on the same topic: a NEW video that starts from the topic, notes, language, channel and look of the
+ * old one. Nothing is shared with the old video: no approval, spend or file is carried over, and the old video is not touched. Starts like any new video
+ * (so the same caps and checks apply).
+ */
+export async function startVersion(db: pg.Pool, queue: EnqueueOnly, actor: GateActor, sourceId: string, kind: unknown): Promise<{ ok: true; videoId: string } | { ok: false; message: string }> {
+  if (actorProblem(actor)) return { ok: false, message: ACTOR_REASON };
+  let src: { topic: string; language: string; notes: string | null; style: string | null; caption_style: string | null; format: string; kind: string; channel_id: string | null } | undefined;
+  try {
+    src = (await db.query("select topic, language, notes, style, caption_style, format, kind, channel_id from videos where id = $1", [sourceId])).rows[0];
+  } catch {
+    src = undefined; // not a uuid
+  }
+  if (!src) return { ok: false, message: "That video was not found." };
+  const input = versionInput({ topic: src.topic, language: src.language, notes: src.notes, style: src.style, captionStyle: src.caption_style, format: src.format, kind: src.kind }, kind);
+  if (!input.ok) return input;
+  const r = await startVideo(db, queue, actor.sessionId, input.value, src.channel_id);
+  if (r.ok) await recordAudit(db, "video.version_made", { videoId: r.videoId, fromVideoId: sourceId, kind: input.value.kind, sessionId: actor.sessionId });
+  return r;
 }

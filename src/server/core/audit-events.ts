@@ -107,6 +107,7 @@ export const AUDIT_EVENTS = {
   "scenes.undone": "The previous scenes version was made current again",
   "scenes.repair_requested": "A repair of the failing scenes was requested",
   "video.derived_created": "The owner made a short from a run of scenes of a long video (detail: new video id, long video id, first and last scene, session id)",
+  "video.version_made": "The owner started a new Short on the same topic as another video, as a different video type (detail: new video id, original video id, type, session id)",
   "video.thumbnail_requested": "The owner asked for the thumbnail card of a long video (detail: video id, whether one of their own pictures is on it, stage run id, session id)",
   "video.reframe_requested": "The owner asked for a 16:9 or 1:1 version of a finished video (detail: video id, format, stage run id, session id)",
   "seo.requested": "The owner asked for titles, description and tags for the approved script (detail: video id, stage run id, session id)",
