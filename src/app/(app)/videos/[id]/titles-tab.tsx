@@ -1,11 +1,14 @@
+import Link from "next/link";
 import type { Check } from "@/server/core/seo";
 import { getPool } from "@/server/db/pool";
 import { loadSeoTab } from "@/server/db/seo";
+import { loadDeriveTab } from "@/server/db/derive";
 import { loadThumbnailTab } from "@/server/db/thumbnail";
 import { loadChapterLines, loadUploadDetails } from "@/server/db/upload-details";
 import type { VideoPage } from "@/server/db/video-page";
 import { Pill } from "@/ui/primitives/pill";
 import { UploadDetailsForm } from "./details-form";
+import { MakeShortForm } from "./derive-forms";
 import { ApproveThumbnailForm, MakeThumbnailForm } from "./thumbnail-forms";
 import { CopyField, WriteTitlesForm } from "./titles-forms";
 
@@ -27,6 +30,7 @@ export async function TitlesTabPanel({ p }: { p: VideoPage }) {
   const details = await loadUploadDetails(getPool(), p.head.id);
   const chapterLines = await loadChapterLines(getPool(), p.head.id);
   const thumb = p.head.format === "long" ? await loadThumbnailTab(getPool(), p.head.id) : null;
+  const derive = p.head.format === "long" ? await loadDeriveTab(getPool(), p.head.id) : null;
   const lang = p.head.language;
   const b = t.body;
   return (
@@ -77,6 +81,20 @@ export async function TitlesTabPanel({ p }: { p: VideoPage }) {
           ) : thumb.hasCard ? <p className="m-0 text-small text-muted">The picture cannot be shown right now (the media key is locked).</p> : null}
           {thumb.hasCard && thumb.seenHash ? (thumb.approved ? <p data-testid="thumbnail-approved" className="m-0 text-body text-pill-positive-ink">You approved this thumbnail.</p> : <ApproveThumbnailForm key={thumb.seenHash} videoId={p.head.id} seenHash={thumb.seenHash} />) : null}
           <MakeThumbnailForm videoId={p.head.id} again={thumb.hasCard} disabled={thumb.busy} pictures={thumb.pictures} />
+        </>
+      ) : null}
+      {derive ? (
+        <>
+          <H>Shorts from this video</H>
+          <p className="m-0 max-w-[68ch] text-small text-muted">Cut a short out of a run of this video&apos;s scenes. It is drawn again in portrait with the narration and captions of those scenes, costs nothing, and you approve its script like any other short before it is rendered.</p>
+          {derive.notReady ? <p data-testid="derive-not-ready" className="m-0 text-small text-muted">{derive.notReady}</p> : <MakeShortForm videoId={p.head.id} bounds={derive.bounds} chapters={derive.chapters} />}
+          {derive.shorts.length > 0 ? (
+            <ul data-testid="derived-shorts" className="m-0 flex list-none flex-col gap-1 p-0">
+              {derive.shorts.map((s) => (
+                <li key={s.id} className="text-body"><Link href={`/videos/${s.id}`} className="underline">{s.title}</Link> <span className="text-small text-muted">(scenes {s.firstScene} to {s.lastScene}, {s.status})</span></li>
+              ))}
+            </ul>
+          ) : null}
         </>
       ) : null}
       {details ? (
