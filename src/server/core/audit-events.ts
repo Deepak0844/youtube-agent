@@ -106,6 +106,7 @@ export const AUDIT_EVENTS = {
   "scenes.repaired": "Failing scenes were repaired into a new version",
   "scenes.undone": "The previous scenes version was made current again",
   "scenes.repair_requested": "A repair of the failing scenes was requested",
+  "video.thumbnail_requested": "The owner asked for the thumbnail card of a long video (detail: video id, whether one of their own pictures is on it, stage run id, session id)",
   "video.reframe_requested": "The owner asked for a 16:9 or 1:1 version of a finished video (detail: video id, format, stage run id, session id)",
   "seo.requested": "The owner asked for titles, description and tags for the approved script (detail: video id, stage run id, session id)",
   "seo.auto_requested": "The first titles, description and tags were queued automatically after the video finished rendering (detail: video id, stage run id)",
