@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeMessages } from "@/server/authoring/draft/prompts";
+import { longDraftMaxOutputTokens } from "@/server/authoring/draft/shared";
 import { outlineMessages } from "@/server/authoring/outline";
 import { buildEngineConfig } from "@/server/core/engine-config";
 import { longWordRange, validateOutline } from "@/server/core/long-form";
@@ -93,5 +94,30 @@ describe("render-entry.mjs landscape mode", () => {
     expect(src).toContain('id: mode === "--landscape" ? "kit-video-landscape"');
     expect(src).toContain('["kit", "--landscape", "--scale3d"');
     expect(src).toContain('const native = (mode === "--scale3d" || mode === "--scene3d"'); // landscape is not in the native list
+  });
+});
+
+describe("long drafts: beat length and output size", () => {
+  const long = { min: 3, max: 8 };
+  const n = (k: number) => Array.from({ length: k }, (_, i) => `w${i}`).join(" ");
+  const body = (beatWords: number) => {
+    const { min } = longWordRange("en", long);
+    return { title: "T", narration: n(min + 10), beats: [{ id: "c1_b1", text: n(beatWords) }], evidence: [{ text: "a", kind: "computed", method: "m" }] };
+  };
+  const opts = { longWords: longWordRange("en", long), requireEvidence: true };
+  it("refuses a beat too long to fit one scene, so Render can re-time it", () => {
+    const r = validateScript(body(80), "en", "long", opts);
+    expect(r.ok === false && r.problems.join(" ")).toMatch(/beat 1 \(80 words\) too long/);
+  });
+  it("accepts a beat of normal length", () => {
+    const r = validateScript(body(30), "en", "long", opts);
+    expect(r.ok || r.problems.join(" ")).toBe(true);
+  });
+  it("the output cap grows with language and length but stays under the ceiling", () => {
+    const en = longDraftMaxOutputTokens("en", { min: 3, max: 8 });
+    const ta = longDraftMaxOutputTokens("ta", { min: 15, max: 30 });
+    expect(en).toBe(24_000);
+    expect(ta).toBeGreaterThan(en);
+    expect(ta).toBeLessThanOrEqual(48_000);
   });
 });

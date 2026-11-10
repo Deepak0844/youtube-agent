@@ -53,12 +53,28 @@ export type ContentInput = { sha256: string; producedBy?: string | null } & ({ b
 
 /** Adds the next version of a kind. Concurrent adds are serialised per video+kind with a transaction advisory lock. */
 export async function addContent(db: pg.Pool, videoId: string, kind: ContentKind, c: ContentInput): Promise<{ version: number }> {
+  return (await insertContent(db, videoId, kind, c))!;
+}
+
+/** Like addContent, but writes only if the newest version of the kind is still `latestId` (null = none yet): a double submit adds one version. Returns null when it moved on. */
+export async function addContentIfLatest(db: pg.Pool, videoId: string, kind: ContentKind, c: ContentInput, latestId: string | null): Promise<{ version: number } | null> {
+  return insertContent(db, videoId, kind, c, latestId);
+}
+
+async function insertContent(db: pg.Pool, videoId: string, kind: ContentKind, c: ContentInput, latestId?: string | null): Promise<{ version: number } | null> {
   const hasBody = c.body !== undefined;
   if (hasBody === (c.filePath !== undefined)) throw new Error("addContent: give exactly one of body or filePath");
   const client = await db.connect();
   try {
     await client.query("begin");
     await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`video_content:${videoId}:${kind}`]);
+    if (latestId !== undefined) {
+      const cur = await client.query<{ id: string }>("select id from video_content where video_id = $1 and kind = $2 order by version desc limit 1", [videoId, kind]);
+      if ((cur.rows[0]?.id ?? null) !== latestId) {
+        await client.query("rollback");
+        return null;
+      }
+    }
     const r = await client.query(
       `insert into video_content (video_id, kind, version, sha256, body, file_path, produced_by)
        values ($1, $2, (select coalesce(max(version), 0) + 1 from video_content where video_id = $1 and kind = $2), $3, $4, $5, $6)

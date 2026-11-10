@@ -7,6 +7,7 @@ import { ChannelInitial } from "@/ui/domain/channel-initial";
 import { BeatTable } from "@/ui/domain/beat-table";
 import { CutStrip } from "@/ui/domain/cut-strip";
 import { cutStages } from "@/ui/domain/queue-strip";
+import { aspectFor } from "@/ui/domain/stages";
 import { Pill } from "@/ui/primitives/pill";
 import { clock } from "@/server/core/long-form";
 import { CancelForm, GateForms, OutlineEditForm, PublishChoiceForm, type GateFields } from "./forms";
@@ -268,7 +269,7 @@ export function GateCard({ item, index, rate }: { item: GateItem; index: number;
           <span className="text-small text-faint">waiting {ageLabel(item.waitingSince)}</span>
         </div>
         <h2 lang={item.language} className="m-0 min-w-0 text-title font-semibold leading-tight [overflow-wrap:anywhere]">{item.topic}</h2>
-        <CutStrip format={item.format} aspect={item.format === "long" ? "16:9" : "9:16"} stages={cutStages(item.strip, item.format)} thumbnail={false} layout="stack" />
+        <CutStrip format={item.format} aspect={aspectFor(item.format)} stages={cutStages(item.strip, item.format)} thumbnail={false} layout="stack" />
       </header>
       <p data-testid="gate-ask" className="m-0 max-w-[68ch] text-body text-muted">
         {item.content.kind === "publish"

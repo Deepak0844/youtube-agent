@@ -3,10 +3,12 @@
 import { z } from "zod";
 import { checkBeatRoles } from "@/shared/scene/beat-roles";
 import { SCALE3D_KINDS, SCALE3D_LIMITS } from "@/shared/scale3d/schema";
-import { LONG_LIMITS } from "@/shared/scene/kinds/common";
-import { wordCount, wordRange, type Lang } from "./lang";
+import { LIMITS, LONG_LIMITS } from "@/shared/scene/kinds/common";
+import { speakingRate as paceOf, wordCount, wordRange, type Lang } from "./lang";
 
 const MAX_BYTES = 256 * 1024;
+/** A long script (narration, the same text as beats, visuals) in a 3-byte script can pass 256 KB. */
+const LONG_MAX_BYTES = 768 * 1024;
 const CTA = /(comment below|let me know in the comments|subscribe|follow (me|for)|like (and|&) |smash that|hit the (bell|like)|which one should i|what should i (do|break down) next)/i;
 const STRIPPED = new Set(["verified_by", "verified"]);
 
@@ -119,7 +121,8 @@ export function validateScript(
   } catch {
     return { ok: false, problems: ["script is not plain JSON"] };
   }
-  if (bytes > MAX_BYTES) return { ok: false, problems: ["script is over 256 KB"] };
+  const maxBytes = format === "long" ? LONG_MAX_BYTES : MAX_BYTES;
+  if (bytes > maxBytes) return { ok: false, problems: [`script is over ${maxBytes / 1024} KB`] };
 
   const parsed = scriptSchema.safeParse(clean(script, problems));
   if (problems.length) return { ok: false, problems: [...new Set(problems)] };
@@ -135,6 +138,10 @@ export function validateScript(
     const words = wordCount(s.narration);
     if (words < opts.longWords.min || words > opts.longWords.max) problems.push(`${words} spoken words (want ${opts.longWords.min}-${opts.longWords.max} for the chosen length)`);
     if (s.beats.length > LONG_LIMITS.maxScenes) problems.push(`${s.beats.length} beats (at most ${LONG_LIMITS.maxScenes})`);
+    // A beat becomes one scene, and a scene cannot run longer than the scene limit: Render's re-timing would fail and the picture would drift from the voice.
+    const maxBeatWords = Math.floor(LIMITS.maxSceneMs / 1000 * paceOf(lang) * 0.8);
+    const longBeats = s.beats.map((b, i) => ({ n: i + 1, w: wordCount(typeof b.text === "string" ? b.text : "") })).filter((b) => b.w > maxBeatWords);
+    if (longBeats.length > 0) problems.push(`beat ${longBeats.slice(0, 3).map((b) => `${b.n} (${b.w} words)`).join(", ")} too long: split into beats of at most ${maxBeatWords} spoken words`);
   }
   if (format === "short" && opts.kind === "scene_kit") problems.push(...checkBeatRoles(s.beats.map((b) => b.id)));
   let evidence = s.evidence;

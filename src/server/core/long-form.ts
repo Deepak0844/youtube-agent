@@ -29,6 +29,13 @@ export function lengthRangeProblem(min: unknown, max: unknown, settingMax: numbe
   return null;
 }
 
+/** Why the QA length limits (settings qa.long_min_s / qa.long_max_s) would fail a video of this range after the money is spent, or null. */
+export function lengthVsQaProblem(range: LengthRange, qa: { minS: number; maxS: number }): string | null {
+  if (range.min * 60 < qa.minS) return `The QA check fails long videos under ${qa.minS} seconds ("QA long: shortest"). Pick at least ${Math.ceil(qa.minS / 60)} minutes or lower that setting first.`;
+  if (range.max * 60 > qa.maxS) return `The QA check fails long videos over ${qa.maxS} seconds ("QA long: longest"). Pick at most ${Math.floor(qa.maxS / 60)} minutes or raise that setting first.`;
+  return null;
+}
+
 const text = (max: number) => z.string().trim().min(1).max(max).refine((s) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(s) && s.isWellFormed(), "contains a control character");
 
 export const outlineChapterSchema = z.strictObject({

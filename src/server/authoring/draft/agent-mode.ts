@@ -106,7 +106,7 @@ export async function agentDraft(ctx: StageContext, deps: DraftDeps, input: Draf
     const maxSteps = Math.min(AGENT_MAX_STEPS, stepsLeft);
     let run;
     try {
-      run = await deps.llm.agent(ctx, { stage: "draft", tools, messages, maxSteps, maxOutputTokens: draftMaxOutputTokens(input.format), ...(store ? { checkpoint: { claim: ctx.claim, store, runOrdinal: attempt } } : {}) });
+      run = await deps.llm.agent(ctx, { stage: "draft", tools, messages, maxSteps, maxOutputTokens: draftMaxOutputTokens(input.format ?? "short", input.lang, input.long?.range), ...(store ? { checkpoint: { claim: ctx.claim, store, runOrdinal: attempt } } : {}) });
     } catch (err) {
       if (err instanceof MaxStepsError) throw new DraftInvalidError([`the model did not finish within ${maxSteps} steps`], spent);
       throw err;

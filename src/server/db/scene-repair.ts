@@ -33,7 +33,8 @@ async function beatIds(db: pg.Pool, videoId: string): Promise<string[]> {
 
 async function checkOpts(db: pg.Pool, videoId: string, assets?: Assets) {
   const beats = await beatIds(db, videoId);
-  return { beats: beats.length ? beats : undefined, assetIds: (await assets?.(videoId)) ?? [] };
+  const fmt = await db.query<{ format: string }>("select format from videos where id = $1", [videoId]);
+  return { beats: beats.length ? beats : undefined, assetIds: (await assets?.(videoId)) ?? [], long: fmt.rows[0]?.format === "long" };
 }
 
 /** Free: no model call, no spend. Runs the checks on the CURRENT scenes and leaves a log row. */
@@ -93,7 +94,7 @@ export async function repairScenes(db: pg.Pool, videoId: string, ask: AskScene, 
     targets = [...new Set([...indexes, ...opts.sceneIds.map((id) => ids.indexOf(id))])].sort((a, b) => a - b);
   }
   if (targets.length === 0) return { ok: false, message: "Every scene already passes the checks. Nothing to repair." };
-  const res = await repairSceneDoc(cur.body, targets, problems, ask, { beats: o.beats, assets: o.assetIds });
+  const res = await repairSceneDoc(cur.body, targets, problems, ask, { beats: o.beats, assets: o.assetIds, long: o.long });
   if (!res.ok) return { ok: false, message: `The scenes could not be repaired; the current version is unchanged. Last problems: ${res.errors.join("; ")}`.slice(0, 600) };
   const version = await appendVersion(db, videoId, cur.id, res.body, { changed: res.changed, from: cur.version });
   if (version === null) return { ok: false, message: "The scenes changed while the repair ran. Nothing was saved." };

@@ -2,7 +2,7 @@ import type pg from "pg";
 import { captionsNeedTick, actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { STALE_MESSAGE, versionsKey, type BreakerStage, type DecisionInput, type GateInput, type OutlineEditInput } from "@/server/core/queue-input";
 import { validateOutline } from "@/server/core/long-form";
-import { addContent, latestContent } from "@/server/db/videos";
+import { addContentIfLatest, latestContent } from "@/server/db/videos";
 import { lookSendBackProblem } from "@/server/core/scene3d-view";
 import { approvalReaders, lookFeedbackOf } from "@/server/db/approval-readers";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
@@ -176,7 +176,8 @@ export async function editOutline(db: pg.Pool, q: Queues, actor: GateActor, i: O
   const sha = sha256Hex(canonicalJson(body));
   const cur = await latestContent(db, i.videoId, "outline");
   if (cur?.sha256 === sha) return refuse("Nothing changed in the outline.");
-  await addContent(db, i.videoId, "outline", { sha256: sha, body });
+  const saved = await addContentIfLatest(db, i.videoId, "outline", { sha256: sha, body }, cur?.id ?? null);
+  if (!saved) return refuse(STALE_MESSAGE); // a second submit of the same edit: the first one already saved
   await recordAudit(db, "outline.edited", { videoId: i.videoId, sessionId: actor.sessionId, chapters: body.chapters.length });
   await advance(db, q.stage, i.videoId);
   return { ok: true, message: "Saved. Read the new outline and approve it when it is right." };

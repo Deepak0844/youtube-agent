@@ -88,7 +88,7 @@ export async function searchThenWrite(ctx: StageContext, deps: DraftDeps, input:
   const messages: Message[] = writeMessages({ ...prompt, pages });
 
   for (let attempt = 0; ; attempt++) {
-    const w = await deps.llm.generate(ctx, { stage: "draft", schema: rawDraftSchema, messages, maxOutputTokens: draftMaxOutputTokens(input.format), invalidRetries: 1 });
+    const w = await deps.llm.generate(ctx, { stage: "draft", schema: rawDraftSchema, messages, maxOutputTokens: draftMaxOutputTokens(input.format ?? "short", input.lang, input.long?.range), invalidRetries: 1 });
     spent += w.spentMicroUsd;
     const verdict = judgeDraft(w.value, input.lang, input.format, fetched, input.kind, input.long?.range);
     if (verdict.ok) return { script: verdict.script, spentMicroUsd: spent };

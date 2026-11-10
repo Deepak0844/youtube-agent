@@ -153,6 +153,8 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
         doc = res.doc;
         retime = { retimed: true, fromMs, toMs: total(doc) };
       } catch (e) {
+        // A long video drawn on Build's rough timing would drift away from 10+ minutes of real narration and the chapter cards would land wrong: stop, do not guess.
+        if (long) throw new KnownFailure(`retime_failed: ${e instanceof Error ? e.message : "unknown"}. The scenes could not be fitted to the narration. Nothing was rendered.`.slice(0, 600));
         ctx.log(`render: scenes not re-timed, original timing kept (${e instanceof Error ? e.message : "unknown"})`.slice(0, 300));
       }
     }

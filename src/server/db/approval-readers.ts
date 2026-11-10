@@ -33,10 +33,14 @@ export const approvalReaders: PipelineReaders = {
     );
     return r.rows[0]?.note ?? null;
   },
-  /** The note on the newest outline send-back (long videos), or null. It changes the outline step's input hash, so a new outline is written once. */
+  /** "<count>:<newest note>" of the outline send-backs (long videos), or null. It changes the outline step's input hash, so a new outline is written once per send-back; the count keeps a repeated note from being ignored. */
   async outlineFeedback(db: pg.PoolClient, videoId: string): Promise<string | null> {
-    const r = await db.query<{ note: string | null }>("select note from approvals where video_id = $1 and gate = 'outline' and decision = 'sent_back' order by seq desc limit 1", [videoId]);
-    return r.rows[0]?.note ?? null;
+    const r = await db.query<{ note: string | null; n: string }>(
+      "select (select note from approvals where video_id = $1 and gate = 'outline' and decision = 'sent_back' order by seq desc limit 1) as note, (select count(*) from approvals where video_id = $1 and gate = 'outline' and decision = 'sent_back') as n",
+      [videoId],
+    );
+    const row = r.rows[0];
+    return row?.note ? `${Number(row.n)}:${row.note}` : null;
   },
   /** The Look send-backs of a 3D story: how many and the newest note. The note reaches the director (fenced as untrusted data); the count keeps a repeated note from being ignored. */
   async lookFeedback(db: pg.PoolClient, videoId: string): Promise<{ count: number; note: string } | null> {

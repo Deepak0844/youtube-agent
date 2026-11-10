@@ -101,3 +101,9 @@ describe("outline gate and the hash chain", () => {
     expect(d({ content: { outline: "o1" }, paramsHash: "q" })).not.toBe(h);
   });
 });
+
+describe("an imported long video", () => {
+  it("is refused: it has no outline to approve, and Draft and Render need one", () => {
+    expect(() => stagePlan("scene_kit", "long", { ...flags, imported: true })).toThrow(/imported long/);
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chapterMarks, clock, lengthRangeProblem, longWordRange, outlineEstimate, validateOutline } from "@/server/core/long-form";
+import { chapterMarks, clock, lengthRangeProblem, lengthVsQaProblem, longWordRange, outlineEstimate, validateOutline } from "@/server/core/long-form";
 
 const ch = (title: string, target_s: number) => ({ title, line: `about ${title}`, target_s });
 const good = { chapters: [ch("Hook", 90), ch("How it works", 150), ch("Why it matters", 120)] }; // 360 s = 6 min
@@ -64,5 +64,17 @@ describe("chapterMarks", () => {
     const m = chapterMarks(good, 720_000);
     expect(m.map((x) => x.startMs)).toEqual([0, 180_000, 480_000]);
     expect(m[0]!.title).toBe("Hook");
+  });
+});
+
+describe("lengthVsQaProblem", () => {
+  const qa = { minS: 180, maxS: 900 }; // the defaults of qa.long_min_s and qa.long_max_s
+  it("accepts the default 3 to 8 and the 15 minute edge", () => {
+    expect(lengthVsQaProblem({ min: 3, max: 8 }, qa)).toBeNull();
+    expect(lengthVsQaProblem({ min: 3, max: 15 }, qa)).toBeNull();
+  });
+  it("refuses a range the QA check would block after the money is spent", () => {
+    expect(lengthVsQaProblem({ min: 3, max: 16 }, qa)).toMatch(/QA long: longest/);
+    expect(lengthVsQaProblem({ min: 3, max: 8 }, { minS: 240, maxS: 900 })).toMatch(/QA long: shortest/);
   });
 });

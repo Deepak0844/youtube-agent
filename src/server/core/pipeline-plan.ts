@@ -40,8 +40,9 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
   // landscape composition. Every other kind keeps refusing until its own slice ships.
   if (format === "long") {
     if (kind !== "scene_kit") throw new Error("long videos are only available for the scene kit for now");
-    const head: PlanStep[] = flags.imported ? [] : [{ stage: "outline", gateAfter: "outline", resource: "net" }];
-    return [...head, ...stagePlan(kind, "short", flags)];
+    // An imported project has no outline to approve, and Draft and Render both need one: refuse instead of building a video that cannot render.
+    if (flags.imported) throw new Error("imported long videos are not supported");
+    return [{ stage: "outline", gateAfter: "outline", resource: "net" }, ...stagePlan(kind, "short", flags)];
   }
   // tsx: the model writes one Remotion file after narration exists (word times), then it is checked, previewed and rendered
   // in one stage that replaces build + render. It never uses pictures, so tsx has no pictures step (a fall-back to the scene kit gets it
