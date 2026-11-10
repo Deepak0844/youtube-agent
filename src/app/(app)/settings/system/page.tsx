@@ -144,6 +144,12 @@ function Status({ s }: { s: SystemStatus }) {
             <Pill tone="negative">Unknown (Redis down)</Pill>
           )}
         </Row>
+        {s.tools.map((t) => (
+          <Row key={t.id} label={t.label}>
+            <Pill tone={t.ok ? "positive" : "negative"}>{t.ok ? "Ready" : "Needs attention"}</Pill>
+            <span data-testid={`tool-${t.id}`} className="text-small text-muted">{t.detail}{t.fix ? ` ${t.fix}` : ""}</span>
+          </Row>
+        ))}
         <Row label="Storage used">
           <span className="tabular-nums">{s.storageBytes === null ? "Unknown" : gb(s.storageBytes)}</span>
           <span className="text-small text-faint">estimate, refreshed each minute</span>

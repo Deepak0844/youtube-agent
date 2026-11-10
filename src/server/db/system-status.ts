@@ -6,8 +6,10 @@ import { Redis } from "ioredis";
 import type pg from "pg";
 import appPkg from "../../../package.json";
 import { cpuLoadFraction, sumQueues, type QueueCounts } from "@/server/core/health";
+import type { ToolCheck } from "@/server/core/tool-check";
 import { loadKeyring } from "@/server/db/master-key";
 import { vaultStatus, type VaultStatus } from "@/server/db/vault";
+import { cachedToolChecks } from "@/server/render/tool-check";
 import { storageRoot } from "@/server/storage/paths";
 
 // Read-only facts for /settings/system. Nothing returned here is a secret: no connection strings, no key material, no
@@ -25,6 +27,8 @@ export interface SystemStatus {
   queue: QueueCounts | null;
   /** null when unknown. Cached estimate, see storageUsedBytes. */
   storageBytes: number | null;
+  /** ffmpeg, ffprobe, Docker and the render image (checked at most once a minute). */
+  tools: ToolCheck[];
 }
 
 async function timed<T>(work: Promise<T>, ms: number): Promise<{ ok: true; value: T; ms: number } | { ok: false }> {
@@ -144,7 +148,7 @@ export async function getSystemStatus(db: pg.Pool, opts: { redisUrl?: string } =
   }
   const redisUrl = opts.redisUrl ?? process.env.REDIS_URL;
   const root = storageRoot();
-  const [redis, disk, queue, storageBytes] = await Promise.all([checkRedis(redisUrl), diskFor(root), queueCounts(redisUrl), storageUsedBytes(root)]);
+  const [redis, disk, queue, storageBytes, tools] = await Promise.all([checkRedis(redisUrl), diskFor(root), queueCounts(redisUrl), storageUsedBytes(root), cachedToolChecks()]);
   const totalMem = os.totalmem();
   return {
     versions: {
@@ -161,5 +165,6 @@ export async function getSystemStatus(db: pg.Pool, opts: { redisUrl?: string } =
     memory: { usedBytes: totalMem - os.freemem(), totalBytes: totalMem },
     queue: redis.ok ? queue : null,
     storageBytes,
+    tools,
   };
 }
