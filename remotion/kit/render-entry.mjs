@@ -3,6 +3,7 @@
 // usage: node /opt/render/kit/render-entry.mjs <inDir> <outFile>                 the scene kit (props.json)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --landscape     the 1920x1080 long-form scene kit, composition kit-video-landscape (props.json: the kit props plus chapters)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --landscape --frames=<from>-<to|end> [--muted]   one chapter of that render: frames from..to (inclusive, "end" = the last frame) of the SAME composition, so cards, progress and captions stay right; --muted leaves the sound out (the host joins the chapters and the voice step lays the narration on)
+//        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --thumbnail   the 1280x720 long-video thumbnail card, composition thumbnail, ONE png at <outFile> (props.json: title, seed, optional src = a staged picture in <inDir>); no extra arguments
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --scale3d       the 3D scale composition (props.json: scene, captions)
 //        node <repo>/remotion/kit/render-entry.mjs <inDir> <outFile> --scale3d --native   the same on the host Mac's GPU (remotion-native.ts, inside sandbox-exec)
 //        node <repo>/remotion/kit/render-entry.mjs <inDir> <outFile> --scene3d --native   the general 3D scene composition (props.json: scene; models/ staged in <inDir>), native ONLY
@@ -45,7 +46,7 @@ const native = (mode === "--scale3d" || mode === "--scene3d" || mode === "--scen
 const CHUNK = /^--frames=(\d{1,7})-(\d{1,7}|end)$/.exec(extra[0] ?? "");
 const chunkArgs = mode === "--landscape" && CHUNK !== null && (extra.length === 1 || (extra.length === 2 && extra[1] === "--muted"));
 const chunk = chunkArgs ? { from: Number(CHUNK[1]), to: CHUNK[2] === "end" ? "end" : Number(CHUNK[2]), muted: extra.length === 2 } : null;
-if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || (extra.length > 0 && !native && !chunkArgs) || ((mode === "--scene3d" || mode === "--scene3d-stills" || mode === "--scene3d-code" || mode === "--scene3d-code-stills") && !native) || !["kit", "--landscape", "--scale3d", "--scene3d", "--scene3d-stills", "--scene3d-code", "--scene3d-code-stills", "--tsx", "--tsx-stills"].includes(mode)) {
+if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || (extra.length > 0 && !native && !chunkArgs) || ((mode === "--scene3d" || mode === "--scene3d-stills" || mode === "--scene3d-code" || mode === "--scene3d-code-stills") && !native) || !["kit", "--landscape", "--thumbnail", "--scale3d", "--scene3d", "--scene3d-stills", "--scene3d-code", "--scene3d-code-stills", "--tsx", "--tsx-stills"].includes(mode)) {
   throw new Error("usage: render-entry.mjs <abs inDir> <abs out> [--tsx | --tsx-stills]");
 }
 // Only the two TSX modes use meta.json, video.tsx and the TSX bundle. "--scale3d" and "--scene3d" are kit-style modes (props.json, the kit's index.ts, public dir = inDir) that renders another composition.
@@ -167,13 +168,18 @@ if (author) {
   guardBrowser(guarded, { origin: globalThis.__s3kOrigin, log: (line) => console.log(line), onViolation: () => { console.log("GUARD violation: the page opened something it may not; the render is stopped"); process.exit(3); } });
 }
 try {
-const composition = await selectComposition({ serveUrl, id: mode === "--landscape" ? "kit-video-landscape" : author ? "s3k-author" : tsx ? "tsx-video" : scene3d ? "scene3d" : mode === "--scale3d" ? "scale3d" : "kit-video", inputProps, browserExecutable, chromiumOptions, ...(guarded ? { puppeteerInstance: guarded } : {}) });
+const composition = await selectComposition({ serveUrl, id: mode === "--thumbnail" ? "thumbnail" : mode === "--landscape" ? "kit-video-landscape" : author ? "s3k-author" : tsx ? "tsx-video" : scene3d ? "scene3d" : mode === "--scale3d" ? "scale3d" : "kit-video", inputProps, browserExecutable, chromiumOptions, ...(guarded ? { puppeteerInstance: guarded } : {}) });
 if (author && (composition.durationInFrames !== inputProps.frames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) throw new Error("the scene composition does not match props.json");
 if (tsx && (composition.durationInFrames !== meta.durationInFrames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) {
   throw new Error("the TSX composition does not match meta.json");
 }
 
-if (mode === "--tsx-stills") {
+if (mode === "--thumbnail") {
+  // One still at the frame after the headline's pop-in. The composition must be the 1280x720 card the host asked for.
+  if (composition.width !== 1280 || composition.height !== 720 || composition.fps !== 30 || composition.durationInFrames < 31) throw new Error("the thumbnail composition does not match 1280x720");
+  await renderStill({ composition, serveUrl, frame: 30, output: outArg, imageFormat: "png", inputProps, browserExecutable, chromiumOptions, overwrite: true });
+  console.log("PROGRESS 100");
+} else if (mode === "--tsx-stills") {
   for (const frame of meta.stills) {
     await renderStill({
       composition, serveUrl, frame, output: path.join(outArg, `still-${frame}.png`), imageFormat: "png", inputProps, browserExecutable,

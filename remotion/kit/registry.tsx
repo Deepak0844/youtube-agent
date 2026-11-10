@@ -51,6 +51,8 @@ import { captionStyleOf, presetOf, STYLE_IDS, type StylePreset } from "./presets
 import { StyleFx } from "./StyleFx";
 import { StyleFontCtx } from "./ScriptText";
 import { LookProvider } from "./LookParts";
+import { Thumbnail, type ThumbnailProps } from "./Thumbnail";
+import { THUMBNAIL_FRAMES, THUMBNAIL_SIZE } from "./thumbnailLayout";
 import { inkOf } from "./ink";
 import { HookCard } from "./HookCard";
 import { LandscapeFrame, type LandscapeExtras } from "./LandscapeFrame";
@@ -469,6 +471,7 @@ export const KitRoot: React.FC = () => (
       fps={theme.fps}
       durationInFrames={120}
     />
+    <Composition id="thumbnail" component={Thumbnail} defaultProps={{ title: "Why the sea is salty", seed: "demo" } as ThumbnailProps} width={THUMBNAIL_SIZE.width} height={THUMBNAIL_SIZE.height} fps={theme.fps} durationInFrames={THUMBNAIL_FRAMES} />
     <Composition
       id="kit-video-landscape"
       component={LandscapeVideo}
