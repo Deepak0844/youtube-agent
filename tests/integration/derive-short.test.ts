@@ -9,7 +9,7 @@ import { uuidv7 } from "@/server/core/ids";
 import type { StageOutcome } from "@/server/core/stage-runner";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { approveGate, liveGateHash } from "@/server/db/approvals";
-import { createDerivedShort } from "@/server/db/derive";
+import { createDerivedShort, loadDeriveTab } from "@/server/db/derive";
 import { readNextAction } from "@/server/db/pipeline";
 import { approvedScript } from "@/server/db/stage-content";
 import { runStage } from "@/server/db/stage-runner-adapter";
@@ -183,5 +183,50 @@ describe("derive stage", () => {
     expect(await readNextAction(db.pool, r.videoId, approvalReaders)).toEqual({ kind: "wait_gate", gate: "script" });
     await addContent(db.pool, src, "captions", { body: { words: [], changed: true }, sha256: sha256Hex("captions-2") });
     expect(await readNextAction(db.pool, r.videoId, approvalReaders)).toMatchObject({ kind: "enqueue", stage: "derive" });
+  });
+});
+
+describe("loadDeriveTab (the Shorts panel)", () => {
+  const approveOutline = async (videoId: string) => {
+    const chapter = (title: string) => ({ title, line: `about ${title}`, target_s: 100 });
+    await addContent(db.pool, videoId, "outline", { body: { chapters: [chapter("Hook"), chapter("How it works"), chapter("Why it matters")], length: { min_minutes: 3, max_minutes: 8 } }, sha256: sha256Hex("outline") });
+    const seen = (await liveGateHash(db.pool, videoId, "outline"))!.hash;
+    expect(await approveGate(db.pool, { videoId, gate: "outline", seenHash: seen, actor: SESSION })).toMatchObject({ ok: true });
+  };
+
+  it("lists the scenes at their REAL times (not Build's rough ones) and each chapter as a clip with 1-based scene numbers", async () => {
+    const src = await longVideo();
+    await approveOutline(src);
+    const tab = await loadDeriveTab(db.pool, src);
+    expect(tab.notReady).toBeNull();
+    expect(tab.bounds).toEqual([[0, 10_000], [10_000, 20_000], [20_000, 30_000], [30_000, 40_000], [40_000, 50_000], [50_000, 60_600]]); // the last scene runs 0.4 s past the last spoken word (the video does not cut off mid-sentence); the panel takes the narration as the last word + 0.3 s
+    expect(tab.chapters.map((c) => [c.n, c.title, c.firstScene, c.lastScene, c.lengthMs, c.problem])).toEqual([
+      [1, "Hook", 1, 2, 20_000, null], [2, "How it works", 3, 4, 20_000, null], [3, "Why it matters", 5, 6, 20_600, null],
+    ]);
+  });
+  it("the length it shows is the length the derive step then cuts", async () => {
+    const src = await longVideo();
+    await approveOutline(src);
+    const chapter = (await loadDeriveTab(db.pool, src)).chapters[1]!;
+    const r = await createDerivedShort(db.pool, queue, { sourceId: src, fromScene: chapter.firstScene - 1, toScene: chapter.lastScene - 1 });
+    if (!r.ok) throw new Error(r.message);
+    expect((await runDerive(r.videoId)).kind).toBe("committed");
+    expect(probeS(path.join(root, "videos", r.videoId, "narration.wav"))).toBeCloseTo(chapter.lengthMs / 1000, 1);
+  });
+  it("lists the shorts already made from this video, newest first, with 1-based scene numbers", async () => {
+    const src = await longVideo();
+    await createDerivedShort(db.pool, queue, { sourceId: src, fromScene: 0, toScene: 1, title: "First clip" });
+    await createDerivedShort(db.pool, queue, { sourceId: src, fromScene: 2, toScene: 3, title: "Second clip" });
+    const tab = await loadDeriveTab(db.pool, src);
+    expect(tab.shorts.map((s) => [s.title, s.firstScene, s.lastScene, s.status])).toEqual([["Second clip", 3, 4, "active"], ["First clip", 1, 2, "active"]]);
+  });
+  it("says why it cannot offer scenes yet: script not approved, no scenes, not narrated", async () => {
+    const draft = await createVideoRow(db.pool, { format: "long", kind: "scene_kit", language: "en", topic: "t", lengthMinMinutes: 3, lengthMaxMinutes: 8 });
+    expect((await loadDeriveTab(db.pool, draft.id)).notReady).toMatch(/Approve this video's script first/);
+    expect((await loadDeriveTab(db.pool, await longVideo({ narrate: false }))).notReady).toMatch(/no narration times yet/);
+    const tab = await loadDeriveTab(db.pool, await longVideo());
+    expect(tab.notReady).toBeNull();
+    expect(tab.chapters).toEqual([]); // no approved outline: the custom scene range still works
+    expect(tab.bounds).toHaveLength(6);
   });
 });

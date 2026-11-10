@@ -1,7 +1,11 @@
 import type pg from "pg";
+import { chapterClips, sceneBounds, type ChapterClip } from "@/server/core/derive-view";
+import { validateScenes } from "@/shared/scene";
+import { retimeScenes } from "@/shared/scene/retime";
 import { approvalReaders } from "./approval-readers";
 import { recordAudit } from "./audit";
 import { advanceVideo, createVideo, type EnqueueOnly } from "./pipeline";
+import { approvedOutline, approvedScript } from "./stage-content";
 import { latestContent } from "./videos";
 
 export type DeriveResult = { ok: true; videoId: string } | { ok: false; message: string };
@@ -43,4 +47,40 @@ export async function createDerivedShort(db: pg.Pool, queue: EnqueueOnly, i: { s
     /* best effort: the worker's sweep starts it */
   }
   return { ok: true, videoId: v.id };
+}
+
+export interface DeriveTab {
+  /** why the panel cannot offer scenes yet (the long video is not narrated, its script is not approved, ...), else null */
+  notReady: string | null;
+  /** [start, end] in ms of every scene on the real timeline (the same re-timing the derive step does), for the live length */
+  bounds: Array<[number, number]>;
+  /** the chapters of the approved outline that can be a clip */
+  chapters: ChapterClip[];
+  /** shorts already made from this video */
+  shorts: Array<{ id: string; title: string; status: string; firstScene: number; lastScene: number }>;
+}
+
+/**
+ * What the "Shorts from this video" panel needs. The clip lengths come from the long video's scenes re-timed to its stored caption times (the narration
+ * length is taken as the last word plus 0.3 s, as Render does when it cannot probe the file), so they match what the derive step will cut to within a
+ * fraction of a second; the derive step itself checks the real file.
+ */
+export async function loadDeriveTab(db: pg.Pool, videoId: string): Promise<DeriveTab> {
+  const shortsQ = await db.query<{ id: string; topic: string; status: string; derive_from_scene: number; derive_to_scene: number }>(
+    "select id, topic, status, derive_from_scene, derive_to_scene from videos where derived_from = $1 order by created_at desc, id limit 50", [videoId]);
+  const shorts = shortsQ.rows.map((r) => ({ id: r.id, title: r.topic, status: r.status, firstScene: r.derive_from_scene + 1, lastScene: r.derive_to_scene + 1 }));
+  const none = (notReady: string): DeriveTab => ({ notReady, bounds: [], chapters: [], shorts });
+
+  const script = await approvedScript(db, videoId);
+  if (!script.ok) return none("Approve this video's script first: a short is cut from the approved script.");
+  const v = validateScenes((await latestContent(db, videoId, "scenes"))?.body, { long: true });
+  if (!v.ok) return none("This video has no scenes yet. Let it finish building first.");
+  const captions = (await latestContent(db, videoId, "captions"))?.body as { words?: unknown } | null | undefined;
+  const words = (Array.isArray(captions?.words) ? captions.words : []).filter((w): w is { startS: number; endS: number } => Number.isFinite((w as { startS?: unknown })?.startS) && Number.isFinite((w as { endS?: unknown })?.endS));
+  if (words.length === 0) return none("This video has no narration times yet. Let it finish narrating first.");
+  const beats = script.beats.map((b, i) => ({ id: typeof b?.id === "string" && b.id !== "" ? b.id : `beat-${i + 1}`, text: typeof (b as { text?: unknown })?.text === "string" ? (b as { text: string }).text : "" }));
+  const timed = retimeScenes(v.doc, { words, beats, narrationDurationS: Math.max(...words.map((w) => w.endS)) + 0.3, long: true });
+  if (!timed.ok) return none("The scene times of this video could not be worked out. Render it again first.");
+  const outline = await approvedOutline(db, videoId);
+  return { notReady: null, bounds: sceneBounds(timed.doc.scenes), chapters: outline.ok ? chapterClips(timed.doc.scenes, outline.outline.chapters.map((c) => c.title)) : [], shorts };
 }
