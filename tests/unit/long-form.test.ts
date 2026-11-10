@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chapterMarks, clock, lengthRangeProblem, lengthVsQaProblem, longWordRange, outlineEstimate, validateOutline } from "@/server/core/long-form";
+import { chapterMarks, chapterMarksFromScenes, chapterTimestampLines, clock, lengthRangeProblem, lengthVsQaProblem, longWordRange, outlineEstimate, validateOutline } from "@/server/core/long-form";
 
 const ch = (title: string, target_s: number) => ({ title, line: `about ${title}`, target_s });
 const good = { chapters: [ch("Hook", 90), ch("How it works", 150), ch("Why it matters", 120)] }; // 360 s = 6 min
@@ -76,5 +76,42 @@ describe("lengthVsQaProblem", () => {
   it("refuses a range the QA check would block after the money is spent", () => {
     expect(lengthVsQaProblem({ min: 3, max: 16 }, qa)).toMatch(/QA long: longest/);
     expect(lengthVsQaProblem({ min: 3, max: 8 }, { minS: 240, maxS: 900 })).toMatch(/QA long: shortest/);
+  });
+});
+
+describe("chapterMarksFromScenes", () => {
+  const scenes = [
+    { beat: "c1_b1", startMs: 0 },
+    { beat: "c1_b2", startMs: 40_000 },
+    { beat: "c2_b1", startMs: 100_000 },
+    { beat: "c3_b1", startMs: 250_000 },
+  ];
+  it("starts each chapter where its first scene starts", () => {
+    const r = chapterMarksFromScenes(good, scenes, 360_000);
+    expect(r.from).toBe("scenes");
+    expect(r.marks.map((m) => m.startMs)).toEqual([0, 100_000, 250_000]);
+  });
+  it("starts the first chapter at 0 even if its first scene does not", () => {
+    expect(chapterMarksFromScenes(good, scenes.map((s) => ({ ...s, startMs: s.startMs + 500 })), 360_000).marks[0]!.startMs).toBe(0);
+  });
+  it("falls back to the outline's shares when a chapter has no scene or the order is wrong", () => {
+    const missing = chapterMarksFromScenes(good, scenes.filter((s) => !s.beat.startsWith("c2_")), 720_000);
+    expect(missing.from).toBe("estimate");
+    expect(missing.marks.map((m) => m.startMs)).toEqual([0, 180_000, 480_000]);
+    expect(chapterMarksFromScenes(good, [{ beat: "c1_b1", startMs: 0 }, { beat: "c2_b1", startMs: 200_000 }, { beat: "c3_b1", startMs: 100_000 }], 360_000).from).toBe("estimate");
+  });
+  it("does not mistake c10 or a loose id for chapter 1", () => {
+    expect(chapterMarksFromScenes(good, [{ beat: "hook", startMs: 0 }, { beat: "c10_b1", startMs: 5 }], 360_000).from).toBe("estimate");
+  });
+});
+
+describe("chapterTimestampLines", () => {
+  const marks = [{ title: "Hook", startMs: 0 }, { title: "How it works", startMs: 100_000 }, { title: "Why", startMs: 250_000 }];
+  it("writes m:ss lines", () => expect(chapterTimestampLines(marks, 360_000)).toBe("0:00 Hook\n1:40 How it works\n4:10 Why"));
+  it("uses h:mm:ss for a video of an hour or more", () => expect(chapterTimestampLines(marks, 3_700_000)?.split("\n")[0]).toBe("0:00:00 Hook"));
+  it("returns null when YouTube would ignore the chapters", () => {
+    expect(chapterTimestampLines(marks.slice(0, 2), 360_000)).toBeNull(); // fewer than 3
+    expect(chapterTimestampLines([{ title: "a", startMs: 0 }, { title: "b", startMs: 5_000 }, { title: "c", startMs: 60_000 }], 120_000)).toBeNull(); // 5 s chapter
+    expect(chapterTimestampLines([{ title: "a", startMs: 1000 }, { title: "b", startMs: 60_000 }, { title: "c", startMs: 120_000 }], 200_000)).toBeNull(); // not 0:00
   });
 });

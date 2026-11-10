@@ -5,7 +5,7 @@ import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { readPreviews } from "@/server/core/scene3d-stills";
 import { approvalState, readSnapshot } from "@/server/db/approvals";
 import { approvedOutline, approvedScript } from "@/server/db/stage-content";
-import { chapterMarks, outlineTotalS } from "@/server/core/long-form";
+import { chapterMarks, chapterMarksFromScenes, outlineTotalS } from "@/server/core/long-form";
 import { validateScenes, type SceneDoc } from "@/shared/scene";
 import { retimeScenes } from "@/shared/scene/retime";
 import { retimeScale3d, validateScale3d, type Scale3dScene } from "@/shared/scale3d";
@@ -159,12 +159,14 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
       }
     }
     const title = (await deps.db.query<{ topic: string }>("select topic from videos where id = $1", [video.id]).catch(() => null))?.rows[0]?.topic;
-    const landscape = outline?.ok ? { layout: "landscape" as const, chapters: chapterMarks(outline.outline, doc ? total(doc) : outlineTotalS(outline.outline.chapters) * 1000) } : null;
+    // Chapter cards start where each chapter's first scene starts (beat ids c1_..., c2_...); without scenes or ids, at their share of the outline's seconds.
+    const chapterInfo = outline?.ok ? (doc ? chapterMarksFromScenes(outline.outline, doc.scenes, total(doc)) : { marks: chapterMarks(outline.outline, outlineTotalS(outline.outline.chapters) * 1000), from: "estimate" as const }) : null;
+    const landscape = chapterInfo ? { layout: "landscape" as const, chapters: chapterInfo.marks } : null;
     const r = await deps.renderer.render(ctx, {
       sceneFile, doc, audioFile, videoId: video.id, title, style: video.style, captionStyle: video.captionStyle, captions: Array.isArray(captions?.words) ? captions.words : undefined, outFile: "render.mp4", size: landscape ? LANDSCAPE_SIZE : SIZE, ...(landscape ?? {}),
     });
     if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
-    return { files: ["render.mp4"], result: { rendered: "render.mp4", scenes: doc ? doc.scenes.length : null, image: r.image ?? null, ...retime } };
+    return { files: ["render.mp4"], result: { rendered: "render.mp4", scenes: doc ? doc.scenes.length : null, image: r.image ?? null, ...retime, ...(chapterInfo ? { chapters: chapterInfo.marks, chaptersFrom: chapterInfo.from, totalMs: doc ? total(doc) : null } : {}) } };
   };
 }
 

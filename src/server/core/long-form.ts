@@ -97,3 +97,42 @@ export function chapterMarks(outline: Pick<Outline, "chapters">, totalMs: number
     return { title: c.title, startMs };
   });
 }
+
+export interface ChapterMark {
+  title: string;
+  startMs: number;
+}
+
+/**
+ * Chapter starts on the real timeline, taken from the scenes: the script's beat ids start with the chapter number (c1_b1, c2_b1 ...),
+ * so a chapter begins where its first scene begins. If any chapter has no scene, or the order is not strictly rising, the chapters fall
+ * back to their share of the outline's target seconds (chapterMarks). The first chapter always starts at 0.
+ */
+export function chapterMarksFromScenes(outline: Pick<Outline, "chapters">, scenes: ReadonlyArray<{ beat: string; startMs: number }>, totalMs: number): { marks: ChapterMark[]; from: "scenes" | "estimate" } {
+  const starts = outline.chapters.map((_, i) => scenes.find((s) => s.beat.startsWith(`c${i + 1}_`))?.startMs);
+  const ok = starts.every((s, i) => s !== undefined && Number.isFinite(s) && (i === 0 || s > starts[i - 1]!));
+  if (!ok) return { marks: chapterMarks(outline, totalMs), from: "estimate" };
+  return { marks: outline.chapters.map((c, i) => ({ title: c.title, startMs: i === 0 ? 0 : starts[i]! })), from: "scenes" };
+}
+
+/** YouTube shows chapters only when the first starts at 0:00, there are at least 3, and each lasts at least 10 seconds. */
+export const MIN_YT_CHAPTER_S = 10;
+
+const stamp = (ms: number, hours: boolean): string => {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = String(s % 60).padStart(2, "0");
+  return hours ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+};
+
+/** The description lines "0:00 Title" for YouTube chapters, or null when YouTube would not show them (see MIN_YT_CHAPTER_S). */
+export function chapterTimestampLines(marks: readonly ChapterMark[], totalMs: number): string | null {
+  if (marks.length < 3 || marks[0]!.startMs !== 0) return null;
+  for (let i = 0; i < marks.length; i++) {
+    const end = i + 1 < marks.length ? marks[i + 1]!.startMs : totalMs;
+    if (end - marks[i]!.startMs < MIN_YT_CHAPTER_S * 1000) return null;
+  }
+  const hours = totalMs >= 3_600_000;
+  return marks.map((m) => `${stamp(m.startMs, hours)} ${m.title.replace(/[<>]/g, "")}`).join("\n");
+}
