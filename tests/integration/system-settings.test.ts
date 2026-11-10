@@ -273,6 +273,18 @@ describe("system status", () => {
     expect(json).not.toMatch(/ytstudio_app|test-app-pw|postgres:\/\/|redis:\/\//);
   });
 
+  it("lists the four tools a video needs (ffmpeg, ffprobe, Docker, render image) as plain rows, with no paths or error text", async () => {
+    const s = await getSystemStatus(db.pool, { redisUrl: db.redisUrl });
+    expect(s.tools.map((t) => t.id)).toEqual(["ffmpeg", "ffprobe", "docker", "render_image"]);
+    for (const t of s.tools) {
+      expect(t.detail.length).toBeLessThan(80);
+      // a failing row always says what to do; a working one says nothing (this must hold on a machine where a tool is missing too)
+      if (t.ok) expect(t.fix).toBeNull();
+      else expect(typeof t.fix).toBe("string");
+    }
+    expect(JSON.stringify(s.tools)).not.toMatch(/\/(usr|opt|Users|home|var)\//);
+  });
+
   it("N7: the storage folder is shown relative or masked, never with the home directory", async () => {
     const s = await getSystemStatus(db.pool, { redisUrl: db.redisUrl });
     expect(s.disk.root).not.toContain(os.homedir());
