@@ -119,6 +119,35 @@ describe("providers page data layer", () => {
   });
 });
 
+describe("AI video routes", () => {
+  const price = `'{"unit":"per_second","microUsd":50000}'`;
+  const audits = async (event: string) => (await db.ownerPool.query("select detail from audit_log where event = $1 order by id", [event])).rows.map((r) => r.detail);
+  beforeEach(async () => {
+    await db.ownerPool.query(`insert into media_providers (id, kind, label, enabled, price) values ('seedance_video', 'video', 'S', true, ${price}), ('kling_video', 'video', 'K', true, ${price}), ('pexels', 'stock', 'P', true, '{"unit":"free","microUsd":0}')`);
+  });
+  it("a video route needs one of the provider's own models, and the choice is audited and read back", async () => {
+    await expect(setMediaRoute(db.pool, { scope: "kind:ai", provider: "seedance_video" }, "session")).rejects.toThrow("Choose one of this provider");
+    await expect(setMediaRoute(db.pool, { scope: "kind:ai", provider: "seedance_video", model: "kling-4.0" }, "session")).rejects.toThrow("Choose one of this provider");
+    await expect(setMediaRoute(db.pool, { scope: "kind:ai", provider: "seedance_video", model: "__proto__" }, "session")).rejects.toThrow("Choose one of this provider");
+    expect((await db.ownerPool.query("select 1 from media_routes")).rowCount).toBe(0);
+    await setMediaRoute(db.pool, { scope: "kind:ai", provider: "seedance_video", model: " dreamina-seedance-2-0-fast-260128 " }, "session");
+    expect(await resolveRoute(db.pool, "video", { format: "short", videoKind: "ai" })).toEqual({ provider: "seedance_video", model: "dreamina-seedance-2-0-fast-260128" });
+    expect(await audits("route.changed")).toEqual([{ kind: "video", scope: "kind:ai", from: null, to: "seedance_video", voice: null, has_model: true }]);
+    await setMediaRoute(db.pool, { scope: "kind:ai", provider: "kling_video", model: "kling-4.0" }, "session");
+    expect(await resolveRoute(db.pool, "video", { format: "short", videoKind: "ai" })).toEqual({ provider: "kling_video", model: "kling-4.0" });
+  });
+  it("a model on a non-video provider is refused, and a video route is session only", async () => {
+    await expect(setMediaRoute(db.pool, { scope: "default", provider: "pexels", model: "kling-4.0" }, "session")).rejects.toThrow("Only AI video providers");
+    await expect(setMediaRoute(db.pool, { scope: "kind:ai", provider: "kling_video", model: "kling-4.0" }, "token")).rejects.toBeInstanceOf(RegistryError);
+  });
+  it("an unpriced or switched-off video provider cannot be a route", async () => {
+    await db.ownerPool.query("update media_providers set price = '{}' where id = 'kling_video'");
+    await expect(setMediaRoute(db.pool, { scope: "kind:ai", provider: "kling_video", model: "kling-4.0" }, "session")).rejects.toThrow("price is not set");
+    await db.ownerPool.query("update media_providers set enabled = false where id = 'seedance_video'");
+    await expect(setMediaRoute(db.pool, { scope: "kind:ai", provider: "seedance_video", model: "dreamina-seedance-2-0-260128" }, "session")).rejects.toThrow("Switch the provider on first");
+  });
+});
+
 describe("media registry price and failed_known", () => {
   it("migration_0031_prices_elevenlabs_voice_only_and_keeps_an_owner_price", async () => {
     const sql = readFileSync("src/server/db/migrations/0031_elevenlabs_price.sql", "utf8");

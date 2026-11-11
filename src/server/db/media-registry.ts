@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { KEY_SLOT, canEnable, canRoute, isPriced, routeScope, type PriceRule } from "@/server/core/media-catalog";
 import { secretName, type ProviderId } from "@/server/core/provider-keys";
+import { isVideoModel } from "@/server/core/video-models";
 import { recordAudit } from "@/server/db/audit";
 import { atomic } from "@/server/db/stages";
 
@@ -53,6 +54,7 @@ export interface RouteRow {
   scope: string;
   provider: string;
   voice: string | null;
+  model: string | null;
 }
 
 export async function listProviders(db: Db): Promise<ProviderRow[]> {
@@ -66,7 +68,7 @@ export async function listProviders(db: Db): Promise<ProviderRow[]> {
 }
 
 export async function listRoutes(db: Db): Promise<RouteRow[]> {
-  return (await db.query<RouteRow>("select kind, scope, provider, voice from media_routes order by kind, scope")).rows;
+  return (await db.query<RouteRow>("select kind, scope, provider, voice, model from media_routes order by kind, scope")).rows;
 }
 
 function assertSession(actor: string): void {
@@ -91,24 +93,27 @@ export async function setProviderEnabled(db: pg.Pool, id: string, enabled: boole
 }
 
 /** Session only. The target must be switched on and priced; the route's kind is the provider's. `voice` is kept for voice routes only. One audit row. */
-export async function setMediaRoute(db: pg.Pool, r: { scope: string; provider: string; voice?: string }, actor: "session" | "token" | "system"): Promise<void> {
+export async function setMediaRoute(db: pg.Pool, r: { scope: string; provider: string; voice?: string; model?: string }, actor: "session" | "token" | "system"): Promise<void> {
   assertSession(actor);
   if (routeScope(r.scope) === null) throw new RegistryError("Unknown route.");
   const voice = r.voice?.trim() || null;
   if (voice && voice.length > 100) throw new RegistryError("The voice name is too long.");
+  const model = r.model?.trim() || null;
   await atomic(db, async (q) => {
     const { rows } = await q.query<{ kind: string; enabled: boolean; price: unknown }>("select kind, enabled, price from media_providers where id = $1 for share", [r.provider]);
     if (!rows[0]) throw new RegistryError("Unknown provider.");
     const kind = rows[0].kind;
     if (kind !== "voice" && voice) throw new RegistryError("Only voice providers have a narration voice.");
+    if (kind !== "video" && model) throw new RegistryError("Only AI video providers have a model.");
+    if (kind === "video" && (!model || !isVideoModel(r.provider, model))) throw new RegistryError("Choose one of this provider's video models.");
     const ok = canRoute(rows[0]);
     if (!ok.ok) throw new RegistryError(ok.reason);
     const prev = await q.query<{ provider: string }>("select provider from media_routes where kind = $1 and scope = $2 for update", [kind, r.scope]);
     await q.query(
-      `insert into media_routes (kind, scope, provider, voice) values ($1, $2, $3, $4)
-       on conflict (kind, scope) do update set provider = excluded.provider, voice = excluded.voice`,
-      [kind, r.scope, r.provider, voice],
+      `insert into media_routes (kind, scope, provider, voice, model) values ($1, $2, $3, $4, $5)
+       on conflict (kind, scope) do update set provider = excluded.provider, voice = excluded.voice, model = excluded.model`,
+      [kind, r.scope, r.provider, voice, model],
     );
-    await recordAudit(q as pg.PoolClient, "route.changed", { kind, scope: r.scope, from: prev.rows[0]?.provider ?? null, to: r.provider, voice });
+    await recordAudit(q as pg.PoolClient, "route.changed", { kind, scope: r.scope, from: prev.rows[0]?.provider ?? null, to: r.provider, voice, ...(model ? { has_model: true } : {}) }); // the model id itself is not logged: the audit redaction blanks any 32+ character id-like text
   });
 }

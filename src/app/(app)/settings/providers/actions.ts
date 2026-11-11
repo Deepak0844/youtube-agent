@@ -36,7 +36,7 @@ export async function toggleProviderAction(_prev: ProviderActionState, form: For
 
 export async function setRouteAction(_prev: ProviderActionState, form: FormData): Promise<ProviderActionState> {
   await requireOwner();
-  const p = z.object({ provider: str, scope: str, voice: str.optional() }).safeParse(Object.fromEntries(form));
+  const p = z.object({ provider: str, scope: str, voice: str.optional(), model: str.optional() }).safeParse(Object.fromEntries(form));
   if (!p.success) return { error: "Choose a provider and where it applies." };
   try {
     await setMediaRoute(getPool(), p.data, "session");
