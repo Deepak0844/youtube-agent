@@ -66,7 +66,7 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/ideas">["sear
           <EmptyState icon={Lightbulb} title="No ideas yet" body="Add one above, or let research suggest some." filtered={shown ? { clearHref: "/ideas" } : undefined} />
         ) : (
           <>
-            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(360px,1fr))] gap-gap p-0">
+            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(360px,100%),1fr))] gap-gap p-0">
               {pageRows.map((i) => (
                 <li key={i.id} className="min-w-0 rounded-card border border-border bg-surface p-pad">
                   <IdeaCard idea={i} />
