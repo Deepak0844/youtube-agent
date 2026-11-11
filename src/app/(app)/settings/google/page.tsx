@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { isAllowedHost, parseAllowedHosts } from "@/lib/auth/policy";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { maskClientId, redirectUriFor } from "@/server/core/google-app";
@@ -14,7 +15,7 @@ export const metadata = { title: "Google app" };
 // Session read happens inside <Suspense> (cacheComponents). No secret is ever read here: only the masked hint.
 export default function GoogleSettingsPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -49,7 +50,7 @@ async function Owned() {
       <VaultBanner vault={v} />
 
       <div className="grid gap-layout lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <section aria-labelledby="creds-h" className="flex min-w-0 flex-col gap-5 rounded-card bg-surface p-pad">
+        <section aria-labelledby="creds-h" className="flex min-w-0 flex-col gap-5 rounded-card border border-border bg-surface p-pad">
           <div className="flex items-center justify-between gap-3">
             <h2 id="creds-h" className="text-title font-semibold">
               Credentials
@@ -60,7 +61,7 @@ async function Owned() {
         </section>
 
         <div className="flex min-w-0 flex-col gap-layout">
-          <section aria-labelledby="redirect-h" className="flex flex-col gap-3 rounded-card bg-surface p-pad">
+          <section aria-labelledby="redirect-h" className="flex flex-col gap-3 rounded-card border border-border bg-surface p-pad">
             <h2 id="redirect-h" className="text-title font-semibold">
               Redirect address
             </h2>
@@ -83,7 +84,7 @@ async function Owned() {
             <p className="text-small text-faint">Daily quota used: – (unknown until channels are connected).</p>
           </section>
 
-          <section aria-labelledby="test-h" className="flex flex-col gap-3 rounded-card bg-surface p-pad">
+          <section aria-labelledby="test-h" className="flex flex-col gap-3 rounded-card border border-border bg-surface p-pad">
             <h2 id="test-h" className="text-title font-semibold">
               Check
             </h2>
@@ -92,7 +93,7 @@ async function Owned() {
         </div>
       </div>
 
-      <section aria-labelledby="guide-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="guide-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="guide-h" className="text-title font-semibold">
           Setting it up in Google
         </h2>
@@ -112,7 +113,7 @@ async function Owned() {
       </section>
 
       {legacy.length > 0 ? (
-        <section aria-labelledby="legacy-h" className="rounded-card bg-surface p-pad">
+        <section aria-labelledby="legacy-h" className="rounded-card border border-border bg-surface p-pad">
           <h2 id="legacy-h" className="text-title font-semibold">
             Imported app (read only)
           </h2>

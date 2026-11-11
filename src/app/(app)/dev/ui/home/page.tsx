@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { notFound } from "next/navigation";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { DecisionRow } from "@/ui/domain/decision-row";
@@ -13,7 +14,7 @@ export const metadata = { title: "Dev UI home" };
 // The Home screen (Doc 3 §6) against made-up data. Dev/staging only, never in the nav.
 export default function DevHome() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-64 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -75,11 +76,11 @@ function HomeSample() {
         </section>
       </div>
       <aside aria-label="Rail" className="flex min-w-0 flex-col gap-gap">
-        <section aria-labelledby="spend-h" className="flex flex-col gap-3 rounded-card bg-surface p-pad">
+        <section aria-labelledby="spend-h" className="flex flex-col gap-3 rounded-card border border-border bg-surface p-pad">
           <h2 id="spend-h" className="text-title font-semibold">Spend</h2>
           <SpendLine spentMicroUsd={dayTotal(sample)} capMicroUsd={sample.budget.dayCapMicroUsd} />
         </section>
-        <section aria-labelledby="gates-h" className="flex flex-col gap-3 rounded-card bg-surface p-pad">
+        <section aria-labelledby="gates-h" className="flex flex-col gap-3 rounded-card border border-border bg-surface p-pad">
           <h2 id="gates-h" className="text-title font-semibold">Gates</h2>
           <ul className="m-0 flex list-none flex-col gap-2 p-0 text-body">
             {sample.gates.map((g) => (

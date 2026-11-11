@@ -35,7 +35,7 @@ export function ApproveThumbnailForm({ videoId, seenHash }: { videoId: string; s
     <form action={run} data-testid="thumbnail-approve" className="flex min-w-0 flex-wrap items-center gap-3">
       <input type="hidden" name="videoId" value={videoId} />
       <input type="hidden" name="seenHash" value={seenHash} />
-      <Button type="submit" disabled={pending}>Approve this thumbnail</Button>
+      <Button type="submit" loading={pending}>Approve this thumbnail</Button>
       <Msg s={state} />
     </form>
   );

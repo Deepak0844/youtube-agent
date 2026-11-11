@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { localServiceBlockers, MAX_LOCAL_SERVICES, ownServiceConfigProblem } from "@/server/core/local-services";
 import { getPool } from "@/server/db/pool";
@@ -17,7 +18,7 @@ export const metadata = { title: "System" };
 // Reads the session (cookies) and live server facts, so everything sits inside <Suspense> with a static frame.
 export default function SystemSettings() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -37,7 +38,7 @@ async function Owned() {
       <Status s={status} />
       <BackupSection />
       <RateForm rate={await loadInrRate(db)} />
-      <section aria-labelledby="limits-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="limits-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="limits-h" className="text-title font-semibold">Limits</h2>
         <p className="mt-1 mb-5 text-body text-muted">How much the studio does at once, and how long a video may run.</p>
         <LimitsForm
@@ -54,7 +55,7 @@ async function Owned() {
         />
       </section>
       <EngineNumbersSection />
-      <section aria-labelledby="uploads-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="uploads-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="uploads-h" className="text-title font-semibold">Uploads to YouTube</h2>
         <p className="mt-1 mb-5 max-w-[60ch] text-body text-muted">
           The kill switch refuses every upload, now and when an approved one is about to start. Until the go-live cutover is done,
@@ -66,7 +67,7 @@ async function Owned() {
           <CutoverForm done={view.cutoverDone} />
         </div>
       </section>
-      <section aria-labelledby="local-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="local-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="local-h" className="text-title font-semibold">Local services</h2>
         <p className="mt-1 mb-5 max-w-[60ch] text-body text-muted">
           Programs on this machine or your network that you type addresses for, such as Ollama or LM Studio. An address that is
@@ -122,7 +123,7 @@ function Status({ s }: { s: SystemStatus }) {
   const v = VAULT[s.vault.status];
   const used = s.disk.totalBytes > 0 ? 1 - s.disk.freeBytes / s.disk.totalBytes : 0;
   return (
-    <section aria-labelledby="status-h" className="rounded-card bg-surface p-pad">
+    <section aria-labelledby="status-h" className="rounded-card border border-border bg-surface p-pad">
       <h2 id="status-h" className="text-title font-semibold">Status</h2>
       <p className="mt-1 mb-3 text-body text-muted">Read only. No keys or addresses are shown here.</p>
       <dl>

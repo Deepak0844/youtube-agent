@@ -9,7 +9,7 @@ import { Button } from "../primitives/button";
  */
 export function Gate({ title, consequence, className }: { title: string; consequence: React.ReactNode; className?: string }) {
   return (
-    <section aria-label={title} className={cn("flex min-w-0 flex-col gap-4 rounded-card bg-surface p-pad", className)}>
+    <section aria-label={title} className={cn("flex min-w-0 flex-col gap-4 rounded-card border border-border bg-surface p-pad", className)}>
       <h3 className="m-0 min-w-0 text-title font-semibold leading-tight [overflow-wrap:anywhere]">{title}</h3>
       <p className="m-0 min-w-0 text-body text-muted [overflow-wrap:anywhere]">{consequence}</p>
       <div className="flex flex-wrap gap-2">

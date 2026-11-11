@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { LIVE_PHRASE } from "@/server/core/comments";
 import { loadEngagement, type CommentView, type EngagementView } from "@/server/db/comments";
@@ -10,7 +11,7 @@ export const metadata = { title: "Engagement" };
 
 export default function EngagementPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -35,7 +36,7 @@ const waiting = (c: CommentView) => c.reply !== null && (c.reply.status === "hel
 function Waiting({ c, video, dryRun }: { c: CommentView; video: string; dryRun: boolean }) {
   const r = c.reply!;
   return (
-    <li data-testid="held-reply" className="flex min-w-0 flex-col gap-3 rounded-card bg-surface p-pad">
+    <li data-testid="held-reply" className="flex min-w-0 flex-col gap-3 rounded-card border border-border bg-surface p-pad">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-small text-muted [overflow-wrap:anywhere]">{video}</span>
         {c.needsEyes ? <Pill tone="warning">Needs your eyes</Pill> : null}
@@ -127,7 +128,7 @@ async function Owned() {
       <section aria-labelledby="queue-h" className="flex flex-col gap-3">
         <h2 id="queue-h" className="text-title font-semibold">Replies waiting for you ({queue.length})</h2>
         {queue.length === 0 ? (
-          <p className="rounded-card bg-surface p-pad text-body text-muted">No replies are waiting. New drafts appear here after a sync.</p>
+          <p className="rounded-card border border-border bg-surface p-pad text-body text-muted">No replies are waiting. New drafts appear here after a sync.</p>
         ) : (
           <ul className="m-0 flex list-none flex-col gap-3 p-0">
             {queue.map(({ c, topic }) => (
@@ -139,10 +140,10 @@ async function Owned() {
       <section aria-labelledby="videos-h" className="flex flex-col gap-3">
         <h2 id="videos-h" className="text-title font-semibold">Comments by video</h2>
         {view.videos.length === 0 ? (
-          <p className="rounded-card bg-surface p-pad text-body text-muted">No comments yet. Press Run now after a video is uploaded.</p>
+          <p className="rounded-card border border-border bg-surface p-pad text-body text-muted">No comments yet. Press Run now after a video is uploaded.</p>
         ) : (
           view.videos.map((v) => (
-            <div key={v.videoId} data-testid="video-comments" className="flex min-w-0 flex-col gap-3 rounded-card bg-surface p-pad">
+            <div key={v.videoId} data-testid="video-comments" className="flex min-w-0 flex-col gap-3 rounded-card border border-border bg-surface p-pad">
               <div className="flex flex-col gap-1">
                 <span className="min-w-0 text-body font-medium [overflow-wrap:anywhere]">{v.topic}</span>
                 <span className="text-small text-muted">{v.channelTitle ?? "channel not found"}</span>

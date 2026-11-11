@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { SCOPE_LABELS, canRoute, priceLabel } from "@/server/core/media-catalog";
 import { listProviders, listRoutes } from "@/server/db/media-registry";
@@ -18,7 +19,7 @@ export const metadata = { title: "Providers" };
 // requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function ProvidersPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -66,7 +67,7 @@ async function Owned() {
         </p>
       </header>
 
-      <section aria-labelledby="voice-servers-h" className="flex flex-col gap-gap rounded-card bg-surface p-pad">
+      <section aria-labelledby="voice-servers-h" className="flex flex-col gap-gap rounded-card border border-border bg-surface p-pad">
         <h2 id="voice-servers-h" className="text-title font-semibold">Voice servers</h2>
         <p className="max-w-[60ch] text-body text-muted">
           Where the voice providers below are reached. A server on this computer must also be listed under System &gt; Local services,
@@ -77,7 +78,7 @@ async function Owned() {
 
       {KINDS.map(([kind, title]) => (
         <section key={kind} aria-labelledby={`k-${kind}`} className="flex flex-col gap-gap">
-          <h2 id={`k-${kind}`} className="text-small font-semibold tracking-wide text-faint uppercase">
+          <h2 id={`k-${kind}`} className="text-section font-semibold">
             {title}
           </h2>
           <ProviderList
@@ -99,7 +100,7 @@ async function Owned() {
         </section>
       ))}
 
-      <section aria-labelledby="routes-h" className="flex flex-col gap-gap rounded-card bg-surface p-pad">
+      <section aria-labelledby="routes-h" className="flex flex-col gap-gap rounded-card border border-border bg-surface p-pad">
         <h2 id="routes-h" className="text-title font-semibold">Who is used for what</h2>
         {routes.length === 0 ? (
           <p className="text-body text-muted">Nothing is chosen yet. Videos that need one of these will wait until you choose.</p>

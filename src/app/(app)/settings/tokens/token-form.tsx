@@ -43,7 +43,7 @@ export function TokenForm() {
           {state.status === "error" ? <p className="text-negative">{state.message}</p> : null}
         </div>
         <div>
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" loading={pending}>
             {pending ? "Creating…" : "Create token"}
           </Button>
         </div>

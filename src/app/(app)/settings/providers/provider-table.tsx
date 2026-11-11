@@ -22,8 +22,8 @@ function ProviderRow({ p }: { p: ProviderView }) {
   const [state, action, pending] = useActionState(toggleProviderAction, {});
   const form = useRef<HTMLFormElement>(null);
   return (
-    <li className="rounded-card bg-surface p-pad" data-provider={p.id}>
-      <div className="grid min-w-0 gap-gap md:grid-cols-[minmax(0,1fr)_auto] md:items-start md:gap-x-8">
+    <li className="rounded-card border border-border bg-surface p-pad" data-provider={p.id}>
+      <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="min-w-0">
           <h3 className="text-section font-semibold">{p.label}</h3>
           <p className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 text-small text-muted">
@@ -58,7 +58,7 @@ function ProviderRow({ p }: { p: ProviderView }) {
 
 export function ProviderList({ providers }: { providers: ProviderView[] }) {
   return (
-    <ul className="m-0 flex list-none flex-col gap-gap p-0">
+    <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-gap p-0">
       {providers.map((p) => (
         <ProviderRow key={p.id} p={p} />
       ))}

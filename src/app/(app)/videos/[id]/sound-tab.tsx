@@ -18,7 +18,7 @@ export async function SoundTabPanel({ p }: { p: VideoPage }) {
   return (
     <>
       <H>Sound plan</H>
-      {s.rows.length === 0 ? <p data-testid="empty" className="m-0 max-w-[60ch] rounded-card bg-surface p-pad text-body text-muted">No sound plan for this video: it has narration only.</p> : (
+      {s.rows.length === 0 ? <p data-testid="empty" className="m-0 max-w-[60ch] rounded-card border border-border bg-surface p-pad text-body text-muted">No sound plan for this video: it has narration only.</p> : (
         <table data-testid="cue-sheet" className="w-full max-w-2xl border-collapse text-left text-body">
           <thead><tr className="text-small text-muted"><th className="py-1 pr-3 font-normal">Time</th><th className="py-1 pr-3 font-normal">Kind</th><th className="py-1 pr-3 font-normal">Sound</th><th className="py-1 pr-3 font-normal">Level</th><th className="py-1 font-normal">Heard?</th></tr></thead>
           <tbody>

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { loadAssetSettings } from "@/server/db/asset-settings";
 import { getPool } from "@/server/db/pool";
@@ -10,7 +11,7 @@ export const metadata = { title: "Asset settings" };
 // Reads the session (cookies), so it sits inside <Suspense> with a static frame.
 export default function AssetSettings() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -22,7 +23,7 @@ async function Owned() {
   return (
     <div className="flex min-w-0 flex-col gap-layout">
       <h1 className="text-page-title font-semibold tracking-tight">Asset settings</h1>
-      <section aria-labelledby="cleanup-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="cleanup-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="cleanup-h" className="text-title font-semibold">Clean-up and upload limits</h2>
         <p className="mt-1 mb-2 max-w-[60ch] text-body text-muted">
           Uploads are removed some days after the last video that uses them is finished. Files marked Keep and files pinned to a
@@ -34,7 +35,7 @@ async function Owned() {
         </p>
         <AssetSettingsForm view={view} />
       </section>
-      <section aria-labelledby="retention-h" className="flex flex-col gap-3 rounded-card bg-surface p-pad">
+      <section aria-labelledby="retention-h" className="flex flex-col gap-3 rounded-card border border-border bg-surface p-pad">
         <h2 id="retention-h" className="text-title font-semibold">Clean up uploaded videos</h2>
         <p className="max-w-[60ch] text-body text-muted">
           After a video has been on YouTube for the number of days above, its working files (drafts, narration pieces, scratch

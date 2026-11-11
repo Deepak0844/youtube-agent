@@ -32,9 +32,9 @@ export async function Insights() {
         <RunReviewForm />
       </div>
       {!review || !r ? (
-        <p className="rounded-card bg-surface p-pad text-body text-muted">No review yet. Press Run review now, or turn the weekly review on in Settings, Schedule.</p>
+        <p className="rounded-card border border-border bg-surface p-pad text-body text-muted">No review yet. Press Run review now, or turn the weekly review on in Settings, Schedule.</p>
       ) : (
-        <div data-testid="review" className="flex min-w-0 flex-col gap-4 rounded-card bg-surface p-pad">
+        <div data-testid="review" className="flex min-w-0 flex-col gap-4 rounded-card border border-border bg-surface p-pad">
           <p className="m-0 text-small text-muted">Week {review.week}, written {formatIst(review.createdAt)}</p>
           {r.lowConfidence ? (
             <p role="note" data-testid="low-confidence" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-3 text-body text-pill-warning-ink">
@@ -94,11 +94,11 @@ export async function Insights() {
         <p className="max-w-[68ch] text-body text-muted">Ideas from the optimizer. Accept or dismiss records your decision only; nothing is changed for you.</p>
         <RunOptimizerForm />
         {proposals.length === 0 ? (
-          <p className="rounded-card bg-surface p-pad text-body text-muted">No proposals yet. The optimizer is off until you turn it on in Settings, Schedule, and it stays quiet below {r?.minSample ?? 10} shorts.</p>
+          <p className="rounded-card border border-border bg-surface p-pad text-body text-muted">No proposals yet. The optimizer is off until you turn it on in Settings, Schedule, and it stays quiet below {r?.minSample ?? 10} shorts.</p>
         ) : (
           <ul className="m-0 flex list-none flex-col gap-3 p-0">
             {proposals.map((p) => (
-              <li key={p.id} data-testid="proposal-row" className="flex min-w-0 flex-col gap-2 rounded-card bg-surface p-pad">
+              <li key={p.id} data-testid="proposal-row" className="flex min-w-0 flex-col gap-2 rounded-card border border-border bg-surface p-pad">
                 <div className="flex flex-wrap items-center gap-2">
                   <Pill tone="neutral">{p.kind}</Pill>
                   <span className="min-w-0 text-body font-medium [overflow-wrap:anywhere]">{p.title}</span>

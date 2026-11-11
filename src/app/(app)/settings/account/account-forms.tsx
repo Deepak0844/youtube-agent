@@ -29,7 +29,7 @@ export function PasswordForm() {
         <Input id="again" name="again" type="password" autoComplete="new-password" required maxLength={1024} />
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={pending}>Change password</Button>
+        <Button type="submit" loading={pending}>Change password</Button>
         <Msg s={state} />
       </div>
     </form>
@@ -53,7 +53,7 @@ export function SignOutOneForm({ id, label }: { id: string; label: string }) {
   return (
     <form action={run} className="flex flex-wrap items-center gap-3">
       <input type="hidden" name="id" value={id} />
-      <Button type="submit" variant="secondary" disabled={pending} aria-label={`Sign out ${label}`}>Sign out</Button>
+      <Button type="submit" variant="secondary" loading={pending} aria-label={`Sign out ${label}`}>Sign out</Button>
       <Msg s={state} />
     </form>
   );

@@ -19,7 +19,7 @@ function Msg({ s }: { s: IdeaFormState }) {
 export function AddIdeaForm({ channels }: { channels: ReadonlyArray<{ channelId: string; title: string }> }) {
   const [state, run, pending] = useActionState<IdeaFormState, FormData>(addIdeaAction, {});
   return (
-    <form action={run} className="flex min-w-0 max-w-xl flex-col gap-4 rounded-card bg-surface p-pad">
+    <form action={run} className="flex min-w-0 max-w-xl flex-col gap-4 rounded-card border border-border bg-surface p-pad">
       <h2 className="text-title font-semibold">Add an idea</h2>
       <div className="flex flex-col gap-2">
         <Label htmlFor="idea-topic">Topic</Label>
@@ -51,7 +51,7 @@ export function AddIdeaForm({ channels }: { channels: ReadonlyArray<{ channelId:
         </select>
       </div>
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={pending}>Add idea</Button>
+        <Button type="submit" loading={pending}>Add idea</Button>
         <Msg s={state} />
       </div>
     </form>

@@ -45,7 +45,7 @@ export function AssetPicker({ kind, multiple = false, onPick }: { kind?: "image"
         <ul className="grid min-w-0 grid-cols-2 gap-2 md:grid-cols-4">
           {cards.map((c) => (
             <li key={c.id}>
-              <button type="button" aria-pressed={chosen.includes(c.id)} onClick={() => choose(c.id)} className="flex min-h-11 w-full min-w-0 flex-col gap-1 rounded-card bg-surface p-2 text-left aria-pressed:bg-raised aria-pressed:outline aria-pressed:outline-2 aria-pressed:outline-text">
+              <button type="button" aria-pressed={chosen.includes(c.id)} onClick={() => choose(c.id)} className="flex min-h-11 w-full min-w-0 flex-col gap-1 rounded-card border border-border bg-surface p-2 text-left aria-pressed:bg-raised aria-pressed:outline aria-pressed:outline-2 aria-pressed:outline-text">
                 {c.kind === "image" && c.url ? (
                   // eslint-disable-next-line @next/next/no-img-element -- a signed media URL
                   <img src={c.url} alt="" loading="lazy" className="aspect-square w-full rounded-control object-cover" />

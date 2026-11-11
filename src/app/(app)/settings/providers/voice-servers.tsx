@@ -30,7 +30,7 @@ function AddToList({ field, entry }: { field: string; entry: string }) {
         I understand the app will be allowed to call this address
       </label>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={pending}>Add {entry}</Button>
+        <Button type="submit" loading={pending}>Add {entry}</Button>
         {state.error ? <p role="alert" className="text-body text-pill-negative-ink">{state.error}</p> : null}
         {state.ok ? <p role="status" className="text-body text-pill-positive-ink">Added.</p> : null}
       </div>
@@ -49,7 +49,7 @@ function Field({ v }: { v: VoiceServerView }) {
         <input type="hidden" name="field" value={v.field} />
         <div className="flex flex-wrap items-center gap-3">
           <Input id={id} name="value" value={val} onChange={(e) => setVal(e.target.value)} placeholder={v.placeholder} maxLength={300} autoComplete="off" spellCheck={false} aria-describedby={`${id}-help`} aria-invalid={state.error ? true : undefined} className="max-w-md flex-1" />
-          <Button type="submit" disabled={pending}>Save</Button>
+          <Button type="submit" loading={pending}>Save</Button>
         </div>
         <p id={`${id}-help`} className="max-w-[60ch] text-small text-faint">{v.help}</p>
         <p className="text-small text-muted">Now: {v.value ? <code className="font-mono">{v.value}</code> : "not set"}</p>

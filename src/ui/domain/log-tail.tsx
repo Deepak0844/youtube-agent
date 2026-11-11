@@ -15,7 +15,7 @@ const TONE = { info: "neutral", warn: "warning", error: "negative" } as const;
 export function LogTail({ lines, max = 50, loading, className }: { lines: LogLine[]; max?: number; loading?: boolean; className?: string }) {
   const shown = lines.slice(-max);
   return (
-    <div role="log" aria-label="Job log" tabIndex={0} className={cn("min-w-0 max-h-72 overflow-y-auto rounded-card bg-surface p-pad", focusRing, className)}>
+    <div role="log" aria-label="Job log" tabIndex={0} className={cn("min-w-0 max-h-72 overflow-y-auto rounded-card border border-border bg-surface p-pad", focusRing, className)}>
       {loading ? (
         <div role="status" className="flex flex-col gap-2">
           <span className="sr-only">Loading the log</span>

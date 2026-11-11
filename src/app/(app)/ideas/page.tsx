@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { connectedChannelOptions, listIdeas } from "@/server/db/ideas";
 import { getPool } from "@/server/db/pool";
@@ -12,7 +13,7 @@ export const metadata = { title: "Ideas" };
 // The idea backlog. requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function IdeasPage({ searchParams }: PageProps<"/ideas">) {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned searchParams={searchParams} />
     </Suspense>
   );
@@ -59,7 +60,7 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/ideas">["sear
         ) : (
           <ul className="m-0 flex list-none flex-col gap-3 p-0">
             {ideas.map((i) => (
-              <li key={i.id} className="min-w-0 rounded-card bg-surface p-pad">
+              <li key={i.id} className="min-w-0 rounded-card border border-border bg-surface p-pad">
                 <IdeaCard idea={i} />
               </li>
             ))}

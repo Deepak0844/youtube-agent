@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { publicRequirements, publicSummary } from "@/server/core/policies-view";
@@ -14,7 +15,7 @@ export const metadata = { title: "Policies" };
 // The evidence rule is not writable from any page: the settings guard tests pin that.
 export default function PoliciesPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -31,7 +32,7 @@ async function Owned() {
         <p className="max-w-[68ch] text-small text-muted">The evidence rule is shown only; it is not changed from a page. The public switch below can be changed, and turning it on asks you to type a phrase.</p>
       </header>
 
-      <section aria-labelledby="rules-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="rules-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="rules-h" className="mb-3 text-title font-semibold">Publishing rules</h2>
         <ul className="divide-y divide-rule">
           <li className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -51,13 +52,13 @@ async function Owned() {
         </ul>
       </section>
 
-      <section aria-labelledby="switch-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="switch-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="switch-h" className="mb-1 text-title font-semibold">Public publishing switch</h2>
         <p className="mb-3 max-w-[68ch] text-small text-muted">Turning this on publishes nothing by itself. A video still needs the channel to allow public, the kill switch off, the go-live cutover (production channels) and your approval.</p>
         <PublicSwitchForm allowed={p.allowPublic} phrase={PUBLIC_PHRASE} />
       </section>
 
-      <section aria-labelledby="public-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="public-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="public-h" className="mb-1 text-title font-semibold">A video can go public only when all of these hold</h2>
         <ul data-testid="public-requirements" className="divide-y divide-rule">
           {publicRequirements(p).map((r) => (

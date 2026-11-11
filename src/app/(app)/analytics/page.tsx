@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { MIN_SHORTS_FOR_SIGNAL } from "@/server/core/analytics";
 import { loadAnalytics, type AnalyticsRow } from "@/server/db/analytics";
@@ -12,7 +13,7 @@ export const metadata = { title: "Analytics" };
 
 export default function AnalyticsPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -26,7 +27,7 @@ const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(micro > 0 && micr
 
 function Row({ r }: { r: AnalyticsRow }) {
   return (
-    <li data-testid="analytics-row" className="flex min-w-0 flex-col gap-2 rounded-card bg-surface p-pad">
+    <li data-testid="analytics-row" className="flex min-w-0 flex-col gap-2 rounded-card border border-border bg-surface p-pad">
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 text-body font-medium [overflow-wrap:anywhere]">{r.topic}</span>
         {r.error ? <Pill tone="warning">Pull had a problem</Pill> : r.pulledAtIst ? null : <Pill tone="neutral">Not pulled yet</Pill>}
@@ -85,7 +86,7 @@ async function Owned() {
         </p>
       ) : null}
       {view.rows.length === 0 ? (
-        <p className="rounded-card bg-surface p-pad text-body text-muted">No uploaded videos yet. Once a short is uploaded, its numbers show here.</p>
+        <p className="rounded-card border border-border bg-surface p-pad text-body text-muted">No uploaded videos yet. Once a short is uploaded, its numbers show here.</p>
       ) : (
         <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {view.rows.map((r) => (

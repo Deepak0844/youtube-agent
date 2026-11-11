@@ -10,7 +10,7 @@ export async function BackupSection() {
   const db = getPool();
   const [view, extra] = await Promise.all([lastBackup(db).then(describeBackup), extraBackupDir(db)]);
   return (
-    <section aria-labelledby="backup-h" className="rounded-card bg-surface p-pad">
+    <section aria-labelledby="backup-h" className="rounded-card border border-border bg-surface p-pad">
       <h2 id="backup-h" className="text-title font-semibold">Backups</h2>
       <p className="mt-1 mb-4 max-w-[60ch] text-body text-muted">
         A copy of the database and the storage folder, made automatically every 6 hours (an hour after a failed one) and kept in the backups folder inside storage. The newest 7 are kept.

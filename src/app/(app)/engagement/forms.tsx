@@ -19,7 +19,7 @@ export function SyncForm() {
   const [state, run, pending] = useActionState<EngagementState, FormData>(() => syncCommentsAction(), {});
   return (
     <form action={run} className="flex flex-wrap items-center gap-3">
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" loading={pending}>
         {pending ? "Reading…" : "Run now"}
       </Button>
       <Result state={state} />
@@ -32,7 +32,7 @@ export function DraftForm({ videoId }: { videoId: string }) {
   return (
     <form action={run} className="flex flex-wrap items-center gap-3">
       <input type="hidden" name="videoId" value={videoId} />
-      <Button type="submit" variant="secondary" disabled={pending}>
+      <Button type="submit" variant="secondary" loading={pending}>
         Draft replies for new comments
       </Button>
       <Result state={state} />
@@ -55,7 +55,7 @@ export function ApproveForm({ replyId, seen, needsEyes, dryRun }: { replyId: str
         </label>
       ) : null}
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" loading={pending}>
           {pending ? "Working…" : "Approve and post"}
         </Button>
         <Result state={state} />
@@ -74,7 +74,7 @@ export function EditForm({ replyId, text }: { replyId: string; text: string }) {
         <Label htmlFor={`edit-${replyId}`}>Reply text (plain text, up to 500 characters)</Label>
         <textarea id={`edit-${replyId}`} name="text" defaultValue={text} rows={3} maxLength={500} className="w-full rounded-control border border-border bg-surface p-2 text-body" />
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" variant="secondary" disabled={pending}>
+          <Button type="submit" variant="secondary" loading={pending}>
             Save edit
           </Button>
           <Result state={state} />
@@ -90,10 +90,10 @@ export function ResolveForm({ replyId }: { replyId: string }) {
   return (
     <form action={run} className="flex flex-wrap items-center gap-3">
       <input type="hidden" name="replyId" value={replyId} />
-      <Button type="submit" name="outcome" value="posted" variant="secondary" disabled={pending}>
+      <Button type="submit" name="outcome" value="posted" variant="secondary" loading={pending}>
         I checked YouTube: it is posted
       </Button>
-      <Button type="submit" name="outcome" value="ignored" variant="secondary" disabled={pending}>
+      <Button type="submit" name="outcome" value="ignored" variant="secondary" loading={pending}>
         I checked YouTube: not posted, drop it
       </Button>
       <Result state={state} />
@@ -106,7 +106,7 @@ export function IgnoreForm({ commentId }: { commentId: string }) {
   return (
     <form action={run} className="flex flex-wrap items-center gap-3">
       <input type="hidden" name="commentId" value={commentId} />
-      <Button type="submit" variant="secondary" disabled={pending}>
+      <Button type="submit" variant="secondary" loading={pending}>
         Ignore
       </Button>
       <Result state={state} />
@@ -127,7 +127,7 @@ export function DryRunForm({ dryRun, phrase }: { dryRun: boolean; phrase: string
         <Input id="typed" name="typed" autoComplete="off" spellCheck={false} />
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="secondary" disabled={pending}>
+        <Button type="submit" variant="secondary" loading={pending}>
           Save
         </Button>
         <Result state={state} />

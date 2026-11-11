@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { dryRunChecks, onboardingSteps } from "@/server/core/onboarding";
@@ -13,7 +14,7 @@ export const metadata = { title: "Get started" };
 // The wizard never sets a key or approves anything, and the last step only reads settings.
 export default function OnboardingPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -33,7 +34,7 @@ async function Owned() {
       </header>
       <ol className="m-0 flex list-none flex-col gap-3 p-0">
         {steps.map((s, i) => (
-          <li key={s.id} id={s.id === "dryrun" ? "dryrun" : undefined} data-testid={`step-${s.id}`} className="flex min-w-0 flex-col gap-3 rounded-card bg-surface p-pad">
+          <li key={s.id} id={s.id === "dryrun" ? "dryrun" : undefined} data-testid={`step-${s.id}`} className="flex min-w-0 flex-col gap-3 rounded-card border border-border bg-surface p-pad">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="m-0 text-title font-semibold">{`${i + 1}. ${s.title}`}</h2>
               <Pill tone={s.done ? "positive" : "neutral"}>{s.done ? "Done" : "Not done"}</Pill>

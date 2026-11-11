@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { LANGUAGE_WORDS } from "@/server/core/videos-view";
@@ -13,7 +14,7 @@ export const metadata = { title: "Series" };
 // Series list. requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function SeriesPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -39,7 +40,7 @@ async function Owned() {
       ) : (
         <ul className="m-0 flex list-none flex-col gap-3 p-0">
           {series.map((s) => (
-            <li key={s.id} className="flex min-w-0 flex-col gap-2 rounded-card bg-surface p-pad">
+            <li key={s.id} className="flex min-w-0 flex-col gap-2 rounded-card border border-border bg-surface p-pad">
               <Link href={`/series/${s.id}`} className="min-w-0 break-words text-title font-semibold underline-offset-4 hover:underline">{s.title}</Link>
               <p className="m-0 text-small text-muted">
                 {`${s.partsStarted} of ${s.partsPlanned} parts started · ${LANGUAGE_WORDS[s.language]} · ${s.channelTitle ? `Channel: ${s.channelTitle}` : "No channel"}`}

@@ -169,7 +169,7 @@ export function ModelForm({ values: saved, providers, submitLabel }: { values: M
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" loading={pending}>
           {pending ? "Saving" : submitLabel}
         </Button>
         <p role="status" aria-live="polite" className={cn("text-body", state.error ? "text-negative" : "text-positive")}>
@@ -203,7 +203,7 @@ export function RouteForm({
           </option>
         ))}
       </select>
-      <Button type="submit" variant="secondary" disabled={pending}>
+      <Button type="submit" variant="secondary" loading={pending}>
         {pending ? "Saving" : "Use"}
       </Button>
       <p role="status" aria-live="polite" className={cn("text-small", state.error ? "text-negative" : "text-positive")}>
@@ -219,7 +219,7 @@ export function IdButton({ kind, id, label, variant = "secondary" }: { kind: "co
   return (
     <form action={action} className="flex flex-wrap items-center gap-3">
       <input type="hidden" name="rowId" value={id} />
-      <Button type="submit" variant={variant} disabled={pending}>
+      <Button type="submit" variant={variant} loading={pending}>
         {label}
       </Button>
       <p role="status" aria-live="polite" className={cn("text-small", state.error ? "text-negative" : "text-positive")}>
@@ -235,7 +235,7 @@ export function TestVisionButton({ id, label, free }: { id: string; label: strin
   return (
     <form action={action} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
       <input type="hidden" name="rowId" value={id} />
-      <Button type="submit" variant="secondary" disabled={pending} aria-label={`Test image reading for ${label}`}>
+      <Button type="submit" variant="secondary" loading={pending} aria-label={`Test image reading for ${label}`}>
         {pending ? "Testing" : "Test image reading"}
       </Button>
       <span className="text-small text-faint">{free ? "Sends one tiny picture. Free." : "Sends one tiny picture. Costs a fraction of a cent, capped per day."}</span>
@@ -252,7 +252,7 @@ export function TestModelButton({ id, label, free }: { id: string; label: string
   return (
     <form action={action} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
       <input type="hidden" name="rowId" value={id} />
-      <Button type="submit" variant="secondary" disabled={pending} aria-label={`Test ${label}`}>
+      <Button type="submit" variant="secondary" loading={pending} aria-label={`Test ${label}`}>
         {pending ? "Testing" : "Test"}
       </Button>
       <span className="text-small text-faint">{free ? "Sends one tiny request to this machine. Free." : "Sends one tiny request. Costs a fraction of a cent, capped per day."}</span>

@@ -100,7 +100,7 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/settings/audi
       ) : (
         <div data-testid="audit-list" className="flex min-w-0 flex-col gap-layout">
           {days.map((d) => (
-            <section key={d.day} aria-labelledby={`day-${d.day}`} className="min-w-0 rounded-card bg-surface px-4 py-2 md:px-pad">
+            <section key={d.day} aria-labelledby={`day-${d.day}`} className="min-w-0 rounded-card border border-border bg-surface px-4 py-2 md:px-pad">
               <h2 id={`day-${d.day}`} className="flex items-baseline gap-3 pt-3 pb-1 text-small font-semibold tracking-wide text-faint uppercase">
                 <span className="tabular-nums">{d.label}</span>
                 <span className="font-normal normal-case">

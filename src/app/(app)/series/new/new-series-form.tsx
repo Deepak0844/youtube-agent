@@ -16,7 +16,7 @@ const words = (id: string) => id.replace(/_/g, " ");
 export function NewSeriesForm({ channels }: { channels: ReadonlyArray<{ channelId: string; title: string }> }) {
   const [state, run, pending] = useActionState<SeriesFormState, FormData>(createSeriesAction, {});
   return (
-    <form action={run} className="flex min-w-0 max-w-xl flex-col gap-4 rounded-card bg-surface p-pad">
+    <form action={run} className="flex min-w-0 max-w-xl flex-col gap-4 rounded-card border border-border bg-surface p-pad">
       <div className="flex flex-col gap-2">
         <Label htmlFor="series-title">Title</Label>
         <Input id="series-title" name="title" required minLength={3} maxLength={80} autoComplete="off" placeholder="Data structures in 40 seconds" />
@@ -77,7 +77,7 @@ export function NewSeriesForm({ channels }: { channels: ReadonlyArray<{ channelI
         <Input id="series-cap" name="capUsd" type="number" inputMode="decimal" min={0} step={0.5} />
       </div>
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={pending}>Create series</Button>
+        <Button type="submit" loading={pending}>Create series</Button>
         {state.error ? <p role="alert" className="m-0 text-body text-pill-negative-ink">{state.error}</p> : null}
       </div>
     </form>

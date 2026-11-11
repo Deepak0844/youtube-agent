@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { formatIst, formatMoney } from "@/server/core/display-format";
@@ -13,13 +14,13 @@ export const metadata = { title: "Calendar" };
 // Calendar: read only. Settings change on /settings/schedule. requireOwner() reads the cookie, so it runs inside <Suspense> (cacheComponents).
 export default function CalendarPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
 }
 
-const card = "flex min-w-0 flex-col gap-3 rounded-card bg-surface p-pad";
+const card = "flex min-w-0 flex-col gap-3 rounded-card border border-border bg-surface p-pad";
 const link = "text-body font-medium underline underline-offset-2";
 
 function Stat({ label, value, testId }: { label: string; value: string; testId: string }) {

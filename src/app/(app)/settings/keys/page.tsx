@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { PROVIDERS, vaultNotice } from "@/server/core/provider-keys";
 import { loadKeyring } from "@/server/db/master-key";
@@ -12,7 +13,7 @@ export const metadata = { title: "Keys" };
 // requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function KeysPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );

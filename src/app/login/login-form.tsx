@@ -24,7 +24,7 @@ export function LoginForm({ next }: { next: string }) {
           {state.error}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending} className="w-full sm:min-h-11">
+      <Button type="submit" loading={pending} className="w-full sm:min-h-11">
         Sign in
       </Button>
     </form>

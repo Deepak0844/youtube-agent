@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { notFound } from "next/navigation";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle, AlertDialogTrigger } from "@/ui/primitives/alert-dialog";
@@ -36,7 +37,7 @@ export const metadata = { title: "Dev UI" };
 // Design review aid: every building block in every state. Dev/staging only, never in the nav.
 export default function DevUi() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-64 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );

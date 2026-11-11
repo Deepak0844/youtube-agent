@@ -22,7 +22,7 @@ export function MakeVersionForm({ videoId, kind }: { videoId: string; kind: stri
             {VERSION_KINDS.filter((k) => k !== kind).map((k) => <option key={k} value={k}>{KIND_WORDS[k]}</option>)}
           </select>
         </label>
-        <Button type="submit" variant="secondary" disabled={pending}>Start a new version</Button>
+        <Button type="submit" variant="secondary" loading={pending}>Start a new version</Button>
         {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
         {state.ok && state.videoId ? <Link href={`/videos/${state.videoId}`} className="text-body underline">Open the new video</Link> : null}
       </div>

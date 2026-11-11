@@ -10,7 +10,7 @@ export function RefreshDescription({ id }: { id: string }) {
   return (
     <form action={run} className="flex basis-full flex-wrap items-center gap-3">
       <input type="hidden" name="id" value={id} />
-      <Button type="submit" variant="secondary" disabled={pending}>{pending ? "Reading…" : "Refresh description"}</Button>
+      <Button type="submit" variant="secondary" loading={pending}>{pending ? "Reading…" : "Refresh description"}</Button>
       <span className="text-small text-muted">Reads this channel&apos;s description from YouTube (1 quota unit) for idea research.</span>
       {state.message ? <span role="status" className={state.ok ? "text-small text-pill-positive-ink" : "text-small text-pill-negative-ink"}>{state.message}</span> : null}
     </form>

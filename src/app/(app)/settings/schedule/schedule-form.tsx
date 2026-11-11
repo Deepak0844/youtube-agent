@@ -37,7 +37,7 @@ export function ScheduleForm({ s }: { s: SchedulerSettings }) {
   const [on, setOn] = useState(s.enabled);
   return (
     <form action={action} className="flex flex-col gap-layout">
-      <section aria-labelledby="draft-h" className="flex flex-col gap-4 rounded-card bg-surface p-pad">
+      <section aria-labelledby="draft-h" className="flex flex-col gap-4 rounded-card border border-border bg-surface p-pad">
         <h2 id="draft-h" className="text-title font-semibold">Overnight drafting</h2>
         <p className="max-w-[60ch] text-body text-muted">
           Drafts videos while you sleep and stops at your first approval step. It never approves anything and never uploads. Paid steps still obey your spending limits.
@@ -62,7 +62,7 @@ export function ScheduleForm({ s }: { s: SchedulerSettings }) {
         <p className="text-small text-muted">Video kind: code-scene (tsx) only. Other kinds arrive in a later phase.</p>
         <Check name="research" label="Look for new ideas when the backlog runs low" note="Not built yet: this is saved but does nothing. Research runs only when you press its button on the Research page." defaultChecked={s.research} />
       </section>
-      <section aria-labelledby="auto-h" className="flex flex-col gap-4 rounded-card bg-surface p-pad">
+      <section aria-labelledby="auto-h" className="flex flex-col gap-4 rounded-card border border-border bg-surface p-pad">
         <h2 id="auto-h" className="text-title font-semibold">Automatic jobs</h2>
         <Check name="analytics" label="Pull analytics once a day (after 09:00 IST)" note="Read only. Uses a little YouTube quota." defaultChecked={s.analytics} />
         <Check name="competitors" label="Refresh watched competitors once a day" note="Checks the channels you watch for new videos, for the Research page. Free of paid calls; uses a little YouTube quota." defaultChecked={s.competitors} />
@@ -82,7 +82,7 @@ export function ScheduleForm({ s }: { s: SchedulerSettings }) {
         </div>
       </section>
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={pending}>Save schedule</Button>
+        <Button type="submit" loading={pending}>Save schedule</Button>
         {state.error ? <p role="alert" className="text-body text-pill-negative-ink">{state.error}</p> : state.ok ? <p role="status" className="text-body text-pill-positive-ink">Saved.</p> : null}
       </div>
     </form>

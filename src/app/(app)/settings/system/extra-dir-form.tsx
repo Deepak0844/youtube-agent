@@ -16,7 +16,7 @@ export function ExtraDirForm({ current }: { current: string }) {
         <Input id="extra-dir" name="dir" defaultValue={current} placeholder="/Volumes/MyDrive/ytstudio-backups" autoComplete="off" spellCheck={false} maxLength={400} />
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="secondary" disabled={pending}>Save</Button>
+        <Button type="submit" variant="secondary" loading={pending}>Save</Button>
         {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
       </div>
     </form>

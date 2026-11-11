@@ -65,7 +65,7 @@ async function Owned({ params }: { params: PageProps<"/assets/[id]">["params"] }
         </section>
       ) : null}
 
-      <section aria-labelledby="keep-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="keep-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="keep-h" className="text-title font-semibold">
           Keep
         </h2>
@@ -73,7 +73,7 @@ async function Owned({ params }: { params: PageProps<"/assets/[id]">["params"] }
       </section>
 
       {cutouts ? (
-        <section aria-labelledby="cutout-h" className="flex flex-col gap-3 rounded-card bg-surface p-pad">
+        <section aria-labelledby="cutout-h" className="flex flex-col gap-3 rounded-card border border-border bg-surface p-pad">
           <h2 id="cutout-h" className="text-title font-semibold">Cut-out</h2>
           <p className="m-0 max-w-[68ch] text-body text-muted">Makes a new picture with a see-through background (the original is kept). Used by Collage videos, and good for stickers and layers. It is made by the worker, so it needs to be running.</p>
           <CutoutForm id={asset.id} />
@@ -81,14 +81,14 @@ async function Owned({ params }: { params: PageProps<"/assets/[id]">["params"] }
         </section>
       ) : null}
 
-      <section aria-labelledby="use-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="use-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="use-h" className="text-title font-semibold">
           Used in
         </h2>
         <p className="mt-2 text-body text-muted">Which videos use this file is not tracked yet.</p>
       </section>
 
-      <section aria-labelledby="rights-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="rights-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="rights-h" className="text-title font-semibold">
           Rights
         </h2>
@@ -103,7 +103,7 @@ async function Owned({ params }: { params: PageProps<"/assets/[id]">["params"] }
         </ul>
       </section>
 
-      <section aria-labelledby="versions-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="versions-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="versions-h" className="text-title font-semibold">
           Other versions
         </h2>

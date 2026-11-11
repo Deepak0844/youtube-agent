@@ -33,7 +33,7 @@ export function AddTargetForm({ channels }: { channels: Array<{ channelId: strin
         <Label htmlFor="t-value">Target</Label>
         <input id="t-value" name="value" type="text" inputMode="decimal" required className={field} />
       </div>
-      <Button type="submit" disabled={pending}>Save target</Button>
+      <Button type="submit" loading={pending}>Save target</Button>
       <Msg s={state} />
     </form>
   );
@@ -44,7 +44,7 @@ export function RemoveTargetForm({ id, label }: { id: number; label: string }) {
   return (
     <form action={action} className="inline-flex items-center gap-2">
       <input type="hidden" name="id" value={id} />
-      <Button type="submit" variant="ghost" disabled={pending} aria-label={`Delete target: ${label}`}>Delete</Button>
+      <Button type="submit" variant="ghost" loading={pending} aria-label={`Delete target: ${label}`}>Delete</Button>
       {state.error ? <span role="alert" className="text-small text-pill-negative-ink">{state.error}</span> : null}
     </form>
   );
@@ -54,7 +54,7 @@ export function StartingTargetsButton() {
   const [state, action, pending] = useActionState<TargetFormState, FormData>(() => startingTargetsAction(), {});
   return (
     <form action={action} className="flex flex-wrap items-center gap-4">
-      <Button type="submit" variant="ghost" disabled={pending}>Use the starting targets</Button>
+      <Button type="submit" variant="ghost" loading={pending}>Use the starting targets</Button>
       <Msg s={state} />
     </form>
   );
@@ -74,7 +74,7 @@ export function PauseForm({ pauseN, rpmUsd }: { pauseN: number; rpmUsd: number }
         <input id="rpm_usd" name="rpm_usd" type="text" inputMode="decimal" required defaultValue={rpmUsd} className={field} />
         <p className="text-small text-faint">Only used for a revenue estimate. 0 hides it.</p>
       </div>
-      <Button type="submit" disabled={pending}>Save</Button>
+      <Button type="submit" loading={pending}>Save</Button>
       <Msg s={state} />
     </form>
   );
