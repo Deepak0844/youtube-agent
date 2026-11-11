@@ -8,6 +8,7 @@ import { hostPortOf } from "@/server/providers/voice/endpoints";
 import { getPool } from "@/server/db/pool";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/ui/primitives/table";
 import { ProviderList, type ProviderView } from "./provider-table";
+import { VIDEO_MODEL_IDS } from "@/server/core/video-models";
 import { RouteForm } from "./route-form";
 import { VoiceServers, type VoiceServerView } from "./voice-servers";
 
@@ -108,6 +109,7 @@ async function Owned() {
                 <TableHead>Used for</TableHead>
                 <TableHead>Provider</TableHead>
                 <TableHead>Narration voice</TableHead>
+                <TableHead>AI video model</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -117,6 +119,7 @@ async function Owned() {
                   <TableCell>{SCOPE_LABELS[r.scope] ?? r.scope}</TableCell>
                   <TableCell>{label.get(r.provider) ?? r.provider}</TableCell>
                   <TableCell>{r.voice ?? "—"}</TableCell>
+                  <TableCell>{r.model ?? "—"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -125,6 +128,7 @@ async function Owned() {
         <RouteForm
           providers={providers.filter((p) => canRoute(p).ok).map((p) => ({ id: p.id, label: `${p.label} (${p.kind})` }))}
           scopes={Object.entries(SCOPE_LABELS).map(([id, l]) => ({ id, label: l }))}
+          videoModels={Object.entries(VIDEO_MODEL_IDS).map(([provider, models]) => ({ provider, label: label.get(provider) ?? provider, models: [...models] }))}
         />
       </section>
     </div>

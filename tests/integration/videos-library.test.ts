@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PAGE_SIZE, parseNewVideoForm, parseLibraryQuery } from "@/server/core/videos-view";
+import { createHash } from "node:crypto";
+import { RIGHTS_TEXT } from "@/server/core/asset-rules";
+import { registerAsset } from "@/server/db/assets";
 import { startNewVideo } from "@/server/db/video-create";
 import { listVideos } from "@/server/db/videos-list";
 import { createVideoRow } from "@/server/db/videos";
@@ -14,6 +17,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await db.reset();
+  queued.length = 0;
 });
 
 const SESSION = "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91";
@@ -65,6 +69,32 @@ describe("listVideos", () => {
     expect(p2.rows).toHaveLength(3);
     expect(p2.hasNext).toBe(false);
     expect([...p1.rows, ...p2.rows].map((r) => r.id)).toEqual([...ids].reverse());
+  });
+});
+
+describe("startNewVideo for an AI video", () => {
+  const png = async (over: { width?: number; mime?: string } = {}) =>
+    (await registerAsset(db.pool, {
+      kind: "image", originalName: "hero.png", mime: over.mime ?? "image/png", bytes: 10, width: over.width ?? 1024, height: 1536, sha256: createHash("sha256").update(`${Math.random()}`).digest("hex"),
+      storageRef: "assets/h/main.png", source: "upload", rights: { attestations: [{ at: new Date().toISOString(), text: RIGHTS_TEXT }] },
+    } as never)).asset.id;
+  const input = (o: Record<string, unknown> = {}) => ({ topic: "A fox", language: "en", kind: "ai", format: "short", ...o }) as never;
+  it("starts a plain AI video, and one with a locked character that is stored and shows in the video's hash", async () => {
+    const plain = await startNewVideo(db.pool, queue, actor, input());
+    expect(plain.ok).toBe(true);
+    const pic = await png();
+    const withChar = await startNewVideo(db.pool, queue, actor, input({ characterAssetId: pic }));
+    expect(withChar.ok).toBe(true);
+    if (withChar.ok) expect((await db.pool.query("select asset_id from video_characters where video_id = $1", [withChar.videoId])).rows[0].asset_id).toBe(pic);
+  });
+  it("refuses a bad picture before any video is made, and a character on any other kind", async () => {
+    const before = (await db.pool.query("select count(*)::int n from videos")).rows[0].n;
+    for (const characterAssetId of [await png({ mime: "image/webp" }), await png({ width: 100 }), "00000000-0000-4000-8000-000000000000"]) {
+      const r = await startNewVideo(db.pool, queue, actor, input({ characterAssetId }));
+      expect(r.ok).toBe(false);
+    }
+    expect((await startNewVideo(db.pool, queue, actor, input({ kind: "scene_kit", characterAssetId: await png() }))).ok).toBe(false);
+    expect((await db.pool.query("select count(*)::int n from videos")).rows[0].n).toBe(before);
   });
 });
 

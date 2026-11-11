@@ -8,10 +8,10 @@ import type { GateId } from "@/server/core/gates";
 
 export type VideoFormat = "short" | "long";
 export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "scene3d" | "scene3d_code";
-export type ContentKindName = "outline" | "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "previews" | "review" | "thumbnail";
+export type ContentKindName = "outline" | "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "previews" | "review" | "thumbnail" | "clips";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
-export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_author", "scene3d_stills", "scene3d_review", "voice", "sfx", "qa", "repair_scenes", "reframe", "thumbnail", "derive", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
+export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "direct_scene3d", "scene3d_author", "scene3d_stills", "scene3d_review", "voice", "sfx", "qa", "repair_scenes", "reframe", "thumbnail", "derive", "shots", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
 export type StageName = (typeof STAGE_NAMES)[number];
 
 /** The two 3D story kinds: the director writes scene data (scene3d), or the AI writes the scene code (scene3d_code). Both get the Look gate and the native render. */
@@ -70,6 +70,22 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
       ...head,
       { stage: "tts", resource: "net" },
       { stage: "tsx_author", resource: "render" },
+      { stage: "voice", resource: "cpu" },
+      { stage: "sfx", resource: "cpu" },
+      { stage: "qa", gateAfter: "video", resource: "cpu" },
+    ];
+  }
+  // ai (Phase 8): voice first, so every clip is as long as its beat of narration. `shots` plans one clip per beat and prices it (the cost plan);
+  // the owner approves the total at the cost gate; `generate` buys the clips (paid, capped, never twice); Build then lays them out as scenes. No pictures step.
+  if (kind === "ai") {
+    if (flags.imported) throw new Error("imported AI videos are not supported");
+    return [
+      { stage: "draft", gateAfter: "script", resource: "net" },
+      { stage: "tts", resource: "net" },
+      { stage: "shots", resource: "cpu" },
+      { stage: "generate", gateBefore: "cost", resource: "net" },
+      { stage: "build", resource: "cpu" },
+      { stage: "render", resource: "render" },
       { stage: "voice", resource: "cpu" },
       { stage: "sfx", resource: "cpu" },
       { stage: "qa", gateAfter: "video", resource: "cpu" },
@@ -156,6 +172,7 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   pictures: ["script", "beats"],
   build: ["script"],
   generate: ["cost_plan"],
+  shots: ["script", "captions"],
   tts: ["script"],
   render: ["beats", "narration", "scenes"],
   tsx_author: ["script", "narration"],
@@ -211,6 +228,9 @@ export interface PipelineView {
   feedback: string | null;
   /** derived shorts only: a hash of the long video's scenes, beats, narration and captions the clip is made from. Absent = not derived (no hash changes). */
   derivedSource?: string;
+  /** AI videos only: the routed clip model ("provider/model") and the locked character's asset id. Both count in the shot plan's hash. Absent = none (and no other hash changes). */
+  clipRoute?: string | null;
+  characterAsset?: string | null;
   /** long videos only: latest owner send-back note for the outline. Absent or null = never sent back, and then no hash changes. */
   outlineFeedback?: string | null;
   /**
@@ -273,6 +293,10 @@ export function expectedInputHash(view: PipelineView, stage: StageName, prevHash
     // The clip is made from the long video's finished content: a new version of any of it makes the clip (and everything after it) stale.
     upstream.params = view.paramsHash;
     upstream.source = view.derivedSource ?? "none";
+  } else if (stage === "shots") {
+    upstream.prev = prevHash ?? "";
+    upstream.clip_route = view.clipRoute ?? "none";
+    upstream.character = view.characterAsset ?? "none";
   } else if (stage === "draft") {
     upstream.params = view.paramsHash;
     upstream.feedback = view.feedback ?? "";
@@ -286,6 +310,7 @@ export function expectedInputHash(view: PipelineView, stage: StageName, prevHash
     upstream.prev = prevHash ?? "";
   }
   for (const k of STAGE_CONTENT_INPUTS[stage]) upstream[k] = view.content[k] ?? "none";
+  if (view.kind === "ai" && stage === "build") upstream.clips = view.content.clips ?? "none"; // the generated clips Build lays out; only AI videos, so no other hash changes
   const nonce = view.nonces?.[stage];
   if (view.style && (stage === "build" || stage === "render")) Object.assign(upstream, styleHashParts(view.style.style, view.style.captionStyle)); // only when chosen: older hashes stay identical
   if (view.style?.style && stage === "tsx_author") upstream.style = view.style.style; // only when chosen: a tsx video with no style keeps its old hash
