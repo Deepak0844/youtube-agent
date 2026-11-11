@@ -1,10 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { actionOriginProblem } from "@/lib/auth/origin";
 import { isAllowedHost, isApiPath, isPublicPath, parseAllowedHosts, safeNext } from "@/lib/auth/policy";
 import { readSessionCookie } from "@/lib/auth/session-cookie";
 
-// Next 16 "proxy" (formerly middleware). Two jobs only, both cheap and optimistic:
+// Next 16 "proxy" (formerly middleware). Three jobs only, all cheap and optimistic:
 //  1. Host allow-list (DNS-rebinding / forged Host): anything else gets 400.
-//  2. No session cookie on a non-public path: pages 307 to /login?next=..., /api/* gets 401 JSON.
+//  2. Server Functions (server actions): a POST that carries the Next-Action header must come from this site: a missing, "null" or foreign Origin is
+//     refused for EVERY action here, so no action has to remember the stricter per-action check (assertActionOrigin) and a future one cannot forget it.
+//     A browser always sends Origin on such a POST. Next's own check lets an Origin-less POST through, which is the gap this closes.
+//  3. No session cookie on a non-public path: pages 307 to /login?next=..., /api/* gets 401 JSON.
 // The cookie is NOT validated here (no DB in the proxy); requireOwner()/requireOwnerApi() do the real check.
 // Server Functions are POSTs to the page route, so every action must still authenticate itself.
 
@@ -15,6 +19,10 @@ export function proxy(request: NextRequest): NextResponse {
     return new NextResponse("Bad Request", { status: 400, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
   }
   const { pathname, search } = request.nextUrl;
+
+  if (request.method === "POST" && request.headers.has("next-action") && actionOriginProblem(request.headers)) {
+    return new NextResponse("Forbidden", { status: 403, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+  }
 
   if (isPublicPath(pathname)) {
     const res = NextResponse.next();
