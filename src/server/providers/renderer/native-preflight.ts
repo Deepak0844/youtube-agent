@@ -5,7 +5,7 @@ import path from "node:path";
 // The Chrome headless shell is fetched once by the owner with `npx remotion browser ensure` (the worker never downloads).
 
 /** Must equal the Remotion version in package.json and in the render image (infra/Dockerfile.render). */
-export const REMOTION_PIN = "4.0.538";
+export const REMOTION_PIN = "4.0.542";
 export const NATIVE_MODULES = ["@remotion/renderer", "@remotion/bundler"] as const;
 /** The binary name inside the Chrome folder; the native command points Remotion at it (cwd is not a project, so Remotion cannot find it itself). */
 export const CHROME_BIN = "chrome-headless-shell";
