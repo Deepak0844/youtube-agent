@@ -9,7 +9,7 @@
 //   --finish full|fast|off  the finish chain (default full; fast = no AO/DOF; off = plain render)
 //   --log                 print the page console (to find scene errors)
 //   --video <file.mp4>    render a video instead of stills; --range a-b limits the frames
-// Needs @remotion/bundler and @remotion/renderer 4.0.538: from node_modules, or from the folder named in REMOTION_TOOLS.
+// Needs @remotion/bundler and @remotion/renderer 4.0.542: from node_modules, or from the folder named in REMOTION_TOOLS.
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, symlinkSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
