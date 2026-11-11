@@ -26,6 +26,7 @@ describe("new key slots", () => {
     expect(["google_tts", "azure_speech", "voicestudio", "local_voice"].map(role)).toEqual(["Voice", "Voice", "Voice", "Voice"]);
     expect(role("fal")).toBe("Image");
     expect(role("coverr")).toBe("Stock media");
+    expect(role("seedance")).toBe("Video");
   });
   it.each(Object.keys(GOOD))("%s: good sample passes, bad sample fails", (id) => {
     expect(checkKeyShape(id, GOOD[id]).ok).toBe(true);
@@ -35,7 +36,7 @@ describe("new key slots", () => {
   });
   it("only Google lists voices for free; the rest are 'checked on first use' (no request is built)", () => {
     expect(keyTestRequest("google_tts" as never, "k")).toMatchObject({ url: "https://texttospeech.googleapis.com/v1/voices", method: "GET" });
-    for (const id of ["azure_speech", "coverr", "fal", "voicestudio", "local_voice"]) expect(keyTestRequest(id as never, "k"), id).toBeNull();
+    for (const id of ["azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance"]) expect(keyTestRequest(id as never, "k"), id).toBeNull();
   });
 });
 

@@ -27,6 +27,7 @@ const KINDS = [
   ["sfx", "Sound effects"],
   ["image", "Images"],
   ["stock", "Stock media"],
+  ["video", "AI video"],
 ] as const;
 const COMMERCIAL = { yes: "Commercial use allowed.", no: "Commercial use not allowed.", unknown: "Commercial use not confirmed." } as const;
 
