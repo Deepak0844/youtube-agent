@@ -41,6 +41,7 @@
     "assets3d:licenses": "tsx scripts/assets3d-licenses.ts",
     "kit:preview":"tsx scripts/kit-preview.ts",
     "kit:video": "tsx scripts/kit-video.ts",
+    "bakeoff:grid": "tsx scripts/bakeoff-grid.ts",
     "scene3d:stills": "tsx scripts/scene3d-stills.mts",
     "s3k:stills": "tsx scripts/s3k-stills.mts",
     "s3k:api": "tsx scripts/s3k-api.ts",
