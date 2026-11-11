@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { access, constants, cp, mkdir, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -24,6 +24,8 @@ export interface BackupDeps {
   exec?: (cmd: string, args: string[], env: Env) => Promise<void>;
   /** Test seam: writes the database dump to this file. Default: pg_dump on PATH, else inside the database container. */
   dump?: (file: string) => Promise<void>;
+  /** Test seam: use these tools (for example a given container) instead of looking for pg_dump or the dev container. */
+  pgMode?: PgMode;
   root?: string;
   now?: () => Date;
   databaseUrl?: string;
@@ -72,9 +74,12 @@ export async function lastBackup(db: pg.Pool): Promise<BackupResult | null> {
 
 const ok = (cmd: string, args: string[]) => run(cmd, args, { timeout: 10_000, windowsHide: true }).then((r) => r.stdout, () => null);
 
-/** pg_dump on PATH if present, else pg_dump inside the database container, streamed to the file. No password is ever an argument. */
-async function dumpDatabase(file: string, deps: BackupDeps, exec: NonNullable<BackupDeps["exec"]>): Promise<void> {
-  if (deps.dump) return deps.dump(file);
+/** How Postgres' own tools are reached: on PATH (connection from the URL), or inside the database container (its own local login). No password is ever an argument. */
+export type PgMode = { kind: "local"; env: Env } | { kind: "docker"; container: string; user: string; db: string };
+
+/** pg_dump / pg_restore on PATH if present, else inside the running database container. Throws a plain sentence when neither is available. */
+export async function choosePgMode(deps: { databaseUrl?: string; pgMode?: PgMode }): Promise<PgMode> {
+  if (deps.pgMode) return deps.pgMode;
   const url = deps.databaseUrl ?? process.env.MIGRATE_DATABASE_URL ?? process.env.DATABASE_URL;
   const container = process.env.BACKUP_DB_CONTAINER || DEFAULT_DB_CONTAINER;
   const pgDump = (await ok("pg_dump", ["--version"])) !== null;
@@ -89,23 +94,54 @@ async function dumpDatabase(file: string, deps: BackupDeps, exec: NonNullable<Ba
   }
   const plan = dumpPlan({ pgDump, containerRunning }, { container, user, db: dbName });
   if (plan.kind === "none") throw new BackupError(plan.message);
-  if (plan.kind === "local") return exec("pg_dump", ["--format=custom", "--no-password", "--file", file], pgEnv(url));
-  await new Promise<void>((resolve, reject) => {
-    const out = createWriteStream(file, { mode: 0o600 });
-    const child = spawn("docker", plan.args, { stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+  return plan.kind === "local" ? { kind: "local", env: pgEnv(url) } : { kind: "docker", container, user, db: dbName };
+}
+
+/** Runs one Postgres tool with an optional file on stdin or stdout, or captured output (capped). Rejects with a plain error when it exits non-zero. */
+export function runPgTool(mode: PgMode, tool: "pg_dump" | "pg_restore", args: string[], io: { stdinFile?: string; stdoutFile?: string; capture?: boolean; needsDb?: boolean } = {}): Promise<string> {
+  const cmd = mode.kind === "local" ? tool : "docker";
+  const full =
+    mode.kind === "local"
+      ? ["--no-password", ...(io.needsDb ? ["-d", mode.env.PGDATABASE ?? ""] : []), ...args]
+      : ["exec", "-i", mode.container, tool, "-U", mode.user, ...(io.needsDb ? ["-d", mode.db] : []), ...args];
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn(cmd, full, { env: (mode.kind === "local" ? mode.env : { PATH: process.env.PATH }) as NodeJS.ProcessEnv, stdio: [io.stdinFile ? "pipe" : "ignore", io.stdoutFile || io.capture ? "pipe" : "ignore", "ignore"], windowsHide: true });
     const timer = setTimeout(() => child.kill(), DUMP_TIMEOUT_MS);
-    child.stdout.pipe(out);
+    let captured = "";
+    if (io.stdinFile) {
+      const input = createReadStream(io.stdinFile);
+      input.on("error", () => child.kill());
+      input.pipe(child.stdin!);
+      child.stdin!.on("error", () => undefined); // the tool may exit before it has read everything
+    }
+    if (io.stdoutFile) {
+      const out = createWriteStream(io.stdoutFile, { mode: 0o600 });
+      child.stdout!.pipe(out);
+      out.on("error", reject);
+    } else if (io.capture) {
+      child.stdout!.on("data", (d: Buffer) => {
+        if (captured.length < 4 * 1024 * 1024) captured += d.toString("utf8");
+      });
+    }
     child.on("error", reject);
-    out.on("error", reject);
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code === 0) out.end(resolve);
-      else reject(new Error("dump exited with an error"));
+      if (code === 0) resolve(captured);
+      else reject(new Error(`${tool} exited with an error`));
     });
   });
 }
 
-async function backupNow(root: string, now: Date, deps: BackupDeps): Promise<{ name: string; bytes: number; pruned: number; dir: string }> {
+/** pg_dump to a file, in whichever way the tools are reached. */
+async function dumpDatabase(file: string, deps: BackupDeps, exec: NonNullable<BackupDeps["exec"]>): Promise<void> {
+  if (deps.dump) return deps.dump(file);
+  const mode = await choosePgMode(deps);
+  if (mode.kind === "local" && !deps.pgMode) return exec("pg_dump", ["--format=custom", "--no-password", "--file", file], mode.env);
+  await runPgTool(mode, "pg_dump", ["--format=custom", ...(mode.kind === "local" ? ["--file", file] : [])], mode.kind === "local" ? {} : { stdoutFile: file, needsDb: true });
+}
+
+/** Makes one backup folder. `prune: false` keeps every older one (a restore's safety backup must never delete the backup being restored). */
+export async function backupNow(root: string, now: Date, deps: BackupDeps, opts: { prune?: boolean } = {}): Promise<{ name: string; bytes: number; pruned: number; dir: string }> {
   const exec = deps.exec ?? defaultExec;
   const dir = path.join(root, BACKUPS_DIR);
   const name = backupName(now);
@@ -119,7 +155,7 @@ async function backupNow(root: string, now: Date, deps: BackupDeps): Promise<{ n
     const archive = path.join(target, "storage.tar.gz");
     if (members.length > 0) await exec("tar", ["-czf", archive, "-C", root, "--", ...members], { PATH: process.env.PATH });
     const bytes = (await sizeOf(dump)) + (await sizeOf(archive));
-    const old = backupsToDelete(await readdir(dir));
+    const old = opts.prune === false ? [] : backupsToDelete(await readdir(dir));
     for (const n of old) await rm(path.join(dir, n), { recursive: true, force: true });
     return { name, bytes, pruned: old.length, dir: target };
   } catch (e) {
