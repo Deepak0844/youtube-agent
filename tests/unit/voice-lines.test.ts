@@ -76,6 +76,20 @@ describe("lineCacheKey", () => {
   });
 });
 
+describe("lineCacheKey with provider cache settings (delivery tags)", () => {
+  const line = { text: "Hello there.", voice: "v1", model: "elevenlabs:eleven_v3", lang: "en" as const };
+  it("a line without extra settings has the same key it always had", () => {
+    expect(lineCacheKey({ ...line, settings: {} })).toBe(lineCacheKey({ ...line, settings: {} }));
+    expect(lineCacheKey({ ...line, settings: {} })).toMatch(/^[0-9a-f]{64}$/);
+  });
+  it("a delivery tag makes a different key, and a different tag another", () => {
+    const none = lineCacheKey({ ...line, settings: {} });
+    const excited = lineCacheKey({ ...line, settings: { tags: "[excited]" } });
+    const calm = lineCacheKey({ ...line, settings: { tags: "[calm]" } });
+    expect(new Set([none, excited, calm]).size).toBe(3);
+  });
+});
+
 describe("tempoFitFactor", () => {
   it.each([
     [1, 1, 1, true],

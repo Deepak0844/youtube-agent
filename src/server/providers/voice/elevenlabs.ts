@@ -155,6 +155,8 @@ export function createElevenLabsVoice(deps: ElevenLabsDeps): VoiceProvider {
   return {
     capability: { id: "elevenlabs", wordTimings: "native", local: false, languages: deps.model === "eleven_v3" ? [...LANGS] : [...V2_LANGS], maxChars: 3500, formats: ["mp3"] },
     quote,
+    // The delivery tags are spoken-style instructions sent with the text (v3 only): a different tag is a different recording, so it must be a different cache key.
+    cacheSettings: (a): Record<string, string | number> => ((a.model || deps.model) === "eleven_v3" && prefix ? { tags: prefix } : {}),
     async synthesise(ctx: StageContext, a) {
       const { model, voice } = check(a);
       const reserve = quote(a);

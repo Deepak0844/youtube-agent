@@ -72,7 +72,7 @@ export function ttsAttempt(deps: StageDeps): AttemptHandler {
     for (const [lineIndex, line] of lines.entries()) {
       // The provider is part of the key, so a different provider (or a fake) can never be served this provider's line.
       // voice and provider:model are part of the key, so a changed voice can never reuse the old voice's saved audio
-      const key = lineCacheKey({ text: line.text, voice, model: `${providerId}:${model ?? ""}`, lang: video.language, settings: {} });
+      const key = lineCacheKey({ text: line.text, voice, model: `${providerId}:${model ?? ""}`, lang: video.language, settings: provider.cacheSettings?.({ model }) ?? {} });
       const hit = await cachedLine(deps, key);
       if (hit) {
         ctx.nextStep(); // keep every line on the same step number whether it was a hit or a miss, so a resumed run replays the right call
