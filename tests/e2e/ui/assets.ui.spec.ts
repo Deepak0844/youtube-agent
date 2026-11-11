@@ -132,3 +132,23 @@ test("bulk tag adds a tag to the chosen cards", async ({ page }) => {
   await expect(card(page, `${tag}-x.png`)).toContainText("beach");
   expect((await db.query("select tags from assets where id = $1", [id])).rows[0].tags).toContain("beach");
 });
+
+test("a picture has a Cut-out section: asking for one adds a waiting job (the worker makes it), a bad setting is refused, no sideways scroll", async ({ page }) => {
+  const tag = `cut-${Date.now()}`;
+  const id = await seed(tag);
+  await page.goto(`/assets/${id}`);
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByRole("heading", { level: 2, name: "Cut-out" })).toBeVisible();
+  await expect(page.getByTestId("cutout-list")).toHaveCount(0);
+  await page.getByLabel("How").selectOption("white");
+  await page.getByRole("button", { name: "Make a cut-out" }).click();
+  await expect(page.getByTestId("cutout-list")).toContainText("Waiting");
+  await expect(page.getByTestId("cutout-list")).toContainText("white background");
+  expect((await db.query("select status, options->>'method' as method from cutout_jobs where asset_id = $1", [id])).rows).toEqual([{ status: "queued", method: "white" }]);
+  await page.getByLabel("Edge trim (px)").fill("9");
+  await page.getByTestId("cutout-form").evaluate((f) => ((f as HTMLFormElement).noValidate = true)); // the browser would stop it first; this checks the server says no too
+  await page.getByRole("button", { name: "Make a cut-out" }).click();
+  await expect(page.getByTestId("cutout-form").getByRole("status")).toContainText("whole number from 0 to 4");
+  expect((await db.query("select count(*)::int n from cutout_jobs where asset_id = $1", [id])).rows[0].n).toBe(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+});

@@ -6,7 +6,10 @@ import { toCards } from "@/server/db/asset-cards";
 import { getAsset } from "@/server/db/assets";
 import { getPool } from "@/server/db/pool";
 import { Skeleton } from "@/ui/primitives/skeleton";
+import { cutoutJobsFor } from "@/server/db/cutout-jobs";
 import { KeepSwitch } from "../keep-switch";
+import { CutoutForm } from "./cutout-form";
+import { CutoutList } from "./cutout-list";
 
 export default function AssetPage({ params }: PageProps<"/assets/[id]">) {
   return (
@@ -32,6 +35,7 @@ async function Owned({ params }: { params: PageProps<"/assets/[id]">["params"] }
     );
   const [card] = await toCards(getPool(), [asset]);
   const derived = Object.keys(asset.derivedRefs);
+  const cutouts = asset.kind === "image" && !asset.deletedAt ? await cutoutJobsFor(getPool(), asset.id) : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-layout">
@@ -65,6 +69,15 @@ async function Owned({ params }: { params: PageProps<"/assets/[id]">["params"] }
         </h2>
         <KeepSwitch id={asset.id} keep={asset.keep} />
       </section>
+
+      {cutouts ? (
+        <section aria-labelledby="cutout-h" className="flex flex-col gap-3 rounded-card bg-surface p-pad">
+          <h2 id="cutout-h" className="text-title font-semibold">Cut-out</h2>
+          <p className="m-0 max-w-[68ch] text-body text-muted">Makes a new picture with a see-through background (the original is kept). Used by Collage videos, and good for stickers and layers. It is made by the worker, so it needs to be running.</p>
+          <CutoutForm id={asset.id} />
+          <CutoutList rows={cutouts.map((j) => ({ id: j.id, status: j.status, method: j.method, resultAssetId: j.resultAssetId, error: j.error, when: j.createdAt.toISOString().slice(0, 16).replace("T", " ") + " UTC" }))} />
+        </section>
+      ) : null}
 
       <section aria-labelledby="use-h" className="rounded-card bg-surface p-pad">
         <h2 id="use-h" className="text-title font-semibold">
