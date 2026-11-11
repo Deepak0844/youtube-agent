@@ -13,9 +13,9 @@ import { createVideoAction, type NewVideoState } from "./actions";
 
 const selectClass = cn("w-full rounded-control border border-control bg-surface px-4 text-body text-text disabled:opacity-50", control, fade, focusRing);
 
-export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes }: { scaleLimitNote: string | null; scene3dNote: string | null; maxLongMinutes: number }) {
+export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, characters }: { scaleLimitNote: string | null; scene3dNote: string | null; maxLongMinutes: number; aiNote: string | null; characters: Array<{ id: string; name: string }> }) {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
-  const [kind, setKind] = useState<"scene_kit" | "tsx" | "scale3d" | "scene3d" | "scene3d_code">("scene_kit");
+  const [kind, setKind] = useState<"scene_kit" | "tsx" | "ai" | "scale3d" | "scene3d" | "scene3d_code">("scene_kit");
   const [format, setFormat] = useState<"short" | "long">("short");
   const long = format === "long"; // Long is offered for the Scene kit only: the other types stay Shorts for now
   const pickFormat = (f: "short" | "long") => {
@@ -75,6 +75,7 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes }: { scale
           [
             ["scene_kit", "Scene kit (default)", "Safe and fast: the app builds the scenes from a fixed set of parts."],
             ["tsx", "Custom animation (TSX, experimental)", "Claude writes the animation code. Slower, and it may fall back to the scene kit if the code does not pass the safety checks."],
+            ["ai", "AI video (paid clips, Shorts)", "A video model draws a short clip for every beat, as long as that beat of narration. The voice is made first, then you see the price of every clip and approve it before anything is bought. Optionally keep one character the same in every clip."],
             ["scale3d", "3D scale comparison (Shorts)", "Sizes compared on a ruler: a camera climbs past real objects. Every height is a claim you verify. Needs the render time limit set to 900 s or more (Settings > System)."],
             ["scene3d_code", "3D story (AI-written scene)", "The AI writes the whole 3D scene as code, from the free building blocks and CC0 models. The app checks the code line by line, runs it only in a locked box on this Mac, and you approve the look from preview pictures before the long render. Needs 'Render 3D on this Mac' turned on in System settings."],
             ["scene3d", "3D story (detailed)", "A 60 s illustrated 3D story built from free CC0 models. You approve the look from preview pictures before the long render. Needs 'Render 3D on this Mac' turned on in System settings."],
@@ -90,6 +91,21 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes }: { scale
         ))}
       </fieldset>
       {(kind === "scene3d" || kind === "scene3d_code") && scene3dNote ? <p role="note" data-testid="scene3d-native-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{scene3dNote}</p> : null}
+      {kind === "ai" ? (
+        <fieldset data-testid="ai-options" className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+          <legend className="mb-1 text-body font-medium">Character (optional)</legend>
+          <select id="character" name="character" defaultValue="" aria-label="Character picture" className={selectClass}>
+            <option value="">No locked character</option>
+            {characters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <p className="m-0 max-w-[68ch] text-small text-muted">Every clip starts from this picture, so the character looks the same. Needs a video model that can start from a picture. Add pictures on the Assets page (PNG or JPEG, at least 300 pixels).</p>
+          {aiNote ? <p role="note" data-testid="ai-route-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{aiNote}</p> : null}
+        </fieldset>
+      ) : null}
       {kind === "scale3d" && scaleLimitNote ?<p role="note" data-testid="render-limit-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{scaleLimitNote}</p> : null}
       {scale ? null : (
       <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">

@@ -37,6 +37,21 @@ describe("ageLabel", () => {
   });
 });
 
+describe("parseNewVideoForm: AI videos", () => {
+  const id = "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91";
+  it("is a Short with an optional locked character and the usual look", () => {
+    expect(parseNewVideoForm(form({ topic: "A fox", language: "en", kind: "ai" }))).toEqual({ ok: true, value: { topic: "A fox", language: "en", kind: "ai", format: "short", notes: undefined } });
+    const r = parseNewVideoForm(form({ topic: "A fox", language: "en", kind: "ai", character: id, style: "flat_motion", captionStyle: "punchy_captions" }));
+    expect(r).toMatchObject({ ok: true, value: { kind: "ai", characterAssetId: id, style: "flat_motion", captionStyle: "punchy_captions" } });
+  });
+  it("refuses a character that is not an id, and a long AI video; other kinds never carry a character", () => {
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "ai", character: "../../etc" }))).toMatchObject({ ok: false });
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "ai", format: "long", minMinutes: "3", maxMinutes: "8" }))).toMatchObject({ ok: false, message: expect.stringMatching(/Scene kit/) });
+    const sk = parseNewVideoForm(form({ topic: "x", language: "en", kind: "scene_kit", character: id }));
+    expect(sk.ok && "characterAssetId" in sk.value).toBe(false);
+  });
+});
+
 describe("parseNewVideoForm", () => {
   it("accepts a topic and each of the six languages, trimming the topic", () => {
     for (const language of ["en", "hi", "ta", "te", "kn", "ml"]) {
@@ -73,7 +88,7 @@ describe("parseNewVideoForm", () => {
     expect(parseNewVideoForm(form({ topic: "x".repeat(201), language: "en" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ topic: "x".repeat(200), language: "en" })).ok).toBe(true);
     expect(parseNewVideoForm(form({ topic: "x", language: "fr" })).ok).toBe(false);
-    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "ai" })).ok).toBe(false);
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "collage" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ topic: "x", language: "en", format: "wide" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ language: "en" })).ok).toBe(false);
   });

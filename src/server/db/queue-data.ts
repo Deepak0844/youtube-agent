@@ -36,7 +36,7 @@ export type GateContent =
       outline: { chapters: Array<{ title: string; line: string; targetS: number; words: number }>; totalS: number; words: number; minMinutes: number; maxMinutes: number } | null;
     }
   | { kind: "script"; title: string; description: string | null; narration: string; words: number; beats: number; beatRows: BeatRow[]; shownForReal: string | null; style: string | null; claims: GateClaim[]; readable: boolean; /** 3D scale scripts only: the heights to approve and the render-limit note. */ scale?: { rows: GateClaim[]; limitNote: string | null } }
-  | { kind: "cost"; totalMicroUsd: number; path: string; models: Array<[string, string]>; items: Array<{ kind: string; provider: string; quoteMicroUsd: number }> }
+  | { kind: "cost"; totalMicroUsd: number; path: string; models: Array<[string, string]>; items: Array<{ kind: string; provider: string; quoteMicroUsd: number }>; /** AI videos: what each clip asks the video model for, and whether every clip starts from a locked character picture. */ shots?: Array<{ beatId: string; seconds: number; prompt: string }>; character?: boolean }
   | {
       kind: "look";
       /** The pictures (signed addresses), what the director could not find, and the picture check's notes; or why they cannot be shown. */
@@ -174,7 +174,7 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
     const b = asObj(c.cost_plan?.body);
     const quote = asObj(b.quote);
     const items = Array.isArray(b.items) ? b.items.map(asObj).map((i) => ({ kind: str(i.kind), provider: str(i.provider), quoteMicroUsd: Number(i.quoteMicroUsd) || 0 })) : [];
-    return { kind: "cost", totalMicroUsd: Number(str(quote.micro_usd)) || 0, path: str(b.path), models: Object.entries(asObj(b.providers_models)).map(([k, v]) => [k, str(v)] as [string, string]), items };
+    return { kind: "cost", totalMicroUsd: Number(str(quote.micro_usd)) || 0, path: str(b.path), models: Object.entries(asObj(b.providers_models)).map(([k, v]) => [k, str(v)] as [string, string]), items, ...(Array.isArray(b.shots) ? { shots: b.shots.map(asObj).map((x) => ({ beatId: str(x.beatId), seconds: Number(x.seconds) || 0, prompt: str(x.prompt) })), character: b.character !== undefined } : {}) };
   }
   if (gate === "look") {
     const v = lookView(c.previews?.body, c.scenes?.body);

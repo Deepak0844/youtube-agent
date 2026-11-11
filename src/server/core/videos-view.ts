@@ -66,7 +66,7 @@ export function ageLabel(then: Date, now: Date = new Date()): string {
 export const newVideoSchema = z.object({
   topic: z.string().trim().min(1, "Enter a topic.").max(200, "Keep the topic to 200 characters or fewer."),
   language: z.enum(LANGS, "Pick a narration language."),
-  kind: z.enum(["scene_kit", "tsx", "scale3d", "scene3d", "scene3d_code"], "Pick a video type."),
+  kind: z.enum(["scene_kit", "tsx", "ai", "scale3d", "scene3d", "scene3d_code"], "Pick a video type."),
   format: z.enum(["short", "long"], "Pick Short or Long."),
   // Long only: the length range in whole minutes (blank = the default 3 to 8). Checked against the max-length setting in parseNewVideoForm.
   minMinutes: z.coerce.number().optional(),
@@ -75,17 +75,21 @@ export const newVideoSchema = z.object({
   // Empty or missing = the default look (stored as null).
   style: z.enum(STYLE_IDS, "Pick one of the listed styles.").optional(),
   captionStyle: z.enum(CAPTION_STYLE_IDS, "Pick a listed caption style.").optional(),
+  // AI videos only: the library picture every clip starts from (a locked character). Empty = none.
+  character: z.string().uuid("Pick a picture from the list.").optional(),
 });
 export type NewVideoInput = Omit<z.infer<typeof newVideoSchema>, "minMinutes" | "maxMinutes"> & {
   /** Long only: the chosen minutes range (already checked against the max-length setting). Absent for shorts. */
   lengthMin?: number;
   lengthMax?: number;
+  /** AI videos only: the library picture every clip starts from. */
+  characterAssetId?: string;
 };
 
 /** `maxLongMinutes` is the video.max_long_minutes setting. */
 export function parseNewVideoForm(form: FormData, maxLongMinutes = 15): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
   const g = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
-  const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "scene_kit", format: g("format") ?? "short", notes: g("notes") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined, minMinutes: g("minMinutes") || undefined, maxMinutes: g("maxMinutes") || undefined });
+  const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "scene_kit", format: g("format") ?? "short", notes: g("notes") || undefined, character: g("character") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined, minMinutes: g("minMinutes") || undefined, maxMinutes: g("maxMinutes") || undefined });
   if (r.success && r.data.format === "long") {
     const { topic, language, kind, notes, style, captionStyle, minMinutes, maxMinutes } = r.data;
     // The long route exists for the scene kit only; the other kinds stay Shorts.
@@ -100,6 +104,11 @@ export function parseNewVideoForm(form: FormData, maxLongMinutes = 15): { ok: tr
   if (r.success && r.data.kind === "tsx") {
     const { topic, language, kind, format, notes, style } = r.data;
     return { ok: true, value: { topic, language, kind, format, notes, ...(style ? { style } : {}) } };
+  }
+  // An AI video: a look and captions like the scene kit, and optionally a locked character. Shorts only.
+  if (r.success && r.data.kind === "ai") {
+    const { topic, language, kind, format, notes, style, captionStyle, character } = r.data;
+    return { ok: true, value: { topic, language, kind, format, notes, ...(style ? { style } : {}), ...(captionStyle ? { captionStyle } : {}), ...(character ? { characterAssetId: character } : {}) } };
   }
   // A 3D scale video uses neither a style nor a caption look (its own composition draws everything), and is Shorts only.
   // A 3D story (scene3d) is the same: no style, no caption look, Shorts only.

@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { characterProblem } from "@/server/core/character";
+import { characterProblem, MIN_CHARACTER_SIDE } from "@/server/core/character";
 import { recordAudit } from "@/server/db/audit";
 
 type Db = pg.Pool | pg.PoolClient;
@@ -22,16 +22,21 @@ export async function characterOf(db: Db, videoId: string): Promise<VideoCharact
   return { assetId: a.id, storageRef: a.storage_ref };
 }
 
+/** Why this library picture cannot be a character (plain sentence), or null when it can. */
+export async function characterProblemOf(db: Db, assetId: string): Promise<string | null> {
+  const a = await db.query<{ kind: string; mime: string; width: number | null; height: number | null; deleted_at: Date | null }>("select kind, mime, width, height, deleted_at from assets where id = $1", [assetId]);
+  const row = a.rows[0];
+  if (!row) return "That picture does not exist.";
+  return characterProblem({ kind: row.kind, mime: row.mime, width: row.width, height: row.height, deleted: row.deleted_at !== null });
+}
+
 /** Sets (or clears, with null) the character of an AI video. Only AI videos have one. One audit row. */
 export async function setVideoCharacter(db: pg.Pool, videoId: string, assetId: string | null): Promise<void> {
   const v = await db.query<{ kind: string }>("select kind from videos where id = $1", [videoId]);
   if (!v.rows[0]) throw new CharacterRefused("That video does not exist.");
   if (v.rows[0].kind !== "ai") throw new CharacterRefused("Only an AI video has a character.");
   if (assetId !== null) {
-    const a = await db.query<{ kind: string; mime: string; width: number | null; height: number | null; deleted_at: Date | null }>("select kind, mime, width, height, deleted_at from assets where id = $1", [assetId]);
-    const row = a.rows[0];
-    if (!row) throw new CharacterRefused("That picture does not exist.");
-    const why = characterProblem({ kind: row.kind, mime: row.mime, width: row.width, height: row.height, deleted: row.deleted_at !== null });
+    const why = await characterProblemOf(db, assetId);
     if (why) throw new CharacterRefused(why);
   }
   const client = await db.connect();
@@ -46,4 +51,16 @@ export async function setVideoCharacter(db: pg.Pool, videoId: string, assetId: s
   } finally {
     client.release();
   }
+}
+
+/** Library pictures that could be a character (newest first): PNG or JPEG, at least 300 px each way, not extreme in shape. */
+export async function characterCandidates(db: Db, limit = 60): Promise<Array<{ id: string; name: string }>> {
+  const { rows } = await db.query<{ id: string; original_name: string }>(
+    `select id, original_name from assets
+      where kind = 'image' and deleted_at is null and mime in ('image/png', 'image/jpeg') and least(width, height) >= $1
+        and width::float / nullif(height, 0) between 0.4 and 2.5
+      order by created_at desc limit $2`,
+    [MIN_CHARACTER_SIDE, limit],
+  );
+  return rows.map((r) => ({ id: r.id, name: r.original_name }));
 }
