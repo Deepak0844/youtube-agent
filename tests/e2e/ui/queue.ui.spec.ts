@@ -16,9 +16,12 @@ const count = async (sql: string, args: unknown[] = []) => Number((await db().qu
 const noPageScroll = async (page: Page) =>
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 
-async function open(page: Page) {
+// The queue is an inbox: pick the test's own item in the list to open its card on the right (phone: full screen).
+const listItem = (page: Page, topic: string) => page.getByRole("region", { name: "Waiting on you" }).getByRole("link", { name: new RegExp(topic) });
+async function open(page: Page, topic?: string) {
   await page.goto("/queue");
   await expect(page.getByRole("heading", { level: 1, name: "Queue" })).toBeVisible();
+  if (topic) await listItem(page, topic).click();
 }
 
 async function axeViolations(page: Page): Promise<string[]> {
@@ -44,7 +47,7 @@ test("empty state and the nav entry", async ({ page }) => {
 test("script gate: shows the text, word count, evidence and the review reference; approve advances to the cost gate live, without a reload", async ({ page }) => {
   const topic = `journey ${stamp()}`;
   const { videoId } = await seedScriptGate(topic, { withCost: true });
-  await open(page);
+  await open(page, topic);
   const c = card(page, topic);
   await expect(c).toBeVisible();
   await expect(c).toContainText("Script gate");
@@ -79,7 +82,7 @@ test("script gate: shows the text, word count, evidence and the review reference
 test("send back needs a note, keeps what was typed when it is too short, and reruns the draft with the note", async ({ page }) => {
   const topic = `sendback ${stamp()}`;
   const { videoId } = await seedScriptGate(topic);
-  await open(page);
+  await open(page, topic);
   const c = card(page, topic);
   const note = c.getByLabel("Send back with a note");
   await note.fill("ab");
@@ -96,7 +99,7 @@ test("send back needs a note, keeps what was typed when it is too short, and rer
 test("a page that went stale says so, approves nothing and shows the new content", async ({ page }) => {
   const topic = `stale ${stamp()}`;
   const { videoId } = await seedScriptGate(topic);
-  await open(page);
+  await open(page, topic);
   const c = card(page, topic);
   const before = await c.getByTestId("review-ref").textContent();
   await addContent(db(), videoId, "script", { body: script(topic), sha256: sha256Hex(`script-new-${videoId}`) });
@@ -116,7 +119,7 @@ test("a page that went stale says so, approves nothing and shows the new content
 test("a parked step shows the dollar figure and the choices, and a release needs the billing check", async ({ page }) => {
   const topic = `parked ${stamp()}`;
   const { videoId, stageId } = await seedParked(topic);
-  await open(page);
+  await open(page, topic);
   const c = card(page, topic);
   await expect(c).toContainText("Needs your decision");
   await expect(c.getByTestId("decision-figure")).toHaveText("$0.25");
@@ -133,7 +136,7 @@ test("a parked step shows the dollar figure and the choices, and a release needs
 test("keyboard only: Tab to the approve button of one gate and press Enter", async ({ page }) => {
   const topic = `keyboard ${stamp()}`;
   const { videoId } = await seedScriptGate(topic);
-  await open(page);
+  await open(page, topic);
   await expect(card(page, topic)).toBeVisible();
   await page.locator("main").press("Tab"); // leave the skip-link/shell region behind from the page start
   let reached = false;
@@ -151,7 +154,7 @@ test("keyboard only: Tab to the approve button of one gate and press Enter", asy
 test("publish gate names the channel and visibility, and approving queues one upload", async ({ page }) => {
   const topic = `publish ${stamp()}`;
   const { videoId } = await seedPublishGate(topic, "unlisted");
-  await open(page);
+  await open(page, topic);
   const c = card(page, topic);
   await expect(c).toContainText("Publish gate");
   await expect(c.getByTestId("publish-channel")).toHaveText("UC-e2e");
@@ -162,7 +165,7 @@ test("publish gate names the channel and visibility, and approving queues one up
   expect(await count("select count(*)::int as n from uploads where video_id = $1 and status = 'publish_approved'", [videoId])).toBe(1);
 });
 
-test("accessibility: no axe violations with every kind of card on the page; no horizontal scroll", async ({ page }) => {
+test("accessibility: no axe violations with the inbox list and an open card; no horizontal scroll", async ({ page }) => {
   const a = `axe-a ${stamp()}`;
   const b = `axe-b ${stamp()}`;
   const p = `axe-p ${stamp()}`;
@@ -172,7 +175,9 @@ test("accessibility: no axe violations with every kind of card on the page; no h
   await seedPublishGate(p);
   await seedParked(d);
   await open(page);
-  for (const t of [a, p, d]) await expect(card(page, t)).toBeVisible();
+  for (const t of [a, p, d]) await expect(listItem(page, t)).toBeVisible();
+  await listItem(page, d).click();
+  await expect(card(page, d)).toBeVisible();
   await expect(page.getByTestId("live-feed")).toHaveAttribute("data-state", "live");
   expect(await axeViolations(page)).toEqual([]);
   await noPageScroll(page);
@@ -197,7 +202,7 @@ test("the live feed closes when the tab is hidden and reopens when it is visible
 test("look gate: a contact sheet of the preview pictures with shots and times, what was not found, the advice; fits a phone; no accessibility violations", async ({ page }) => {
   const topic = `look ${stamp()}`;
   const { shots } = await seedLookGate(topic, { advice: ["Image 2 is mostly empty sky."] });
-  await open(page);
+  await open(page, topic);
   const c = card(page, topic);
   await expect(c).toBeVisible();
   await expect(c).toContainText("Look gate");
@@ -221,7 +226,7 @@ test("look gate: approving the look queues Render (and only then); the card goes
   const topic = `look-ok ${stamp()}`;
   const { videoId } = await seedLookGate(topic);
   expect(await count("select count(*)::int as n from stage_runs where video_id = $1 and name = 'render'", [videoId])).toBe(0);
-  await open(page);
+  await open(page, topic);
   const c = card(page, topic);
   await c.getByRole("button", { name: /^Approve look/ }).click();
   await expect(c).toHaveCount(0);
@@ -232,7 +237,7 @@ test("look gate: approving the look queues Render (and only then); the card goes
 test("look gate: send back needs a note and queues the director again with it", async ({ page }) => {
   const topic = `look-back ${stamp()}`;
   const { videoId } = await seedLookGate(topic);
-  await open(page);
+  await open(page, topic);
   const c = card(page, topic);
   await c.getByLabel("Send back with a note").fill("More palm trees and a brighter sky.");
   await c.getByRole("button", { name: /^Send back/ }).click();

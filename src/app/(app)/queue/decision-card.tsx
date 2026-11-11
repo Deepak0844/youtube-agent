@@ -27,7 +27,7 @@ export function DecisionCard({ item }: { item: DecisionItem }) {
   const fields = { stageRunId: d.stageRunId, seenMaxMicroUsd: String(d.maxCostMicroUsd), seenReason: d.reason };
   const shown = d.choices.filter((c) => c in CHOICE);
   return (
-    <article aria-label={`Needs your decision: ${item.topic}`} data-testid="decision-card" data-video={item.videoId} className="flex min-w-0 flex-col gap-5 rounded-card bg-surface p-pad">
+    <article aria-label={`Needs your decision: ${item.topic}`} data-testid="decision-card" data-video={item.videoId} className="flex min-w-0 flex-col gap-5 rounded-card border border-border bg-surface p-pad">
       <header className="flex min-w-0 flex-col gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Pill tone="negative">Needs your decision</Pill>

@@ -9,6 +9,8 @@ test("the queue carries one short from script review to generation without a pag
   const topic = `phase-2-journey-${Date.now()}`;
   const { videoId } = await seedScriptGate(topic, { withCost: true });
   await page.goto("/queue");
+  // The queue is an inbox: open this video's item from the list.
+  await page.getByRole("region", { name: "Waiting on you" }).getByRole("link", { name: new RegExp(topic) }).click();
 
   const card = page.getByRole("article", { name: new RegExp(topic) });
   await expect(card).toContainText("Script gate");
