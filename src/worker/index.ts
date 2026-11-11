@@ -21,6 +21,7 @@ import { runOvernightDrafting } from "@/server/db/drafting";
 import { throttledScheduler } from "@/server/db/scheduler";
 import { checkTargetPause } from "@/server/db/targets";
 import { defaultGoogleHttp } from "@/server/db/youtube-channels";
+import { throttledBackup } from "@/server/db/backup";
 import { throttledRetention } from "@/server/db/retention";
 import { storageRoot } from "@/server/storage/paths";
 import { startRuntime, type WorkerOptions } from "./runtime";
@@ -64,6 +65,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         // Scheduler (Phase 6): daily analytics pull (read only). Other jobs join as their pieces land.
         let scheduleTick: (() => Promise<void>) | undefined;
         let purgeTick: (() => Promise<void>) | undefined;
+        // Backups (Phase 9): a database dump and a storage archive every 6 hours (an hour after a failure), one at a time. Asks the database at most every few minutes.
+        let backupTick: (() => Promise<void>) | undefined;
         hooks.advanceAll = async (p, queue, readers, send) => {
           const r = await advanceAll(p, queue, readers, { send });
           await autoSeoSweep(p, queue).catch(() => undefined);
@@ -95,6 +98,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           void scheduleTick();
           purgeTick ??= throttledResearchPurge(p);
           void purgeTick();
+          backupTick ??= throttledBackup(p);
+          void backupTick();
           return r;
         };
       }

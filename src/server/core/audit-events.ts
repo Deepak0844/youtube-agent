@@ -33,6 +33,7 @@ export const AUDIT_EVENTS = {
   "comment.reply_failed": "A reply post failed or its outcome is unclear, so it is never retried automatically (detail: reply id, reason class)",
   "comment.reply_resolved": "The owner checked YouTube and settled an unclear or stuck reply by hand; nothing was sent (detail: reply id, outcome, session id)",
   "backup.completed": "A backup was made (detail: session id, folder name, bytes, folders pruned; never a path or connection detail)",
+  "backup.extra_dir_changed": "The owner turned the extra backup folder on or off (detail: session id, on or off; never the folder path)",
   "backup.failed": "A backup failed (detail: session id, reason class; never a path or connection detail)",
   "research.discovered": "Competitor suggestions were looked up on YouTube (detail: who asked, owner channel id, suggestions added, searches used today; never a token)",
   "research.decided": "The owner chose Watch or Not relevant for a suggested channel (detail: owner channel id, competitor id, decision, session id)",
