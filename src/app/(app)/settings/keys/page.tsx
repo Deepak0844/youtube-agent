@@ -19,7 +19,7 @@ export default function KeysPage() {
 const when = (d: Date): string =>
   `${d.getUTCDate()} ${d.toLocaleString("en-GB", { month: "short", timeZone: "UTC" })} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")} UTC`;
 
-const GROUPS = ["Language model", "Voice", "Image", "Stock media"] as const;
+const GROUPS = ["Language model", "Voice", "Image", "Stock media", "Video"] as const;
 
 async function Owned() {
   await requireOwner();

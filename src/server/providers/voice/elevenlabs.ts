@@ -78,11 +78,11 @@ async function readHead(res: Response): Promise<string> {
   return out.slice(0, 2000);
 }
 
-export async function readCapped(res: Response, who = "ElevenLabs"): Promise<Buffer> {
+export async function readCapped(res: Response, who = "ElevenLabs", max = MAX_BODY): Promise<Buffer> {
   const declared = Number(res.headers.get("content-length"));
-  if (declared > MAX_BODY) {
+  if (declared > max) {
     await res.body?.cancel().catch(() => undefined);
-    throw new Error(`${who} response is over the 50 MB limit.`);
+    throw new Error(`${who} response is over the ${Math.round(max / 1024 / 1024)} MB limit.`);
   }
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -92,9 +92,9 @@ export async function readCapped(res: Response, who = "ElevenLabs"): Promise<Buf
     const { done, value } = await reader.read(); // a reset or truncated body throws here: outcome unknown
     if (done) break;
     size += value.byteLength;
-    if (size > MAX_BODY) {
+    if (size > max) {
       await reader.cancel().catch(() => undefined);
-      throw new Error(`${who} response is over the 50 MB limit.`);
+      throw new Error(`${who} response is over the ${Math.round(max / 1024 / 1024)} MB limit.`);
     }
     chunks.push(value);
   }

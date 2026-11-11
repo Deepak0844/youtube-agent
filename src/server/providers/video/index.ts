@@ -18,7 +18,7 @@ export interface ClipArgs extends ClipRequest {
   model: string;
   /** Budget scopes (for example a video's quote cap). With none the call is refused: nothing would cap it. */
   budgetScopes: string[];
-  /** Absolute paths of the start and end pictures; present exactly when startImage / endImage is true. */
+  /** Storage-relative paths (an asset's storageRef) of the start and end pictures; present exactly when startImage / endImage is true. */
   startImagePath?: string;
   endImagePath?: string;
 }
