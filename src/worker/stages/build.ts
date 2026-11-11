@@ -41,7 +41,9 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
     if (video.kind === "scale3d") return buildScale3dAttempt(deps, script.script)(ctx); // no cost plan, no pictures: the model plans the 3D beats
     const beatIds = script.beats.map((b, i) => (typeof b?.id === "string" && b.id !== "" ? b.id : `beat-${i + 1}`));
 
-    const count = deps.paidImages === false ? 0 : Math.max(1, Math.min(beatIds.length, deps.maxImages ?? DEFAULTS.maxImages));
+    // An AI video's cost plan is the shot plan's (clips, approved at the cost gate): Build never writes a plan for it, or it would replace the approved one.
+    const isAi = video.kind === "ai";
+    const count = isAi || deps.paidImages === false ? 0 : Math.max(1, Math.min(beatIds.length, deps.maxImages ?? DEFAULTS.maxImages));
     const items: CostItem[] = Array.from({ length: count }, () => ({
       kind: "image",
       provider: deps.imageProvider ?? DEFAULTS.imageProvider,
@@ -55,13 +57,13 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
     }
 
     const room = await scopeHeadroom(deps.db, await videoMoneyScopes(deps.db, video));
-    if (plan.totalMicroUsd > room.micro) {
+    if (!isAi && plan.totalMicroUsd > room.micro) {
       throw new KnownFailure(`plan_over_the_cap: this plan would cost ${usd(plan.totalMicroUsd)} but only ${usd(room.micro)} is left under ${plainScope(room.scope)}. Nothing was spent.`);
     }
 
     // The old stub scene file (Render still reads it until it switches to scenes.json). It names the beats the images are for.
     await writeFile(path.join(ctx.attemptDir, "scene.json"), JSON.stringify({ version: 1, kind: video.kind, beats: beatIds, images: count }));
-    const content: OutContent[] = [{ kind: "cost_plan", body: costPlanBody(plan) }];
+    const content: OutContent[] = isAi ? [] : [{ kind: "cost_plan", body: costPlanBody(plan) }];
     const files = ["scene.json"];
     if (deps.makeLlm) {
       // Scenes: one reserved model call per attempt, per beat. A budget refusal or a bad scene fails the stage with no scenes file.
