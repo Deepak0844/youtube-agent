@@ -23,6 +23,8 @@ import { checkTargetPause } from "@/server/db/targets";
 import { defaultGoogleHttp } from "@/server/db/youtube-channels";
 import { throttledBackup } from "@/server/db/backup";
 import { throttledRetention } from "@/server/db/retention";
+import { runNextCutout } from "@/server/db/cutout-runner";
+import { runChild } from "@/server/render/child";
 import { storageRoot } from "@/server/storage/paths";
 import { startRuntime, type WorkerOptions } from "./runtime";
 
@@ -67,6 +69,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         let purgeTick: (() => Promise<void>) | undefined;
         // Backups (Phase 9): a database dump and a storage archive every 6 hours (an hour after a failure), one at a time. Asks the database at most every few minutes.
         let backupTick: (() => Promise<void>) | undefined;
+        // Cut-outs (Phase 8): picture cut-outs the owner asked for, one at a time, in the background (the model runs in its own process).
+        let cutoutBusy = false;
+        const cutoutTick = () => {
+          if (cutoutBusy) return;
+          cutoutBusy = true;
+          void runNextCutout(pool, { root: storageRoot(), ingest: { runChild: (spec) => runChild(spec) } })
+            .catch(() => undefined)
+            .finally(() => { cutoutBusy = false; });
+        };
         hooks.advanceAll = async (p, queue, readers, send) => {
           const r = await advanceAll(p, queue, readers, { send });
           await autoSeoSweep(p, queue).catch(() => undefined);
@@ -100,6 +111,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           void purgeTick();
           backupTick ??= throttledBackup(p);
           void backupTick();
+          cutoutTick();
           return r;
         };
       }

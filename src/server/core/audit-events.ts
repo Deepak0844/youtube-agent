@@ -95,6 +95,8 @@ export const AUDIT_EVENTS = {
   "captions.checked": "The owner ticked that the approximate captions were checked",
   // Phase 3 asset ingest (detail: ingest job id, kind, asset id, whether it was a duplicate; never a file name or path)
   "asset.added": "An uploaded file was checked and added to the library",
+  "asset.cutout_queued": "The owner asked for a see-through cut-out of a library picture (detail: asset, method)",
+  "asset.cutout_made": "A see-through cut-out of a library picture was made (detail: source asset, new asset, method)",
   "asset.upload_refused": "An uploaded file was refused",
   // Phase 3 assets page (detail: asset ids and counts only; never a file name or path)
   "asset.kept": "An asset's Keep switch was changed",
