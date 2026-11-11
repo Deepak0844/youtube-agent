@@ -69,6 +69,16 @@ describe("listVideos", () => {
     expect(p2.rows).toHaveLength(3);
     expect(p2.hasNext).toBe(false);
     expect([...p1.rows, ...p2.rows].map((r) => r.id)).toEqual([...ids].reverse());
+    expect(p1.total).toBe(PAGE_SIZE + 3);
+    expect(p2.total).toBe(PAGE_SIZE + 3);
+  });
+  it("takes a page size and offset from the URL (50 per page)", async () => {
+    for (let i = 0; i < 30; i++) await mk(`w${i}`);
+    const p = await listVideos(db.pool, parseLibraryQuery({}), { limit: 50, offset: 0 });
+    expect(p.rows).toHaveLength(30);
+    expect(p.total).toBe(30);
+    expect(p.hasNext).toBe(false);
+    expect((await listVideos(db.pool, parseLibraryQuery({ format: "long" }), { limit: 50, offset: 0 })).total).toBe(0);
   });
 });
 

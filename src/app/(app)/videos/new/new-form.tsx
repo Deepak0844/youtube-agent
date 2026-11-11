@@ -8,15 +8,21 @@ import { cn, control, fade, focusRing } from "@/ui/lib/cn";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
 import { Label } from "@/ui/primitives/label";
+import { useUnsavedWarning } from "@/ui/states/use-unsaved-warning";
 import { StyleMock } from "./style-mock";
 import { createVideoAction, type NewVideoState } from "./actions";
 
-const selectClass = cn("w-full rounded-control border border-control bg-surface px-4 text-body text-text disabled:opacity-50", control, fade, focusRing);
+const selectClass = cn("w-full rounded-control border border-control bg-surface px-3 text-body text-text disabled:opacity-50", control, fade, focusRing);
 
-export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, characters }: { scaleLimitNote: string | null; scene3dNote: string | null; maxLongMinutes: number; aiNote: string | null; characters: Array<{ id: string; name: string }> }) {
+const card = "m-0 flex min-w-0 flex-col gap-4 rounded-card border border-border bg-surface p-pad";
+const cardTitle = "text-section font-semibold";
+
+export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, characters, initialFormat = "short" }: { scaleLimitNote: string | null; scene3dNote: string | null; maxLongMinutes: number; aiNote: string | null; characters: Array<{ id: string; name: string }>; initialFormat?: "short" | "long" }) {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
   const [kind, setKind] = useState<"scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "scene3d" | "scene3d_code">("scene_kit");
-  const [format, setFormat] = useState<"short" | "long">("short");
+  const [format, setFormat] = useState<"short" | "long">(initialFormat);
+  const [dirty, setDirty] = useState(false);
+  useUnsavedWarning(dirty && !pending);
   const long = format === "long"; // Long is offered for the Scene kit only: the other types stay Shorts for now
   const pickFormat = (f: "short" | "long") => {
     setFormat(f);
@@ -28,7 +34,9 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
   const [picked, setPicked] = useState("");
   const style = custom && picked === "" ? "ai_studio" : picked;
   return (
-    <form action={run} className="flex max-w-xl min-w-0 flex-col gap-5">
+    <form action={run} onChange={() => setDirty(true)} className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <section aria-labelledby="basics-h" className={card}>
+      <h2 id="basics-h" className={cardTitle}>Basics</h2>
       <div className="flex flex-col gap-2">
         <Label htmlFor="topic">Topic</Label>
         <Input id="topic" name="topic" required maxLength={200} placeholder="Why is the sky blue?" aria-describedby="topic-help" autoComplete="off" />
@@ -69,8 +77,14 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
           <p className="m-0 max-w-[68ch] text-small text-muted">From 3 up to {maxLongMinutes} minutes (Settings, System sets the ceiling). The studio first writes a chapter outline and stops for your approval before it writes the script or pays for narration.</p>
         </fieldset>
       ) : null}
-      <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-        <legend className="mb-1 text-body font-medium">Video type</legend>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="notes">Notes (optional)</Label>
+        <textarea id="notes" name="notes" rows={4} maxLength={2000} placeholder="Angle, tone, things to include or avoid" className={cn(selectClass, "py-2")} />
+      </div>
+      </section>
+      <fieldset className={card}>
+        <legend className="sr-only">Video type</legend>
+        <p aria-hidden className={cardTitle}>Video type</p>
         {(
           [
             ["scene_kit", "Scene kit (default)", "Safe and fast: the app builds the scenes from a fixed set of parts."],
@@ -82,7 +96,7 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
             ["scene3d", "3D story (detailed)", "A 60 s illustrated 3D story built from free CC0 models. You approve the look from preview pictures before the long render. Needs 'Render 3D on this Mac' turned on in System settings."],
           ] as const
         ).map(([id, title, help]) => (
-          <label key={id} className={cn("flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-rule bg-surface p-3 has-checked:outline-2 has-checked:outline", long && id !== "scene_kit" && "opacity-50")}>
+          <label key={id} className={cn("flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-border bg-page p-3 has-checked:outline-2 has-checked:outline", long && id !== "scene_kit" && "opacity-50")}>
             <input type="radio" name="kind" value={id} checked={kind === id} disabled={long && id !== "scene_kit"} onChange={() => setKind(id)} className="mt-1" />
             <span className="flex min-w-0 flex-col gap-1">
               <span className="text-body font-medium">{title}</span>
@@ -109,12 +123,13 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
       ) : null}
       {kind === "scale3d" && scaleLimitNote ?<p role="note" data-testid="render-limit-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{scaleLimitNote}</p> : null}
       {scale ? null : (
-      <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-        <legend className="mb-1 text-body font-medium">Style</legend>
+      <fieldset className={cn(card, "xl:col-span-2")}>
+        <legend className="sr-only">Style</legend>
+        <p aria-hidden className={cardTitle}>Look</p>
         {custom ? <p className="m-0 text-small text-muted">Claude draws the animation in this style: its colours, fonts, motion and pace.</p> : null}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
           {([...(custom ? [] : [["", null] as const]), ...STYLE_IDS.map((id) => [id, PRESETS[id]] as const)] as const).map(([id, s]) => (
-            <label key={id || "classic"} className="relative flex min-w-0 cursor-pointer flex-col gap-2 rounded-card border border-rule bg-surface p-2 has-checked:outline-2 has-checked:outline has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline">
+            <label key={id || "classic"} className="relative flex min-w-0 cursor-pointer flex-col gap-2 rounded-card border border-border bg-page p-2 has-checked:outline-2 has-checked:outline has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline">
               <input type="radio" name="style" value={id} checked={style === id} onChange={() => setPicked(id)} className="sr-only" />
               <StyleMock id={id} />
               <span className="flex min-w-0 flex-col gap-1">
@@ -132,18 +147,14 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
       </fieldset>
       )}
       {scale ? null : (
-      <label className="flex items-start gap-3 text-body">
+      <label className="flex items-start gap-3 text-body xl:col-span-2">
         <input type="checkbox" name="captionStyle" value="punchy_captions" disabled={custom} className="mt-1" />
         <span>Punchy captions <span className="block text-small text-muted">Big 1-3 word captions, yellow active word, black outline. Works with any style.{custom ? " Not used for custom animation, which has its own captions." : ""}</span></span>
       </label>
       )}
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="notes">Notes (optional)</Label>
-        <textarea id="notes" name="notes" rows={4} maxLength={2000} placeholder="Angle, tone, things to include or avoid" className={cn(selectClass, "py-2")} />
-      </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={pending}>
-          {pending ? "Starting..." : "Start video"}
+      <div className="flex flex-wrap items-center gap-3 xl:col-span-2">
+        <Button type="submit" loading={pending}>
+          Start video
         </Button>
         {state.message ? (
           <p role="alert" className="m-0 text-body text-pill-negative-ink">

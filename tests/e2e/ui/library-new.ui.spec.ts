@@ -11,7 +11,7 @@ const stamp = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const noPageScroll = async (page: Page) =>
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 
-test("New short -> the video page -> it shows in the Library with its language", async ({ page }) => {
+test("New short -> the video page -> it shows in Videos with its language", async ({ page }) => {
   const topic = `Why the sea is salty ${stamp()}`;
   await page.goto("/videos/new");
   await page.waitForLoadState("networkidle"); // client form: act only after hydration
@@ -31,8 +31,8 @@ test("New short -> the video page -> it shows in the Library with its language",
   expect(row[0].language).toBe("ta");
 
   await page.goto("/videos");
-  await expect(page.getByRole("heading", { level: 1, name: "Library" })).toBeVisible();
-  const item = page.locator("li[data-video]", { hasText: topic });
+  await expect(page.getByRole("heading", { level: 1, name: "Videos" })).toBeVisible();
+  const item = page.locator("[data-video]", { hasText: topic });
   await expect(item).toHaveCount(1);
   await expect(item).toContainText("Tamil");
   await expect(item).toContainText("so far");
@@ -40,7 +40,7 @@ test("New short -> the video page -> it shows in the Library with its language",
   await expect(page).toHaveURL(new RegExp(`/videos/${row[0].id}$`));
 });
 
-test("Library filters narrow the list and an unmatched filter shows the empty state", async ({ page }) => {
+test("Videos filters narrow the list and an unmatched filter shows the empty state", async ({ page }) => {
   const topic = `Filter me ${stamp()}`;
   await page.goto("/videos/new");
   await page.waitForLoadState("networkidle");
@@ -50,11 +50,12 @@ test("Library filters narrow the list and an unmatched filter shows the empty st
   await page.waitForURL(/\/videos\/[0-9a-f-]{36}$/);
 
   await page.goto("/videos?language=ml");
-  await expect(page.locator("li[data-video]", { hasText: topic })).toHaveCount(1);
+  await expect(page.locator("[data-video]", { hasText: topic })).toHaveCount(1);
   await page.goto("/videos?language=hi");
-  await expect(page.locator("li[data-video]", { hasText: topic })).toHaveCount(0);
+  await expect(page.locator("[data-video]", { hasText: topic })).toHaveCount(0);
   await page.goto("/videos?format=long");
-  await expect(page.getByText("No videos match these filters.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No results for these filters" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/videos");
   await noPageScroll(page);
 });
 
@@ -157,4 +158,16 @@ test("the New form offers the Collage type, which is a Short with the usual look
   await page.getByLabel("Format").selectOption("long");
   await expect(c).toBeDisabled();
   await noPageScroll(page);
+});
+
+test("pages: changing a filter on page 2 goes back to page 1", async ({ page }) => {
+  await page.goto("/videos?page=2&size=25");
+  await page.getByRole("navigation", { name: "Format" }).getByRole("link", { name: "Short" }).click();
+  await expect(page).not.toHaveURL(/page=/);
+});
+
+test("New long video opens the form on Long", async ({ page }) => {
+  await page.goto("/videos/new?format=long");
+  await expect(page.getByLabel("Format")).toHaveValue("long");
+  await expect(page.getByTestId("long-length")).toBeVisible();
 });

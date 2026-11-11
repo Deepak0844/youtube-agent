@@ -9,21 +9,22 @@ import { resolveRoute } from "@/server/db/media-registry";
 import { characterCandidates } from "@/server/db/video-characters";
 import { maxLongMinutes as readMaxLongMinutes } from "@/server/db/system-settings";
 import { LONG_HARD_MAX_MINUTES } from "@/server/core/long-form";
-import { Skeleton } from "@/ui/primitives/skeleton";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { NewForm } from "./new-form";
 
 export const metadata = { title: "New video" };
 
-export default function NewVideo() {
+export default function NewVideo({ searchParams }: PageProps<"/videos/new">) {
   return (
-    <Suspense fallback={<Skeleton aria-hidden className="h-96 w-full rounded-card" />}>
-      <Owned />
+    <Suspense fallback={<PageSkeleton variant="form" />}>
+      <Owned searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function Owned() {
+async function Owned({ searchParams }: Pick<PageProps<"/videos/new">, "searchParams">) {
   await requireOwner();
+  const initialFormat = (await searchParams).format === "long" ? "long" : "short"; // "New long video" links here with ?format=long
   const config = await getEngineConfig(getPool());
   const maxLongMinutes = Math.min(await readMaxLongMinutes(getPool()), LONG_HARD_MAX_MINUTES);
   const limitNote = renderLimitNote(config.render.timeoutS);
@@ -39,7 +40,7 @@ async function Owned() {
         <h1 className="text-page-title font-semibold tracking-tight">New video</h1>
         <p className="m-0 max-w-prose text-body text-muted">Say what the video is about. The studio writes a script and stops to ask you before it spends money or publishes anything.</p>
       </header>
-      <NewForm scaleLimitNote={limitNote} scene3dNote={nativeNote} maxLongMinutes={maxLongMinutes} aiNote={aiNote} characters={characters} />
+      <NewForm initialFormat={initialFormat} scaleLimitNote={limitNote} scene3dNote={nativeNote} maxLongMinutes={maxLongMinutes} aiNote={aiNote} characters={characters} />
     </div>
   );
 }
