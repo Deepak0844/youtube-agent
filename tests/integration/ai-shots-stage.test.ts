@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -14,7 +14,12 @@ import { insertQueuedStage } from "@/server/db/stages";
 import { addContent, createVideoRow, latestContent } from "@/server/db/videos";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
+import { createHash } from "node:crypto";
+import { KnownFailure } from "@/server/core/paid-call";
 import { createFakeVideo } from "@/server/providers/video/fake";
+import { assetsForVideo } from "@/server/db/video-assets";
+import { generateClipsAttempt } from "@/worker/stages/generate-clips";
+import { knownFailure, throwsUnknown } from "@/server/providers/fake-base";
 import { createFakeVoice } from "@/server/providers/voice/fake";
 import { withAttempt } from "@/worker/stages/attempt";
 import { buildAttempt } from "@/worker/stages/build";
@@ -40,7 +45,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.reset();
   await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('video:ai', 5000000), ('day', 15000000), ('month', 100000000)");
-  await db.ownerPool.query("insert into media_routes (kind, scope, provider, model) values ('video', 'kind:ai', 'fake-video', 'fake-video') on conflict (kind, scope) do update set provider = excluded.provider, model = excluded.model");
+  await db.ownerPool.query("insert into media_routes (kind, scope, provider, model) values ('video', 'kind:ai', 'fake_video', 'fake-video') on conflict (kind, scope) do update set provider = excluded.provider, model = excluded.model");
 });
 
 const deps = (over: Partial<StageDeps> = {}): StageDeps => {
@@ -91,8 +96,8 @@ describe("the shot plan stage", () => {
     expect(body.shots.map((s) => [s.beatId, s.seconds])).toEqual([["b1", 6], ["b2", 4]]); // 6 s, and 3.8 s rounded up
     expect(body.shots[0]!.prompt).toMatch(/^A red fox runs through deep snow\. No text, captions, logos or watermarks\.$/);
     expect(body.items).toEqual([
-      { kind: "clip", provider: "fake-video/fake-video", quoteMicroUsd: 600_000 },
-      { kind: "clip", provider: "fake-video/fake-video", quoteMicroUsd: 400_000 },
+      { kind: "clip", provider: "fake_video/fake-video", quoteMicroUsd: 600_000 },
+      { kind: "clip", provider: "fake_video/fake-video", quoteMicroUsd: 400_000 },
     ]);
     expect(body.totalMicroUsd).toBe(1_000_000);
     const parsed = parseCostPlan(plan!.body);
@@ -159,5 +164,112 @@ describe("Build for an AI video", () => {
     const after = await latestContent(db.pool, id, "cost_plan");
     expect(after!.version).toBe(before!.version);
     expect((after!.body as { path: string }).path).toBe("ai");
+  });
+});
+
+// ---- Generate for an AI video ------------------------------------------------------------------------------------------------------------
+
+const okClip = (name?: string) => async (_d: unknown, a: { srcPath: string; destDir: string }) => {
+  mkdirSync(a.destDir, { recursive: true });
+  renameSync(a.srcPath, path.join(a.destDir, "main.mp4"));
+  return { ok: true as const, kind: "video" as const, mime: "video/mp4", width: 1080, height: 1920, durationS: 6, bytes: 16, originalBytes: 16, sha256: createHash("sha256").update(name ?? `clip-${Math.random()}`).digest("hex"), files: { main: path.join(a.destDir, "main.mp4") } };
+};
+const gen = (over: Partial<StageDeps> = {}) => withAttempt({ db: db.pool, root }, generateClipsAttempt(deps({ ingest: { runChild: async () => { throw new Error("not used"); } }, ingestClipFn: okClip() as never, ...over })));
+async function approvedPlan(): Promise<string> {
+  const id = await aiVideo();
+  expect((await play(id, "shots", shots())).kind).toBe("committed");
+  const live = await liveGateHash(db.pool, id, "cost");
+  const ok = await approveGate(db.pool, { videoId: id, gate: "cost", seenHash: live!.hash, actor: SESSION });
+  if (!ok.ok) throw new Error(ok.reason);
+  return id;
+}
+const intents = async () => Number((await db.pool.query("select coalesce(sum(coalesce(actual_micro_usd, 0)), 0)::text n from spend_intents")).rows[0].n);
+
+describe("the clip generation stage", () => {
+  it("buys each approved clip once, saves it as an AI-made library clip linked to its beat, and records the clips", async () => {
+    const id = await approvedPlan();
+    const fake = createFakeVideo();
+    const out = await play(id, "generate", gen({ videoFor: async () => fake }));
+    expect(out.kind).toBe("committed");
+    expect(fake.totalCalls()).toBe(2);
+    const links = await assetsForVideo(db.pool, id);
+    expect(links.map((l) => [l.beatId, l.kind]).sort()).toEqual([["b1", "video"], ["b2", "video"]]);
+    expect(links.every((l) => l.briefHash?.startsWith("ai:"))).toBe(true);
+    const rows = (await db.pool.query("select source, kind, tags, rights from assets order by created_at")).rows as Array<{ source: string; kind: string; tags: string[]; rights: { attestations: Array<{ text: string; by: string }> } }>;
+    expect(rows).toHaveLength(2);
+    for (const r of rows) {
+      expect(r).toMatchObject({ source: "generated", kind: "video" });
+      expect(r.tags).toContain("ai");
+      expect(r.rights.attestations[0]).toMatchObject({ by: "system", text: expect.stringMatching(/^Generated by AI for this video with/) });
+    }
+    const clips = await latestContent(db.pool, id, "clips");
+    expect((clips!.body as { items: Array<{ beatId: string; seconds: number }> }).items.map((i) => [i.beatId, i.seconds])).toEqual([["b1", 6], ["b2", 4]]);
+    expect(await intents()).toBe(1_000_000); // exactly the approved total
+  });
+
+  it("buys nothing when the plan is not approved, when it changed after approval, when another model is routed, or when a price moved", async () => {
+    const id = await aiVideo();
+    await play(id, "shots", shots());
+    const fake = createFakeVideo();
+    const refused = async (over: Partial<StageDeps>, why: RegExp) => {
+      const out = await play(id, "generate", gen({ videoFor: async () => fake, ...over }));
+      expect(out.kind).not.toBe("committed");
+      expect(JSON.stringify(await stageRow(id, "generate"))).toMatch(why);
+      expect(fake.totalCalls()).toBe(0);
+    };
+    await refused({}, /not approved/); // the cost gate was never approved
+    const live = await liveGateHash(db.pool, id, "cost");
+    await approveGate(db.pool, { videoId: id, gate: "cost", seenHash: live!.hash, actor: SESSION });
+    await refused({ videoFor: async () => createFakeVideo({ price: { unit: "per_second", microUsd: 999_999 } }) }, /price changed/);
+    await db.ownerPool.query("update media_routes set model = 'fake-text-only' where kind = 'video'");
+    await refused({}, /different video model/);
+    await db.ownerPool.query("update media_routes set model = 'fake-video' where kind = 'video'");
+    const body = (await latestContent(db.pool, id, "cost_plan"))!.body as Record<string, unknown>;
+    const edited = { ...body, shots: [] };
+    await addContent(db.pool, id, "cost_plan", { body: edited, sha256: sha256Hex(canonicalJson(edited)) });
+    await refused({}, /not approved|changed/);
+    expect(await intents()).toBe(0);
+    expect(await assetsForVideo(db.pool, id)).toHaveLength(0);
+  });
+
+  it("a provider that charges more than it quoted stops the run before the next clip", async () => {
+    const id = await approvedPlan();
+    const fake = createFakeVideo({ priceMicroUsd: 1_200_000 });
+    const out = await play(id, "generate", gen({ videoFor: async () => fake }));
+    expect(out.kind).not.toBe("committed");
+    expect(fake.totalCalls()).toBe(1);
+  });
+
+  it("a clip that fails the safety check after it was paid for parks as an unknown outcome and is never bought again", async () => {
+    const id = await approvedPlan();
+    const fake = createFakeVideo();
+    const bad = (async () => ({ ok: false, reason: "bad_clip" })) as never;
+    const err = await play(id, "generate", gen({ videoFor: async () => fake, ingestClipFn: bad })).then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(Error); // a plain error (never a refusal): the runner parks the stage for the owner and keeps the money held
+    expect(err).not.toBeInstanceOf(KnownFailure);
+    expect(String((err as Error).message)).toMatch(/safety check/);
+    expect(fake.totalCalls()).toBe(1);
+    expect(await assetsForVideo(db.pool, id)).toHaveLength(0);
+  });
+
+  it("a refused or unknown provider answer stops the run with nothing linked", async () => {
+    for (const script of [[knownFailure("no")], [throwsUnknown()]]) {
+      await db.reset();
+      await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('video:ai', 5000000), ('day', 15000000), ('month', 100000000)");
+      await db.ownerPool.query("insert into media_routes (kind, scope, provider, model) values ('video', 'kind:ai', 'fake_video', 'fake-video')");
+      const id = await approvedPlan();
+      const out = await play(id, "generate", gen({ videoFor: async () => createFakeVideo({ script }) })).catch(() => ({ kind: "threw" }));
+      expect(out.kind).not.toBe("committed");
+      expect(await assetsForVideo(db.pool, id)).toHaveLength(0);
+    }
+  });
+
+  it("is only for AI videos, and needs the clip check to be set up", async () => {
+    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t" });
+    expect((await play(v.id, "generate", gen())).kind).not.toBe("committed");
+    expect(JSON.stringify(await stageRow(v.id, "generate"))).toMatch(/Only an AI video/);
+    const id = await approvedPlan();
+    expect((await play(id, "generate", gen({ ingest: undefined }))).kind).not.toBe("committed");
+    expect(JSON.stringify(await stageRow(id, "generate"))).toMatch(/Clip checking is not set up/);
   });
 });

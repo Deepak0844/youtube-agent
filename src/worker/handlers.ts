@@ -37,7 +37,7 @@ import { scanVideo } from "@/server/render/qa-scan";
 import { ingestAudio, ingestImage, type IngestDeps } from "@/server/render/ingest";
 import { storageRoot } from "@/server/storage/paths";
 import { createVoiceFor, whisperAligner } from "./stages/voice-for";
-import { withAttempt } from "./stages/attempt";
+import { withAttempt, type AttemptHandler } from "./stages/attempt";
 import { buildAttempt } from "./stages/build";
 import { repairScenesAttempt } from "./stages/repair-scenes";
 import { reframeAttempt } from "./stages/reframe";
@@ -49,6 +49,8 @@ import type { StageDeps } from "./stages/deps";
 import { dryRunDraftHandler } from "./stages/draft";
 import { generateAttempt } from "./stages/generate";
 import { shotsAttempt } from "./stages/shots";
+import { generateClipsAttempt } from "./stages/generate-clips";
+import { loadVideo } from "./stages/deps";
 import { dryRunPicturesHandler, picturesHandler } from "./stages/pictures";
 import { outlineAttempt } from "./stages/outline";
 import { qaAttempt } from "./stages/qa";
@@ -99,7 +101,7 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     draft: dryRunDraftHandler(deps.db),
     pictures: dryRunPicturesHandler,
     build: withAttempt(fin, buildAttempt(deps)),
-    generate: withAttempt(fin, generateAttempt(deps)),
+    generate: withAttempt(fin, generateByKind(deps)),
     tts: withAttempt(fin, ttsAttempt(deps)),
     render: withAttempt(fin, renderAttempt(deps)),
     tsx_author: withAttempt(fin, tsxAuthorAttempt(deps)),
@@ -117,6 +119,13 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     shots: withAttempt(fin, shotsAttempt(deps)),
     seo: withAttempt(fin, seoAttempt(deps)),
   };
+}
+
+/** Generate buys clips for an AI video and (dry run only) fake images for the others. */
+export function generateByKind(deps: StageDeps): AttemptHandler {
+  const images = generateAttempt(deps);
+  const clips = generateClipsAttempt(deps);
+  return async (ctx) => ((await loadVideo(deps.db, ctx)).kind === "ai" ? clips(ctx) : images(ctx));
 }
 
 /**
@@ -163,6 +172,7 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     imageFor: createImageFor(pool, () => loadKeyring(), root),
     // AI videos: the routed video provider (refuses before any money is reserved when off, unpriced or without a key).
     videoFor: createVideoFor(pool, () => loadKeyring(), root),
+    ingest: { runChild: run },
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
     // Code scenes (tsx_author): the same container locks plus tighter limits (tsx-sandbox.ts); the model's file never touches the host shell.
     tsx: createTsxRenderer({ kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) }),
@@ -267,6 +277,11 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     thumbnail: refuseDryRunVideos(pool, withAttempt(fin, thumbnailAttempt(deps))),
     derive: refuseDryRunVideos(pool, withAttempt(fin, deriveAttempt(deps))),
     shots: refuseDryRunVideos(pool, withAttempt(fin, shotsAttempt(deps))),
+    // Only AI videos buy anything in production (the clips of the approved cost plan); every other kind has no paid generation yet.
+    generate: refuseDryRunVideos(pool, async (ctx) => {
+      if ((await loadVideo(pool, ctx)).kind !== "ai") throw new KnownFailure("This step is not wired in production yet.");
+      return withAttempt(fin, generateClipsAttempt(deps))(ctx);
+    }),
     seo: refuseDryRunVideos(pool, seo),
     reply_drafts: refuseDryRunVideos(pool, replyDrafts),
     build: refuseDryRunVideos(pool, build),

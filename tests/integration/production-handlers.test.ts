@@ -22,9 +22,9 @@ const registry = () => {
 };
 
 describe("production handlers", () => {
-  it("wires outline, draft, build, tts, render, voice, sfx and qa; generate stays missing", () => {
+  it("wires outline, draft, build, tts, render, voice, sfx, qa and shots; generate is wired for AI videos only", () => {
     const h = productionHandlers(db.pool);
-    expect(Object.keys(h).sort()).toEqual(["build", "derive", "direct_scene3d", "draft", "outline", "pictures", "qa", "reframe", "render", "repair_scenes", "reply_drafts", "scene3d_author", "scene3d_review", "scene3d_stills", "seo", "sfx", "shots", "thumbnail", "tsx_author", "tts", "voice"]);
+    expect(Object.keys(h).sort()).toEqual(["build", "derive", "direct_scene3d", "draft", "generate", "outline", "pictures", "qa", "reframe", "render", "repair_scenes", "reply_drafts", "scene3d_author", "scene3d_review", "scene3d_stills", "seo", "sfx", "shots", "thumbnail", "tsx_author", "tts", "voice"]);
   });
 
   it("the kit folder comes from the code's own location, symlinks resolved; a symlinked kit is passed unresolved (and refused)", () => {
