@@ -87,13 +87,15 @@ describe("Pagination", async () => {
   it("page 1: previous is disabled, next links to page 2, label is shown", () => {
     render(<Pagination page={1} size={25} total={60} hrefFor={href} />);
     expect(screen.getByText("1–25 of 60")).toBeTruthy();
-    expect(screen.getByLabelText("Previous page").getAttribute("aria-disabled")).toBe("true");
+    const prev = screen.getByRole("button", { name: "Previous page" });
+    expect((prev as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("link", { name: "Previous page" })).toBeNull();
     expect(screen.getByRole("link", { name: "Next page" }).getAttribute("href")).toBe("/videos?page=2&size=25");
     expect(screen.getByRole("link", { name: "1" }).getAttribute("aria-current")).toBe("page");
   });
   it("last page: next is disabled", () => {
     render(<Pagination page={3} size={25} total={60} hrefFor={href} />);
-    expect(screen.getByLabelText("Next page").getAttribute("aria-disabled")).toBe("true");
+    expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 

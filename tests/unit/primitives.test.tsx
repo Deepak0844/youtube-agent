@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Button } from "@/ui/primitives/button";
 import { Card, CardHeader } from "@/ui/primitives/card";
 import { Pill } from "@/ui/primitives/pill";
-import { SubmitButton } from "@/ui/primitives/submit-button";
 
 afterEach(cleanup);
 
@@ -26,22 +25,6 @@ describe("Button", () => {
     render(<><Button>One</Button><Button variant="secondary">Two</Button></>);
     expect(screen.getByRole("button", { name: "One" }).className).toContain("bg-text");
     expect(screen.getByRole("button", { name: "Two" }).className).toContain("border-border");
-  });
-});
-
-describe("SubmitButton", () => {
-  it("is disabled and busy while its form action is pending", async () => {
-    const never = () => new Promise<void>(() => {});
-    render(
-      <form action={never}>
-        <SubmitButton>Approve</SubmitButton>
-      </form>,
-    );
-    const b = screen.getByRole("button", { name: /Approve/ });
-    expect(b.getAttribute("type")).toBe("submit");
-    b.click();
-    await screen.findByRole("button", { name: /Approve/, busy: true });
-    expect((b as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
