@@ -9,7 +9,7 @@
 // seen signed out). Finally the skill's lint.mjs scans src/. Exit code is 1 when the inspector or linter reports a FAIL.
 //
 // Needs: Docker/OrbStack, Chrome, Node 22, and the skill (.claude/skills/design-taste-frontend) with a dealt app
-// direction in .taste-skill/app/direction.json (never committed). Shots land in .taste-skill/app/<slug>/.
+// direction in .taste-skill/direction.json (never committed; since 2026-11-12 the "framed-sheet" style, kind creator). Shots land in .taste-skill/app/<slug>/.
 // Set DESIGN_CHECK_SKIP_BUILD=1 to reuse an existing .next build; DESIGN_CHECK_ONLY=/settings/keys,/login to narrow.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -27,6 +27,9 @@ const OUT = path.resolve(".taste-skill/app");
 const TARGETS = ["/dev/ui", "/dev/ui/home", "/dev/ui/video", "/", "/settings/keys", "/settings/models", "/settings/google", "/settings/system", "/settings/budgets", "/settings/providers", "/settings/assets", "/settings/audit", "/settings/account", "/settings/policies", "/settings/channels", "/settings/notifications", "/settings/schedule", "/settings/tokens", "/queue", "/videos", "/videos/new", "/series", "/ideas", "/research", "/targets", "/calendar", "/analytics", "/engagement", "/assets", "/login"];
 const slug = (p: string) => (p === "/" ? "home" : p.slice(1).replaceAll("/", "-"));
 const only = process.env.DESIGN_CHECK_ONLY?.split(",");
+// Inspector rules that conflict with the owner-approved design (spec 2026-11-12) are listed, with a reason each, in
+// design-check-allow.json. Contrast, overflow, Indic font fallback and layout findings are never listed there.
+const ALLOW = Object.keys(JSON.parse(readFileSync(path.resolve("scripts/design-check-allow.json"), "utf8")) as Record<string, string>).join(",");
 
 // Forwards to `upstream`, adding the session cookie when given. Returns the proxy's port.
 async function proxy(upstream: number, cookie: string | null): Promise<{ port: number; close: () => void }> {
@@ -74,7 +77,7 @@ async function indicFontCheck(url: string): Promise<boolean> {
       }
     }
     for (const [l, fams] of seen) console.log(`  indic ${l}: ${[...fams].join(", ")}`);
-    console.log(system === 0 ? "  Indic fonts: all self-hosted Noto/Instrument faces, no system fonts." : `  FAIL Indic fonts: ${system} text run(s) drawn with a system font.`);
+    console.log(system === 0 ? "  Indic fonts: all self-hosted Noto/Geist faces, no system fonts." : `  FAIL Indic fonts: ${system} text run(s) drawn with a system font.`);
     return system === 0 && seen.size > 0;
   } finally {
     await browser.close();
@@ -137,7 +140,7 @@ try {
     closers.push(p.close);
     if (target.startsWith("/dev/")) await fetch(`http://127.0.0.1:${p.port}${target}`).catch(() => {}); // warm the dev compile
     console.log(`\n=== ${target} (${target.startsWith("/dev/") ? "dev server" : "production build"}) ===`);
-    const code = await runNode([path.join(SKILL, "inspect.mjs"), `http://127.0.0.1:${p.port}${target}`, "--app", "--allow", "font-not-dealt", "--out", path.join(OUT, slug(target))]);
+    const code = await runNode([path.join(SKILL, "inspect.mjs"), `http://127.0.0.1:${p.port}${target}`, "--app", "--allow", ALLOW, "--out", path.join(OUT, slug(target))]);
     if (code !== 0) failed = true;
     if (target === "/dev/ui" && !(await indicFontCheck(`http://127.0.0.1:${p.port}${target}`))) failed = true;
     p.close();
