@@ -132,3 +132,23 @@ test("unauthenticated visit is redirected to /login", async ({ browser, baseURL 
   await expect(page).toHaveURL(/\/login/);
   await context.close();
 });
+
+test("jump-to: Ctrl+K, type a page name, Enter opens it", async ({ page }) => {
+  test.skip(phone(page), "desktop only");
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+  await page.keyboard.press("Control+k");
+  const box = page.getByRole("dialog");
+  await expect(box).toBeVisible();
+  await page.keyboard.type("keys");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/settings\/keys$/);
+});
+
+test("phone: Settings opens its pages in a sheet and nothing overflows", async ({ page }) => {
+  test.skip(!phone(page), "phone only");
+  await page.goto("/settings/keys");
+  await page.getByRole("navigation", { name: "Bottom" }).getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("navigation", { name: "Settings pages" }).getByRole("link", { name: "Keys" })).toHaveAttribute("aria-current", "page");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= 390)).toBe(true);
+});

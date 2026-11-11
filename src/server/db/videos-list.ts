@@ -38,3 +38,16 @@ export async function listVideos(db: pg.Pool, f: LibraryFilter): Promise<{ rows:
   );
   return { rows, hasNext: r.rows.length > PAGE_SIZE };
 }
+
+/** ⌘K jump-to: videos whose title contains `q` (case-insensitive; % and _ match literally), newest first. Blank → []. */
+export async function searchVideoTitles(db: Pick<pg.Pool, "query">, q: string, limit = 8): Promise<Array<{ id: string; title: string; format: VideoFormat }>> {
+  const term = q.trim();
+  if (!term) return [];
+  const r = await db.query<{ id: string; topic: string; format: VideoFormat }>(
+    `select id, topic, format from videos
+      where topic ilike '%' || replace(replace(replace($1, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'
+      order by created_at desc, id desc limit $2`,
+    [term, limit],
+  );
+  return r.rows.map((x) => ({ id: x.id, title: x.topic, format: x.format }));
+}

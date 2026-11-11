@@ -9,6 +9,7 @@ import { getBudget } from "@/server/db/spend";
 import { logoutAction } from "@/app/_actions/logout";
 import { cn, focusRing } from "../lib/cn";
 import { AccountMenu } from "./account-menu";
+import { CommandMenu } from "./command-menu";
 import { NotificationBell } from "./bell";
 import { Mark } from "./mark";
 import { BreadcrumbsLive } from "./nav-live";
@@ -58,7 +59,10 @@ export function TopBar() {
         </Suspense>
       </div>
 
-      <div className="ml-auto flex items-center gap-4 md:gap-5">
+      <div className="ml-auto hidden md:block">
+        <CommandMenu />
+      </div>
+      <div className="flex items-center gap-4 max-md:ml-auto md:gap-5">
         <p className="text-small whitespace-nowrap text-muted md:text-body">
           <Suspense fallback="$– of $– today">
             <SpendToday />
