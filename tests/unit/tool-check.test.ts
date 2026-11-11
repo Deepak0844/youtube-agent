@@ -89,12 +89,16 @@ describe("runToolChecks", () => {
 });
 
 describe("cachedToolChecks", () => {
-  it("remembers the answer for a minute and checks again after", async () => {
+  it("remembers the answer for a minute and checks again after (with a stub runner, so it never starts a real process)", async () => {
     let t = 1_000_000;
-    const first = await cachedToolChecks(() => t);
-    const again = await cachedToolChecks(() => (t += 30_000));
-    expect(again).toBe(first); // same object: no new processes
-    const later = await cachedToolChecks(() => (t += 40_000));
+    let runs = 0;
+    const stub = async () => [okCheck("ffmpeg", `run ${++runs}`)];
+    const first = await cachedToolChecks(() => t, stub);
+    expect(first[0]!.detail).toBe("run 1");
+    expect(await cachedToolChecks(() => (t += 30_000), stub)).toBe(first); // same object: no new run
+    expect(runs).toBe(1);
+    const later = await cachedToolChecks(() => (t += 40_000), stub);
     expect(later).not.toBe(first);
+    expect(runs).toBe(2);
   });
 });

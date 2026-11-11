@@ -41,9 +41,9 @@ export async function runToolChecks(o: { exec?: Exec; env?: Record<string, strin
 let cache: { at: number; checks: ToolCheck[] } | null = null;
 
 /** Same as runToolChecks, but remembered for a minute so reloading the page does not start four processes every time. */
-export async function cachedToolChecks(now: () => number = Date.now): Promise<ToolCheck[]> {
+export async function cachedToolChecks(now: () => number = Date.now, run: () => Promise<ToolCheck[]> = runToolChecks): Promise<ToolCheck[]> {
   if (cache && now() - cache.at < CACHE_MS) return cache.checks;
-  const checks = await runToolChecks();
+  const checks = await run();
   cache = { at: now(), checks };
   return checks;
 }
