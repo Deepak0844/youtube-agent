@@ -29,22 +29,22 @@ async function Owned() {
 
       <section aria-labelledby="rules-h" className="rounded-card bg-surface p-pad">
         <h2 id="rules-h" className="mb-3 text-title font-semibold">Publishing rules</h2>
-        <dl className="divide-y divide-rule">
-          <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+        <ul className="divide-y divide-rule">
+          <li className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div className="max-w-[60ch]">
-              <dt className="text-body font-medium">Evidence is required</dt>
-              <dd className="text-small text-muted">A video cannot be approved for publishing until its claims are checked on the Evidence tab.</dd>
+              <p className="text-body font-medium">Evidence is required</p>
+              <p className="text-small text-muted">A video cannot be approved for publishing until its claims are checked on the Evidence tab.</p>
             </div>
             <Pill tone={p.requireEvidence ? "positive" : "warning"} data-testid="policy-evidence">{p.requireEvidence ? "Required" : "Not required"}</Pill>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+          </li>
+          <li className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div className="max-w-[60ch]">
-              <dt className="text-body font-medium">Public publishing</dt>
-              <dd className="text-small text-muted">Off by default: videos upload as private or unlisted. Turning it on would not publish anything by itself; a video you approve could then be made public, on a channel that also allows it.</dd>
+              <p className="text-body font-medium">Public publishing</p>
+              <p className="text-small text-muted">Off by default: videos upload as private or unlisted. Turning it on would not publish anything by itself; a video you approve could then be made public, on a channel that also allows it.</p>
             </div>
             <Pill tone={p.allowPublic ? "warning" : "positive"} data-testid="policy-public">{p.allowPublic ? "Allowed" : "Not allowed"}</Pill>
-          </div>
-        </dl>
+          </li>
+        </ul>
       </section>
 
       <section aria-labelledby="public-h" className="rounded-card bg-surface p-pad">

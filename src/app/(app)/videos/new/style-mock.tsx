@@ -58,7 +58,7 @@ function Frame({ id }: { id: StyleId }) {
         <Box s={{ left: 0, right: 0, top: "14%", height: "14%", background: c[1], transform: "rotate(-1.5deg)", boxShadow: "0 4px 6px rgba(0,0,0,.35)", display: "flex", alignItems: "center", justifyContent: "center", color: "#1C1B17", ...h(8, { textTransform: "uppercase" }) }}>Power in 3 steps</Box>
         <Box s={{ left: "14%", top: "38%", width: "42%", aspectRatio: "1", background: c[2], borderRadius: "46% 54% 50% 50%", boxShadow: "0 5px 8px rgba(0,0,0,.4)" }} />
         <Box s={{ left: "52%", top: "52%", width: "32%", aspectRatio: "1.1", background: "#8A7A60", borderRadius: 8, transform: "rotate(5deg)", boxShadow: "0 5px 8px rgba(0,0,0,.4)" }} />
-        <Box s={{ left: "28%", bottom: "9%", background: c[3], color: "#F3E6D3", padding: "1cqw 4cqw", transform: "rotate(-4deg)", boxShadow: "0 3px 5px rgba(0,0,0,.4)", ...h(8) , fontFamily: '"Fraunces", Georgia, serif' }}>spins</Box>
+        <Box s={{ left: "28%", bottom: "9%", background: `color-mix(in srgb, ${c[3]} 85%, black)`, color: "#F3E6D3", padding: "1cqw 4cqw", transform: "rotate(-4deg)", boxShadow: "0 3px 5px rgba(0,0,0,.4)", ...h(8) , fontFamily: '"Fraunces", Georgia, serif' }}>spins</Box>
       </>;
     case "kinetic_type":
       return <>
