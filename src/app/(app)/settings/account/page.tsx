@@ -7,6 +7,8 @@ import { getPool } from "@/server/db/pool";
 import { Pill } from "@/ui/primitives/pill";
 import { PasswordForm, SignOutOneForm, SignOutOthersForm } from "./account-forms";
 
+export const metadata = { title: "Account" };
+
 export default function AccountPage() {
   return (
     <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>

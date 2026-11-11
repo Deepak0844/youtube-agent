@@ -12,6 +12,8 @@ import { Skeleton } from "@/ui/primitives/skeleton";
 import { AssetGrid } from "./asset-grid";
 import { UploadZone } from "./upload-zone";
 
+export const metadata = { title: "Assets" };
+
 // requireOwner() and searchParams are request-time data, so they sit inside <Suspense> (cacheComponents). Filters are plain
 // links and a GET search form: no client state, the address bar is the state.
 export default function AssetsPage({ searchParams }: PageProps<"/assets">) {

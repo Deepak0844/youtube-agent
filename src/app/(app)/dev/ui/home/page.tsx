@@ -8,6 +8,8 @@ import { aspectFor, stagesFor, type CutStage } from "@/ui/domain/stages";
 import { sample, type SampleVideo } from "@/ui/sample/data";
 import { dayTotal, monthTotal, videoCost } from "@/ui/sample/reconcile";
 
+export const metadata = { title: "Dev UI home" };
+
 // The Home screen (Doc 3 §6) against made-up data. Dev/staging only, never in the nav.
 export default function DevHome() {
   return (

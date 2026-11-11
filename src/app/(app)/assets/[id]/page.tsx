@@ -11,6 +11,8 @@ import { KeepSwitch } from "../keep-switch";
 import { CutoutForm } from "./cutout-form";
 import { CutoutList } from "./cutout-list";
 
+export const metadata = { title: "Asset" };
+
 export default function AssetPage({ params }: PageProps<"/assets/[id]">) {
   return (
     <Suspense fallback={<Skeleton aria-hidden className="h-96 w-full rounded-card" />}>

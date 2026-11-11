@@ -8,6 +8,8 @@ import { Pill } from "@/ui/primitives/pill";
 import { revokeTokenAction } from "./actions";
 import { TokenForm } from "./token-form";
 
+export const metadata = { title: "API tokens" };
+
 export default function TokensPage() {
   return (
     <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>

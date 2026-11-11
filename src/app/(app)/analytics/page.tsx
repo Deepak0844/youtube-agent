@@ -8,6 +8,8 @@ import { Insights } from "./insights";
 import { PullForm } from "./pull-form";
 import { TitleTests } from "./title-tests";
 
+export const metadata = { title: "Analytics" };
+
 export default function AnalyticsPage() {
   return (
     <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>

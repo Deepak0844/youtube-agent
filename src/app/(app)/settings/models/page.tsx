@@ -23,6 +23,8 @@ import { EvalBadge } from "./eval-badge";
 import { AiSourceForm, TestClaudeCodeButton } from "./ai-source";
 import { EMPTY_MODEL, IdButton, ModelForm, RouteForm, TestModelButton, TestVisionButton, type ModelFormValues } from "./model-form";
 
+export const metadata = { title: "Models" };
+
 // The model catalog is the owner's: ids and prices are data. Page and actions are session-only (requireOwner first).
 // The Test button is a paid call for hosted models: it goes through the spend reservation, a daily cap and a cooldown (db/llm-test.ts).
 

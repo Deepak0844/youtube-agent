@@ -19,6 +19,8 @@ import { Skeleton } from "@/ui/primitives/skeleton";
 import { BreakerForm } from "./queue/forms";
 import { LiveFeed } from "./queue/live-feed";
 
+export const metadata = { title: "Home" };
+
 // Home (Doc 4 section 2, "/"): every panel reads on its own inside its own <Suspense>, and a panel that cannot load says so
 // without taking the others down. Nothing here acts except the existing "Release" button on a paused step.
 const SHOWN = 5;

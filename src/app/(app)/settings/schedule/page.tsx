@@ -6,6 +6,8 @@ import { recentRuns } from "@/server/db/scheduler";
 import { loadScheduler } from "@/server/db/system-settings";
 import { ScheduleForm } from "./schedule-form";
 
+export const metadata = { title: "Schedule" };
+
 // Scheduler settings. requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function SchedulePage() {
   return (

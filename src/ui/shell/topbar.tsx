@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { Bell, Search } from "lucide-react";
+import { Bell } from "lucide-react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { getPool } from "@/server/db/pool";
 import { loadInrRate } from "@/server/db/system-settings";
@@ -11,6 +11,7 @@ import { cn, focusRing } from "../lib/cn";
 import { AccountMenu } from "./account-menu";
 import { NotificationBell } from "./bell";
 import { Mark } from "./mark";
+import { BreadcrumbsLive } from "./nav-live";
 
 const DEFAULT_DAY_CAP_USD = 15; // Doc 2 §4.5; used only until the budgets row is seeded
 
@@ -45,27 +46,17 @@ async function SpendToday() {
 
 export function TopBar() {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border px-4 md:h-16 md:px-gutter">
+    <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border px-4 md:h-12 md:px-gutter">
       <Link href="/" aria-label="YT Studio, home" className={cn("flex items-center gap-2 rounded-control text-text md:hidden", focusRing)}>
         <Mark />
         <span className="text-section font-semibold tracking-tight">YT Studio</span>
       </Link>
 
-      <form role="search" className="relative hidden w-full max-w-sm md:block">
-        <Search size={14} aria-hidden className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
-        <input
-          type="search"
-          role="searchbox"
-          aria-label="Search"
-          aria-describedby="search-note"
-          disabled
-          placeholder="Search"
-          className="h-9 w-full rounded-control bg-surface pr-3 pl-9 text-body text-text placeholder:text-faint disabled:cursor-not-allowed"
-        />
-        <span id="search-note" className="sr-only">
-          Search arrives in Phase 4
-        </span>
-      </form>
+      <div className="hidden min-w-0 md:block">
+        <Suspense fallback={null}>
+          <BreadcrumbsLive />
+        </Suspense>
+      </div>
 
       <div className="ml-auto flex items-center gap-4 md:gap-5">
         <p className="text-small whitespace-nowrap text-muted md:text-body">
@@ -73,7 +64,6 @@ export function TopBar() {
             <SpendToday />
           </Suspense>
         </p>
-        <p className="hidden text-body whitespace-nowrap text-muted md:block">0 to review</p>
         <Suspense fallback={<Bell size={18} aria-hidden className="text-faint" />}>
           <NotificationBell />
         </Suspense>

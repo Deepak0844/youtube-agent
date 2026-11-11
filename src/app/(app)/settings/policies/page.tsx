@@ -8,6 +8,8 @@ import { PUBLIC_PHRASE } from "@/server/core/channel-safety";
 import { PublicSwitchForm } from "./public-form";
 import { Pill } from "@/ui/primitives/pill";
 
+export const metadata = { title: "Policies" };
+
 // Shows the publishing policy. One switch can be changed here: public publishing (typed phrase to turn on, owner session only, audited).
 // The evidence rule is not writable from any page: the settings guard tests pin that.
 export default function PoliciesPage() {

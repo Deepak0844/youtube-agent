@@ -13,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/primitives/tabs";
 import { sample } from "@/ui/sample/data";
 import { videoCost } from "@/ui/sample/reconcile";
 
+export const metadata = { title: "Dev UI video" };
+
 // The Short detail layout against made-up data. Dev/staging only, never in the nav.
 export default function DevVideo() {
   return (

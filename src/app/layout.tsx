@@ -4,7 +4,7 @@ import { themeScript } from "@/ui/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "YT Studio",
+  title: { template: "%s · YT Studio", default: "YT Studio" },
   description: "YT Studio",
 };
 

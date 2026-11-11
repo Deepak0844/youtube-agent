@@ -35,8 +35,9 @@ test("empty state and the nav entry", async ({ page }) => {
   await db().query("update videos set status = 'cancelled' where status in ('active','waiting')");
   await open(page);
   await expect(page.getByTestId("queue-count")).toHaveText("Nothing is waiting on you.");
-  const nav = page.getByRole("navigation", { name: (page.viewportSize()?.width ?? 1440) < 768 ? "Bottom" : "Primary" });
-  await expect(nav.getByRole("link", { name: /Queue|More/ }).first()).toBeVisible();
+  const phone = (page.viewportSize()?.width ?? 1440) < 768;
+  const nav = page.getByRole("navigation", { name: phone ? "Bottom" : "Primary" });
+  await expect(nav.getByRole(phone ? "button" : "link", { name: phone ? "Make" : "Queue" }).first()).toBeVisible();
   await noPageScroll(page);
 });
 

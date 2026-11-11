@@ -8,6 +8,8 @@ import { listBudgetTemplates } from "@/server/db/budget-scopes";
 import { getPool } from "@/server/db/pool";
 import { CapRow } from "./cap-row";
 
+export const metadata = { title: "Budgets" };
+
 // Spending limits. requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function BudgetsPage() {
   return (

@@ -7,6 +7,8 @@ import { loadInrRate } from "@/server/db/system-settings";
 import { loadTargets, type TargetRow } from "@/server/db/targets";
 import { AddTargetForm, PauseForm, RemoveTargetForm, StartingTargetsButton } from "./target-forms";
 
+export const metadata = { title: "Targets" };
+
 // Targets. requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function TargetsPage() {
   return (

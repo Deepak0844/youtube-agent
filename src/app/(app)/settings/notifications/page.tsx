@@ -6,6 +6,8 @@ import { recentChannelFailures } from "@/server/db/notify";
 import { loadNotifyForm } from "@/server/db/notify-settings";
 import { NotifyForm, type EventRow } from "./form";
 
+export const metadata = { title: "Notifications" };
+
 const CHANNEL_NAME: Record<string, string> = { desktop: "Desktop popup", webhook: "Webhook", in_app: "Bell" };
 
 export default function NotificationsPage() {

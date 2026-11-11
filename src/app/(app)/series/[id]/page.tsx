@@ -7,6 +7,8 @@ import { getSeries } from "@/server/db/series";
 import { loadInrRate } from "@/server/db/system-settings";
 import { CostLine, PartCard, PlanPartsForm } from "../series-parts";
 
+export const metadata = { title: "Series" };
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // One series: its parts with each part's stage row, cost against the cap, and the buttons. requireOwner() runs inside <Suspense>.

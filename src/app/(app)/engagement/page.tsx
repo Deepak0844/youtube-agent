@@ -6,6 +6,8 @@ import { getPool } from "@/server/db/pool";
 import { Pill } from "@/ui/primitives/pill";
 import { ApproveForm, DraftForm, DryRunForm, EditForm, IgnoreForm, ResolveForm, SyncForm } from "./forms";
 
+export const metadata = { title: "Engagement" };
+
 export default function EngagementPage() {
   return (
     <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>

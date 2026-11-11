@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { visibleNav } from "@/ui/shell/nav-config";
+import { visibleAreas } from "@/ui/shell/nav-config";
 import { OWNER_PASSWORD, OWNER_USERNAME } from "../fixtures/owner";
 
 // Runs with the seeded owner's storageState (playwright.config.mts), i.e. reuse of a real session.
@@ -21,44 +21,49 @@ test("home loads every panel (none failed, none stuck loading) and shows the qui
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-test("top bar carries real spend from budgets, review count and a disabled search", async ({ page }) => {
+test("top bar carries real spend from budgets and the breadcrumb", async ({ page }) => {
   await page.goto("/");
   const bar = page.getByRole("banner");
   // Phone shows dollars only (the rupee text overflows 390 px); wider screens show dollars and rupees.
   const spend = phone(page) ? /^\$\d+\.\d{2} of \$\d+\.\d{2} today$/ : /^\$\d+\.\d{2} \(₹[\d,]+\.\d\) of \$\d+\.\d{2} \(₹[\d,]+\.\d\) today$/;
   await expect(bar.getByText(spend)).toBeVisible();
-  await expect(bar.getByText("0 to review")).toBeAttached();
-  if (!phone(page)) {
-    await expect(bar.getByRole("searchbox", { name: "Search" })).toBeDisabled();
-    await expect(bar.getByText("Search arrives in Phase 4")).toBeAttached();
-  }
+  if (!phone(page)) await expect(bar.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Home");
 });
 
-test("desktop: sidebar, active item marked beyond colour", async ({ page }) => {
+test("desktop: icon strip with five areas, no area menu on Home, active item marked beyond colour", async ({ page }) => {
   test.skip(phone(page), "desktop only");
   await page.goto("/");
-  const side = page.getByRole("navigation", { name: "Primary" });
-  expect((await page.locator("aside:has(nav[aria-label=Primary])").boundingBox())!.width).toBe(196);
-  const home = side.getByRole("link", { name: "Home" });
+  const rail = page.getByRole("navigation", { name: "Areas" });
+  await expect(rail.getByRole("link")).toHaveCount(6); // the mark + five areas
+  const home = rail.getByRole("link", { name: "Home", exact: true });
   await expect(home).toHaveAttribute("aria-current", "page");
-  const other = side.getByRole("link", { name: "Keys" });
+  const other = rail.getByRole("link", { name: "Settings" });
   await expect(other).not.toHaveAttribute("aria-current", /.+/);
   const [wHome, wOther] = await Promise.all([home.evaluate((e) => getComputedStyle(e).fontWeight), other.evaluate((e) => getComputedStyle(e).fontWeight)]);
   expect(Number(wHome)).toBeGreaterThan(Number(wOther)); // weight differs, not only brightness
-  const [cHome, cOther] = await Promise.all([home.evaluate((e) => getComputedStyle(e).color), other.evaluate((e) => getComputedStyle(e).color)]);
-  expect(cOther).not.toBe(cHome);
+  await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Bottom" })).toBeHidden();
 });
 
-test("phone: bottom bar with 44 px targets, no sidebar, no horizontal scroll", async ({ page }) => {
+test("desktop: Settings shows its four named sections with the current page marked", async ({ page }) => {
+  test.skip(phone(page), "desktop only");
+  await page.goto("/settings/keys");
+  await expect(page.getByRole("navigation", { name: "Areas" }).getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  const menu = page.getByRole("navigation", { name: "Primary" });
+  for (const s of ["You", "AI and media", "Money and safety", "System"]) await expect(menu.getByText(s, { exact: true }).first()).toBeVisible();
+  await expect(menu.getByRole("link", { name: "Keys" })).toHaveAttribute("aria-current", "page");
+  await expect(page).toHaveTitle("Keys · YT Studio");
+});
+
+test("phone: bottom bar with five areas and 44 px targets, no horizontal scroll", async ({ page }) => {
   test.skip(!phone(page), "phone only");
   await page.goto("/");
   await page.waitForLoadState("networkidle");
-  await expect(page.getByRole("navigation", { name: "Primary" })).toBeHidden();
+  await expect(page.getByRole("navigation", { name: "Areas" })).toBeHidden();
   const bar = page.getByRole("navigation", { name: "Bottom" });
   await expect(bar).toBeVisible();
   const items = bar.locator("a, button");
-  expect(await items.count()).toBeLessThanOrEqual(5);
+  expect(await items.count()).toBe(5);
   for (const b of await items.all()) {
     const box = (await b.boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(44);
@@ -69,8 +74,8 @@ test("phone: bottom bar with 44 px targets, no sidebar, no horizontal scroll", a
   expect(header.height).toBeGreaterThanOrEqual(48);
   expect(header.height).toBeLessThanOrEqual(56);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await bar.getByRole("button", { name: "More" }).click();
-  await expect(page.getByRole("dialog").getByRole("link", { name: "System" })).toBeVisible();
+  await bar.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("dialog").getByRole("link", { name: "System", exact: true })).toBeVisible();
 });
 
 test("keyboard: skip link is the first tab stop and jumps to main", async ({ page }) => {
@@ -84,21 +89,20 @@ test("keyboard: skip link is the first tab stop and jumps to main", async ({ pag
   await expect(page.locator("main#main")).toBeFocused();
 });
 
-test("keyboard: landmarks exist and the nav links are reachable by Tab", async ({ page }) => {
+test("keyboard: landmarks exist and the area menu links are reachable by Tab", async ({ page }) => {
   test.skip(phone(page), "desktop only");
-  await page.goto("/");
+  await page.goto("/settings/account");
   await page.waitForLoadState("networkidle");
   for (const role of ["banner", "main"] as const) await expect(page.getByRole(role)).toBeVisible();
-  const side = page.getByRole("navigation", { name: "Primary" });
-  // Derived from the nav config so adding a page does not break this test. "Assets" appears twice, so check by position.
-  const labels = visibleNav().flatMap((g) => g.items.map((i) => i.label));
-  await expect(side.getByRole("link")).toHaveCount(labels.length);
-  await side.getByRole("link", { name: "Home" }).focus();
-  const names = labels.slice(1);
-  for (const [i, name] of names.entries()) {
+  const menu = page.getByRole("navigation", { name: "Primary" });
+  // Derived from the nav config so adding a page does not break this test.
+  const labels = visibleAreas().find((a) => a.area === "Settings")!.items.map((i) => i.label);
+  await expect(menu.getByRole("link")).toHaveCount(labels.length);
+  await menu.getByRole("link").first().focus();
+  for (const [i, name] of labels.slice(1).entries()) {
     await page.keyboard.press("Tab");
-    await expect(side.getByRole("link").nth(i + 1)).toBeFocused();
-    await expect(side.getByRole("link").nth(i + 1)).toHaveText(name);
+    await expect(menu.getByRole("link").nth(i + 1)).toBeFocused();
+    await expect(menu.getByRole("link").nth(i + 1)).toHaveText(name);
   }
 });
 

@@ -12,6 +12,8 @@ import { Label } from "@/ui/primitives/label";
 import { RefreshDescription } from "./refresh-description";
 import { confirmChannelAction, connectChannelAction, disconnectChannelAction, saveChannelSettingsAction } from "./actions";
 
+export const metadata = { title: "Channels" };
+
 export default function ChannelsPage({ searchParams }: PageProps<"/settings/channels">) {
   return (
     <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>

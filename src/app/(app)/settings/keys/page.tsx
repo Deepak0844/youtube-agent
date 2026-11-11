@@ -6,6 +6,8 @@ import { getPool } from "@/server/db/pool";
 import { getVaultState, listProviderKeys } from "@/server/db/provider-keys";
 import { KeyRow } from "./key-row";
 
+export const metadata = { title: "Keys" };
+
 // Provider API keys. The page reads the vault's masked tails only; a key is never sent to the browser after it is saved.
 // requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function KeysPage() {

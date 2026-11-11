@@ -9,6 +9,8 @@ import { vaultStatus } from "@/server/db/vault";
 import { Pill } from "@/ui/primitives/pill";
 import { CopyButton, FormatTest, GoogleForm, VaultBanner, type VaultState } from "./google-form";
 
+export const metadata = { title: "Google app" };
+
 // Session read happens inside <Suspense> (cacheComponents). No secret is ever read here: only the masked hint.
 export default function GoogleSettingsPage() {
   return (
