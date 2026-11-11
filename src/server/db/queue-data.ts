@@ -109,6 +109,17 @@ export interface QueueData {
 }
 
 const MAX_ITEMS = 50;
+/** What the cost gate shows from the stored cost plan: the total, the way it is made, every priced item, and (AI videos) what each clip asks for. Reads only; nothing in the body is trusted. */
+export function costGateContent(body: unknown): Extract<GateContent, { kind: "cost" }> {
+  const b = asObj(body);
+  const quote = asObj(b.quote);
+  const items = Array.isArray(b.items) ? b.items.map(asObj).map((i) => ({ kind: str(i.kind), provider: str(i.provider), quoteMicroUsd: Number(i.quoteMicroUsd) || 0 })) : [];
+  return {
+    kind: "cost", totalMicroUsd: Number(str(quote.micro_usd)) || 0, path: str(b.path), models: Object.entries(asObj(b.providers_models)).map(([k, v]) => [k, str(v)] as [string, string]), items,
+    ...(Array.isArray(b.shots) ? { shots: b.shots.map(asObj).map((x) => ({ beatId: str(x.beatId), seconds: Number(x.seconds) || 0, prompt: str(x.prompt) })), character: b.character !== undefined } : {}),
+  };
+}
+
 const asObj = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
@@ -170,12 +181,7 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
     const s = parsed.data;
     return { kind: "script", title: s.title, description: s.description ?? null, narration: s.narration, words: isLang(lang) ? wordCount(s.narration) : s.narration.split(/\s+/).filter(Boolean).length, beats: s.beats.length, beatRows: buildBeatRows(s.beats), shownForReal: s.shown_for_real ?? null, style, claims: claimsOf(s).claims, readable: true, ...(s.scale ? { scale: { rows: scaleRows(s.scale), limitNote: renderLimitNote((await getEngineConfig(db)).render.timeoutS) } } : {}) };
   }
-  if (gate === "cost") {
-    const b = asObj(c.cost_plan?.body);
-    const quote = asObj(b.quote);
-    const items = Array.isArray(b.items) ? b.items.map(asObj).map((i) => ({ kind: str(i.kind), provider: str(i.provider), quoteMicroUsd: Number(i.quoteMicroUsd) || 0 })) : [];
-    return { kind: "cost", totalMicroUsd: Number(str(quote.micro_usd)) || 0, path: str(b.path), models: Object.entries(asObj(b.providers_models)).map(([k, v]) => [k, str(v)] as [string, string]), items, ...(Array.isArray(b.shots) ? { shots: b.shots.map(asObj).map((x) => ({ beatId: str(x.beatId), seconds: Number(x.seconds) || 0, prompt: str(x.prompt) })), character: b.character !== undefined } : {}) };
-  }
+  if (gate === "cost") return costGateContent(c.cost_plan?.body);
   if (gate === "look") {
     const v = lookView(c.previews?.body, c.scenes?.body);
     const used = (await lookFeedbackOf(db, videoId))?.count ?? 0;
