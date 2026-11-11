@@ -118,3 +118,20 @@ describe("reframedFormats", () => {
     expect(reframedFormats([{ name: "reframe", status: "succeeded", result: null }])).toEqual([]);
   });
 });
+
+describe("stepBar (UI redesign step bar)", async () => {
+  const { stepBar } = await import("@/server/core/video-page-view");
+  const s = (label: string, state: "pending" | "running" | "done" | "failed" | "needs_you") => ({ label, state });
+  it("a short at the review gate: done steps, the gate waiting, the rest to do", () => {
+    expect(stepBar([s("Draft", "done"), s("Narration", "done"), s("Render", "done"), s("Check", "needs_you"), s("Publish", "pending")])).toEqual([
+      { label: "Draft", state: "done" },
+      { label: "Narration", state: "done" },
+      { label: "Render", state: "done" },
+      { label: "Check", state: "waiting" },
+      { label: "Publish", state: "todo" },
+    ]);
+  });
+  it("a long video with a failed render and a running step keeps both visible", () => {
+    expect(stepBar([s("Outline", "done"), s("Render", "failed"), s("Sound", "running")]).map((x) => x.state)).toEqual(["done", "failed", "running"]);
+  });
+});
