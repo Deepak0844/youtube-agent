@@ -30,7 +30,7 @@ export function sceneJsonSchema(): object {
 }
 
 /** Kinds that point at library images/clips. Offered to a model only when the video has some. */
-export const ASSET_KINDS: readonly string[] = ["collage", "stock_clip", "story_kenburns"];
+export const ASSET_KINDS: readonly string[] = ["collage", "cutout_stack", "stock_clip", "story_kenburns"];
 
 /** Kinds a model may use: all of them with assets, else only those that need none. */
 export function usableKinds(hasAssets: boolean): string[] {

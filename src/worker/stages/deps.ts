@@ -75,7 +75,7 @@ export interface StageDeps {
   /** Build only: asset ids that exist for this video. Scenes may use only these; none = image kinds are not offered. */
   sceneAssets?: (videoId: string) => Promise<string[]>;
   /** Build only: pictures linked to beats (video_assets). When given, those beats get story_kenburns/collage from the app and sceneAssets is not used by Build. */
-  scenePictures?: (videoId: string) => Promise<Array<{ assetId: string; beatId: string; kind?: string }>>;
+  scenePictures?: (videoId: string) => Promise<Array<{ assetId: string; beatId: string; kind?: string; cutout?: boolean }>>;
   /** Director only: the CC0 3D model catalogue (assets3d/manifest.json). Absent = the scene3d director refuses with a plain sentence. */
   catalog3d?: () => Promise<Catalog3d>;
   /** scene3d_author only: the in-process type-check of an AI-written scene. Default: typeCheckScene3d (tests inject one). */

@@ -40,5 +40,7 @@
   {"id": "or1", "kind": "orbit", "beats": [{"id": "b1", "text": "The planets orbit the Sun."}, {"id": "b2", "text": "Inner planets move faster than outer ones."}]},
   {"id": "or2", "kind": "orbit", "beats": [{"id": "b1", "text": "The Moon circles the Earth once a month."}, {"id": "b2", "text": "Show them as a small orbit."}]},
   {"id": "sv1", "kind": "svg_diagram", "beats": [{"id": "b1", "text": "A request hits the load balancer, which hands it to one of three servers."}, {"id": "b2", "text": "A packet hops from the client to the balancer and on to a server."}]},
-  {"id": "sv2", "kind": "svg_diagram", "beats": [{"id": "b1", "text": "In a battery, electrons flow from the minus end through the wire to the plus end."}, {"id": "b2", "text": "The Moon pulls the ocean into a bulge that follows it around the Earth."}]}
+  {"id": "sv2", "kind": "svg_diagram", "beats": [{"id": "b1", "text": "In a battery, electrons flow from the minus end through the wire to the plus end."}, {"id": "b2", "text": "The Moon pulls the ocean into a bulge that follows it around the Earth."}]},
+  {"id":"cs1","kind":"cutout_stack","beats":[{"id":"b1","text":"A lighthouse, a boat and a gull come together on the rocks."},{"id":"b2","text":"Three cut-outs pop in one after another."}]},
+  {"id":"cs2","kind":"cutout_stack","beats":[{"id":"b1","text":"One big cut-out of a red kettle in the middle, with a short caption."},{"id":"b2","text":"Hold on the kettle."}]}
 ]

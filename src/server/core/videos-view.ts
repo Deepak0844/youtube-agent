@@ -66,7 +66,7 @@ export function ageLabel(then: Date, now: Date = new Date()): string {
 export const newVideoSchema = z.object({
   topic: z.string().trim().min(1, "Enter a topic.").max(200, "Keep the topic to 200 characters or fewer."),
   language: z.enum(LANGS, "Pick a narration language."),
-  kind: z.enum(["scene_kit", "tsx", "ai", "scale3d", "scene3d", "scene3d_code"], "Pick a video type."),
+  kind: z.enum(["scene_kit", "tsx", "collage", "ai", "scale3d", "scene3d", "scene3d_code"], "Pick a video type."),
   format: z.enum(["short", "long"], "Pick Short or Long."),
   // Long only: the length range in whole minutes (blank = the default 3 to 8). Checked against the max-length setting in parseNewVideoForm.
   minMinutes: z.coerce.number().optional(),

@@ -7,6 +7,7 @@ export const KIT_RENDERED_KINDS = [
   "chat_thread",
   "chess",
   "collage",
+  "cutout_stack",
   "drawn_objects",
   "map",
   "math",

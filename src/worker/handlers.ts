@@ -21,6 +21,8 @@ import { secretName } from "@/server/core/provider-keys";
 import { getSecret, hasSecret } from "@/server/db/vault";
 import { createImageFor } from "@/server/providers/image/wire";
 import { createVideoFor } from "@/server/providers/video/wire";
+import { DEFAULT_CUTOUT } from "@/server/core/cutout";
+import { makeCutout } from "@/server/db/cutouts";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
 import { createContainerRenderer, resolveRenderImage, sweepRenderContainers } from "@/server/providers/renderer/remotion-container";
@@ -261,6 +263,8 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     draft: refuseDryRunVideos(pool, draft),
     pictures: refuseDryRunVideos(pool, picturesHandler({
       db: pool, root: deps.root, ingest: { runChild: (spec) => runChild(spec, { registry: env.childRegistry }) },
+      // Collage videos: each picture found is cut out with the background remover (the plain picture is used when that fails).
+      cutout: async (id, signal) => (await makeCutout(pool, { root: deps.root, ingest: { runChild: (spec) => runChild(spec, { registry: env.childRegistry }) } }, id, DEFAULT_CUTOUT, signal)).id,
       fetcher: createPictureFetcher(), // safeFetch indirect (public addresses only), no redirects, 30 s
 
       pixabayKey: async () => {

@@ -15,7 +15,7 @@ const selectClass = cn("w-full rounded-control border border-control bg-surface 
 
 export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, characters }: { scaleLimitNote: string | null; scene3dNote: string | null; maxLongMinutes: number; aiNote: string | null; characters: Array<{ id: string; name: string }> }) {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
-  const [kind, setKind] = useState<"scene_kit" | "tsx" | "ai" | "scale3d" | "scene3d" | "scene3d_code">("scene_kit");
+  const [kind, setKind] = useState<"scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "scene3d" | "scene3d_code">("scene_kit");
   const [format, setFormat] = useState<"short" | "long">("short");
   const long = format === "long"; // Long is offered for the Scene kit only: the other types stay Shorts for now
   const pickFormat = (f: "short" | "long") => {
@@ -75,6 +75,7 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
           [
             ["scene_kit", "Scene kit (default)", "Safe and fast: the app builds the scenes from a fixed set of parts."],
             ["tsx", "Custom animation (TSX, experimental)", "Claude writes the animation code. Slower, and it may fall back to the scene kit if the code does not pass the safety checks."],
+            ["collage", "Collage (cut-out layers, Shorts)", "Free pictures are found for each beat, the background is removed with the background remover, and the cut-outs are layered over the look. Free: no money. Needs the worker running; a picture whose cut-out fails is used as it is."],
             ["ai", "AI video (paid clips, Shorts)", "A video model draws a short clip for every beat, as long as that beat of narration. The voice is made first, then you see the price of every clip and approve it before anything is bought. Optionally keep one character the same in every clip."],
             ["scale3d", "3D scale comparison (Shorts)", "Sizes compared on a ruler: a camera climbs past real objects. Every height is a claim you verify. Needs the render time limit set to 900 s or more (Settings > System)."],
             ["scene3d_code", "3D story (AI-written scene)", "The AI writes the whole 3D scene as code, from the free building blocks and CC0 models. The app checks the code line by line, runs it only in a locked box on this Mac, and you approve the look from preview pictures before the long render. Needs 'Render 3D on this Mac' turned on in System settings."],

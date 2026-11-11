@@ -238,4 +238,54 @@ describe("pictures stage", () => {
     expect(out.beats).toMatchObject([{ beatId: "b1", found: true }, { beatId: "b2", found: false, reason: "deadline" }]);
     expect(await assetsForVideo(db.pool, v)).toHaveLength(1);
   });
+
+describe("pictures stage for a collage video", () => {
+  const collageSeed = async () => {
+    const id = await seed();
+    await db.pool.query("update videos set kind = 'collage' where id = $1", [id]);
+    return id;
+  };
+  it("links the cut-out instead of the plain picture (the credit stays), and skips clips", async () => {
+    const v = await collageSeed();
+    const f = mk();
+    const made: string[] = [];
+    // a stand-in for the background remover: registers a second, see-through asset and returns its id
+    f.deps.cutout = async (assetId) => {
+      const r = await db.pool.query<{ id: string }>(
+        "insert into assets (kind, original_name, mime, bytes, width, height, sha256, storage_ref, tags, source, rights) select kind, 'cutout-x.png', 'image/png', 9, width, height, $2, storage_ref, array['cutout'], 'generated', rights from assets where id = $1 returning id",
+        [assetId, createHash("sha256").update("cut-" + assetId).digest("hex")],
+      );
+      made.push(r.rows[0]!.id);
+      return r.rows[0]!.id;
+    };
+    const out = await run(f, v);
+    expect(out.linked).toBe(1);
+    const links = await assetsForVideo(db.pool, v);
+    expect(links.map((l) => l.assetId)).toEqual(made);
+    expect(links[0]).toMatchObject({ cutout: true, credit: expect.stringContaining("Jane Doe") });
+    expect(f.urls.some((u) => u.includes("pixabay.com/api/videos"))).toBe(false);
+  });
+  it("keeps the plain picture when the cut-out cannot be made, and never fails the stage", async () => {
+    const v = await collageSeed();
+    const f = mk();
+    f.deps.cutout = async () => { throw new Error("model crashed"); };
+    const out = await run(f, v);
+    expect(out.linked).toBe(1);
+    const links = await assetsForVideo(db.pool, v);
+    expect(links).toHaveLength(1);
+    expect(links[0]!.cutout).toBeUndefined();
+    const f2 = mk({ sha: "other" });
+    const v2 = await collageSeed();
+    f2.deps.cutout = async () => null;
+    expect((await run(f2, v2)).linked).toBe(1);
+  });
+  it("other kinds never call the cut-out step", async () => {
+    const v = await seed();
+    const f = mk();
+    let called = 0;
+    f.deps.cutout = async () => (called++, null);
+    await run(f, v);
+    expect(called).toBe(0);
+  });
+});
 });

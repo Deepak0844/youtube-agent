@@ -15,6 +15,7 @@ import * as probability from "./probability";
 import * as chart from "./chart";
 import * as spreadsheet from "./spreadsheet";
 import * as collage from "./collage";
+import * as cutout_stack from "./cutout_stack";
 import * as chess from "./chess";
 import * as piano from "./piano";
 import * as map from "./map";
@@ -36,6 +37,7 @@ export const kinds = {
   chart,
   spreadsheet,
   collage,
+  cutout_stack,
   chess,
   piano,
   map,

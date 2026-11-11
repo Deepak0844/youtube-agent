@@ -10,6 +10,7 @@ export const SAMPLE_SCENES: Record<string, Record<string, unknown>> = {
   chart: { ...b("chart"), chart: "bar", title: "Visits", labels: ["Mon", "Tue", "Wed"], series: [{ values: [3, 7, 5] }] },
   chat_thread: { ...b("chat_thread"), messages: [{ from: "user", text: "Did it ship?" }, { from: "assistant", text: "Yes, just now." }] },
   chess: { ...b("chess"), moves: [{ from: "e2", to: "e4" }, { from: "e7", to: "e5" }], highlights: ["e4"], caption: "King pawn opening" },
+  cutout_stack: { ...b("cutout_stack"), layers: [{ asset: "img-a" }, { asset: "img-b" }, { asset: "img-c" }], caption: "Cut-outs" },
   collage: { ...b("collage"), layout: "grid2", tiles: [{ asset: "img-a" }, { asset: "img-b" }, { asset: "img-c" }, { asset: "img-d" }] },
   drawn_objects: { ...b("drawn_objects"), objects: [{ object: "laptop", label: "Laptop", slot: "left" }, { object: "cloud", label: "Cloud", slot: "right", enter: "pop" }] },
   map: { ...b("map"), title: "Trip", region: "world", markers: [{ label: "Paris", lat: 48.85, lon: 2.35 }, { label: "Tokyo", lat: 35.68, lon: 139.69 }], route: true },
