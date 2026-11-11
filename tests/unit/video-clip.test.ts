@@ -30,6 +30,11 @@ describe("clipProblem", () => {
     expect(clipProblem(FAKE_MODEL, req({ endImage: true }))).toMatch(/end picture/);
     expect(clipProblem(FAKE_MODEL, req({ startImage: true, endImage: true }))).toBeNull();
   });
+  it("a model that needs a start picture refuses a words-only clip", () => {
+    const m = { ...FAKE_MODEL, id: "needs-image", imageRequired: true };
+    expect(clipProblem(m, req())).toMatch(/needs a start picture/);
+    expect(clipProblem(m, req({ startImage: true }))).toBeNull();
+  });
   it("cleanClipPrompt trims and strips control characters", () => expect(cleanClipPrompt("  a\u0000b  ")).toBe("ab"));
 });
 

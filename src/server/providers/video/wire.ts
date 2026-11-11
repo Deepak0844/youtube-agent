@@ -12,6 +12,7 @@ import { safeFetch } from "../net/safe-fetch";
 import type { JobCheckers } from "../media-types";
 import type { SafeFetch } from "../voice/eleven-types";
 import type { VideoProvider } from "./index";
+import { createKlingJobChecker, createKlingVideo } from "./kling";
 import { createSeedanceJobChecker, createSeedanceVideo } from "./seedance";
 
 type Sf = typeof safeFetch;
@@ -46,15 +47,20 @@ const keyReader = (db: pg.Pool, loader: () => Keyring, provider: string) => asyn
 export function createVideoFor(db: pg.Pool, loader: () => Keyring, root: string = storageRoot(), sf: Sf = safeFetch): (providerId: string) => Promise<VideoProvider> {
   const fetch = hostedApiFetch(sf);
   return async (id) => {
-    if (id !== "seedance_video") throw new KnownFailure(`${PICK} (${id.slice(0, 40)} is not an AI video provider).`);
+    if (id !== "seedance_video" && id !== "kling_video") throw new KnownFailure(`${PICK} (${id.slice(0, 40)} is not an AI video provider).`);
     const price = await getPriceRule(db, id);
     if (!price) throw new KnownFailure(`${PICK} (${id} is off or has no price).`);
     if (!(await hasSecret(db, secretName(KEY_SLOT[id] as ProviderId)))) throw new KnownFailure(`${PICK} (save its key first).`);
-    return createSeedanceVideo({ fetch, fetchCdn: videoFileFetch(sf), db, getKey: keyReader(db, loader, id), price, root, readImage: readPicture(root) });
+    const deps = { fetch, fetchCdn: videoFileFetch(sf), db, getKey: keyReader(db, loader, id), price, root, readImage: readPicture(root) };
+    return id === "kling_video" ? createKlingVideo(deps) : createSeedanceVideo(deps);
   };
 }
 
 /** Read-only "check the job" checkers by provider id. Keys are read per check, so building them needs no key. */
 export function createVideoJobCheckers(db: pg.Pool, loader: () => Keyring, root: string = storageRoot(), sf: Sf = safeFetch): JobCheckers {
-  return { seedance_video: createSeedanceJobChecker({ fetch: hostedApiFetch(sf), fetchCdn: videoFileFetch(sf), getKey: keyReader(db, loader, "seedance_video"), root }) };
+  const base = { fetch: hostedApiFetch(sf), fetchCdn: videoFileFetch(sf), root };
+  return {
+    seedance_video: createSeedanceJobChecker({ ...base, getKey: keyReader(db, loader, "seedance_video") }),
+    kling_video: createKlingJobChecker({ ...base, getKey: keyReader(db, loader, "kling_video") }),
+  };
 }

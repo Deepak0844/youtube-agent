@@ -2,7 +2,7 @@
 // vault notice. Pure: no IO. The DB side is src/server/db/provider-keys.ts, the network side src/server/providers/key-test.ts.
 // Rule: a test is ONE read-only GET to a hard-coded https host (list models / key info). Nothing here can build a paid call.
 
-export const PROVIDER_IDS = ["anthropic", "openai", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom", "elevenlabs", "pexels", "pixabay", "google_tts", "azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance"] as const;
+export const PROVIDER_IDS = ["anthropic", "openai", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom", "elevenlabs", "pexels", "pixabay", "google_tts", "azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance", "kling"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 export type KeyTestResult = "ok" | "rejected" | "unreachable";
 
@@ -41,6 +41,7 @@ export const PROVIDERS: readonly ProviderDef[] = [
   { id: "voicestudio", label: "VoiceStudio", role: "Voice", note: "Optional. Needed only when the server is not on this machine.", shape: new RegExp(`^${printable}{8,300}$`), shapeHint: "8 or more visible characters" },
   { id: "local_voice", label: "Local voice server", role: "Voice", note: "Optional. Needed only when the server is not on this machine.", shape: new RegExp(`^${printable}{8,300}$`), shapeHint: "8 or more visible characters" },
   { id: "seedance", label: "Seedance (BytePlus ModelArk)", role: "Video", note: "AI video clips. Paid: each clip is priced and needs your approval first.", shape: new RegExp(`^${printable}{16,300}$`), shapeHint: "16 or more visible characters" },
+  { id: "kling", label: "Kling", role: "Video", note: "AI video clips (Kling API key). Paid: each clip is priced and needs your approval first.", shape: new RegExp(`^${printable}{16,300}$`), shapeHint: "16 or more visible characters" },
 ];
 
 const BY_ID = new Map<string, ProviderDef>(PROVIDERS.map((p) => [p.id, p]));
@@ -109,6 +110,7 @@ export function keyTestRequest(id: ProviderId, key: string): KeyTestRequest | nu
     case "coverr":
     case "fal":
     case "seedance": // no free read-only request known
+    case "kling":
     case "voicestudio": // owner's own address: a key is never sent to a free-form URL here
     case "local_voice":
       return null; // "checked on first use"
