@@ -36,7 +36,7 @@ describe("provider list", () => {
   it("is exactly the owner-approved providers, in order", () => {
     expect(PROVIDERS.map((p) => p.id)).toEqual([
       "anthropic", "openai", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom",
-      "elevenlabs", "pexels", "pixabay", "google_tts", "azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance",
+      "elevenlabs", "pexels", "pixabay", "google_tts", "azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance", "kling", "vertex",
     ]);
   });
   it("the new language-model slots are all role Language model", () => {
@@ -147,7 +147,7 @@ describe("test requests are fixed, free and key-bearing only for the provider", 
 describe("custom slot has no fixed host, so its key is never sent to a free-form URL by a key test", () => {
   it("keyTestRequest is null for custom and a non-null fixed https request for every other slot", () => {
     expect(keyTestRequest("custom", SAMPLES.custom!)).toBeNull();
-    const noTest = ["custom", "azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance"]; // Phase 3 slots: checked on first use
+    const noTest = ["custom", "azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance", "kling", "vertex"]; // Phase 3 slots: checked on first use
     for (const p of PROVIDERS.filter((x) => !noTest.includes(x.id))) expect(keyTestRequest(p.id, SAMPLES[p.id]!), p.id).not.toBeNull();
   });
   it("runKeyTest for custom makes no request at all", async () => {

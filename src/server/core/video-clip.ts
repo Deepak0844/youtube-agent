@@ -17,9 +17,13 @@ export interface VideoModelCap {
   endFrame: boolean;
   /** Makes its own sound track. We always ask for it off, because the voice and sound are made elsewhere. */
   audio: boolean;
+  /** true = cannot make a clip from words alone: a start picture is always needed. */
+  imageRequired?: boolean;
   aspects: readonly ClipAspect[];
   minSeconds: number;
   maxSeconds: number;
+  /** When set, only these lengths are allowed (Veo makes 4, 6 or 8 seconds). */
+  allowedSeconds?: readonly number[];
 }
 
 export interface ClipRequest {
@@ -43,6 +47,8 @@ export function clipProblem(cap: VideoModelCap, r: ClipRequest): string | null {
   if (!cap.aspects.includes(r.aspect)) return `${cap.id} cannot make this video shape.`;
   if (!Number.isFinite(r.seconds) || !Number.isInteger(r.seconds)) return "A clip length must be a whole number of seconds.";
   if (r.seconds < cap.minSeconds || r.seconds > cap.maxSeconds) return `${cap.id} makes clips of ${cap.minSeconds} to ${cap.maxSeconds} seconds.`;
+  if (cap.imageRequired && !r.startImage) return `${cap.id} needs a start picture.`;
+  if (cap.allowedSeconds && !cap.allowedSeconds.includes(r.seconds)) return `${cap.id} makes clips of ${cap.allowedSeconds.join(", ")} seconds.`;
   if (r.startImage && !cap.imageToVideo) return `${cap.id} cannot start from a picture.`;
   if (r.endImage && (!cap.endFrame || !r.startImage)) return `${cap.id} cannot be given an end picture.`;
   return null;

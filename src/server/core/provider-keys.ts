@@ -2,7 +2,7 @@
 // vault notice. Pure: no IO. The DB side is src/server/db/provider-keys.ts, the network side src/server/providers/key-test.ts.
 // Rule: a test is ONE read-only GET to a hard-coded https host (list models / key info). Nothing here can build a paid call.
 
-export const PROVIDER_IDS = ["anthropic", "openai", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom", "elevenlabs", "pexels", "pixabay", "google_tts", "azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance"] as const;
+export const PROVIDER_IDS = ["anthropic", "openai", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom", "elevenlabs", "pexels", "pixabay", "google_tts", "azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance", "kling", "vertex"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 export type KeyTestResult = "ok" | "rejected" | "unreachable";
 
@@ -13,6 +13,10 @@ interface ProviderDef {
   note: string;
   shape: RegExp;
   shapeHint: string;
+  /** Longest value accepted; 400 unless set (a Google Cloud service-account file is about 2.5 KB). */
+  maxLength?: number;
+  /** An extra yes/no check after the shape (never sees or returns the value outside this module). */
+  valid?: (value: string) => boolean;
 }
 
 const printable = "[\\x21-\\x7e]"; // no spaces, controls or non-ASCII
@@ -41,7 +45,19 @@ export const PROVIDERS: readonly ProviderDef[] = [
   { id: "voicestudio", label: "VoiceStudio", role: "Voice", note: "Optional. Needed only when the server is not on this machine.", shape: new RegExp(`^${printable}{8,300}$`), shapeHint: "8 or more visible characters" },
   { id: "local_voice", label: "Local voice server", role: "Voice", note: "Optional. Needed only when the server is not on this machine.", shape: new RegExp(`^${printable}{8,300}$`), shapeHint: "8 or more visible characters" },
   { id: "seedance", label: "Seedance (BytePlus ModelArk)", role: "Video", note: "AI video clips. Paid: each clip is priced and needs your approval first.", shape: new RegExp(`^${printable}{16,300}$`), shapeHint: "16 or more visible characters" },
+  { id: "kling", label: "Kling", role: "Video", note: "AI video clips (Kling API key). Paid: each clip is priced and needs your approval first.", shape: new RegExp(`^${printable}{16,300}$`), shapeHint: "16 or more visible characters" },
+  { id: "vertex", label: "Google Cloud (Veo)", role: "Video", note: "Paste the whole service-account JSON file of a Google Cloud project with billing and Vertex AI turned on. Paid: each clip is priced and needs your approval first.", shape: /^\{[\s\S]*\}$/, shapeHint: "the whole service-account JSON file", maxLength: 6000, valid: isServiceAccountJson },
 ];
+
+/** A Google Cloud service-account file: JSON with its type, project, client email and private key. */
+export function isServiceAccountJson(v: string): boolean {
+  try {
+    const j = JSON.parse(v) as Record<string, unknown>;
+    return j.type === "service_account" && typeof j.project_id === "string" && /^[a-z][a-z0-9-]{4,60}$/.test(j.project_id) && typeof j.client_email === "string" && /^[^\s@]+@[^\s@]+$/.test(j.client_email) && typeof j.private_key === "string" && j.private_key.includes("BEGIN PRIVATE KEY");
+  } catch {
+    return false;
+  }
+}
 
 const BY_ID = new Map<string, ProviderDef>(PROVIDERS.map((p) => [p.id, p]));
 
@@ -58,7 +74,7 @@ export function checkKeyShape(id: string, raw: unknown): ShapeResult {
   if (typeof raw !== "string") return { ok: false, message: "Paste the key into the box." };
   const value = raw.trim();
   if (value.length === 0) return { ok: false, message: "Paste the key into the box." };
-  if (value.length > 400 || !p.shape.test(value)) return { ok: false, message: `That does not look like a valid ${p.label} key (${p.shapeHint}).` };
+  if (value.length > (p.maxLength ?? 400) || !p.shape.test(value) || (p.valid && !p.valid(value))) return { ok: false, message: `That does not look like a valid ${p.label} key (${p.shapeHint}).` };
   return { ok: true, value };
 }
 
@@ -109,6 +125,8 @@ export function keyTestRequest(id: ProviderId, key: string): KeyTestRequest | nu
     case "coverr":
     case "fal":
     case "seedance": // no free read-only request known
+    case "kling":
+    case "vertex": // signing in needs a private key; no free read-only request
     case "voicestudio": // owner's own address: a key is never sent to a free-form URL here
     case "local_voice":
       return null; // "checked on first use"

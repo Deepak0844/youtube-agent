@@ -34,6 +34,24 @@ const everything = async () => {
   return JSON.stringify([s.rows, a.rows]);
 };
 
+describe("video keys", () => {
+  const SA = JSON.stringify({ type: "service_account", project_id: "my-video-project", client_email: "bot@my-video-project.iam.gserviceaccount.com", private_key: "-----BEGIN PRIVATE KEY-----\\n" + "A".repeat(1600) + "\\n-----END PRIVATE KEY-----\\n" });
+  it("a long service-account file is saved whole, read back, and never appears in the list, the audit trail or a refusal", async () => {
+    expect(SA.length).toBeGreaterThan(1500);
+    expect(await saveProviderKey(db.pool, loader, "vertex", SA)).toEqual({ ok: true });
+    expect(await getSecret(db.pool, loader(), "provider.vertex.api_key")).toBe(SA);
+    expect(JSON.stringify(await listProviderKeys(db.pool))).not.toContain("BEGIN PRIVATE KEY");
+    expect(await everything()).not.toContain("BEGIN PRIVATE KEY");
+    const bad = await saveProviderKey(db.pool, loader, "vertex", SA.replace("service_account", "authorized_user"));
+    expect(bad.ok).toBe(false);
+    expect(JSON.stringify(bad)).not.toContain("BEGIN PRIVATE KEY");
+  });
+  it("seedance and kling keys save like any other key", async () => {
+    expect((await saveProviderKey(db.pool, loader, "seedance", "ark-abcdefghijklmnop1234")).ok).toBe(true);
+    expect((await saveProviderKey(db.pool, loader, "kling", "kl-abcdefghijklmnop1234")).ok).toBe(true);
+  });
+});
+
 describe("save", () => {
   it("stores through the vault, lists a masked tail only, audits provider and tail without the key", async () => {
     const logs: string[] = [];

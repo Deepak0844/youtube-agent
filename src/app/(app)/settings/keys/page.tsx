@@ -60,6 +60,7 @@ async function Owned() {
                   label={p.label}
                   note={p.note}
                   shapeHint={p.shapeHint}
+                  maxLength={p.maxLength}
                   isSet={r.isSet}
                   tail={r.tail}
                   savedLabel={r.updatedAt ? `saved ${when(r.updatedAt)}` : ""}
