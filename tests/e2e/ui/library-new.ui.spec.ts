@@ -129,3 +129,18 @@ test("nav: Library and New are reachable and only the current one is marked", as
   await expect(nav.getByRole("link", { name: "New" })).toHaveAttribute("aria-current", "page");
   await expect(nav.getByRole("link", { name: "Library" })).not.toHaveAttribute("aria-current", /.+/);
 });
+
+test("the New form offers the AI video type with its character picker and says when no provider is chosen yet", async ({ page }) => {
+  await page.goto("/videos/new");
+  await page.waitForLoadState("networkidle");
+  const ai = page.getByRole("radio", { name: /AI video/ });
+  await expect(ai).not.toBeChecked();
+  await expect(page.getByTestId("ai-options")).toHaveCount(0);
+  await ai.check();
+  await expect(page.getByTestId("ai-options")).toBeVisible();
+  await expect(page.getByLabel("Character picture")).toHaveValue("");
+  await expect(page.getByTestId("ai-route-note")).toContainText("No AI video provider and model are chosen yet");
+  await page.getByLabel("Format").selectOption("long");
+  await expect(ai).toBeDisabled(); // Long is the Scene kit only
+  await noPageScroll(page);
+});

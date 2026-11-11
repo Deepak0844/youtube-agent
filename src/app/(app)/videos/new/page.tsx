@@ -5,6 +5,8 @@ import { scene3dNativeNote } from "@/server/core/scene3d-view";
 import { checkNativeRenderReady } from "@/server/providers/renderer/native-preflight";
 import { getEngineConfig } from "@/server/db/engine-config";
 import { getPool } from "@/server/db/pool";
+import { resolveRoute } from "@/server/db/media-registry";
+import { characterCandidates } from "@/server/db/video-characters";
 import { maxLongMinutes as readMaxLongMinutes } from "@/server/db/system-settings";
 import { LONG_HARD_MAX_MINUTES } from "@/server/core/long-form";
 import { Skeleton } from "@/ui/primitives/skeleton";
@@ -25,13 +27,17 @@ async function Owned() {
   const limitNote = renderLimitNote(config.render.timeoutS);
   // Read only: the preflight looks at this Mac (sandbox, Remotion, Chrome shell, disk); nothing is changed or downloaded.
   const nativeNote = scene3dNativeNote(config.render.native3d, config.render.native3d ? await checkNativeRenderReady().catch(() => ({ ready: false, message: "The readiness check failed." })) : null);
+  // AI videos: say plainly when no provider and model are chosen yet, and offer the library pictures that can be a character.
+  const route = await resolveRoute(getPool(), "video", { format: "short", videoKind: "ai" }).catch(() => null);
+  const aiNote = route?.model ? null : "No AI video provider and model are chosen yet (Settings > Providers). The script and the narration can be made, but the clips wait for one.";
+  const characters = await characterCandidates(getPool()).catch(() => []);
   return (
     <div className="flex min-w-0 flex-col gap-layout">
       <header className="flex flex-col gap-1">
         <h1 className="text-page-title font-semibold tracking-tight">New video</h1>
         <p className="m-0 max-w-prose text-body text-muted">Say what the video is about. The studio writes a script and stops to ask you before it spends money or publishes anything.</p>
       </header>
-      <NewForm scaleLimitNote={limitNote} scene3dNote={nativeNote} maxLongMinutes={maxLongMinutes} />
+      <NewForm scaleLimitNote={limitNote} scene3dNote={nativeNote} maxLongMinutes={maxLongMinutes} aiNote={aiNote} characters={characters} />
     </div>
   );
 }

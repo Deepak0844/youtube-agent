@@ -211,6 +211,16 @@ function Content({ c, lang, videoId, rate, long, fields }: { c: GateContent; lan
               ))}
             </ul>
           ) : null}
+          {c.shots && c.shots.length > 0 ? (
+            <div className="flex flex-col gap-1">
+              <h4 className="m-0 mt-2 text-small font-medium text-muted">What each clip asks for{c.character ? " (every clip starts from your character picture)" : ""}</h4>
+              <ol data-testid="cost-shots" className="m-0 flex list-none flex-col gap-1 p-0 text-body">
+                {c.shots.map((x) => (
+                  <li key={x.beatId} className="[overflow-wrap:anywhere]"><span className="text-muted tabular-nums">{x.seconds} s</span> {x.prompt}</li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
         </div>
       );
     case "look":

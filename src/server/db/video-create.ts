@@ -5,6 +5,7 @@ import { approvalReaders } from "@/server/db/approval-readers";
 import { recordAudit } from "@/server/db/audit";
 import { lengthRangeProblem, lengthVsQaProblem } from "@/server/core/long-form";
 import { advanceVideo, createVideo, type EnqueueOnly } from "@/server/db/pipeline";
+import { CharacterRefused, characterProblemOf, setVideoCharacter } from "@/server/db/video-characters";
 import { maxLongMinutes, qaLongSeconds } from "@/server/db/system-settings";
 
 /** Owner starts a new Short or Long video: row, audit, then the first pipeline step. The topic and notes stay out of the audit row. */
@@ -24,8 +25,21 @@ export async function startVideo(db: pg.Pool, queue: EnqueueOnly, sessionId: str
     const qa = lengthVsQaProblem({ min: i.lengthMin!, max: i.lengthMax! }, await qaLongSeconds(db));
     if (qa) return { ok: false, message: qa };
   }
+  // A locked character is checked BEFORE the video exists, so a bad picture never leaves a half-made video behind.
+  if (i.characterAssetId && i.kind !== "ai") return { ok: false, message: "Only an AI video has a character picture." };
+  if (i.characterAssetId) {
+    const why = await characterProblemOf(db, i.characterAssetId);
+    if (why) return { ok: false, message: why };
+  }
   const v = await createVideo(db, { channelId, format: i.format, kind: i.kind, language: i.language, topic: i.topic, notes: i.notes ?? null, style: i.style ?? null, captionStyle: i.captionStyle ?? null, ...(i.format === "long" ? { lengthMinMinutes: i.lengthMin, lengthMaxMinutes: i.lengthMax } : {}) });
   await recordAudit(db, "video.created", { videoId: v.id, language: v.language, kind: v.kind, format: v.format, sessionId, ...(v.format === "long" ? { lengthMin: i.lengthMin, lengthMax: i.lengthMax } : {}) });
+  if (i.characterAssetId) {
+    try {
+      await setVideoCharacter(db, v.id, i.characterAssetId);
+    } catch (e) {
+      if (!(e instanceof CharacterRefused)) throw e; // the picture changed in the meantime: the video starts without a character and the owner can set one
+    }
+  }
   try {
     await advanceVideo(db, queue, v.id, approvalReaders);
   } catch {
