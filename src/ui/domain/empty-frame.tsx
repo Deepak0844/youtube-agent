@@ -7,7 +7,7 @@ export function EmptyFrame({ message, action, aspect, className }: { message: st
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-col items-start justify-center gap-4 rounded-card bg-surface p-pad",
+        "flex min-w-0 flex-col items-start justify-center gap-4 rounded-card border border-dashed border-border p-pad",
         aspect === "9:16" && "aspect-[9/16] max-w-[220px]",
         aspect === "16:9" && "aspect-video",
         !aspect && "min-h-[120px]",
