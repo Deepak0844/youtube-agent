@@ -28,6 +28,7 @@ import { Browser, type BrowserProps } from "./Browser";
 import { ChatThread, type ChatThreadProps } from "./ChatThread";
 import { PauseCard, type PauseCardProps } from "./PauseCard";
 import { StockClip, type StockClipProps } from "./StockClip";
+import { CutoutStack, type CutoutStackProps } from "./CutoutStack";
 import { Story, type StoryProps } from "./Story";
 import { Terminal, type TerminalProps } from "./Terminal";
 import { theme } from "./theme";
@@ -117,6 +118,7 @@ const story: StoryProps = {
 
 const pause: PauseCardProps = { question: "Which one is real?", options: ["Left", "Right", "Both"], answer: 1, revealAtFrame: 70 };
 const stock: StockClipProps = { src: story.image, media: "image", dim: 0.3, caption: "Stock footage example" };
+const cutouts: CutoutStackProps = { layers: [0, 1, 2].map((i) => ({ src: story.image, enter: (["pop", "rise", "fade"] as const)[i]!, startFrame: i * 12 })), backing: true, caption: "Cut-outs" };
 
 const drawn: DrawnObjectsProps = {
   objects: [
@@ -229,6 +231,7 @@ export const kitCompositions = [
   { id: "kit-browser", component: Browser, defaultProps: browser },
   { id: "kit-story", component: Story, defaultProps: story },
   { id: "kit-stock", component: StockClip, defaultProps: stock },
+  { id: "kit-cutouts", component: CutoutStack, defaultProps: cutouts },
   { id: "kit-pause", component: PauseCard, defaultProps: pause },
   { id: "kit-drawn", component: DrawnObjects, defaultProps: drawn },
   { id: "kit-network", component: Network, defaultProps: net },
@@ -296,6 +299,10 @@ export const KitScene: React.FC<KitSceneProps> = ({ scene, resolveAsset = placeh
           tiles={scene.tiles.map((t, i) => ({ src: resolveAsset(t.asset), media: t.media, enter: t.enter, startFrame: starts[i]!, caption: t.caption }))}
         />
       );
+    }
+    case "cutout_stack": {
+      const starts = collageStarts(scene.layers.map((l) => l.delayMs), fps);
+      return <CutoutStack layers={scene.layers.map((l, i) => ({ src: resolveAsset(l.asset), enter: l.enter, startFrame: starts[i]! }))} backing={scene.backing} caption={scene.caption} captionZone={scene.captionZone} />;
     }
     case "drawn_objects":
       return <DrawnObjects objects={scene.objects} />;

@@ -130,6 +130,20 @@ export function collageRects(layout: CollageLayout, n: number, box: Rect, gap = 
   return out;
 }
 
+/**
+ * Rectangles (px) for `n` cut-out layers inside `box`: 1 big in the middle, 2 side by side, 3 a triangle, 4 a block, 5 a hero with four around.
+ * Neighbours overlap a little on purpose (a collage, not a grid). The first layer is the one behind the others. n outside 1..5 is clamped.
+ */
+export function cutoutRects(n: number, box: Rect): Rect[] {
+  const f: Array<[number, number, number, number]> =
+    n <= 1 ? [[0.08, 0.12, 0.84, 0.76]]
+    : n === 2 ? [[0, 0.18, 0.6, 0.64], [0.4, 0.18, 0.6, 0.64]]
+    : n === 3 ? [[0.2, 0, 0.6, 0.52], [0, 0.46, 0.56, 0.54], [0.44, 0.46, 0.56, 0.54]]
+    : n === 4 ? [[0, 0, 0.58, 0.54], [0.42, 0, 0.58, 0.54], [0, 0.46, 0.58, 0.54], [0.42, 0.46, 0.58, 0.54]]
+    : [[0.14, 0.18, 0.72, 0.64], [0, 0, 0.42, 0.3], [0.58, 0, 0.42, 0.3], [0, 0.7, 0.42, 0.3], [0.58, 0.7, 0.42, 0.3]];
+  return f.map(([x, y, w, h]) => ({ x: box.x + x * box.w, y: box.y + y * box.h, w: w * box.w, h: h * box.h }));
+}
+
 /** Entrance state at `frame` for a tile starting at `start`, taking `dur` frames. */
 export function enterState(enter: CollageEnter, frame: number, start: number, dur = 12): { opacity: number; x: number; y: number; scale: number } {
   const t = dur <= 0 ? 1 : clamp01((frame - start) / dur);

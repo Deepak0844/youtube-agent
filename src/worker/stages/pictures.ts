@@ -35,6 +35,11 @@ export interface PicturesDeps {
   /** Saved Pixabay key, or null/absent = Pixabay is skipped. Read per call, never logged. */
   pixabayKey?: () => Promise<string | null>;
   ingest: IngestDeps;
+  /**
+   * Collage videos only: makes a see-through cut-out of a picture the stage just found and returns the new asset id, or null when it could not
+   * (the plain picture is then used). Absent = pictures are linked as they are.
+   */
+  cutout?: (assetId: string, signal: AbortSignal) => Promise<string | null>;
   /** Test seams. */
   ingestImageFn?: typeof ingestImage;
   ingestClipFn?: typeof ingestClip;
@@ -94,7 +99,8 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
     const linksOf = (beatId: string) => existing.filter((l) => l.beatId === beatId);
 
     // A style may ask for clips on every beat and a higher clip cap (documentary_montage); everyone else keeps today's rules.
-    const styleRow = await deps.db.query<{ style: string | null }>("select style from videos where id = $1", [videoId]);
+    const styleRow = await deps.db.query<{ style: string | null; kind: string }>("select style, kind from videos where id = $1", [videoId]);
+    const collage = styleRow.rows[0]?.kind === "collage" && deps.cutout !== undefined; // a collage is made of cut-outs and never of clips
     const clipRule = presetOf(styleRow.rows[0]?.style).clips ?? { wantAll: false, max: MAX_CLIPS_PER_VIDEO };
 
     const outcomes: BeatOutcome[] = [];
@@ -170,6 +176,7 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
           client.release();
         }
         if (ctx.signal.aborted) throw ctx.signal.reason ?? new Error("aborted"); // no link is written once the stage is cancelled
+        if (collage && !c.clip) assetId = (await deps.cutout!(assetId, signal).catch(() => null)) ?? assetId; // the cut-out replaces the picture; if it fails the picture stays
         try {
           await linkAsset(deps.db, { videoId, assetId, beatId: videoBeat.id, credit: c.credit, sourceUrl: c.pageUrl, licence: c.licence, briefHash: videoBeat.hash });
         } catch (e) {
@@ -213,7 +220,7 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
         ];
         // A beat whose visual describes motion tries a free Pixabay clip first (needs the saved key; at most MAX_CLIPS_PER_VIDEO per
         // video and CLIPS_TOTAL_MAX_BYTES per run). Nothing acceptable = the normal picture search below.
-        if ((clipRule.wantAll || wantsMotion(beat.visual)) && clips < clipRule.max && clipBudget(clipBytes) > 0) {
+        if (!collage && (clipRule.wantAll || wantsMotion(beat.visual)) && clips < clipRule.max && clipBudget(clipBytes) > 0) {
           const key = deps.pixabayKey ? await deps.pixabayKey() : null;
           if (key) {
             const found: ClipCandidate[] = [];

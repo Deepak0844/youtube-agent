@@ -10,7 +10,7 @@ import { validateAndCheck } from "@/shared/scene/rules";
 
 export const MAX_RETRIES = 2;
 export const GO_RATIO = 0.8;
-const ASSET_KINDS = new Set<string>(["story_kenburns", "stock_clip", "collage", "browser"]);
+const ASSET_KINDS = new Set<string>(["story_kenburns", "stock_clip", "collage", "cutout_stack", "browser"]);
 
 /** Which sheets to run: `perKind` = first n of each kind (file order); else the first `runs` (default 10). */
 export function selectSheets(all: BeatSheet[], o: { runs?: number; perKind?: number; kinds?: string[] }): BeatSheet[] {

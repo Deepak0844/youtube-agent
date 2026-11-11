@@ -42,7 +42,7 @@ function texts(v: unknown, key = ""): string[] {
 const arr = (s: Scene, k: string): unknown[] => ((s as unknown as Any)[k] as unknown[] | undefined) ?? [];
 const assetsOf = (s: Scene): string[] => {
   const a = s as unknown as Any;
-  return [a.asset, a.image, ...arr(s, "tiles").map((t) => (t as Any).asset), ...arr(s, "blocks").map((b) => (b as Any).asset)].filter((x): x is string => typeof x === "string");
+  return [a.asset, a.image, ...arr(s, "tiles").map((t) => (t as Any).asset), ...arr(s, "layers").map((l) => (l as Any).asset), ...arr(s, "blocks").map((b) => (b as Any).asset)].filter((x): x is string => typeof x === "string");
 };
 
 // Frame 0 must show real content: per kind, what has to exist at the start.
@@ -52,7 +52,7 @@ const FRAME0: Record<string, (s: Scene) => boolean> = {
   browser: (s) => arr(s, "blocks").length > 0,
 };
 const NEEDS_OBJECTS: Record<string, string> = { drawn_objects: "objects", network: "nodes" };
-const NEEDS_ASSET = new Set(["stock_clip", "story_kenburns", "collage"]);
+const NEEDS_ASSET = new Set(["stock_clip", "story_kenburns", "collage", "cutout_stack"]);
 
 // Plain words a drawn_objects label may use for each icon (the label must not claim the icon is something else).
 const ICON_WORDS: Record<string, string[]> = {

@@ -29,6 +29,8 @@ export interface VideoAsset {
   briefHash: string | null;
   /** "video" = a stock clip; absent on rows from older callers. */
   kind?: "image" | "audio" | "video";
+  /** A see-through cut-out picture (tagged `cutout`). Collage videos lay these out as cut-out layers. */
+  cutout?: boolean;
 }
 
 /** Links one image to a beat. Linking the same (video, asset, beat) again changes nothing. */
@@ -54,15 +56,15 @@ export async function linkAsset(db: Db, a: LinkInput): Promise<void> {
 
 /** Linked pictures that are still live, in beat order of position then link time. */
 export async function assetsForVideo(db: Db, videoId: string): Promise<VideoAsset[]> {
-  const { rows } = await db.query<{ asset_id: string; beat_id: string; position: number; caption: string | null; credit: string | null; brief_hash: string | null; kind: "image" | "audio" | "video" }>(
-    `select va.asset_id, va.beat_id, va.position, a.caption, va.credit, va.brief_hash, a.kind
+  const { rows } = await db.query<{ asset_id: string; beat_id: string; position: number; caption: string | null; credit: string | null; brief_hash: string | null; kind: "image" | "audio" | "video"; cutout: boolean }>(
+    `select va.asset_id, va.beat_id, va.position, a.caption, va.credit, va.brief_hash, a.kind, ('cutout' = any(a.tags)) as cutout
        from video_assets va join assets a on a.id = va.asset_id
       where va.video_id = $1 and a.deleted_at is null
       order by va.beat_id, va.position, va.created_at, va.asset_id`,
     [videoId],
   );
   return rows.map((r) => ({
-    assetId: r.asset_id, beatId: r.beat_id, position: r.position, briefHash: r.brief_hash, kind: r.kind,
+    assetId: r.asset_id, beatId: r.beat_id, position: r.position, briefHash: r.brief_hash, kind: r.kind, ...(r.cutout ? { cutout: true } : {}),
     ...(r.caption ? { caption: r.caption } : {}), ...(r.credit ? { credit: r.credit } : {}),
   }));
 }

@@ -144,3 +144,16 @@ test("the New form offers the AI video type with its character picker and says w
   await expect(ai).toBeDisabled(); // Long is the Scene kit only
   await noPageScroll(page);
 });
+
+test("the New form offers the Collage type, which is a Short with the usual look pickers", async ({ page }) => {
+  await page.goto("/videos/new");
+  await page.waitForLoadState("networkidle");
+  const c = page.getByRole("radio", { name: /Collage/ });
+  await expect(c).not.toBeChecked();
+  await c.check();
+  await expect(page.getByText("Style", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("ai-options")).toHaveCount(0);
+  await page.getByLabel("Format").selectOption("long");
+  await expect(c).toBeDisabled();
+  await noPageScroll(page);
+});

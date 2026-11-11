@@ -37,6 +37,15 @@ describe("ageLabel", () => {
   });
 });
 
+describe("parseNewVideoForm: collage", () => {
+  it("is a Short with the usual look and captions, and never carries a character", () => {
+    const r = parseNewVideoForm(form({ topic: "x", language: "en", kind: "collage", style: "flat_motion", captionStyle: "punchy_captions", character: "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91" }));
+    expect(r).toMatchObject({ ok: true, value: { kind: "collage", format: "short", style: "flat_motion", captionStyle: "punchy_captions" } });
+    expect(r.ok && "characterAssetId" in r.value).toBe(false);
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "collage", format: "long" }))).toMatchObject({ ok: false });
+  });
+});
+
 describe("parseNewVideoForm: AI videos", () => {
   const id = "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91";
   it("is a Short with an optional locked character and the usual look", () => {
@@ -88,7 +97,7 @@ describe("parseNewVideoForm", () => {
     expect(parseNewVideoForm(form({ topic: "x".repeat(201), language: "en" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ topic: "x".repeat(200), language: "en" })).ok).toBe(true);
     expect(parseNewVideoForm(form({ topic: "x", language: "fr" })).ok).toBe(false);
-    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "collage" })).ok).toBe(false);
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "hologram" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ topic: "x", language: "en", format: "wide" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ language: "en" })).ok).toBe(false);
   });

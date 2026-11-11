@@ -13,7 +13,7 @@ export function reframeGeometry(width: number, height: number) {
   };
 }
 
-const SKIP_KINDS = new Set(["collage"]);
+const SKIP_KINDS = new Set(["collage", "cutout_stack"]);
 
 /** False when re-framing would look wrong: transparent shots or collage shots (they lay out against the frame size). */
 export function shouldReframe(p: { kinds: string[]; hasTransparency?: boolean }): boolean {
