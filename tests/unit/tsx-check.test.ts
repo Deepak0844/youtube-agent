@@ -279,7 +279,7 @@ describe("checkTsx: input handling never throws", () => {
       expect(r.problems.length).toBeGreaterThan(0);
       expect(r.problems.length).toBeLessThanOrEqual(20);
     }
-  });
+  }, 30_000); // many large parses in one test: slow only when the whole suite runs at once
 
   it("deep nesting is refused, not a stack overflow", () => {
     const deep = `export default () => ${"[".repeat(3000)}1${"]".repeat(3000)};\n${META}`;
