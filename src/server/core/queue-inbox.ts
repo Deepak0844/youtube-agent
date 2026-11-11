@@ -7,7 +7,11 @@ export function parseQueueTab(v: unknown): QueueTab {
   return v === "running" || v === "failed" ? v : "needs";
 }
 
-/** The item named in the URL, else the oldest one (the list is oldest first); null when the list is empty. */
+/**
+ * The item named in the URL. With no item named, the oldest one (the list is oldest first). An item that is no longer
+ * waiting gives null: the pane must never put another video's approve button where the one just used was.
+ */
 export function pickItem<T extends { videoId: string }>(items: readonly T[], wanted: string | undefined): T | null {
-  return items.find((i) => i.videoId === wanted) ?? items[0] ?? null;
+  if (wanted) return items.find((i) => i.videoId === wanted) ?? null;
+  return items[0] ?? null;
 }

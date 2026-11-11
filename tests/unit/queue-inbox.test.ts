@@ -7,9 +7,12 @@ describe("queue inbox", () => {
   it("picks the item named in the URL", () => {
     expect(pickItem(items, "b")).toEqual({ videoId: "b" });
   });
-  it("an unknown or missing item falls back to the oldest (first)", () => {
-    expect(pickItem(items, "zzz")).toEqual({ videoId: "a" });
+  it("no item in the URL: the oldest (first) is opened", () => {
     expect(pickItem(items, undefined)).toEqual({ videoId: "a" });
+    expect(pickItem(items, "")).toEqual({ videoId: "a" });
+  });
+  it("an item that is no longer waiting opens NOTHING (never another video's gate in its place)", () => {
+    expect(pickItem(items, "zzz")).toBeNull();
   });
   it("an empty list has nothing selected", () => {
     expect(pickItem([], "a")).toBeNull();

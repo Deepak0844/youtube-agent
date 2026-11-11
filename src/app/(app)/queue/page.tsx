@@ -154,17 +154,18 @@ async function Owned({ searchParams }: Pick<PageProps<"/queue">, "searchParams">
             </Link>
           ) : null}
           {selected === null ? (
-            tab === "needs" && waiting === 0 ? null : (
-              <EmptyState icon={Inbox} title={tab === "needs" ? "This one is done" : "Pick a video"} body={tab === "needs" ? "Pick another item on the left." : "Running and failed items open on their video page."} />
+            tab === "needs" && waiting === 0 && !wanted ? null : (
+              <EmptyState
+                icon={Inbox}
+                title={tab !== "needs" ? "Pick a video" : waiting === 0 ? "Nothing else is waiting on you" : "This one is done"}
+                body={tab !== "needs" ? "Running and failed items open on their video page." : waiting === 0 ? "New scripts, costs and publishes will line up in the queue." : "Pick another item from the list."}
+              />
             )
           ) : selected.kind === "gate" ? (
             <GateCard key={`${selected.videoId}-${selected.gate}`} item={selected} index={0} rate={rate} />
           ) : (
             <DecisionCard key={`${selected.videoId}-decision`} item={selected} />
           )}
-          {tab === "needs" && wanted && selected && selected.videoId !== wanted ? (
-            <p role="status" className="mt-3 text-small text-muted">The item you opened is done; showing the next one.</p>
-          ) : null}
         </section>
       </div>
 

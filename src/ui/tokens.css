@@ -14,6 +14,7 @@
   --pill-warning-bg:#fef3c7;  --pill-warning-ink:#92400e;
   --pill-info-bg:#dbeafe;     --pill-info-ink:#1d4ed8;
   --pill-neutral-bg:#f4f4f5;  --pill-neutral-ink:#3f3f46;
+  --on-tint:#171717; /* ink on fixed pale tints (channel initials): same in both themes */
   --radius-card:8px; --radius-control:6px; --radius-frame:10px;
   --row-height:64px; --sidebar-width:196px; --gap:12px; /* inside panels and lists */ --gap-layout:20px; /* between columns */
   --pad:16px; /* card padding */ --gutter:24px; /* page padding */ --control-height:32px;
@@ -57,6 +58,7 @@
   --color-surface: var(--surface);
   --color-raised: var(--raised);
   --color-page: var(--page);
+  --color-on-tint: var(--on-tint);
   --color-border: var(--border);
   --color-rule: var(--rule);
   --color-control: var(--control);
