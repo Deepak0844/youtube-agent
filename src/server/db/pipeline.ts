@@ -110,6 +110,12 @@ async function lockVideo(c: pg.PoolClient, videoId: string): Promise<VideoLocked
   return v;
 }
 
+/** The routed clip model of an AI video as "provider/model", or null when no route (or no model) is set: the shot plan refuses then, and changing the route makes it stale. */
+async function clipRouteOf(c: pg.PoolClient, v: VideoLocked): Promise<string | null> {
+  const r = await resolveRoute(c, "video", { format: v.format, videoKind: v.kind });
+  return r?.model ? `${r.provider}/${r.model}` : null;
+}
+
 async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineReaders): Promise<PipelineView> {
   const content = await c.query<{ kind: ContentKindName; sha256: string; body: unknown }>(
     "select distinct on (kind) kind, sha256, body from video_content where video_id = $1 order by kind, version desc",
@@ -138,6 +144,7 @@ async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineRead
     // A long video's chosen length range is part of its parameters (a short adds nothing, so every short hash stays what it was).
     paramsHash: sha256Hex(canonicalJson({ format: v.format, kind: v.kind_origin ?? v.kind, language: v.language, topic: v.topic, notes: v.notes, ...(v.format === "long" ? { length: [v.length_min_minutes, v.length_max_minutes] } : {}), ...(v.derive_from_scene !== null ? { derive: [v.derived_from, v.derive_from_scene, v.derive_to_scene] } : {}) })),
     ...(v.derive_from_scene !== null ? { derivedSource: await derivedSourceDigest(c, v.derived_from) } : {}),
+    ...(v.kind === "ai" ? { clipRoute: await clipRouteOf(c, v) } : {}),
     feedback: await readers.feedback(c, v.id),
     ...(v.format === "long" && readers.outlineFeedback ? { outlineFeedback: await readers.outlineFeedback(c, v.id) } : {}),
     ...((v.kind === "scene3d" || v.kind === "scene3d_code") && readers.lookFeedback ? { lookFeedback: await readers.lookFeedback(c, v.id) } : {}),

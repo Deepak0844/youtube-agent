@@ -27,10 +27,10 @@ export function parseTab(raw: unknown): TabId {
 }
 
 export const STAGE_LABELS: Record<StageName, string> = {
-  outline: "Outline", draft: "Draft", pictures: "Pictures", build: "Build", generate: "Generate", tts: "Narration", render: "Render", tsx_author: "Code scene", direct_scene3d: "3D scene", scene3d_stills: "Preview pictures", scene3d_author: "3D scene code", scene3d_review: "Picture review", voice: "Voice", sfx: "Sound", qa: "Check", repair_scenes: "Scene repair", reframe: "Re-frame", thumbnail: "Thumbnail", derive: "Clip from the long video", seo: "Titles", reply_drafts: "Reply drafts",
+  outline: "Outline", draft: "Draft", pictures: "Pictures", build: "Build", generate: "Generate", shots: "Shots", tts: "Narration", render: "Render", tsx_author: "Code scene", direct_scene3d: "3D scene", scene3d_stills: "Preview pictures", scene3d_author: "3D scene code", scene3d_review: "Picture review", voice: "Voice", sfx: "Sound", qa: "Check", repair_scenes: "Scene repair", reframe: "Re-frame", thumbnail: "Thumbnail", derive: "Clip from the long video", seo: "Titles", reply_drafts: "Reply drafts",
 };
 const VERB: Record<StageName, string> = {
-  outline: "Planning the outline", draft: "Drafting", pictures: "Finding pictures", build: "Building", generate: "Generating", tts: "Recording narration", render: "Rendering", tsx_author: "Writing and rendering the code scene", direct_scene3d: "Directing the 3D scene", scene3d_stills: "Drawing preview pictures", scene3d_author: "Writing the 3D scene code", scene3d_review: "Reviewing the preview pictures", voice: "Mixing voice", sfx: "Adding sound", qa: "Checking quality", repair_scenes: "Repairing scenes", reframe: "Re-framing", thumbnail: "Drawing the thumbnail", derive: "Cutting the clip", seo: "Writing titles", reply_drafts: "Drafting replies",
+  outline: "Planning the outline", draft: "Drafting", pictures: "Finding pictures", build: "Building", generate: "Generating", shots: "Planning the clips", tts: "Recording narration", render: "Rendering", tsx_author: "Writing and rendering the code scene", direct_scene3d: "Directing the 3D scene", scene3d_stills: "Drawing preview pictures", scene3d_author: "Writing the 3D scene code", scene3d_review: "Reviewing the preview pictures", voice: "Mixing voice", sfx: "Adding sound", qa: "Checking quality", repair_scenes: "Repairing scenes", reframe: "Re-framing", thumbnail: "Drawing the thumbnail", derive: "Cutting the clip", seo: "Writing titles", reply_drafts: "Drafting replies",
 };
 
 /** Samples needed before a time estimate is shown. */
