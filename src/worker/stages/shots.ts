@@ -3,6 +3,8 @@ import { buildCostPlan, costPlanBody, type CostItem } from "@/server/core/cost-p
 import { KnownFailure } from "@/server/core/paid-call";
 import { approvedScript } from "@/server/db/stage-content";
 import { resolveRoute } from "@/server/db/media-registry";
+import { characterOf } from "@/server/db/video-characters";
+import { pickVideoModel } from "@/server/providers/video";
 import type { AttemptHandler } from "./attempt";
 import { contentBody, loadVideo, plainScope, scopeHeadroom, videoMoneyScopes, type StageDeps } from "./deps";
 
@@ -36,13 +38,16 @@ export function shotsAttempt(deps: StageDeps): AttemptHandler {
     const provider = await deps.videoFor(route.provider); // refuses (nothing reserved) when off, unpriced or without a key
     const model = Object.hasOwn(provider.capability.models, route.model) ? provider.capability.models[route.model] : undefined;
     if (!model) throw new KnownFailure(`The model "${route.model.slice(0, 60)}" is not one this provider offers. Pick another in Settings → Providers.`);
+    // A locked character: every clip starts from that picture, so only a model that can start from a picture may be used (no fallback, never re-drawn from words).
+    const character = await characterOf(deps.db, video.id);
+    pickVideoModel({ [route.provider]: provider }, route.provider, route.model, { locked: character !== null });
     const plan = planShots(beats, windows, model);
     if (!plan.ok) throw new KnownFailure(plan.problems.join(" "));
 
     const items: CostItem[] = plan.shots.map((s) => ({
       kind: "clip",
       provider: `${route.provider}/${route.model}`,
-      quoteMicroUsd: provider.quote({ prompt: s.prompt, seconds: s.seconds, aspect: "9:16", startImage: false, endImage: false, model: route.model!, budgetScopes: ["quote"] }),
+      quoteMicroUsd: provider.quote({ prompt: s.prompt, seconds: s.seconds, aspect: "9:16", startImage: character !== null, endImage: false, model: route.model!, budgetScopes: ["quote"], ...(character && { startImagePath: character.storageRef }) }),
     }));
     const cost = buildCostPlan(items, "ai");
     const room = await scopeHeadroom(deps.db, await videoMoneyScopes(deps.db, video));
@@ -51,7 +56,7 @@ export function shotsAttempt(deps: StageDeps): AttemptHandler {
     }
     return {
       files: [],
-      content: [{ kind: "cost_plan", body: { ...costPlanBody(cost), shots: plan.shots } }],
+      content: [{ kind: "cost_plan", body: { ...costPlanBody(cost), shots: plan.shots, ...(character && { character }) } }],
       result: { clips: items.length, totalMicroUsd: cost.totalMicroUsd, provider: route.provider, model: route.model },
     };
   };

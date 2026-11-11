@@ -8,6 +8,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { ensureCapScope } from "@/server/db/budget-scopes";
 import { registerAsset } from "@/server/db/assets";
 import { resolveRoute } from "@/server/db/media-registry";
+import { characterOf } from "@/server/db/video-characters";
 import { approvedCostPlan } from "@/server/db/stage-content";
 import { linkAsset, LinkRefused, unlinkStageBeats } from "@/server/db/video-assets";
 import { ingestClip } from "@/server/render/ingest";
@@ -50,7 +51,14 @@ export function generateClipsAttempt(deps: StageDeps): AttemptHandler {
     const route = await resolveRoute(deps.db, "video", { format: video.format, videoKind: video.kind });
     if (route?.provider !== target.providerId || route.model !== target.model) throw new KnownFailure(`The approved plan names ${plan.items[0]!.provider}, but a different video model is set up now. Plan the clips again.`);
     const provider = await deps.videoFor(target.providerId); // refuses (nothing reserved) when off, unpriced or without a key
-    const quoteOf = (i: number) => provider.quote({ prompt: shots[i]!.prompt, seconds: shots[i]!.seconds, aspect: "9:16", startImage: false, endImage: false, model: target.model, budgetScopes: ["quote"] });
+    // The character the owner approved with the plan, and it must still be the video's live character (same picture, same file).
+    const approvedCharacter = (approved.body as { character?: { assetId?: unknown; storageRef?: unknown } }).character;
+    const character = await characterOf(deps.db, video.id);
+    if (approvedCharacter !== undefined || character !== null) {
+      if (!character || approvedCharacter?.assetId !== character.assetId || approvedCharacter?.storageRef !== character.storageRef) throw new KnownFailure("The character picture changed after you approved the plan. Plan the clips again; nothing was bought.");
+    }
+    const pic = character ? { startImage: true, startImagePath: character.storageRef } : { startImage: false };
+    const quoteOf = (i: number) => provider.quote({ prompt: shots[i]!.prompt, seconds: shots[i]!.seconds, aspect: "9:16", endImage: false, model: target.model, budgetScopes: ["quote"], ...pic });
     for (const i of plan.items.keys()) {
       if (quoteOf(i) !== plan.items[i]!.quoteMicroUsd) throw new KnownFailure("A clip's price changed after you approved the plan. Plan the clips again; nothing was bought.");
     }
@@ -63,7 +71,7 @@ export function generateClipsAttempt(deps: StageDeps): AttemptHandler {
       const still = await approvedCostPlan(deps.db, video.id);
       if (!still.ok || still.hash !== approved.hash) throw new KnownFailure("The cost plan changed while clips were being made. Approve it again; nothing more was bought.");
       // The adapter reserves inside generate(), against the quote-cap scope passed here, and stores its job id before the clip is requested again.
-      const art = await provider.generate(ctx, { prompt: shot.prompt, seconds: shot.seconds, aspect: "9:16", startImage: false, endImage: false, model: target.model, budgetScopes: scopes });
+      const art = await provider.generate(ctx, { prompt: shot.prompt, seconds: shot.seconds, aspect: "9:16", endImage: false, model: target.model, budgetScopes: scopes, ...pic });
 
       // The paid file stays where the adapter stored it (a replay finds it); a copy goes through the sandboxed check and becomes the asset.
       const incoming = path.join(deps.root, "assets-incoming", `clip-${randomUUID()}`);

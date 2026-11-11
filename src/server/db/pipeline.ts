@@ -22,6 +22,7 @@ import {
 import type { StageQueue } from "@/server/queue/job-queue";
 import { admitStage, releaseProbe } from "@/server/db/breakers";
 import { resolveRoute } from "@/server/db/media-registry";
+import { characterOf } from "@/server/db/video-characters";
 import { getSetting } from "@/server/db/settings";
 import { cancelQueuedStage, requestCancel } from "@/server/db/stages";
 import { gateWaitInput, notifySafe, type NotifySend, type TransitionInput } from "@/server/db/notify";
@@ -144,7 +145,7 @@ async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineRead
     // A long video's chosen length range is part of its parameters (a short adds nothing, so every short hash stays what it was).
     paramsHash: sha256Hex(canonicalJson({ format: v.format, kind: v.kind_origin ?? v.kind, language: v.language, topic: v.topic, notes: v.notes, ...(v.format === "long" ? { length: [v.length_min_minutes, v.length_max_minutes] } : {}), ...(v.derive_from_scene !== null ? { derive: [v.derived_from, v.derive_from_scene, v.derive_to_scene] } : {}) })),
     ...(v.derive_from_scene !== null ? { derivedSource: await derivedSourceDigest(c, v.derived_from) } : {}),
-    ...(v.kind === "ai" ? { clipRoute: await clipRouteOf(c, v) } : {}),
+    ...(v.kind === "ai" ? { clipRoute: await clipRouteOf(c, v), characterAsset: (await characterOf(c, v.id))?.assetId ?? null } : {}),
     feedback: await readers.feedback(c, v.id),
     ...(v.format === "long" && readers.outlineFeedback ? { outlineFeedback: await readers.outlineFeedback(c, v.id) } : {}),
     ...((v.kind === "scene3d" || v.kind === "scene3d_code") && readers.lookFeedback ? { lookFeedback: await readers.lookFeedback(c, v.id) } : {}),
