@@ -36,7 +36,7 @@ describe("new key slots", () => {
   });
   it("only Google lists voices for free; the rest are 'checked on first use' (no request is built)", () => {
     expect(keyTestRequest("google_tts" as never, "k")).toMatchObject({ url: "https://texttospeech.googleapis.com/v1/voices", method: "GET" });
-    for (const id of ["azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance", "kling"]) expect(keyTestRequest(id as never, "k"), id).toBeNull();
+    for (const id of ["azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance", "kling", "vertex"]) expect(keyTestRequest(id as never, "k"), id).toBeNull();
   });
 });
 

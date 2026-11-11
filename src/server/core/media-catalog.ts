@@ -38,7 +38,7 @@ export const routeScope = (s: unknown): string | null => (typeof s === "string" 
 export const KEY_SLOT: Record<string, string | null> = {
   elevenlabs: "elevenlabs", elevenlabs_music: "elevenlabs", elevenlabs_sfx: "elevenlabs", edge: null, voicestudio: "voicestudio",
   local_openai: "local_voice", custom_http: "custom", google_tts: "google_tts", azure_tts: "azure_speech", gemini_image: "gemini",
-  openai_image: "openai", fal_image: "fal", pexels: "pexels", pixabay: "pixabay", coverr: "coverr", own_stock: null, seedance_video: "seedance", kling_video: "kling",
+  openai_image: "openai", fal_image: "fal", pexels: "pexels", pixabay: "pixabay", coverr: "coverr", own_stock: null, seedance_video: "seedance", kling_video: "kling", veo_video: "vertex",
 };
 
 type Check = { ok: true } | { ok: false; reason: string };

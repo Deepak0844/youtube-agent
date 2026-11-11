@@ -35,6 +35,11 @@ describe("clipProblem", () => {
     expect(clipProblem(m, req())).toMatch(/needs a start picture/);
     expect(clipProblem(m, req({ startImage: true }))).toBeNull();
   });
+  it("a model with set lengths refuses the others", () => {
+    const m = { ...FAKE_MODEL, id: "set", minSeconds: 4, maxSeconds: 8, allowedSeconds: [4, 6, 8] };
+    expect(clipProblem(m, req({ seconds: 6 }))).toBeNull();
+    expect(clipProblem(m, req({ seconds: 5 }))).toMatch(/4, 6, 8/);
+  });
   it("cleanClipPrompt trims and strips control characters", () => expect(cleanClipPrompt("  a\u0000b  ")).toBe("ab"));
 });
 

@@ -13,6 +13,8 @@ export interface KeyRowProps {
   label: string;
   note: string;
   shapeHint: string;
+  /** Longest value the box takes (a Google Cloud key file is long); 400 when unset. */
+  maxLength?: number;
   isSet: boolean;
   tail: string;
   savedLabel: string;
@@ -132,7 +134,7 @@ export function KeyRow(p: KeyRowProps) {
               autoCapitalize="off"
               spellCheck={false}
               required
-              maxLength={400}
+              maxLength={p.maxLength ?? 400}
               disabled={!p.canSave}
               aria-describedby={hintId}
               aria-invalid={setState.kind === "error" ? true : undefined}

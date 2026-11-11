@@ -26,7 +26,7 @@ const reply = (provider: string, s: Omit<KeyActionState, "provider" | "n">): Key
 export async function setKeyAction(_prev: KeyActionState, form: FormData): Promise<KeyActionState> {
   await requireOwner();
   const provider = field(form, "provider", 40);
-  const r = await saveProviderKey(getPool(), loadKeyring, provider, field(form, "value", 1000));
+  const r = await saveProviderKey(getPool(), loadKeyring, provider, field(form, "value", 7000));
   if (!r.ok) return reply(provider, { kind: "error", message: r.message });
   refresh();
   return reply(provider, { kind: "saved", message: "Saved." });
