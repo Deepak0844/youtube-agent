@@ -80,3 +80,39 @@ describe("money", () => {
     expect(formatMoney(1_938_000_000, 95.05)).toBe("$1938.00 (₹1,84,206.9)");
   });
 });
+
+describe("Pagination", async () => {
+  const { Pagination } = await import("@/ui/states/pagination");
+  const href = (c: { page?: number; size?: number }) => `/videos?page=${c.page ?? 1}&size=${c.size ?? 25}`;
+  it("page 1: previous is disabled, next links to page 2, label is shown", () => {
+    render(<Pagination page={1} size={25} total={60} hrefFor={href} />);
+    expect(screen.getByText("1–25 of 60")).toBeTruthy();
+    expect(screen.getByLabelText("Previous page").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByRole("link", { name: "Next page" }).getAttribute("href")).toBe("/videos?page=2&size=25");
+    expect(screen.getByRole("link", { name: "1" }).getAttribute("aria-current")).toBe("page");
+  });
+  it("last page: next is disabled", () => {
+    render(<Pagination page={3} size={25} total={60} hrefFor={href} />);
+    expect(screen.getByLabelText("Next page").getAttribute("aria-disabled")).toBe("true");
+  });
+});
+
+describe("DataTable", async () => {
+  const { DataTable, DataHead, HeadCell, DataRow, TruncCell } = await import("@/ui/states/data-table");
+  it("sorted header says so; long text keeps its full title", () => {
+    render(
+      <DataTable>
+        <DataHead>
+          <HeadCell sortHref="/videos?sort=title&dir=asc" sorted="desc">Title</HeadCell>
+        </DataHead>
+        <tbody>
+          <DataRow>
+            <TruncCell text="A very long title that will not fit on one line" />
+          </DataRow>
+        </tbody>
+      </DataTable>,
+    );
+    expect(screen.getByRole("columnheader", { name: /Title/ }).getAttribute("aria-sort")).toBe("descending");
+    expect(screen.getByText(/A very long title/).getAttribute("title")).toBe("A very long title that will not fit on one line");
+  });
+});
