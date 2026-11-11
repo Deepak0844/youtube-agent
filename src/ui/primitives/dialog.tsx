@@ -13,7 +13,7 @@ export const DialogDescription = ({ className, ...p }: React.ComponentProps<type
   <D.Description className={cn("text-body text-muted", className)} {...p} />
 );
 
-export const overlay = "fixed inset-0 z-40 bg-ground/80";
+export const overlay = "fixed inset-0 z-40 bg-ground/70";
 
 export function DialogContent({ className, children, ...props }: React.ComponentProps<typeof D.Content>) {
   return (
@@ -21,7 +21,7 @@ export function DialogContent({ className, children, ...props }: React.Component
       <D.Overlay className={overlay} />
       <D.Content
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 flex max-h-[85dvh] w-[calc(100%-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-gap overflow-auto rounded-card bg-raised p-pad text-text",
+          "fixed top-1/2 left-1/2 z-50 flex max-h-[85dvh] w-[calc(100%-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-gap overflow-auto rounded-frame border border-border bg-surface p-pad text-text shadow-xl",
           className,
         )}
         {...props}

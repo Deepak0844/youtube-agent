@@ -7,7 +7,7 @@ export function Checkbox({ className, ...props }: React.ComponentProps<typeof C.
   return (
     <C.Root
       className={cn(
-        "relative flex size-5 shrink-0 items-center justify-center rounded-md border border-control bg-surface text-ground data-[state=checked]:border-text data-[state=checked]:bg-text disabled:opacity-50",
+        "relative flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-control bg-surface text-page data-[state=checked]:border-text data-[state=checked]:bg-text disabled:opacity-50",
         "before:absolute before:-inset-3 before:content-[''] sm:before:hidden",
         fade,
         focusRing,

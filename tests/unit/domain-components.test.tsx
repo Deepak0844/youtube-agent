@@ -204,13 +204,13 @@ describe("DecisionRow", () => {
 });
 
 describe("Gate (static)", () => {
-  it("states the consequence in a sentence and offers the white pill", () => {
+  it("states the consequence in a sentence and offers the solid primary button", () => {
     render(<Gate title="Script review" consequence={<>Uploads privately to <strong>Tamarind Lane</strong>. Spends $0.00 more.</>} />);
     expect(screen.getByRole("heading", { name: "Script review" })).toBeTruthy();
     expect(screen.getByText(/Spends \$0\.00 more/)).toBeTruthy();
     const approve = screen.getByRole("button", { name: /approve/i });
     expect(approve.className).toMatch(/bg-text/);
-    expect(approve.className).toMatch(/text-ground/);
+    expect(approve.className).toMatch(/text-page/);
   });
   it("has no approve logic: both buttons are disabled", () => {
     render(<Gate title="G" consequence="x" />);

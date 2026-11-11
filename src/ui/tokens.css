@@ -1,20 +1,53 @@
-/* Design tokens: Doc 3 §3, verbatim values. One dark theme, no light theme planned.
-   Elevation by lightness only (ground -> surface -> raised): no card borders, no shadows. */
+/* Design tokens: spec 2026-11-12 UI redesign §4.1 (Vercel look). Light is the :root default; dark comes from
+   data-theme="dark" (owner's choice) or, with no choice, from the Mac setting. The two dark blocks must stay identical
+   (tests/unit/tokens.test.ts checks). Names stay the same as before so existing class names keep working:
+   ground = behind the frame, page = the framed page, surface = cards, raised = soft fill / hover. */
 :root {
-  --ground:#000; --surface:#111; --raised:#2a2a2a;
-  --border:#1a1a1a; --rule:#161616; --control:#444;
-  --text:#fff; --muted:#b4b4b4; --faint:#949494;
-  /* data hue: tally-light amber (replaces the dealt lime #c6f24e) */
-  --accent:#f2a33a; --positive:#5fc48a; --negative:#e5484d; --warning:#e3c34b;
-  --chart-1:#f2a33a; --chart-2:#e6e6e6; --chart-3:#6b6b6b;
-  --pill-positive-bg:#16261d; --pill-positive-ink:#5fc48a;
-  --pill-negative-bg:#2c1a20; --pill-negative-ink:#f0707a; /* lighter than --negative on purpose: 4.5:1 on its tinted ground */
-  --pill-warning-bg:#2a2614;  --pill-warning-ink:#e3c34b;
-  --pill-neutral-bg:#222;     --pill-neutral-ink:#fff;
-  --radius-card:20px; --radius-control:999px;
-  --row-height:80px; --sidebar-width:210px; --gap:14px; /* inside panels and lists */ --gap-layout:24px; /* between main column and rail */
-  --pad:22px; /* card padding */ --gutter:29px; /* page margin from the sidebar rule and window edge */ --control-height:36px;
-  --fs-page-title:24px; --fs-title:20px; /* panel titles */ --fs-section:16px; --fs-kpi:24px; --fs-body:14px; --fs-small:12px;
+  color-scheme: light;
+  --ground:#f2f2f2; --page:#fff; --surface:#fff; --raised:#f4f4f5;
+  --border:#e5e5e5; --rule:#e5e5e5; --control:#d4d4d8;
+  --text:#171717; --muted:#666; --faint:#6e6e6e;
+  --accent:#b45309; --positive:#15803d; --negative:#dc2626; --warning:#a16207; --info:#2563eb;
+  --chart-1:#b45309; --chart-2:#262626; --chart-3:#a3a3a3;
+  --pill-positive-bg:#dcfce7; --pill-positive-ink:#15803d;
+  --pill-negative-bg:#fee2e2; --pill-negative-ink:#b91c1c;
+  --pill-warning-bg:#fef3c7;  --pill-warning-ink:#92400e;
+  --pill-info-bg:#dbeafe;     --pill-info-ink:#1d4ed8;
+  --pill-neutral-bg:#f4f4f5;  --pill-neutral-ink:#3f3f46;
+  --radius-card:8px; --radius-control:6px; --radius-frame:10px;
+  --row-height:64px; --sidebar-width:196px; --gap:12px; /* inside panels and lists */ --gap-layout:20px; /* between columns */
+  --pad:16px; /* card padding */ --gutter:24px; /* page padding */ --control-height:32px;
+  --fs-page-title:22px; --fs-title:16px; /* card titles */ --fs-section:14px; --fs-kpi:20px; --fs-body:13px; --fs-small:12px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground:#000; --page:#0a0a0a; --surface:#0f0f0f; --raised:#1a1a1a;
+  --border:#262626; --rule:#262626; --control:#3f3f46;
+  --text:#ededed; --muted:#a1a1a1; --faint:#8a8a8a;
+  --accent:#f5a524; --positive:#45c46b; --negative:#f2555a; --warning:#e3c34b; --info:#3b82f6;
+  --chart-1:#f5a524; --chart-2:#e6e6e6; --chart-3:#6b6b6b;
+  --pill-positive-bg:#0f2416; --pill-positive-ink:#45c46b;
+  --pill-negative-bg:#2b1213; --pill-negative-ink:#f87171;
+  --pill-warning-bg:#2a1f0a;  --pill-warning-ink:#f5a524;
+  --pill-info-bg:#0f1d33;     --pill-info-ink:#60a5fa;
+  --pill-neutral-bg:#1f1f1f;  --pill-neutral-ink:#d4d4d4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --ground:#000; --page:#0a0a0a; --surface:#0f0f0f; --raised:#1a1a1a;
+  --border:#262626; --rule:#262626; --control:#3f3f46;
+  --text:#ededed; --muted:#a1a1a1; --faint:#8a8a8a;
+  --accent:#f5a524; --positive:#45c46b; --negative:#f2555a; --warning:#e3c34b; --info:#3b82f6;
+  --chart-1:#f5a524; --chart-2:#e6e6e6; --chart-3:#6b6b6b;
+  --pill-positive-bg:#0f2416; --pill-positive-ink:#45c46b;
+  --pill-negative-bg:#2b1213; --pill-negative-ink:#f87171;
+  --pill-warning-bg:#2a1f0a;  --pill-warning-ink:#f5a524;
+  --pill-info-bg:#0f1d33;     --pill-info-ink:#60a5fa;
+  --pill-neutral-bg:#1f1f1f;  --pill-neutral-ink:#d4d4d4;
+  }
 }
 
 /* Tailwind 4 mapping. The default palette is wiped so no stray indigo/slate utility can exist. */
@@ -23,6 +56,7 @@
   --color-ground: var(--ground);
   --color-surface: var(--surface);
   --color-raised: var(--raised);
+  --color-page: var(--page);
   --color-border: var(--border);
   --color-rule: var(--rule);
   --color-control: var(--control);
@@ -33,6 +67,9 @@
   --color-positive: var(--positive);
   --color-negative: var(--negative);
   --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-pill-info-bg: var(--pill-info-bg);
+  --color-pill-info-ink: var(--pill-info-ink);
   --color-pill-positive-bg: var(--pill-positive-bg);
   --color-pill-positive-ink: var(--pill-positive-ink);
   --color-pill-negative-bg: var(--pill-negative-bg);
@@ -46,6 +83,7 @@
 
   --radius-card: var(--radius-card);
   --radius-control: var(--radius-control);
+  --radius-frame: var(--radius-frame);
 
   --spacing-gap: var(--gap);
   --spacing-layout: var(--gap-layout);
@@ -59,7 +97,7 @@
   --text-body: var(--fs-body);
   --text-small: var(--fs-small);
 
-  --font-sans: var(--font-instrument), var(--font-noto-latin), var(--font-noto-devanagari), var(--font-noto-tamil),
+  --font-sans: var(--font-geist), var(--font-noto-latin), var(--font-noto-devanagari), var(--font-noto-tamil),
     var(--font-noto-telugu), var(--font-noto-malayalam), var(--font-noto-kannada), system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 }

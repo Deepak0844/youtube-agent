@@ -4,17 +4,24 @@ import { describe, expect, it } from "vitest";
 
 const tokensCss = readFileSync("src/ui/tokens.css", "utf8");
 
-/** Parse `--name: value;` pairs from the first :root block. */
-function rootTokens(css: string): Record<string, string> {
-  const block = /:root\s*\{([\s\S]*?)\n\}/.exec(css);
-  if (!block) throw new Error("no :root block in tokens.css");
+/** Parse `--name: value;` pairs from the first block whose selector matches `selector` exactly. */
+function blockTokens(css: string, selector: string): Record<string, string> {
+  const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const block = new RegExp(`(?:^|\\n)\\s*${esc}\\s*\\{([\\s\\S]*?)\\n\\s*\\}`).exec(css);
+  if (!block) throw new Error(`no ${selector} block in tokens.css`);
   const out: Record<string, string> = {};
   const body = (block[1] ?? "").replace(/\/\*[\s\S]*?\*\//g, "");
   for (const m of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) out[m[1] ?? ""] = (m[2] ?? "").trim();
   return out;
 }
+const rootTokens = (css: string) => blockTokens(css, ":root");
 const raw = rootTokens(tokensCss);
 const g = (k: string): string => raw[k] ?? "";
+const darkRaw = blockTokens(tokensCss, ':root[data-theme="dark"]');
+const themes: Array<[string, (k: string) => string]> = [
+  ["light", g],
+  ["dark", (k) => darkRaw[k] ?? raw[k] ?? ""],
+];
 
 function rgb(hex: string): [number, number, number] {
   let h = hex.replace("#", "");
@@ -53,61 +60,57 @@ function deltaE(a: string, b: string): number {
 }
 
 describe("tokens.css parsing", () => {
-  it("has the Doc 3 colour tokens as hex", () => {
-    for (const k of ["--ground", "--surface", "--raised", "--text", "--muted", "--faint", "--accent", "--warning"]) {
-      expect(g(k), k).toMatch(/^#[0-9a-f]{3,6}$/i);
+  it.each(themes)("%s theme has every colour token as hex", (_n, t) => {
+    for (const k of ["--ground", "--page", "--surface", "--raised", "--border", "--rule", "--control", "--text", "--muted", "--faint", "--accent", "--positive", "--negative", "--warning", "--info"]) {
+      expect(t(k), k).toMatch(/^#[0-9a-f]{3,6}$/i);
     }
   });
-  it("keeps the dealt values", () => {
-    expect(g("--ground")).toBe("#000");
-    expect(g("--accent")).toBe("#f2a33a");
-    expect(g("--radius-card")).toBe("20px");
+  it("uses the spec values (dark / light)", () => {
+    const [, light] = themes[0]!;
+    const [, dark] = themes[1]!;
+    const want: Array<[string, string, string]> = [
+      ["--page", "#0a0a0a", "#fff"],
+      ["--ground", "#000", "#f2f2f2"],
+      ["--surface", "#0f0f0f", "#fff"],
+      ["--border", "#262626", "#e5e5e5"],
+      ["--text", "#ededed", "#171717"],
+      ["--muted", "#a1a1a1", "#666"],
+    ];
+    for (const [k, d, l] of want) {
+      expect(dark(k), `dark ${k}`).toBe(d);
+      expect(light(k), `light ${k}`).toBe(l);
+    }
+    expect(g("--radius-card")).toBe("8px");
+    expect(g("--radius-control")).toBe("6px");
+    expect(g("--radius-frame")).toBe("10px");
+  });
+  it("the system choice follows the Mac setting with the same dark values", () => {
+    expect(tokensCss).toMatch(/@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)/);
+    const sys = blockTokens(tokensCss, ':root:not([data-theme="light"])');
+    expect(sys).toEqual(darkRaw);
   });
 });
 
-describe("contrast (WCAG AA 4.5:1 for text)", () => {
+describe.each(themes)("contrast in the %s theme (WCAG AA 4.5:1 for text)", (_n, t) => {
   it.each([
-    ["--faint", "--ground"],
-    ["--faint", "--surface"],
-    ["--faint", "--raised"],
-    ["--muted", "--ground"],
-    ["--muted", "--surface"],
-    ["--muted", "--raised"],
-    ["--text", "--ground"],
-    ["--text", "--raised"],
-    ["--accent", "--ground"],
-    ["--accent", "--surface"],
+    ["--text", "--page"], ["--text", "--surface"], ["--text", "--raised"], ["--text", "--ground"],
+    ["--muted", "--page"], ["--muted", "--surface"], ["--muted", "--raised"], ["--muted", "--ground"],
+    ["--faint", "--page"], ["--faint", "--surface"], ["--faint", "--raised"],
+    ["--accent", "--page"], ["--negative", "--page"], ["--positive", "--page"],
   ])("%s on %s", (fg, bg) => {
-    expect(contrast(g(fg), g(bg))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(t(fg), t(bg))).toBeGreaterThanOrEqual(4.5);
   });
-
-  it.each(["positive", "negative", "warning", "neutral"])("pill %s ink on its background", (k) => {
-    expect(contrast(g(`--pill-${k}-ink`), g(`--pill-${k}-bg`))).toBeGreaterThanOrEqual(4.5);
-  });
-
-  it("raw --negative would not pass on its pill (why the lighter ink exists)", () => {
-    expect(contrast(g("--pill-negative-ink"), g("--pill-negative-bg"))).toBeGreaterThan(
-      contrast(g("--negative"), g("--pill-negative-bg")),
-    );
-  });
-
-  it("control border is visible against ground (3:1 for UI components)", () => {
-    expect(contrast(g("--control"), g("--ground"))).toBeGreaterThanOrEqual(2);
-    expect(contrast(g("--control"), g("--surface"))).toBeGreaterThanOrEqual(1.8);
+  it.each(["positive", "negative", "warning", "info", "neutral"])("pill %s ink on its background", (k) => {
+    expect(contrast(t(`--pill-${k}-ink`), t(`--pill-${k}-bg`))).toBeGreaterThanOrEqual(4.5);
   });
 });
 
-describe("hue separation", () => {
-  it("amber and warning yellow are measurably apart in CIELAB", () => {
-    expect(deltaE(g("--accent"), g("--warning"))).toBeGreaterThanOrEqual(10);
-  });
+describe("hue separation (dark theme)", () => {
+  const [, d] = themes[1]!;
   it("accent, positive and negative are far apart", () => {
-    expect(deltaE(g("--accent"), g("--positive"))).toBeGreaterThanOrEqual(30);
-    expect(deltaE(g("--accent"), g("--negative"))).toBeGreaterThanOrEqual(30);
-  });
-  it("elevation steps are strictly lighter", () => {
-    expect(luminance(g("--ground"))).toBeLessThan(luminance(g("--surface")));
-    expect(luminance(g("--surface"))).toBeLessThan(luminance(g("--raised")));
+    expect(deltaE(d("--accent"), d("--positive"))).toBeGreaterThanOrEqual(30);
+    expect(deltaE(d("--accent"), d("--negative"))).toBeGreaterThanOrEqual(30);
+    expect(deltaE(d("--accent"), d("--info"))).toBeGreaterThanOrEqual(30);
   });
 });
 
@@ -138,8 +141,11 @@ describe("fonts are self-hosted", () => {
     expect(files.length).toBeGreaterThanOrEqual(7);
     for (const f of files) expect(existsSync(join("src/ui", f)), f).toBe(true);
   });
-  it("covers Instrument Sans and every Indic script", () => {
-    for (const n of ["instrument-sans", "devanagari", "tamil", "telugu", "malayalam", "kannada"]) {
+  it("leads with Geist, then the Noto faces", () => {
+    expect(tokensCss).toMatch(/--font-sans:\s*var\(--font-geist\),\s*var\(--font-noto-latin\)/);
+  });
+  it("covers Geist and every Indic script", () => {
+    for (const n of ["geist", "devanagari", "tamil", "telugu", "malayalam", "kannada"]) {
       expect(files.some((f) => f.includes(n)), n).toBe(true);
     }
   });

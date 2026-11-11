@@ -9,7 +9,7 @@ for (const url of ["/dev/ui", "/dev/ui/home", "/dev/ui/video"]) {
     expect([200, 404]).toContain(res!.status());
     await expect(page.locator('meta[name="robots"][content*="noindex"]').first()).toBeAttached();
     await expect(page.getByTestId("dev-ui")).toHaveCount(0);
-    await expect(page.getByText("This page could not be found.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
   });
 }
 

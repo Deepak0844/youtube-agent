@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { fontVariables } from "@/ui/fonts";
+import { themeScript } from "@/ui/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,7 +10,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${fontVariables} h-full antialiased`}>
+    // suppressHydrationWarning: the head script may set data-theme on <html> before React hydrates.
+    <html lang="en" className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
