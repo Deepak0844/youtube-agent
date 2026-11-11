@@ -26,7 +26,7 @@ export interface DecisionRowProps {
 /** One line of the decision queue: the Cut strip, what is waiting, what it costs, and the way in. */
 export function DecisionRow(p: DecisionRowProps) {
   return (
-    <article className={cn("grid min-w-0 gap-x-6 gap-y-3 rounded-card bg-surface p-pad md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto] md:items-center", p.className)}>
+    <article className={cn("grid min-w-0 gap-x-6 gap-y-3 border-b border-border px-pad py-3 last:border-0 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto] md:items-center", p.className)}>
       <CutStrip format={p.format} aspect={p.aspect} stages={p.stages} thumbnail={p.thumbnail} layout="inline" />
       <div className="flex min-w-0 flex-col gap-1">
         <p lang={p.lang} className="min-w-0 text-section font-medium leading-snug [overflow-wrap:anywhere]">
