@@ -74,6 +74,8 @@ export const SESSION_BATCH_KEYS: readonly string[] = [
   "uploads.kill_switch",
   "comments.dry_run",
   "youtube.cutover_done",
+  // Written only by saveUploadSwitches (Policies page), after requireOwner, with a typed phrase to turn it ON. policy.require_evidence is deliberately NOT here.
+  "policy.allow_public",
   "assets.max_image_bytes",
   "assets.max_audio_bytes",
   "assets.max_pixels",

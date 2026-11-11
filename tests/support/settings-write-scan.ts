@@ -58,6 +58,7 @@ export const SESSION_WRITER_IMPORT_ALLOW: ImportAllow = {
   "src/app/(app)/settings/assets/actions.ts": ["saveAssetSettings"],
   // Engagement page: the dry-run switch for comment replies (comments.dry_run), after requireOwner and the origin check.
   "src/app/(app)/engagement/actions.ts": ["saveUploadSwitches"],
+  "src/app/(app)/settings/policies/actions.ts": ["saveUploadSwitches"],
   // Schedule page: scheduler settings (overnight drafting spends money), after requireOwner.
   "src/app/(app)/settings/schedule/actions.ts": ["saveSchedulerSettings"],
   // Targets page: the pause rule and revenue rate, after requireOwner.

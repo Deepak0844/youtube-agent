@@ -25,6 +25,8 @@ export function channelUploadProblem(i: { killSwitch: unknown; cutoverDone: unkn
 }
 
 export const CUTOVER_PHRASE = "GO LIVE";
+/** Typed to allow public publishing (the global policy.allow_public switch). Turning it off needs no phrase. */
+export const PUBLIC_PHRASE = "ALLOW PUBLIC";
 
 const bool = z.boolean();
 export const channelSettingsSchema = z

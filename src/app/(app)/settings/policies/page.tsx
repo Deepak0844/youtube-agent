@@ -4,10 +4,12 @@ import { requireOwner } from "@/lib/auth/require-owner";
 import { publicRequirements, publicSummary } from "@/server/core/policies-view";
 import { getPool } from "@/server/db/pool";
 import { loadPolicies } from "@/server/db/system-settings";
+import { PUBLIC_PHRASE } from "@/server/core/channel-safety";
+import { PublicSwitchForm } from "./public-form";
 import { Pill } from "@/ui/primitives/pill";
 
-// READ ONLY, like the old app's setup step: it shows the publishing policy and never changes it. The two switches (evidence required, public allowed)
-// are deliberately not writable from any page: the settings guard tests pin that, and changing one is a deliberate decision of its own.
+// Shows the publishing policy. One switch can be changed here: public publishing (typed phrase to turn on, owner session only, audited).
+// The evidence rule is not writable from any page: the settings guard tests pin that.
 export default function PoliciesPage() {
   return (
     <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
@@ -24,7 +26,7 @@ async function Owned() {
       <header className="flex flex-col gap-1">
         <h1 className="text-page-title font-semibold tracking-tight">Policies</h1>
         <p data-testid="public-summary" className="max-w-[68ch] text-body text-muted">{publicSummary(p)} Every publish still needs your approval, whatever is set here.</p>
-        <p className="max-w-[68ch] text-small text-muted">This page only shows the rules. They are not changed from here; changing one is a deliberate step of its own.</p>
+        <p className="max-w-[68ch] text-small text-muted">The evidence rule is shown only; it is not changed from a page. The public switch below can be changed, and turning it on asks you to type a phrase.</p>
       </header>
 
       <section aria-labelledby="rules-h" className="rounded-card bg-surface p-pad">
@@ -45,6 +47,12 @@ async function Owned() {
             <Pill tone={p.allowPublic ? "warning" : "positive"} data-testid="policy-public">{p.allowPublic ? "Allowed" : "Not allowed"}</Pill>
           </li>
         </ul>
+      </section>
+
+      <section aria-labelledby="switch-h" className="rounded-card bg-surface p-pad">
+        <h2 id="switch-h" className="mb-1 text-title font-semibold">Public publishing switch</h2>
+        <p className="mb-3 max-w-[68ch] text-small text-muted">Turning this on publishes nothing by itself. A video still needs the channel to allow public, the kill switch off, the go-live cutover (production channels) and your approval.</p>
+        <PublicSwitchForm allowed={p.allowPublic} phrase={PUBLIC_PHRASE} />
       </section>
 
       <section aria-labelledby="public-h" className="rounded-card bg-surface p-pad">

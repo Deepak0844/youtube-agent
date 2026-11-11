@@ -115,6 +115,7 @@ describe("no code path in src writes a safety setting as anything but a session"
       "src/app/(app)/settings/providers/voice-actions.ts": ["saveVoiceServer"],
       "src/app/(app)/settings/assets/actions.ts": ["saveAssetSettings"],
       "src/app/(app)/engagement/actions.ts": ["saveUploadSwitches"],
+      "src/app/(app)/settings/policies/actions.ts": ["saveUploadSwitches"],
       "src/app/(app)/settings/schedule/actions.ts": ["saveSchedulerSettings"],
       "src/app/(app)/targets/actions.ts": ["saveTargetSettings"],
     });
