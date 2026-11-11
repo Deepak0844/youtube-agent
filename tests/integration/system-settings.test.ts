@@ -235,7 +235,7 @@ describe("system settings form (app role)", () => {
 
 describe("setSessionSettings is limited to the keys this page writes", () => {
   const noAudit = async () => undefined;
-  it.each(["policy.allow_public", "policy.require_evidence", "display.currency", "engine.log_cap_bytes", "breaker.stages"])(
+  it.each(["policy.require_evidence", "display.currency", "engine.log_cap_bytes", "breaker.stages"])(
     "refuses %s and touches nothing",
     async (key) => {
       const value = key.startsWith("policy") ? true : key === "display.currency" ? "EUR" : key === "breaker.stages" ? ["draft"] : 99;
@@ -251,7 +251,7 @@ describe("setSessionSettings is limited to the keys this page writes", () => {
   it("refuses an unknown key and a batch with one bad key as a whole", async () => {
     await expect(setSessionSettings(db.pool, [{ key: "nope", value: 1 }], noAudit)).rejects.toThrow();
     await expect(
-      setSessionSettings(db.pool, [{ key: "storage.warn_gb", value: 70 }, { key: "policy.allow_public", value: true }], noAudit),
+      setSessionSettings(db.pool, [{ key: "storage.warn_gb", value: 70 }, { key: "policy.require_evidence", value: false }], noAudit),
     ).rejects.toThrow(/not writable here/);
     expect(await getSetting(db.pool, "storage.warn_gb")).toBe(50);
   });

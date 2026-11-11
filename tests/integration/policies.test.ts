@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setSessionSettings } from "@/server/db/settings";
-import { loadPolicies } from "@/server/db/system-settings";
+import { PUBLIC_PHRASE } from "@/server/core/channel-safety";
+import { loadPolicies, saveUploadSwitches } from "@/server/db/system-settings";
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;
@@ -33,17 +34,42 @@ describe("loadPolicies (the read-only Policies page)", () => {
   });
 });
 
-describe("the page cannot change a policy", () => {
-  it("the generic session writer still refuses both policy keys, so no page can write them", async () => {
-    for (const key of ["policy.require_evidence", "policy.allow_public"]) {
-      await expect(setSessionSettings(db.pool, [{ key, value: true }], async () => undefined), key).rejects.toThrow(/not writable here/);
+describe("the public switch (the only policy a page can change)", () => {
+  const audit = async () => (await db.pool.query("select count(*)::int n from audit_log where event = 'setting.changed' and detail->>'setting' = 'policy.allow_public'")).rows[0].n as number;
+  it("turning it on without the exact phrase is refused and saves nothing", async () => {
+    for (const typed of [undefined, "", "allow public", "ALLOW PUBLIC ", "GO LIVE"]) {
+      const r = await saveUploadSwitches(db.pool, { allowPublic: true, typedPublic: typed });
+      expect(r.ok, String(typed)).toBe(false);
     }
-    expect((await db.pool.query("select count(*)::int n from settings where key like 'policy.%'")).rows[0].n).toBe(0);
+    expect((await loadPolicies(db.pool)).allowPublic).toBe(false);
+    expect(await audit()).toBe(0);
   });
-  it("the Policies page has no form, no input and no server action", () => {
+  it("the exact phrase turns it on (audited); turning it off needs no phrase", async () => {
+    expect((await saveUploadSwitches(db.pool, { allowPublic: true, typedPublic: PUBLIC_PHRASE })).ok).toBe(true);
+    expect((await loadPolicies(db.pool)).allowPublic).toBe(true);
+    expect(await audit()).toBe(1);
+    expect((await saveUploadSwitches(db.pool, { allowPublic: false })).ok).toBe(true);
+    expect((await loadPolicies(db.pool)).allowPublic).toBe(false);
+    expect(await audit()).toBe(2);
+  });
+  it("it never touches the evidence rule, the kill switch or the cutover", async () => {
+    await saveUploadSwitches(db.pool, { allowPublic: true, typedPublic: PUBLIC_PHRASE });
+    expect(await loadPolicies(db.pool)).toEqual({ requireEvidence: true, allowPublic: true, killSwitch: false, cutoverDone: false });
+  });
+});
+
+describe("what a page cannot change", () => {
+  it("no page can write the evidence rule: the session writer refuses it", async () => {
+    await expect(setSessionSettings(db.pool, [{ key: "policy.require_evidence", value: false }], async () => undefined)).rejects.toThrow(/not writable here/);
+    expect((await loadPolicies(db.pool)).requireEvidence).toBe(true);
+  });
+  it("the Policies folder has exactly one form, one action, and no writer for the evidence rule", () => {
     const dir = "src/app/(app)/settings/policies";
     const page = readFileSync(`${dir}/page.tsx`, "utf8");
-    expect(page).not.toMatch(/<form|<input|<button|"use server"|action=/i);
-    expect(page).not.toMatch(/setSetting|setSessionSettings|savePolic/);
+    const actions = readFileSync(`${dir}/actions.ts`, "utf8");
+    expect(page).not.toMatch(/<form|"use server"|setSetting|setSessionSettings/);
+    expect(actions.match(/export async function/g)).toHaveLength(1);
+    expect(actions).toMatch(/await requireOwner\(\);/);
+    expect(actions).not.toMatch(/requireEvidence|require_evidence|setSetting|setSessionSettings/);
   });
 });

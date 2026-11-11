@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type pg from "pg";
 import { z } from "zod";
 import { LIVE_PHRASE } from "@/server/core/comments";
-import { CUTOVER_PHRASE } from "@/server/core/channel-safety";
+import { CUTOVER_PHRASE, PUBLIC_PHRASE } from "@/server/core/channel-safety";
 import { DEFAULT_INR_RATE } from "@/server/core/display-format";
 import { redactDetail } from "@/server/core/audit-events";
 import { ownServicePorts, parseLocalServicesInput, validateLocalService } from "@/server/core/local-services";
@@ -90,11 +90,14 @@ export async function saveSystemSettings(db: pg.Pool, input: unknown): Promise<S
 }
 
 /** The two global upload switches. Turning the kill switch ON or the cutover OFF needs nothing more; turning the cutover ON needs the typed phrase. */
-export async function saveUploadSwitches(db: pg.Pool, input: { killSwitch?: boolean; cutover?: boolean; typed?: string; commentsDryRun?: boolean; typedLive?: string }): Promise<SaveResult> {
+export async function saveUploadSwitches(db: pg.Pool, input: { killSwitch?: boolean; cutover?: boolean; typed?: string; commentsDryRun?: boolean; typedLive?: string; allowPublic?: boolean; typedPublic?: string }): Promise<SaveResult> {
   const writes: Array<{ key: string; value: unknown }> = [];
   // Comment replies: dry run is the default; false lets the owner's "Approve and post" really post. Session only, audited as setting.changed.
   if (input.commentsDryRun === false && input.typedLive !== LIVE_PHRASE) return { ok: false, error: `Type ${LIVE_PHRASE} exactly to turn dry run off. Nothing was saved.` };
   if (typeof input.commentsDryRun === "boolean") writes.push({ key: "comments.dry_run", value: input.commentsDryRun });
+  // Global public-publishing switch: ON needs the typed phrase, OFF is one click. Session only, audited. It opens nothing by itself (channel switch, kill switch, cutover and every approval still apply).
+  if (input.allowPublic === true && input.typedPublic !== PUBLIC_PHRASE) return { ok: false, error: `Type ${PUBLIC_PHRASE} exactly to allow public publishing. Nothing was saved.` };
+  if (typeof input.allowPublic === "boolean") writes.push({ key: "policy.allow_public", value: input.allowPublic });
   if (typeof input.killSwitch === "boolean") writes.push({ key: "uploads.kill_switch", value: input.killSwitch });
   if (typeof input.cutover === "boolean") {
     if (input.cutover && input.typed !== CUTOVER_PHRASE) return { ok: false, error: `Type ${CUTOVER_PHRASE} exactly to confirm. Nothing was saved.` };
@@ -108,7 +111,7 @@ export async function saveUploadSwitches(db: pg.Pool, input: { killSwitch?: bool
   }
 }
 
-/** The publishing policy switches and the two upload switches that sit beside them, for the READ-ONLY /settings/policies page. A stored value that is not a boolean reads as the safe default. This file has no writer for the policy keys on purpose: they are not on SESSION_BATCH_KEYS. */
+/** The publishing policy switches and the two upload switches that sit beside them, for the READ-ONLY /settings/policies page. A stored value that is not a boolean reads as the safe default. Only policy.allow_public has a writer (saveUploadSwitches, typed phrase to turn on); policy.require_evidence has none, and neither is on SESSION_BATCH_KEYS. */
 export async function loadPolicies(db: pg.Pool): Promise<{ requireEvidence: boolean; allowPublic: boolean; killSwitch: boolean; cutoverDone: boolean }> {
   const [e, p, k, c] = await Promise.all([getSetting(db, "policy.require_evidence"), getSetting(db, "policy.allow_public"), getSetting(db, "uploads.kill_switch"), getSetting(db, "youtube.cutover_done")]);
   return { requireEvidence: e !== false, allowPublic: p === true, killSwitch: k === true, cutoverDone: c === true };
