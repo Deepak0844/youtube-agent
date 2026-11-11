@@ -141,8 +141,11 @@ describe("fonts are self-hosted", () => {
     expect(files.length).toBeGreaterThanOrEqual(7);
     for (const f of files) expect(existsSync(join("src/ui", f)), f).toBe(true);
   });
-  it("covers Instrument Sans and every Indic script", () => {
-    for (const n of ["instrument-sans", "devanagari", "tamil", "telugu", "malayalam", "kannada"]) {
+  it("leads with Geist, then the Noto faces", () => {
+    expect(tokensCss).toMatch(/--font-sans:\s*var\(--font-geist\),\s*var\(--font-noto-latin\)/);
+  });
+  it("covers Geist and every Indic script", () => {
+    for (const n of ["geist", "devanagari", "tamil", "telugu", "malayalam", "kannada"]) {
       expect(files.some((f) => f.includes(n)), n).toBe(true);
     }
   });

@@ -97,7 +97,7 @@
   --text-body: var(--fs-body);
   --text-small: var(--fs-small);
 
-  --font-sans: var(--font-instrument), var(--font-noto-latin), var(--font-noto-devanagari), var(--font-noto-tamil),
+  --font-sans: var(--font-geist), var(--font-noto-latin), var(--font-noto-devanagari), var(--font-noto-tamil),
     var(--font-noto-telugu), var(--font-noto-malayalam), var(--font-noto-kannada), system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 }

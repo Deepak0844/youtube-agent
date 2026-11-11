@@ -1,12 +1,12 @@
 import localFont from "next/font/local";
 
 // Self-hosted variable fonts (SIL OFL 1.1; licence texts + SHA-256 in public/fonts/). No Google CDN at runtime.
-// Instrument Sans leads for Latin; each Noto face covers one script and is fetched only when a glyph needs it.
+// Geist leads for Latin (spec 2026-11-12 §4.1; Instrument Sans stays vendored until the redesign clean-up); each Noto face covers one script and is fetched only when a glyph needs it.
 // Use weights 400/500/600 only (Doc 3 §4). next/font needs literal options, so each call is spelled out.
 
-export const instrument = localFont({
-  src: [{ path: "../../public/fonts/instrument-sans-latin.woff2", weight: "400 700", style: "normal" }],
-  variable: "--font-instrument",
+export const geist = localFont({
+  src: [{ path: "../../public/fonts/geist-latin.woff2", weight: "100 900", style: "normal" }],
+  variable: "--font-geist",
   display: "swap",
 });
 export const notoLatin = localFont({
@@ -47,7 +47,7 @@ export const notoKannada = localFont({
 });
 
 export const fontVariables = [
-  instrument,
+  geist,
   notoLatin,
   notoDevanagari,
   notoTamil,

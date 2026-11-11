@@ -31,10 +31,10 @@ test("Indic samples load their own Noto face from our origin", async ({ page, ba
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(500);
 
-  // next/font hashes the file names, so count fetches: Instrument Sans + one per script.
+  // next/font hashes the file names, so count fetches: Geist + one per script.
   expect(new Set(fetched).size).toBeGreaterThanOrEqual(6);
   const loaded = await page.evaluate(() => [...document.fonts].filter((f) => f.status === "loaded").length);
-  // Instrument Sans + Noto Latin (if needed) + five scripts; at least the five Indic faces plus Instrument Sans.
+  // Geist + Noto Latin (if needed) + five scripts; at least the five Indic faces plus Geist.
   expect(loaded).toBeGreaterThanOrEqual(6);
   expect(fetched.every((u) => u.startsWith(baseURL!))).toBe(true);
 });
