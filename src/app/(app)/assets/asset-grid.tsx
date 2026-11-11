@@ -47,7 +47,7 @@ export function AssetGrid({ cards, trash, trashDays }: { cards: AssetCard[]; tra
       <ul className="grid min-w-0 grid-cols-2 gap-gap md:grid-cols-4 xl:grid-cols-6">
         {cards.map((c) => (
           <li key={c.id} data-asset={c.id} className="flex min-w-0 flex-col gap-2 rounded-card bg-surface p-3">
-            <Link href={`/assets/${c.id}`} className="block aspect-square overflow-hidden rounded-control bg-raised">
+            <Link href={`/assets/${c.id}`} aria-label={`Open ${c.name}`} className="block aspect-square overflow-hidden rounded-control bg-raised">
               {c.kind === "image" && c.url ? (
                 // eslint-disable-next-line @next/next/no-img-element -- a signed media URL, not an optimisable static import
                 <img src={c.url} alt="" loading="lazy" className="size-full object-cover" />

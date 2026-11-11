@@ -196,15 +196,17 @@ function Entry({ row, now }: { row: AuditRow; now: Date }) {
         {pairs.length === 0 ? (
           <span className="text-small text-faint">No detail</span>
         ) : (
-          <dl className="m-0 flex min-w-0 flex-wrap gap-x-5 gap-y-1">
-            {pairs.map((p, i) => (
-              <div key={i} className="flex min-w-0 max-w-full items-baseline gap-2 text-body">
-                <dt className="shrink-0 font-mono text-small text-faint">{p.key}</dt>
-                <dd className="m-0 min-w-0 [overflow-wrap:anywhere]">{p.value}</dd>
-              </div>
-            ))}
-            {hidden > 0 ? <div className="text-small text-faint">and {hidden} more</div> : null}
-          </dl>
+          <>
+            <dl className="m-0 flex min-w-0 flex-wrap gap-x-5 gap-y-1">
+              {pairs.map((p, i) => (
+                <div key={i} className="flex min-w-0 max-w-full items-baseline gap-2 text-body">
+                  <dt className="shrink-0 font-mono text-small text-faint">{p.key}</dt>
+                  <dd className="m-0 min-w-0 [overflow-wrap:anywhere]">{p.value}</dd>
+                </div>
+              ))}
+            </dl>
+            {hidden > 0 ? <p className="text-small text-faint">and {hidden} more</p> : null}
+          </>
         )}
       </div>
     </li>
