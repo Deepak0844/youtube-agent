@@ -10,7 +10,7 @@ import { setRouteAction } from "./actions";
 const selectClass = cn("w-full rounded-control border border-control bg-surface px-4 text-body text-text", control, focusRing);
 
 /** Pick a provider that is switched on and priced, where it applies, and (for voices) the default narration voice. */
-export function RouteForm({ providers, scopes }: { providers: { id: string; label: string }[]; scopes: { id: string; label: string }[] }) {
+export function RouteForm({ providers, scopes, videoModels }: { providers: { id: string; label: string }[]; scopes: { id: string; label: string }[]; videoModels: { provider: string; label: string; models: string[] }[] }) {
   const [state, action, pending] = useActionState(setRouteAction, {});
   return (
     <form action={action} className="grid min-w-0 gap-3 md:max-w-3xl md:grid-cols-3">
@@ -37,6 +37,21 @@ export function RouteForm({ providers, scopes }: { providers: { id: string; labe
       <div className="flex min-w-0 flex-col gap-2">
         <Label htmlFor="route-voice">Narration voice (voice providers only)</Label>
         <Input id="route-voice" name="voice" maxLength={100} autoComplete="off" />
+      </div>
+      <div className="flex min-w-0 flex-col gap-2 md:col-span-3">
+        <Label htmlFor="route-model">AI video model (AI video providers only; pick the one that matches the provider)</Label>
+        <select id="route-model" name="model" defaultValue="" className={selectClass}>
+          <option value="">None</option>
+          {videoModels.map((g) => (
+            <optgroup key={g.provider} label={g.label}>
+              {g.models.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
       </div>
       <div className="flex flex-wrap items-center gap-3 md:col-span-3">
         <Button type="submit" disabled={pending || providers.length === 0}>
