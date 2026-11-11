@@ -7,7 +7,7 @@ export function Switch({ className, ...props }: React.ComponentProps<typeof S.Ro
   return (
     <S.Root
       className={cn(
-        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-control bg-raised p-0.5 data-[state=checked]:bg-text disabled:opacity-50",
+        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full bg-control p-0.5 data-[state=checked]:bg-text disabled:opacity-50",
         "before:absolute before:-inset-2.5 before:content-[''] sm:before:hidden",
         fade,
         focusRing,
@@ -15,7 +15,7 @@ export function Switch({ className, ...props }: React.ComponentProps<typeof S.Ro
       )}
       {...props}
     >
-      <S.Thumb className="block size-5 rounded-control bg-muted transition-transform duration-150 motion-reduce:transition-none data-[state=checked]:translate-x-5 data-[state=checked]:bg-ground" />
+      <S.Thumb className="block size-5 rounded-full bg-page shadow-sm transition-transform duration-150 motion-reduce:transition-none data-[state=checked]:translate-x-5 data-[state=checked]:bg-page" />
     </S.Root>
   );
 }

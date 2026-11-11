@@ -7,7 +7,7 @@ export const TabsContent = ({ className, ...p }: React.ComponentProps<typeof T.C
   <T.Content className={cn(focusRing, className)} {...p} />
 );
 export const TabsList = ({ className, ...p }: React.ComponentProps<typeof T.List>) => (
-  <T.List className={cn("flex gap-5 border-b border-rule", className)} {...p} />
+  <T.List className={cn("flex gap-4 border-b border-border", className)} {...p} />
 );
 /** Active tab is marked by a text-coloured underline plus brighter text, not colour alone. */
 export const TabsTrigger = ({ className, ...p }: React.ComponentProps<typeof T.Trigger>) => (
