@@ -86,7 +86,7 @@ test("layout and targets", async ({ page }) => {
   const r = row(page, "OpenAI");
   const input = r.getByLabel("OpenAI API key");
   const save = r.getByRole("button", { name: "Save key" });
-  const min = phone(page) ? 44 : 36;
+  const min = phone(page) ? 44 : 32; // 32 px controls on desktop (UI redesign spec §4.1)
   for (const el of [input, save]) expect((await el.boundingBox())!.height).toBeGreaterThanOrEqual(min);
   // focus order inside a row: input then its save button
   await input.focus();

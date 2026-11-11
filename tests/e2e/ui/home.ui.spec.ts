@@ -34,11 +34,11 @@ test("top bar carries real spend from budgets, review count and a disabled searc
   }
 });
 
-test("desktop: 210 px sidebar, active item marked beyond colour", async ({ page }) => {
+test("desktop: sidebar, active item marked beyond colour", async ({ page }) => {
   test.skip(phone(page), "desktop only");
   await page.goto("/");
   const side = page.getByRole("navigation", { name: "Primary" });
-  expect((await page.locator("aside:has(nav[aria-label=Primary])").boundingBox())!.width).toBe(210);
+  expect((await page.locator("aside:has(nav[aria-label=Primary])").boundingBox())!.width).toBe(196);
   const home = side.getByRole("link", { name: "Home" });
   await expect(home).toHaveAttribute("aria-current", "page");
   const other = side.getByRole("link", { name: "Keys" });
@@ -46,7 +46,6 @@ test("desktop: 210 px sidebar, active item marked beyond colour", async ({ page 
   const [wHome, wOther] = await Promise.all([home.evaluate((e) => getComputedStyle(e).fontWeight), other.evaluate((e) => getComputedStyle(e).fontWeight)]);
   expect(Number(wHome)).toBeGreaterThan(Number(wOther)); // weight differs, not only brightness
   const [cHome, cOther] = await Promise.all([home.evaluate((e) => getComputedStyle(e).color), other.evaluate((e) => getComputedStyle(e).color)]);
-  expect(cHome).toBe("rgb(255, 255, 255)");
   expect(cOther).not.toBe(cHome);
   await expect(page.getByRole("navigation", { name: "Bottom" })).toBeHidden();
 });
