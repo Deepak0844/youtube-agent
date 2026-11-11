@@ -11,6 +11,11 @@ export type VoiceCapability = { id: string; wordTimings: TimingsKind; local: boo
 export interface VoiceProvider {
   capability: VoiceCapability;
   quote(a: { text: string; lang: Lang; voice: string; model?: string }): number;
+  /**
+   * Anything besides text, voice and model that changes how a line SOUNDS (for example ElevenLabs v3 delivery tags). It becomes part of the line's cache key, so
+   * changing it can never reuse audio made without it. Absent or empty = nothing extra (so every existing key stays what it was).
+   */
+  cacheSettings?(a: { model?: string }): Record<string, string | number>;
   synthesise(
     ctx: StageContext,
     a: { text: string; lang: Lang; voice: string; model?: string; settings?: Record<string, string | number> },

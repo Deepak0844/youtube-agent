@@ -184,6 +184,21 @@ describe("elevenlabs voice", () => {
     expect(r.wordTimings).toEqual([{ word: "Hi", startS: 4, endS: 6 }]);
   });
 
+  it("cache_settings_carry_the_delivery_tag_only_when_it_is_really_sent (v3 with a tag)", () => {
+    // what changes how a line SOUNDS must change the line's cache key, so a changed tag can never reuse audio made without it
+    expect(voice({ model: "eleven_v3", tags: { prefix: "[excited]" } }).cacheSettings!({})).toEqual({ tags: "[excited]" });
+    expect(voice({ model: "eleven_v3", tags: { prefix: "[excited]" } }).cacheSettings!({ model: "eleven_v3" })).toEqual({ tags: "[excited]" });
+    expect(voice({ model: "eleven_v3", tags: { prefix: "[calm]" } }).cacheSettings!({})).toEqual({ tags: "[calm]" });
+    // the tag is cleaned the same way as the one sent (control characters out, capped), so the key matches what was actually spoken
+    expect(voice({ model: "eleven_v3", tags: { prefix: "[excited]\u0000\n" } }).cacheSettings!({})).toEqual({ tags: "[excited]" });
+  });
+  it("cache_settings_are_empty_when_no_tag_is_sent (so every existing cache key stays what it was)", () => {
+    expect(voice({ model: "eleven_v3" }).cacheSettings!({})).toEqual({}); // no tag set
+    expect(voice({ tags: { prefix: "[excited]" } }).cacheSettings!({})).toEqual({}); // v2 model: the tag is not sent
+    expect(voice({ model: "eleven_v3", tags: { prefix: "[excited]" } }).cacheSettings!({ model: "eleven_multilingual_v2" })).toEqual({}); // a per-call v2 model wins
+    expect(voice({ model: "eleven_v3", tags: { prefix: "[" + "x".repeat(200) + "]" } }).cacheSettings!({})).toEqual({}); // an unclosed over-long tag is dropped, as when sending
+  });
+
   it("unknown_model_or_unpriced_voice_refused_before_call", async () => {
     await expect(voice({ model: "eleven_flash_v2_5" }).synthesise(ctx(), args("Hi"))).rejects.toBeInstanceOf(KnownFailure);
     await expect(voice({ price: null }).synthesise(ctx(), args("Hi"))).rejects.toBeInstanceOf(KnownFailure);

@@ -100,6 +100,23 @@ describe("voice stage", () => {
     expect(await spent(v.id)).toBe(5000);
   });
 
+  it("a_changed_delivery_tag_is_a_different_recording_and_an_unchanged_one_is_reused", async () => {
+    // A provider can report settings that change how a line sounds (ElevenLabs v3 tags); they are part of the line's cache key.
+    const fake = createFakeVoice(opts());
+    const withTags = (tags: string): StageDeps =>
+      deps(fake, { voiceFor: async (a) => ({ provider: Object.assign(fake.forScopes(a.budgetScopes), { cacheSettings: () => (tags ? { tags } : {}) }), providerId: "fake", voice: "fake" }) });
+    const v = await video();
+    expect((await run(v.id, withTags(""))).kind).toBe("committed");
+    expect(fake.totalCalls()).toBe(4); // no tag: 4 lines made
+    expect((await run(v.id, withTags("[excited]"))).kind).toBe("committed");
+    expect(fake.totalCalls()).toBe(8); // a tag was added: every line is a new recording, never the old audio
+    expect((await run(v.id, withTags("[excited]"))).kind).toBe("committed");
+    expect(fake.totalCalls()).toBe(8); // the same tag again: all cached
+    expect((await run(v.id, withTags(""))).kind).toBe("committed");
+    expect(fake.totalCalls()).toBe(8); // back to no tag: the first recordings are still there
+    expect(await spent(v.id)).toBe(8000);
+  });
+
   it("crash_after_line_3_resumes_without_repaying_lines_1_to_3", async () => {
     const fake = createFakeVoice(opts({ script: [ok(1000), ok(1000), ok(1000), throwsUnknown("socket hang up")] }));
     const v = await video();
