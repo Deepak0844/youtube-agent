@@ -4,7 +4,6 @@
 html {
   background: var(--ground);
   color: var(--text);
-  color-scheme: dark;
 }
 
 body {
