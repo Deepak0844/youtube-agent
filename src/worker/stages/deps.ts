@@ -11,6 +11,7 @@ import type { CaptionsBody } from "@/server/core/alignment";
 import type { Lang } from "@/server/core/lang";
 import type { VoiceProvider } from "@/server/providers/voice";
 import type { VideoProvider } from "@/server/providers/video";
+import type { IngestDeps, ingestClip } from "@/server/render/ingest";
 import type { AlignArgs } from "@/server/render/whisper";
 import type { MixDeps } from "@/server/render/mix";
 import type { probeVideo } from "@/server/render/probe";
@@ -45,6 +46,10 @@ export interface StageDeps {
   renderer: Renderer;
   /** The routed AI video provider by registry id (production, or a fake in tests). Refuses before any money is reserved when it is off, unpriced or has no key. Absent = AI videos refuse with a plain sentence. */
   videoFor?: (providerId: string) => Promise<VideoProvider>;
+  /** The sandboxed file check for generated clips (generate, AI videos). Absent = that stage refuses with a plain sentence. */
+  ingest?: IngestDeps;
+  /** Test seam for the clip check. */
+  ingestClipFn?: typeof ingestClip;
   /** The thumbnail card renderer (on-demand `thumbnail` stage, long videos). Absent = that stage refuses with a plain sentence. */
   thumbnails?: ThumbnailRenderer;
   /** The native (Mac GPU, sandbox-exec) renderer for 3D scale videos and its readiness check (Phase 5d). Absent = never used. */
