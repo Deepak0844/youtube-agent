@@ -1,10 +1,10 @@
 import { execFile, spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { access, constants, cp, mkdir, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type pg from "pg";
-import { DEFAULT_DB_CONTAINER, backupName, backupResultSchema, backupsToDelete, dumpPlan, type BackupResult } from "@/server/core/backup";
+import { DEFAULT_DB_CONTAINER, backupDue, backupName, backupResultSchema, backupsToDelete, dumpPlan, extraDirProblem, type BackupResult } from "@/server/core/backup";
 import { recordAudit } from "@/server/db/audit";
 import { notifyTransition } from "@/server/db/notify";
 import { getSetting, setSessionSettings } from "@/server/db/settings";
@@ -22,6 +22,8 @@ type Env = Record<string, string | undefined>;
 export interface BackupDeps {
   /** Test seam. Default runs pg_dump / tar. */
   exec?: (cmd: string, args: string[], env: Env) => Promise<void>;
+  /** Test seam: writes the database dump to this file. Default: pg_dump on PATH, else inside the database container. */
+  dump?: (file: string) => Promise<void>;
   root?: string;
   now?: () => Date;
   databaseUrl?: string;
@@ -72,6 +74,7 @@ const ok = (cmd: string, args: string[]) => run(cmd, args, { timeout: 10_000, wi
 
 /** pg_dump on PATH if present, else pg_dump inside the database container, streamed to the file. No password is ever an argument. */
 async function dumpDatabase(file: string, deps: BackupDeps, exec: NonNullable<BackupDeps["exec"]>): Promise<void> {
+  if (deps.dump) return deps.dump(file);
   const url = deps.databaseUrl ?? process.env.MIGRATE_DATABASE_URL ?? process.env.DATABASE_URL;
   const container = process.env.BACKUP_DB_CONTAINER || DEFAULT_DB_CONTAINER;
   const pgDump = (await ok("pg_dump", ["--version"])) !== null;
@@ -102,7 +105,7 @@ async function dumpDatabase(file: string, deps: BackupDeps, exec: NonNullable<Ba
   });
 }
 
-async function backupNow(root: string, now: Date, deps: BackupDeps): Promise<{ name: string; bytes: number; pruned: number }> {
+async function backupNow(root: string, now: Date, deps: BackupDeps): Promise<{ name: string; bytes: number; pruned: number; dir: string }> {
   const exec = deps.exec ?? defaultExec;
   const dir = path.join(root, BACKUPS_DIR);
   const name = backupName(now);
@@ -118,7 +121,7 @@ async function backupNow(root: string, now: Date, deps: BackupDeps): Promise<{ n
     const bytes = (await sizeOf(dump)) + (await sizeOf(archive));
     const old = backupsToDelete(await readdir(dir));
     for (const n of old) await rm(path.join(dir, n), { recursive: true, force: true });
-    return { name, bytes, pruned: old.length };
+    return { name, bytes, pruned: old.length, dir: target };
   } catch (e) {
     await rm(target, { recursive: true, force: true }).catch(() => undefined);
     throw e;
@@ -127,23 +130,139 @@ async function backupNow(root: string, now: Date, deps: BackupDeps): Promise<{ n
 
 const save = (db: pg.Pool, r: BackupResult) => setSessionSettings(db, [{ key: "backup.last_run", value: r }], async () => undefined);
 
-/** Session only: the caller has already passed requireOwner. Never throws; the outcome is the stored result. */
-export async function runBackup(db: pg.Pool, sessionId: string, deps: BackupDeps = {}): Promise<BackupResult> {
-  const now = (deps.now ?? (() => new Date()))();
-  let result: BackupResult;
+const LOCK = "ytstudio.backup";
+
+/** One backup at a time across every process (the Back up now button, the schedule, two workers). Returns null when another one holds the lock. */
+async function withBackupLock<T>(db: pg.Pool, work: () => Promise<T>): Promise<T | null> {
+  const client = await db.connect();
   try {
-    const r = await backupNow(deps.root ?? storageRoot(), now, deps);
-    result = { ok: true, at: now.toISOString(), bytes: r.bytes, name: r.name };
-    await save(db, result);
-    await recordAudit(db, "backup.completed", { sessionId, name: r.name, bytes: r.bytes, pruned: r.pruned });
-  } catch (e) {
-    const cls = e instanceof Error ? e.name : "Error";
-    console.error(JSON.stringify({ event: "backup.failed", error: cls }));
-    result = { ok: false, at: now.toISOString(), error: reason(e) };
-    await save(db, result).catch(() => undefined);
-    await recordAudit(db, "backup.failed", { sessionId, reason: cls }).catch(() => undefined);
-    // In-app notification row only: the web process has no desktop or webhook sender (those plug in on the worker side).
-    await notifyTransition(db, { channels: {}, inAppOnly: true }, { event: "backup_failed", from: "ok", to: "backup_failed", transitionId: `backup-${now.toISOString()}`, detail: result.error }).catch(() => undefined);
+    const got = (await client.query<{ ok: boolean }>("select pg_try_advisory_lock(hashtext($1)) as ok", [LOCK])).rows[0]?.ok === true;
+    if (!got) return null;
+    try {
+      return await work();
+    } finally {
+      await client.query("select pg_advisory_unlock(hashtext($1))", [LOCK]).catch(() => undefined);
+    }
+  } finally {
+    client.release();
   }
-  return result;
+}
+
+/** The optional second copy of every backup (an external drive or another folder the owner names). Empty or unset = off. */
+export async function extraBackupDir(db: pg.Pool): Promise<string> {
+  const v = await getSetting(db, "backup.extra_dir");
+  return typeof v === "string" ? v.trim() : "";
+}
+
+/** Disk checks for the extra folder: it exists, is a folder, and a file can be written in it. Fixed sentences only. */
+async function extraDirDiskProblem(dir: string): Promise<string | null> {
+  try {
+    const real = await realpath(dir);
+    if (!(await stat(real)).isDirectory()) return "That is not a folder.";
+    await access(real, constants.W_OK);
+    const probe = path.join(real, `.write-check-${process.pid}`);
+    await writeFile(probe, "x", { mode: 0o600 });
+    await rm(probe, { force: true });
+    return null;
+  } catch {
+    return "That folder is not there or cannot be written to. Check the drive is plugged in.";
+  }
+}
+
+/** Copies the finished backup folder into the extra folder and keeps only the newest 7 there too. Throws a plain reason on failure. */
+async function copyToExtra(extra: string, root: string, from: string, name: string): Promise<void> {
+  const problem = extraDirProblem(extra, root) ?? (await extraDirDiskProblem(extra));
+  if (problem) throw new BackupError(problem);
+  const real = await realpath(extra);
+  await cp(from, path.join(real, name), { recursive: true, errorOnExist: false, force: true });
+  for (const n of backupsToDelete(await readdir(real))) await rm(path.join(real, n), { recursive: true, force: true });
+}
+
+/**
+ * Saves the extra-copy folder (empty = off). Session only: the caller has already passed requireOwner. It is checked before it is saved (a plain path that is
+ * not a system folder or the app's own storage, that exists and can be written to), so a typo is refused now and not at 3 a.m. The path itself is never audited.
+ */
+export async function saveBackupExtraDir(db: pg.Pool, sessionId: string, raw: unknown, deps: { root?: string } = {}): Promise<{ ok: true; on: boolean } | { ok: false; error: string }> {
+  if (typeof raw !== "string") return { ok: false, error: "That folder name is not usable." };
+  const dir = raw.trim();
+  if (dir !== "") {
+    const problem = extraDirProblem(dir, deps.root ?? storageRoot()) ?? (await extraDirDiskProblem(dir));
+    if (problem) return { ok: false, error: problem };
+  }
+  try {
+    await setSessionSettings(db, [{ key: "backup.extra_dir", value: dir }], async () => undefined);
+    await recordAudit(db, "backup.extra_dir_changed", { sessionId, on: dir !== "" });
+    return { ok: true, on: dir !== "" };
+  } catch {
+    return { ok: false, error: "That could not be saved. Try again." };
+  }
+}
+
+/**
+ * Session or schedule (sessionId null = the schedule): the caller has already passed requireOwner, or is the worker's own timer. Never throws; the outcome is
+ * the stored result. One at a time: when another backup is running this returns "already running" and stores nothing.
+ */
+export async function runBackup(db: pg.Pool, sessionId: string | null, deps: BackupDeps = {}): Promise<BackupResult> {
+  const now = (deps.now ?? (() => new Date()))();
+  const out = await withBackupLock(db, async (): Promise<BackupResult> => {
+    let result: BackupResult;
+    try {
+      const root = deps.root ?? storageRoot();
+      const r = await backupNow(root, now, deps);
+      result = { ok: true, at: now.toISOString(), bytes: r.bytes, name: r.name };
+      const extra = await extraBackupDir(db).catch(() => "");
+      if (extra !== "") {
+        try {
+          await copyToExtra(extra, root, r.dir, r.name);
+          result = { ...result, extra: "copied" };
+        } catch {
+          result = { ...result, extra: "failed" }; // the local backup is good; only the second copy failed
+        }
+      }
+      await save(db, result);
+      await recordAudit(db, "backup.completed", { sessionId, name: r.name, bytes: r.bytes, pruned: r.pruned, ...(result.ok && result.extra ? { extra: result.extra } : {}) });
+      if (result.ok && result.extra === "failed") {
+        await notifyTransition(db, { channels: {}, inAppOnly: true }, { event: "backup_failed", from: "ok", to: "backup_failed", transitionId: `backup-extra-${now.toISOString()}`, detail: "The extra copy of the backup failed. The backup itself is fine." }).catch(() => undefined);
+      }
+    } catch (e) {
+      const cls = e instanceof Error ? e.name : "Error";
+      console.error(JSON.stringify({ event: "backup.failed", error: cls }));
+      result = { ok: false, at: now.toISOString(), error: reason(e) };
+      await save(db, result).catch(() => undefined);
+      await recordAudit(db, "backup.failed", { sessionId, reason: cls }).catch(() => undefined);
+      await notifyTransition(db, { channels: {}, inAppOnly: true }, { event: "backup_failed", from: "ok", to: "backup_failed", transitionId: `backup-${now.toISOString()}`, detail: result.error }).catch(() => undefined);
+    }
+    return result;
+  });
+  return out ?? { ok: false, at: now.toISOString(), error: "A backup is already running. Try again in a few minutes." };
+}
+
+/** The worker's schedule: makes a backup when one is due (none yet, or the last is 6 hours old; an hour after a failure). Returns null when none was due. */
+export async function scheduledBackupTick(db: pg.Pool, deps: BackupDeps = {}): Promise<BackupResult | null> {
+  const now = (deps.now ?? (() => new Date()))();
+  if (!backupDue(await lastBackup(db), now)) return null;
+  const r = await runBackup(db, null, deps);
+  // "already running" stores nothing, so the next tick asks again; any other outcome is stored and spaces the next one.
+  return r;
+}
+
+/** For the worker loop, which ticks often: asks the database at most every few minutes, never throws, never overlaps itself. */
+export function throttledBackup(db: pg.Pool, opts: { everyMs?: number; now?: () => number; deps?: BackupDeps } = {}): () => Promise<void> {
+  const every = opts.everyMs ?? 5 * 60_000;
+  const clock = opts.now ?? Date.now;
+  let last = -Infinity;
+  let running = false;
+  return async () => {
+    const t = clock();
+    if (running || t - last < every) return;
+    last = t;
+    running = true;
+    try {
+      await scheduledBackupTick(db, opts.deps ?? {});
+    } catch {
+      /* the next tick tries again */
+    } finally {
+      running = false;
+    }
+  };
 }

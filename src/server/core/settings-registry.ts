@@ -30,6 +30,8 @@ const quietHours = z
 
 export const SETTINGS = {
   // Result of the last backup (Phase 7). Written only by the session-only Back up now action; not a safety key.
+  // The optional second copy of every backup (a folder or external drive the owner names; empty = off). Not a safety key: it only adds a copy.
+  "backup.extra_dir": { schema: z.string().max(400), default: "", safety: false, label: "Extra backup folder (optional)" },
   "backup.last_run": { schema: backupResultSchema, default: null, safety: false, label: "Last backup result" },
   // Scheduler (Phase 6). Safety: it decides whether the app drafts videos and spends money while the owner is away.
   scheduler: { schema: schedulerSchema, default: SCHEDULER_DEFAULTS, safety: true, label: "Scheduler" },

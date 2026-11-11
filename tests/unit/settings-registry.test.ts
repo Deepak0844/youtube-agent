@@ -39,6 +39,7 @@ describe("settings registry", () => {
     const d = Object.fromEntries(Object.entries(SETTINGS).filter(([k]) => !ENGINE_KEYS.includes(k as never) && !k.startsWith("notify.")).map(([k, v]) => [k, v.default]));
     expect(d).toEqual({
       "backup.last_run": null,
+      "backup.extra_dir": "",
       scheduler: SCHEDULER_DEFAULTS,
       "targets.pause_n": 0,
       "targets.rpm_usd": 0,
