@@ -20,10 +20,10 @@ export default function GoogleSettingsPage() {
 
 const STEPS = [
   ["Make a project", "In Google Cloud Console, create a project just for this studio."],
-  ["Switch on the YouTube Data API", "APIs and services, Library, YouTube Data API v3, Enable."],
-  ["Set up the consent screen", "Add yourself as a test user. Keep the app in testing until you are ready."],
+  ["Switch on two APIs", "APIs and services, Library: enable YouTube Data API v3 (uploads, comments) and YouTube Analytics API (the numbers on the Analytics page)."],
+  ["Set up the consent screen", "User type External. Add your own Google account under Test users. In Testing, Google ends the sign-in after 7 days, so you reconnect weekly; to stop that, press Publish app (it stays unverified, which is fine for just you: click through the warning once)."],
   ["Create a web application client", "Credentials, Create credentials, OAuth client ID, type Web application (not Desktop). Paste the redirect address from the right into Authorised redirect URIs."],
-  ["Copy the client ID and secret here", "The secret is shown once by Google. Paste it on the left; it goes straight into the vault."],
+  ["Copy the client ID and secret here", "The secret is shown once by Google. Paste it on the left; it goes straight into the vault. Then connect your channel and try a private upload first."],
 ] as const;
 
 async function Owned() {
