@@ -18,6 +18,10 @@ import { createHash } from "node:crypto";
 import { KnownFailure } from "@/server/core/paid-call";
 import { createFakeVideo } from "@/server/providers/video/fake";
 import { assetsForVideo } from "@/server/db/video-assets";
+import { CharacterRefused, characterOf, setVideoCharacter } from "@/server/db/video-characters";
+import { registerAsset } from "@/server/db/assets";
+import { RIGHTS_TEXT } from "@/server/core/asset-rules";
+import type { ClipArgs, VideoProvider } from "@/server/providers/video";
 import { generateClipsAttempt } from "@/worker/stages/generate-clips";
 import { knownFailure, throwsUnknown } from "@/server/providers/fake-base";
 import { createFakeVoice } from "@/server/providers/voice/fake";
@@ -271,5 +275,84 @@ describe("the clip generation stage", () => {
     const id = await approvedPlan();
     expect((await play(id, "generate", gen({ ingest: undefined }))).kind).not.toBe("committed");
     expect(JSON.stringify(await stageRow(id, "generate"))).toMatch(/Clip checking is not set up/);
+  });
+});
+
+// ---- Locked character -------------------------------------------------------------------------------------------------------------------
+
+async function pictureAsset(over: Partial<{ mime: string; width: number; height: number; sha: string }> = {}): Promise<string> {
+  const r = await registerAsset(db.pool, {
+    kind: "image", originalName: "hero.png", mime: over.mime ?? "image/png", bytes: 10, width: over.width ?? 1024, height: over.height ?? 1536, sha256: createHash("sha256").update(over.sha ?? `hero-${Math.random()}`).digest("hex"),
+    storageRef: "assets/hero/main.png", tags: [], source: "upload", rights: { attestations: [{ at: new Date().toISOString(), text: RIGHTS_TEXT }] },
+  } as never);
+  return r.asset.id;
+}
+/** Records the arguments every quote and generate call gets. */
+function spy(inner: VideoProvider): VideoProvider & { quoted: ClipArgs[]; made: ClipArgs[] } {
+  const quoted: ClipArgs[] = [];
+  const made: ClipArgs[] = [];
+  return { capability: inner.capability, quoted, made, quote: (a) => (quoted.push(a), inner.quote(a)), generate: (ctx, a) => (made.push(a), inner.generate(ctx, a)) };
+}
+
+describe("a locked character", () => {
+  it("only an AI video has one, only a valid picture can be one, and the choice is audited and read back", async () => {
+    const sk = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t" });
+    const ai = await aiVideo();
+    const pic = await pictureAsset();
+    await expect(setVideoCharacter(db.pool, sk.id, pic)).rejects.toThrow(/Only an AI video/);
+    await expect(setVideoCharacter(db.pool, ai, await pictureAsset({ mime: "image/webp" }))).rejects.toBeInstanceOf(CharacterRefused);
+    await expect(setVideoCharacter(db.pool, ai, await pictureAsset({ width: 100 }))).rejects.toThrow(/at least 300/);
+    await expect(setVideoCharacter(db.pool, ai, "00000000-0000-4000-8000-000000000000")).rejects.toThrow(/does not exist/);
+    expect(await characterOf(db.pool, ai)).toBeNull();
+    await setVideoCharacter(db.pool, ai, pic);
+    expect(await characterOf(db.pool, ai)).toEqual({ assetId: pic, storageRef: "assets/hero/main.png" });
+    expect((await db.ownerPool.query("select detail from audit_log where event = 'video.character_set'")).rows).toHaveLength(1);
+    await db.ownerPool.query("update assets set deleted_at = now() where id = $1", [pic]);
+    expect(await characterOf(db.pool, ai)).toBeNull(); // a deleted picture is no character
+    await setVideoCharacter(db.pool, ai, null);
+    expect(await characterOf(db.pool, ai)).toBeNull();
+  });
+
+  it("every clip is quoted and bought with the character as its start picture, and the plan records which picture", async () => {
+    const id = await aiVideo();
+    const pic = await pictureAsset();
+    await setVideoCharacter(db.pool, id, pic);
+    const fake = spy(createFakeVideo());
+    expect((await play(id, "shots", shots({ videoFor: async () => fake }))).kind).toBe("committed");
+    expect(fake.quoted.length).toBeGreaterThan(0);
+    for (const q of fake.quoted) expect(q).toMatchObject({ startImage: true, startImagePath: "assets/hero/main.png" });
+    expect(((await latestContent(db.pool, id, "cost_plan"))!.body as { character: unknown }).character).toEqual({ assetId: pic, storageRef: "assets/hero/main.png" });
+    const live = await liveGateHash(db.pool, id, "cost");
+    await approveGate(db.pool, { videoId: id, gate: "cost", seenHash: live!.hash, actor: SESSION });
+    expect((await play(id, "generate", gen({ videoFor: async () => fake }))).kind).toBe("committed");
+    expect(fake.made).toHaveLength(2);
+    for (const m of fake.made) expect(m).toMatchObject({ startImage: true, startImagePath: "assets/hero/main.png" });
+  });
+
+  it("a model that cannot start from a picture is refused for a character, with nothing planned or bought", async () => {
+    const id = await aiVideo();
+    await setVideoCharacter(db.pool, id, await pictureAsset());
+    await db.ownerPool.query("update media_routes set model = 'fake-text-only' where kind = 'video'");
+    const out = await play(id, "shots", shots());
+    expect(out.kind).not.toBe("committed");
+    expect(JSON.stringify(await stageRow(id, "shots"))).toMatch(/cannot start from a picture|keep a character/);
+    expect(await latestContent(db.pool, id, "cost_plan")).toBeNull();
+  });
+
+  it("changing or removing the character after approval buys nothing", async () => {
+    const id = await aiVideo();
+    const pic = await pictureAsset();
+    await setVideoCharacter(db.pool, id, pic);
+    await play(id, "shots", shots());
+    const live = await liveGateHash(db.pool, id, "cost");
+    await approveGate(db.pool, { videoId: id, gate: "cost", seenHash: live!.hash, actor: SESSION });
+    const fake = createFakeVideo();
+    for (const change of [() => setVideoCharacter(db.pool, id, null), async () => setVideoCharacter(db.pool, id, await pictureAsset())]) {
+      await change();
+      const out = await play(id, "generate", gen({ videoFor: async () => fake }));
+      expect(out.kind).not.toBe("committed");
+      expect(JSON.stringify(await stageRow(id, "generate"))).toMatch(/character picture changed/);
+    }
+    expect(fake.totalCalls()).toBe(0);
   });
 });
