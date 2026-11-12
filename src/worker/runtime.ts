@@ -17,7 +17,7 @@ import { notifyTransition, notifyUploadEnd, type NotifyPorts, type NotifySend } 
 import { realNotifyPorts } from "@/server/providers/notify/ports";
 import { getStage } from "@/server/db/stages";
 import type { StageOutcome } from "@/server/core/stage-runner";
-import type { NotifyEventId } from "@/server/core/notify";
+import { failureEvent, type NotifyEventId } from "@/server/core/notify";
 import { createChildRegistry, holdWorkerLock, sweepOrphans, type WorkerLock } from "@/server/db/child-processes";
 import type { ChildRegistry } from "@/server/render/child";
 import { markStalled, STALL_MS } from "@/server/db/uploads";
@@ -380,8 +380,9 @@ export function startRuntime(opts: WorkerOptions = {}) {
               if (hit && "claim" in outcome && !retryScheduled) {
                 try {
                   const row = await getStage(db, outcome.claim.stageRunId);
+                  const event = hit.event === "video_failed" ? failureEvent(row?.result) : hit.event;
                   await hooks.notify(db, { channels: {} }, {
-                    event: hit.event, videoId: row?.videoId, from: "running", to: hit.to,
+                    event, videoId: row?.videoId, from: "running", to: event === "video_blocked" ? "blocked" : hit.to,
                     transitionId: `${outcome.claim.stageRunId}.${outcome.claim.fence}`, detail: row?.name,
                   });
                 } catch { log("notify failed"); }

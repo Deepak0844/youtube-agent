@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { once } from "node:events";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotProcessedError } from "@/server/core/error-class";
+import { KnownFailure } from "@/server/core/paid-call";
 import { advanceVideo } from "@/server/db/pipeline";
 import { createVideoRow } from "@/server/db/videos";
 import { createPool } from "@/server/db/pool";
@@ -69,6 +70,13 @@ describe("worker runtime with Postgres and Redis", () => {
     const bad = boot({ handlers: { render: async () => ({}) }, hooks: { notify: async () => { throw new Error("boom"); } } }); await bad.ready;
     await queue.enqueue(id2, 0, 0, "h1");
     await waitFor(async () => (await getStage(db.pool, id2))?.status === "failed", "still failed");
+  });
+
+  it("a_qa_block_is_notified_as_video_blocked_not_video_failed", async () => {
+    const worker = boot({ handlers: { draft: async () => { throw new KnownFailure("qa_failed: The first frame is black"); } } }); await worker.ready;
+    const id = await stage(); await queue.enqueue(id, 0, 0, "h1");
+    await waitFor(async () => (await db.pool.query("select 1 from notifications")).rowCount === 1, "block notified");
+    expect((await db.pool.query("select event, to_state from notifications")).rows).toEqual([{ event: "video_blocked", to_state: "blocked" }]);
   });
 
   it("a_confirmed_provider_rejection_schedules_a_delayed_retry_row_and_stays_quiet_until_retries_run_out", async () => {

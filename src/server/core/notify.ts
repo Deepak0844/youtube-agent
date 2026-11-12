@@ -76,6 +76,12 @@ export function eventForState(state: string): NotifyEventId | null {
   return NOTIFY_EVENT_IDS.find((id) => NOTIFY_EVENTS[id].state === state) ?? null;
 }
 
+/** A failed stage's notice: a QA block (the render broke a hard rule) is "Video blocked", any other failure "Video failed". */
+export function failureEvent(result: unknown): "video_blocked" | "video_failed" {
+  const err = (result as { error?: unknown } | null)?.error;
+  return typeof err === "string" && err.includes("qa_failed:") ? "video_blocked" : "video_failed";
+}
+
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 export const isHhmm = (s: string): boolean => HHMM.test(s);
 const hhmm = (s: string): number => {
