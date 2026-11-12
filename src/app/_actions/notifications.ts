@@ -20,3 +20,11 @@ export async function markOneReadAction(form: FormData): Promise<void> {
   await markNotificationRead(getPool(), id);
   revalidatePath("/", "layout");
 }
+
+// Bell: opening a message marks it read. Owner session only; anything but a positive integer id is ignored.
+export async function markReadOnOpenAction(id: unknown): Promise<void> {
+  await requireOwner();
+  if (typeof id !== "string" || !/^[1-9][0-9]{0,18}$/.test(id)) return;
+  await markNotificationRead(getPool(), id);
+  revalidatePath("/", "layout");
+}

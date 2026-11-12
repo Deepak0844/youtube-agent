@@ -6,6 +6,8 @@ import { getPool } from "@/server/db/pool";
 import { listNotifications, unreadCount } from "@/server/db/notify";
 import { bellItem } from "@/server/core/notify-view";
 import { TimeAgo } from "../states/time-ago";
+import { BellCloser } from "./bell-closer";
+import { BellLink } from "./bell-link";
 import { cn, focusRing } from "../lib/cn";
 
 const ICON = { needs_you: CircleAlert, problems: CircleX, good_news: CircleCheck } as const;
@@ -28,6 +30,7 @@ export async function NotificationBell() {
   }
   return (
     <details className="relative" data-testid="bell">
+      <BellCloser />
       <summary
         aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications, none unread"}
         className={cn("relative flex size-9 cursor-pointer list-none items-center justify-center rounded-control text-muted hover:bg-raised hover:text-text marker:hidden [&::-webkit-details-marker]:hidden", focusRing)}
@@ -77,36 +80,38 @@ export async function NotificationBell() {
                     <Icon size={15} />
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className={cn("text-body", b.unread ? "font-semibold text-text" : "font-medium text-muted")}>{b.title}</span>
+                    <span className={cn("flex items-center gap-2 text-body", b.unread ? "font-semibold text-text" : "font-medium text-muted")}>
+                      {b.unread ? (
+                        <span className="size-2 shrink-0 rounded-full bg-info">
+                          <span className="sr-only">Unread:</span>
+                        </span>
+                      ) : null}
+                      {b.title}
+                    </span>
                     {b.detail ? <span className="line-clamp-2 text-small text-muted [overflow-wrap:anywhere]">{b.detail}</span> : null}
                     <span className="text-small text-faint">
                       <TimeAgo at={r.at} />
                     </span>
                   </span>
-                  {b.unread ? (
-                    <span className="mt-2 size-2 shrink-0 rounded-full bg-info">
-                      <span className="sr-only">Unread</span>
-                    </span>
-                  ) : null}
                 </>
               );
               return (
-                <li key={r.id} data-testid="bell-item" className="group flex items-stretch border-b border-border last:border-0">
+                <li key={r.id} data-testid="bell-item" className={cn("flex items-center border-b border-border transition-colors last:border-0 hover:bg-raised", b.unread && "bg-raised/40")}>
                   {b.href ? (
-                    <Link href={b.href} className={cn("flex min-w-0 flex-1 gap-3 px-4 py-3 hover:bg-raised", focusRing)}>
+                    <BellLink id={r.id} unread={b.unread} href={b.href} className={cn("flex min-w-0 flex-1 gap-3 py-3 pl-4", b.unread ? "pr-2" : "pr-4", focusRing)}>
                       {body}
-                    </Link>
+                    </BellLink>
                   ) : (
-                    <div className="flex min-w-0 flex-1 gap-3 px-4 py-3">{body}</div>
+                    <div className={cn("flex min-w-0 flex-1 gap-3 py-3 pl-4", b.unread ? "pr-2" : "pr-4")}>{body}</div>
                   )}
                   {b.unread ? (
-                    <form action={markOneReadAction} className="flex items-start pt-2.5 pr-2">
+                    <form action={markOneReadAction} className="flex shrink-0 items-center pr-3">
                       <input type="hidden" name="id" value={r.id} />
                       <button
                         type="submit"
                         aria-label={`Mark as read: ${b.title}`}
                         title="Mark as read"
-                        className={cn("flex size-7 items-center justify-center rounded-control text-faint hover:bg-raised hover:text-text", focusRing)}
+                        className={cn("flex size-7 items-center justify-center rounded-full border border-border bg-surface text-muted transition-colors hover:border-text hover:text-text", focusRing)}
                       >
                         <Check size={14} aria-hidden />
                       </button>
