@@ -9,9 +9,11 @@ import { CharacterRefused, characterProblemOf, setVideoCharacter } from "@/serve
 import { maxLongMinutes, qaLongSeconds } from "@/server/db/system-settings";
 
 /** Owner starts a new Short or Long video: row, audit, then the first pipeline step. The topic and notes stay out of the audit row. */
-export async function startNewVideo(db: pg.Pool, queue: EnqueueOnly, actor: GateActor, i: NewVideoInput): Promise<{ ok: true; videoId: string } | { ok: false; message: string }> {
+// `channelId` is optional ("choose later"); a given one must be a connected channel row.
+export async function startNewVideo(db: pg.Pool, queue: EnqueueOnly, actor: GateActor, i: NewVideoInput, channelId: string | null = null): Promise<{ ok: true; videoId: string } | { ok: false; message: string }> {
   if (actorProblem(actor)) return { ok: false, message: ACTOR_REASON };
-  return startVideo(db, queue, actor.sessionId, i);
+  if (channelId !== null && !(await db.query("select 1 from youtube_channels where channel_id = $1", [channelId])).rowCount) return { ok: false, message: "That channel is not connected." };
+  return startVideo(db, queue, actor.sessionId, i, channelId);
 }
 
 /** The same start for the overnight scheduler (sessionId null). Creates a draft only: no gate is approved, nothing is uploaded. */

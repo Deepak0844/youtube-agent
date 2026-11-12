@@ -20,9 +20,11 @@ export async function createVideoAction(_prev: NewVideoState, form: FormData): P
   if (origin) return { message: origin };
   const p = parseNewVideoForm(form, await maxLongMinutes(getPool()));
   if (!p.ok) return { message: p.message };
+  const ch = form.get("channel");
+  const channelId = typeof ch === "string" && ch !== "" ? ch : null;
   let r;
   try {
-    r = await startNewVideo(getPool(), webStageQueue(), { kind: "session", sessionId: owner.sessionId }, p.value);
+    r = await startNewVideo(getPool(), webStageQueue(), { kind: "session", sessionId: owner.sessionId }, p.value, channelId);
   } catch {
     return { message: "Could not start the video. Nothing was saved. Try again in a minute." };
   }
