@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { cn, fade, focusRing } from "../lib/cn";
 import { areaFor, isActive, visibleAreas, type Area, type NavItem } from "./nav-config";
+import { AREA_ICONS } from "./rail";
 
 function MenuLink({ item, active, count }: { item: NavItem; active: string | null; count?: number }) {
   const on = active !== null && isActive(item.href, active);
@@ -54,12 +55,22 @@ export function AreaLinks({ area: name, active, counts }: { area: Area; active: 
   );
 }
 
+function AreaTitle({ area }: { area: Area }) {
+  const Icon = AREA_ICONS[area];
+  return (
+    <p className="flex items-center gap-2 px-2.5 pb-3 text-section font-semibold">
+      <Icon size={16} aria-hidden className="text-muted" />
+      {area}
+    </p>
+  );
+}
+
 /** Desktop area menu beside the icon strip (layout C). Hidden on Home and while the path is not known yet. */
 export function AreaMenu({ active, counts }: { active: string | null; counts?: Record<string, number> }) {
   if (active === null || areaFor(active) === "Home") return null;
   return (
     <aside className="sticky top-0 hidden h-dvh w-[var(--sidebar-width)] shrink-0 overflow-y-auto px-2 py-4 md:block">
-      <p className="px-2.5 pb-3 text-section font-semibold">{areaFor(active)}</p>
+      <AreaTitle area={areaFor(active)} />
       <nav aria-label="Primary">
         <AreaLinks area={areaFor(active)} active={active} counts={counts} />
       </nav>

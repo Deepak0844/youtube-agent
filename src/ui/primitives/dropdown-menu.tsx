@@ -6,7 +6,7 @@ export const DropdownMenu = M.Root;
 export const DropdownMenuTrigger = M.Trigger;
 export const DropdownMenuContent = ({ className, sideOffset = 6, ...p }: React.ComponentProps<typeof M.Content>) => (
   <M.Portal>
-    <M.Content sideOffset={sideOffset} className={cn("min-w-44 z-50 rounded-card border border-border bg-surface p-1 text-text overlay-lift", className)} {...p} />
+    <M.Content sideOffset={sideOffset} className={cn("ui-pop min-w-44 z-50 rounded-card border border-border bg-surface p-1 text-text overlay-lift", className)} {...p} />
   </M.Portal>
 );
 export const DropdownMenuItem = ({ className, ...p }: React.ComponentProps<typeof M.Item>) => (

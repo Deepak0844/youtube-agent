@@ -46,7 +46,7 @@ describe("route inventory (real files)", () => {
       .filter((f) => f.startsWith(APP))
       .map((f) => ({ f, base: path.basename(f).replace(SOURCE_EXT, "") }))
       .filter(({ base }) => SPECIAL_FILES.includes(base) || METADATA_FILES.includes(base));
-    expect(found.map(({ f }) => path.relative(APP, f)).sort()).toEqual(["(app)/error.tsx", "(app)/layout.tsx", "(app)/loading.tsx", "(app)/not-found.tsx", "(app)/settings/layout.tsx", "layout.tsx"].map((p) => p.split("/").join(path.sep))); // a new special file must be reviewed here (error/loading/not-found: reviewed 2026-11-12, they show no owner data)
+    expect(found.map(({ f }) => path.relative(APP, f)).sort()).toEqual(["(app)/error.tsx", "(app)/layout.tsx", "(app)/loading.tsx", "(app)/not-found.tsx", "(app)/settings/layout.tsx", "(app)/template.tsx", "layout.tsx"].map((p) => p.split("/").join(path.sep))); // a new special file must be reviewed here (error/loading/not-found: reviewed 2026-11-12, they show no owner data)
     for (const { f, base } of found.filter(({ base }) => METADATA_FILES.includes(base))) {
       expect(isPublicPath(urlOf(f) + "/" + base), `${f} would be public`).toBe(false);
     }

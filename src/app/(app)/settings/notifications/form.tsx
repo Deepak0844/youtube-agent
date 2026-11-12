@@ -33,7 +33,9 @@ export function NotifyForm(props: {
   const [url, setUrl] = useState(props.webhookUrl);
   const [test, runTest, testing] = useActionState<FormState, FormData>(testWebhookAction, {});
   return (
-    <form action={save} className="grid min-w-0 gap-layout xl:col-span-2 xl:grid-cols-2 xl:items-start">
+    <form action={save} className="flex min-w-0 flex-col gap-layout xl:col-span-2">
+      <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <div className="flex min-w-0 flex-col gap-layout">
       <section aria-labelledby="master-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="master-h" className="text-title font-semibold">Master switch</h2>
         <label className="mt-3 flex items-center gap-3 text-body">
@@ -43,6 +45,24 @@ export function NotifyForm(props: {
         <p className="mt-1 text-small text-muted">The bell in the top bar always keeps the record, even when this is off.</p>
       </section>
 
+      <section aria-labelledby="hook-h" className="rounded-card border border-border bg-surface p-pad">
+        <h2 id="hook-h" className="text-title font-semibold">Webhook</h2>
+        <p className="mt-1 text-small text-muted">
+          Posts JSON with title, text and message (works with Slack, Discord and ntfy style hooks). Public addresses only. Leave empty for none.
+        </p>
+        <div className="mt-3 flex flex-col gap-2">
+          <Label htmlFor="webhook_url">Webhook address</Label>
+          <Input id="webhook_url" name="webhook_url" type="url" inputMode="url" autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button type="submit" variant="secondary" formAction={runTest} loading={testing}>Send test message</Button>
+          <p role="status" className={test.error ? "text-body text-pill-negative-ink" : "text-body text-pill-positive-ink"} data-testid="webhook-test-result">
+            {test.error ?? test.message ?? ""}
+          </p>
+        </div>
+      </section>
+
+      </div>
       <section aria-labelledby="quiet-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="quiet-h" className="text-title font-semibold">Quiet hours</h2>
         <p className="mt-1 text-small text-muted">During quiet hours desktop and webhook messages are held, not sent. The bell still fills.</p>
@@ -70,23 +90,9 @@ export function NotifyForm(props: {
         </label>
       </section>
 
-      <section aria-labelledby="hook-h" className="rounded-card border border-border bg-surface p-pad">
-        <h2 id="hook-h" className="text-title font-semibold">Webhook</h2>
-        <p className="mt-1 text-small text-muted">
-          Posts JSON with title, text and message (works with Slack, Discord and ntfy style hooks). Public addresses only. Leave empty for none.
-        </p>
-        <div className="mt-3 flex flex-col gap-2">
-          <Label htmlFor="webhook_url">Webhook address</Label>
-          <Input id="webhook_url" name="webhook_url" type="url" inputMode="url" autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" />
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <Button type="submit" variant="secondary" formAction={runTest} disabled={testing}>Send test message</Button>
-          <p role="status" className={test.error ? "text-body text-pill-negative-ink" : "text-body text-pill-positive-ink"} data-testid="webhook-test-result">
-            {test.error ?? test.message ?? ""}
-          </p>
-        </div>
-      </section>
+      </div>
 
+      <div className="grid min-w-0 gap-layout lg:grid-cols-2 xl:grid-cols-3 lg:items-start">
       {GROUPS.map(([g, label]) => (
         <section key={g} aria-labelledby={`g-${g}`} className="rounded-card border border-border bg-surface p-pad">
           <h2 id={`g-${g}`} className="text-title font-semibold">{label}</h2>
@@ -125,7 +131,9 @@ export function NotifyForm(props: {
         </section>
       ))}
 
-      <div className="flex flex-wrap items-center gap-3 xl:col-span-2">
+      </div>
+
+      <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center gap-3 border-t border-border bg-page px-1 py-3 max-md:bottom-16">
         <Button type="submit" loading={saving}>Save</Button>
         {state.error ? <p role="alert" className="text-body text-pill-negative-ink">{state.error}</p> : state.ok ? <p role="status" className="text-body text-pill-positive-ink">Saved.</p> : <p role="status" className="sr-only" />}
       </div>

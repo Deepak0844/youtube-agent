@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { Bell } from "lucide-react";
+import { Bell, Wallet } from "lucide-react";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { getPool } from "@/server/db/pool";
 import { loadInrRate } from "@/server/db/system-settings";
@@ -62,8 +62,9 @@ export function TopBar() {
       <div className="ml-auto hidden lg:block">
         <CommandMenu />
       </div>
-      <div className="flex items-center gap-4 max-lg:ml-auto md:gap-5">
-        <p className="text-small whitespace-nowrap text-muted md:text-body">
+      <div className="flex items-center gap-2 max-lg:ml-auto md:gap-3">
+        <p className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-small whitespace-nowrap text-muted">
+          <Wallet size={13} aria-hidden className="shrink-0" />
           <Suspense fallback="$– of $– today">
             <SpendToday />
           </Suspense>

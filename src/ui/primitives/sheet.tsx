@@ -14,9 +14,9 @@ export const SheetDescription = ({ className, ...p }: React.ComponentProps<typeo
 );
 
 const sides = {
-  right: "inset-y-0 right-0 w-[min(100%,24rem)] border-l",
-  left: "inset-y-0 left-0 w-[min(100%,24rem)] border-r",
-  bottom: "inset-x-0 bottom-0 max-h-[85dvh] rounded-t-frame border-t",
+  right: "ui-slide-left inset-y-0 right-0 w-[min(100%,24rem)] border-l",
+  left: "ui-slide-right inset-y-0 left-0 w-[min(100%,24rem)] border-r",
+  bottom: "ui-slide-up inset-x-0 bottom-0 max-h-[85dvh] rounded-t-frame border-t",
 } as const;
 
 export function SheetContent({ side = "right", className, children, ...props }: React.ComponentProps<typeof D.Content> & { side?: keyof typeof sides }) {

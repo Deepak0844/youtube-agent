@@ -10,7 +10,7 @@ export function TooltipContent({ className, sideOffset = 6, ...props }: React.Co
     <T.Portal>
       <T.Content
         sideOffset={sideOffset}
-        className={cn("z-50 rounded-control bg-text px-2.5 py-1.5 text-small text-page overlay-lift", className)}
+        className={cn("ui-pop z-50 rounded-control bg-text px-2.5 py-1.5 text-small text-page overlay-lift", className)}
         {...props}
       />
     </T.Portal>

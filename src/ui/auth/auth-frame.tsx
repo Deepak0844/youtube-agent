@@ -28,20 +28,14 @@ function Strip() {
 
 export function AuthFrame({ title, lead, children }: { title: string; lead: string; children: ReactNode }) {
   return (
-    <main className="grid min-h-dvh flex-1 bg-ground lg:grid-cols-[minmax(0,1fr)_minmax(26rem,32rem)]">
-      <div className="flex flex-col justify-between gap-16 px-4 py-5 sm:px-gutter lg:py-8">
-        <div className="flex items-center gap-2 text-body font-semibold tracking-tight text-text">
-          <Mark />
-          YT Studio
-        </div>
-        <div className="hidden flex-col gap-10 lg:flex">
-          <p className="max-w-[14ch] text-[clamp(2.25rem,4.6vw,4rem)] leading-[1.02] font-semibold tracking-tight text-text">
-            Nothing goes out until you say so.
-          </p>
-          <Strip />
-        </div>
+    // Brand on top, the form centred in the free space below it, and (desktop) the headline with the stage strip along the
+    // bottom. The form never covers the headline: it centres in the space that is left, so short windows just scroll.
+    <main className="flex min-h-dvh flex-1 flex-col gap-10 bg-ground px-4 py-5 sm:px-gutter lg:py-8">
+      <div className="flex items-center gap-2 text-body font-semibold tracking-tight text-text">
+        <Mark />
+        YT Studio
       </div>
-      <div className="flex items-center justify-center px-4 pb-10 sm:px-gutter lg:py-10 lg:pr-gutter lg:pl-0">
+      <div className="flex flex-1 items-center justify-center">
         <section className="flex w-full max-w-md flex-col gap-6 rounded-frame border border-border bg-page p-6 sm:p-8">
           <div className="flex flex-col gap-1">
             <h1 className="text-page-title font-semibold tracking-tight text-text">{title}</h1>
@@ -49,6 +43,12 @@ export function AuthFrame({ title, lead, children }: { title: string; lead: stri
           </div>
           {children}
         </section>
+      </div>
+      <div className="hidden flex-col gap-10 lg:flex">
+        <p className="max-w-[14ch] text-[clamp(2.25rem,4.6vw,4rem)] leading-[1.02] font-semibold tracking-tight text-text">
+          Nothing goes out until you say so.
+        </p>
+        <Strip />
       </div>
     </main>
   );
