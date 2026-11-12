@@ -1,4 +1,8 @@
 import { Suspense } from "react";
+import { Lightbulb } from "lucide-react";
+import { clampPage, pageHref, parsePage } from "@/server/core/paging";
+import { EmptyState } from "@/ui/states/empty-state";
+import { Pagination } from "@/ui/states/pagination";
 import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { connectedChannelOptions, listIdeas } from "@/server/db/ideas";
@@ -30,6 +34,9 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/ideas">["sear
   const known = pick === "none" || channels.some((c) => c.channelId === pick);
   const ideas = pick === "none" ? all.filter((i) => !i.channelId) : known ? all.filter((i) => i.channelId === pick) : all;
   const shown = known ? pick : "";
+  const req = clampPage(parsePage(sp), ideas.length);
+  const pageRows = ideas.slice(req.offset, req.offset + req.limit);
+  const params = { channel: shown || undefined, page: typeof sp.page === "string" ? sp.page : undefined, size: typeof sp.size === "string" ? sp.size : undefined };
   return (
     <div className="flex min-w-0 flex-col gap-layout">
       <header>
@@ -56,15 +63,18 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/ideas">["sear
           <Button type="submit" variant="secondary">Filter</Button>
         </form>
         {ideas.length === 0 ? (
-          <p className="text-body text-muted">No ideas yet. Add one above.</p>
+          <EmptyState icon={Lightbulb} title="No ideas yet" body="Add one above, or let research suggest some." filtered={shown ? { clearHref: "/ideas" } : undefined} />
         ) : (
-          <ul className="m-0 flex list-none flex-col gap-3 p-0">
-            {ideas.map((i) => (
-              <li key={i.id} className="min-w-0 rounded-card border border-border bg-surface p-pad">
-                <IdeaCard idea={i} />
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(360px,100%),1fr))] gap-gap p-0">
+              {pageRows.map((i) => (
+                <li key={i.id} className="min-w-0 rounded-card border border-border bg-surface p-pad">
+                  <IdeaCard idea={i} />
+                </li>
+              ))}
+            </ul>
+            {ideas.length > 25 ? <Pagination page={req.page} size={req.size} total={ideas.length} hrefFor={(c) => pageHref("/ideas", params, c)} /> : null}
+          </>
         )}
       </section>
     </div>

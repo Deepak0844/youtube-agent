@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
-import { FORMAT_WORDS, FORMATS, KIND_WORDS, KINDS, LANGUAGE_ORDER, LANGUAGE_WORDS, STATUSES, STATUS_WORDS, libraryHref, parseLibraryQuery, type LibraryFilter } from "@/server/core/videos-view";
+import { FORMAT_WORDS, FORMATS, KIND_WORDS, KINDS, LANGUAGE_ORDER, LANGUAGE_WORDS, STATUSES, STATUS_WORDS, parseLibraryQuery, type LibraryFilter } from "@/server/core/videos-view";
 import { getPool } from "@/server/db/pool";
 import { loadInrRate } from "@/server/db/system-settings";
 import { listVideos } from "@/server/db/videos-list";
@@ -56,8 +56,9 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/videos">["sea
   }
   const rate = await loadInrRate(getPool());
   const filtered = Boolean(f.format || f.status || f.language || f.kind);
-  const to = (over: Partial<Record<keyof LibraryFilter, string | undefined>>) => libraryHref(f, { ...over, page: undefined });
   const params = { format: f.format, status: f.status, language: f.language, kind: f.kind, page: one(sp.page), size: one(sp.size) };
+  // Filter links go back to page 1 but keep the rows-per-page choice.
+  const to = (over: Partial<Record<keyof LibraryFilter, string | undefined>>) => pageHref("/videos", params, over);
 
   return (
     <div className="flex min-w-0 flex-col gap-layout">

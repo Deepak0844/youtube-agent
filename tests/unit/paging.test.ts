@@ -53,6 +53,9 @@ describe("pageHref", () => {
   it("page 1 and size 25 are left out of the link", () => {
     expect(pageHref("/videos", { page: "3", size: "25" }, { page: 1 })).toBe("/videos");
   });
+  it("changing a filter keeps the rows-per-page choice", () => {
+    expect(pageHref("/videos", { page: "2", size: "50" }, { status: "done" })).toBe("/videos?size=50&status=done");
+  });
   it("undefined removes a key", () => {
     expect(pageHref("/videos", { kind: "ai" }, { kind: undefined })).toBe("/videos");
   });

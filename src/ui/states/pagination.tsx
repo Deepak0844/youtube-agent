@@ -8,9 +8,9 @@ const cell = cn("inline-flex h-8 min-w-8 items-center justify-center rounded-con
 
 function Step({ to, pages, hrefFor, label, children }: { to: number; pages: number; hrefFor: (c: { page?: number }) => string; label: string; children: React.ReactNode }) {
   return to < 1 || to > pages ? (
-    <span aria-disabled="true" aria-label={label} role="link" className={cn(cell, "text-faint opacity-50")}>
+    <button type="button" disabled aria-label={label} className={cn(cell, "text-faint opacity-50")}>
       {children}
-    </span>
+    </button>
   ) : (
     <Link href={hrefFor({ page: to })} aria-label={label} className={cn(cell, "text-muted hover:bg-raised hover:text-text")}>
       {children}

@@ -1,7 +1,7 @@
 import localFont from "next/font/local";
 
 // Self-hosted variable fonts (SIL OFL 1.1; licence texts + SHA-256 in public/fonts/). No Google CDN at runtime.
-// Geist leads for Latin (spec 2026-11-12 §4.1; Instrument Sans stays vendored until the redesign clean-up); each Noto face covers one script and is fetched only when a glyph needs it.
+// Geist leads for Latin (spec 2026-11-12 §4.1); each Noto face covers one script and is fetched only when a glyph needs it.
 // Use weights 400/500/600 only (Doc 3 §4). next/font needs literal options, so each call is spelled out.
 
 export const geist = localFont({

@@ -1,4 +1,8 @@
 import Link from "next/link";
+import { Image as ImageIcon, Trash2 } from "lucide-react";
+import { clampPage, pageHref, parsePage } from "@/server/core/paging";
+import { EmptyState } from "@/ui/states/empty-state";
+import { Pagination } from "@/ui/states/pagination";
 import { Suspense } from "react";
 import { z } from "zod";
 import { requireOwner } from "@/lib/auth/require-owner";
@@ -6,7 +10,6 @@ import { toCards } from "@/server/db/asset-cards";
 import { loadAssetDays } from "@/server/db/asset-settings";
 import { listAssets, listTags } from "@/server/db/assets";
 import { getPool } from "@/server/db/pool";
-import { EmptyFrame } from "@/ui/domain/empty-frame";
 import { Input } from "@/ui/primitives/input";
 import { Skeleton } from "@/ui/primitives/skeleton";
 import { AssetGrid } from "./asset-grid";
@@ -73,7 +76,10 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/assets">["sea
   const q = query.parse({ kind: first(raw.kind), source: first(raw.source), tag: first(raw.tag), q: first(raw.q), trash: first(raw.trash) });
   const db = getPool();
   const [assets, tags] = await Promise.all([listAssets(db, { kind: q.kind, source: q.source, tag: q.tag, q: q.q, trash: q.trash === "1" }), listTags(db)]);
-  const [cards, { trashDays }] = await Promise.all([toCards(db, assets), loadAssetDays(db)]);
+  const req = clampPage(parsePage(raw), assets.length);
+  const [cards, { trashDays }] = await Promise.all([toCards(db, assets.slice(req.offset, req.offset + req.limit)), loadAssetDays(db)]);
+  const params = { kind: q.kind, source: q.source, tag: q.tag, q: q.q, trash: q.trash, page: first(raw.page), size: first(raw.size) };
+  const filtered = Boolean(q.kind || q.source || q.tag || q.q);
 
   return (
     <div className="flex min-w-0 flex-col gap-layout">
@@ -104,9 +110,12 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/assets">["sea
         {tags.length ? <Chips label="Tag" current={q.tag} options={[["Any", undefined, href(q, { tag: undefined })], ...tags.slice(0, 30).map((t): [string, string, string] => [t, t, href(q, { tag: t })])]} /> : null}
 
         {cards.length === 0 ? (
-          <EmptyFrame message={q.trash ? "The trash is empty." : EMPTY[q.kind ?? "all"]} />
+          <EmptyState icon={q.trash ? Trash2 : ImageIcon} title={q.trash ? "The trash is empty." : EMPTY[q.kind ?? "all"]} filtered={filtered ? { clearHref: q.trash ? "/assets?trash=1" : "/assets" } : undefined} />
         ) : (
-          <AssetGrid cards={cards} trash={q.trash === "1"} trashDays={trashDays} />
+          <>
+            <AssetGrid cards={cards} trash={q.trash === "1"} trashDays={trashDays} />
+            {assets.length > 25 ? <Pagination page={req.page} size={req.size} total={assets.length} hrefFor={(c) => pageHref("/assets", params, c)} /> : null}
+          </>
         )}
       </section>
     </div>
