@@ -25,6 +25,8 @@ const sceneWith = (subject: (x: number, y: number) => boolean) =>
 const good = sceneWith((x, y) => x > 130 && x < 410 && y > 330 && y < 700);
 const cropped = sceneWith((x, y) => x < 260 && y > 150 && y < 700);
 const heroOk: HeroReport = { declared: true, width: 0.45, height: 0.3, clipped: false };
+/** Six good pictures whose shots differ (close and wide), as a real story's should. */
+const okRun: HeroReport[] = [0.3, 0.45, 0.6, 0.4, 0.55, 0.35].map((w) => ({ declared: true, width: w, height: w * 0.7, clipped: false }));
 
 describe("stillMetrics + lookProblems on synthetic pictures", () => {
   it("passes a good picture (sky, textured ground, a subject in the middle)", () => {
@@ -67,7 +69,7 @@ describe("hero checks", () => {
   const m = stillMetrics({ data: good, width: W, height: H });
   const six = Array(6).fill(m);
   it("passes a hero of a good size that is never cut off", () => {
-    expect(lookProblems(six, Array(6).fill(heroOk))).toEqual([]);
+    expect(lookProblems(six, okRun)).toEqual([]);
   });
   it("says so when no hero is declared (every picture)", () => {
     expect(lookProblems(six, Array(6).fill({ declared: false }))[0]).toMatch(/^The scene does not mark a hero\. Wrap the main subject in <Hero>/);
@@ -81,8 +83,8 @@ describe("hero checks", () => {
     expect(lookProblems(six, [small, small, heroOk, heroOk, heroOk, heroOk])).toEqual([]);
   });
   it("counts a tall, thin hero by its height (a crane 8 percent wide and half the frame high is fine)", () => {
-    const crane: HeroReport = { declared: true, width: 0.08, height: 0.5, clipped: false };
-    expect(lookProblems(six, Array(6).fill(crane))).toEqual([]);
+    const crane = (h: number): HeroReport => ({ declared: true, width: 0.08, height: h, clipped: false });
+    expect(lookProblems(six, [0.4, 0.5, 0.6, 0.45, 0.55, 0.5].map(crane))).toEqual([]);
     expect(lookProblems(six, Array(6).fill({ declared: true, width: 0.08, height: 0.2, clipped: false }))[0]).toMatch(/^The hero is too small in frames 1, 2, 3, 4, 5 and 6/);
   });
   it("flags a hero cut off by the frame in two or more pictures, not in one", () => {
@@ -91,7 +93,24 @@ describe("hero checks", () => {
     expect(lookProblems(six, [heroOk, cut, heroOk, heroOk, heroOk, heroOk])).toEqual([]);
   });
   it("names the pictures with no hero when only some report one", () => {
-    expect(lookProblems(six, [heroOk, heroOk, { declared: false }, heroOk, heroOk, heroOk])).toEqual(["The hero is not in frame 3."]);
+    expect(lookProblems(six, okRun.map((h, i) => (i === 2 ? { declared: false as const } : h)))).toEqual(["The hero is not in frame 3."]);
+  });
+  it("flags a thin strip (under 12 percent of the frame height) in at least half of the pictures, not in fewer", () => {
+    // The real linked-list run: a long row of boxes about 40 percent wide and 7 percent high in every picture.
+    const strip = (w: number): HeroReport => ({ declared: true, width: w, height: 0.07, clipped: false });
+    expect(lookProblems(six, [0.3, 0.5, 0.7, 0.4, 0.6, 0.35].map(strip))).toEqual(["The hero is a thin strip in frames 1, 2, 3, 4, 5 and 6 (under 12 percent of the frame height). Move the camera close to the part each beat talks about, or arrange the parts to fill more of the tall frame."]);
+    expect(lookProblems(six, [strip(0.4), strip(0.5), ...okRun.slice(2)])).toEqual([]);
+  });
+  it("flags the same shot in every picture (width and height within 6 percent), not shots that differ", () => {
+    expect(lookProblems(six, Array(6).fill(heroOk))).toEqual(["The hero is the same size in every picture: the camera never moves in. Give the beats different shots: close on the part each beat talks about, wide for the overview."]);
+    expect(lookProblems(six, okRun)).toEqual([]);
+    expect(lookProblems(six.slice(0, 3), Array(3).fill(heroOk))).toEqual([]);
+  });
+  it("flags both on the real linked-list numbers", () => {
+    const real = [[0.382, 0.075], [0.411, 0.069], [0.396, 0.072], [0.407, 0.072], [0.401, 0.081], [0.382, 0.082], [0.388, 0.08], [0.399, 0.072]].map(([w, h]) => ({ declared: true as const, width: w!, height: h!, clipped: false }));
+    const out = lookProblems(Array(8).fill(m), real);
+    expect(out.some((p) => p.startsWith("The hero is a thin strip"))).toBe(true);
+    expect(out.some((p) => p.startsWith("The hero is the same size in every picture"))).toBe(true);
   });
   it("never lists more than 8 problems", () => {
     expect(lookProblems(six, Array(6).fill({ declared: false })).length).toBeLessThanOrEqual(8);

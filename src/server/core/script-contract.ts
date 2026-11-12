@@ -50,7 +50,7 @@ export type ScaleItem = z.infer<typeof scaleItemSchema>;
 
 export const STORY_LIMITS = { minBeats: 6, maxBeats: 12, maxVisual: 240, maxLine: 300 } as const;
 /**
- * One beat of a 3D scene video's `story`: what we SEE (nouns: ship, crane, rock wall, skyline, sand, water) and the narration line spoken over it.
+ * One beat of a 3D scene video's `story`: what we SEE (concrete nouns from the topic itself) and the narration line spoken over it.
  * A fact in the line is a claim, so it carries a quoted source (source_url + quote) or the way it was worked out (method); validateScript
  * turns each into an evidence claim, the same way it does for the scale list.
  */

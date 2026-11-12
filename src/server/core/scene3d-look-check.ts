@@ -25,6 +25,11 @@ export const LOOK_THRESHOLDS = {
   HERO_HEIGHT_TO_WIDTH: 0.5625,
   /** The hero is cut off by the frame in this many pictures or more. */
   HERO_CLIPPED_MIN_FRAMES: 2,
+  /** A hero under this share of the frame HEIGHT (in at least HERO_MIN_SHARE of the pictures) is a thin strip on a phone: a long row of small parts seen from far away. */
+  HERO_MIN_HEIGHT: 0.12,
+  /** The hero's width and height both stay within this range across every picture (with at least SAME_SHOT_MIN_FRAMES pictures): the camera never moves in, so the beats look the same. */
+  SAME_SHOT_RANGE: 0.06,
+  SAME_SHOT_MIN_FRAMES: 4,
 } as const;
 
 export const MAX_LOOK_PROBLEMS = 8;
@@ -156,6 +161,10 @@ export function lookProblems(metrics: readonly StillMetrics[], hero: ReadonlyArr
       if (missing.length) out.push(`The hero is not in ${lower(framesPhrase(missing))}.`);
       const small = declared.filter((i) => { const h = reps[i] as { width: number; height: number }; return Math.max(h.width, h.height * T.HERO_HEIGHT_TO_WIDTH) < T.HERO_MIN_WIDTH; });
       if (small.length >= Math.max(1, Math.ceil(declared.length * T.HERO_MIN_SHARE))) out.push(`The hero is too small in ${lower(framesPhrase(small))} (under 20 percent of the frame width). Make it bigger or move the camera closer.`);
+      const thin = declared.filter((i) => !small.includes(i) && (reps[i] as { height: number }).height < T.HERO_MIN_HEIGHT);
+      if (thin.length >= Math.max(1, Math.ceil(declared.length * T.HERO_MIN_SHARE))) out.push(`The hero is a thin strip in ${lower(framesPhrase(thin))} (under 12 percent of the frame height). Move the camera close to the part each beat talks about, or arrange the parts to fill more of the tall frame.`);
+      const spread = (k: "width" | "height") => { const v = declared.map((i) => (reps[i] as { width: number; height: number })[k]); return Math.max(...v) - Math.min(...v); };
+      if (declared.length >= T.SAME_SHOT_MIN_FRAMES && spread("width") <= T.SAME_SHOT_RANGE && spread("height") <= T.SAME_SHOT_RANGE) out.push("The hero is the same size in every picture: the camera never moves in. Give the beats different shots: close on the part each beat talks about, wide for the overview.");
       const cut = declared.filter((i) => (reps[i] as { clipped: boolean }).clipped);
       if (cut.length >= T.HERO_CLIPPED_MIN_FRAMES) out.push(`The hero is cut off by the edge of the picture in ${lower(framesPhrase(cut))}. Frame it so all of it fits.`);
     }

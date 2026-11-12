@@ -11,7 +11,7 @@ type Layer = { color: string; h: number; pebbles?: boolean | { count?: number; r
 type RigShot = { t: number; at: V3; look: V3 } | { t: number; frame: { box: Box; yawDeg: number; pitchDeg: number; distanceMul?: number } };
 type Coverage = { fits: boolean; width: number; height: number; fill: number };
 type Safe = { top: number; bottom: number; left: number; right: number };
-type PresetName = "clear" | "haze" | "dusk" | "overcast";
+type PresetName = "clear" | "haze" | "dusk" | "overcast" | "studio";
 type WorldPreset = { top: string; mid: string; horizon: string; fog: string; fogDensity: number; sun: string; sunIntensity: number; sunAzimuthDeg: number; sunElevationDeg: number; glow: number; hemiSky: string; hemiGround: string; hemiK: number; bounce: string; exposure: number };
 type ModelResolver = { resolve(ref: { catalog: string } | { file: string }): { url: string } | null };
 type FitOptions = { size?: number; height?: boolean; info?: { default_scale?: number; pivot?: "bottom" | "center" }; matte?: boolean };
@@ -116,6 +116,8 @@ export const Captions: FC<{ items: readonly { from: number; to: number; text: st
 export function captionPhase(t: number, from: number, to: number): { active: boolean; k: number; alpha: number };
 /** 3D measuring line with end ticks and a label that faces the camera. */
 export const Ruler: FC<{ from: V3; to: V3; label: string; color?: string; width?: number; labelSize?: number }>;
+/** A text tag in the scene (white on a dark pill, faces the camera, drawn on top), size = height in metres: name the parts (head, next, null). */
+export function label(text: string, o?: { size?: number; color?: string; background?: string }): THREE.Sprite;
 
 // ## Models, instancing, particles
 /** Loads catalogue ids through resolver, holds the render until drawn once. Returns null while loading: render nothing until it is set. Missing models become grey boxes. */
@@ -162,6 +164,8 @@ export function box(w: number, h: number, d: number, mat: THREE.Material, x: num
 export function cyl(rt: number, rb: number, len: number, mat: THREE.Material, axis: "x" | "y" | "z", x: number, y: number, z: number, parent?: THREE.Object3D, seg?: number): THREE.Mesh;
 /** Strut of radius r from a to b. */
 export function between(a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material, parent?: THREE.Object3D, seg?: number): THREE.Mesh;
+/** Arrow from a to b (shaft of radius r, cone head ending at b): use it for any direction, flow or "points to" link. */
+export function arrow(a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material, parent?: THREE.Object3D): THREE.Group;
 /** Wedge of a ring around the x axis (half pipe, tunnel wall): outer/inner radius, angles in radians, length along +x. */
 export function sector(rO: number, rI: number, a0: number, a1: number, len: number): THREE.ExtrudeGeometry;
 /** Full ring around the x axis. */

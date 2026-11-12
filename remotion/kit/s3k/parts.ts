@@ -74,3 +74,18 @@ export function ring(rO: number, rI: number, len: number): THREE.ExtrudeGeometry
   g.rotateY(Math.PI / 2);
   return g;
 }
+/** Arrow from a to b: a shaft of radius r and a cone head (2.6 r wide, 6 r long) that ends exactly at b, so the direction reads at a glance. */
+export function arrow(a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material, parent?: THREE.Object3D): THREE.Group {
+  const g = new THREE.Group();
+  const d = b.clone().sub(a), len = d.length(), dir = d.clone().normalize();
+  const headLen = Math.min(r * 6, len * 0.5);
+  const tip = b.clone().addScaledVector(dir, -headLen);
+  if (len - headLen > 1e-3) between(a, tip, r, mat, g);
+  const head = new THREE.Mesh(new THREE.ConeGeometry(r * 2.6, headLen, 18), mat);
+  head.position.copy(tip).addScaledVector(dir, headLen / 2);
+  head.quaternion.setFromUnitVectors(UP, dir);
+  head.castShadow = true;
+  g.add(head);
+  parent?.add(g);
+  return g;
+}

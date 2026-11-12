@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkScene3dCode, S3K_ALLOWED, sceneModelIds, SCENE_MAX_BYTES, THREE_ALLOWED } from "@/server/core/scene3d-code-check";
-import { S3K_API_DTS, S3K_API_MD, S3K_EXAMPLE_A, S3K_EXAMPLE_B, S3K_EXAMPLE_C } from "@/server/core/s3k-kit-dts";
+import { S3K_API_DTS, S3K_API_MD, S3K_EXAMPLE_A, S3K_EXAMPLE_B, S3K_EXAMPLE_C, S3K_EXAMPLE_D } from "@/server/core/s3k-kit-dts";
 
 const KIT = path.join(process.cwd(), "remotion", "kit", "s3k");
 const read = (f: string) => readFileSync(path.join(KIT, f), "utf8");
@@ -24,6 +24,7 @@ describe("the embedded kit copy", () => {
     expect(S3K_EXAMPLE_A).toBe(read("authoring/harbour-crane.scene.tsx"));
     expect(S3K_EXAMPLE_B).toBe(read("authoring/rising-tower.scene.tsx"));
     expect(S3K_EXAMPLE_C).toBe(read("authoring/engine-cutaway.scene.tsx"));
+    expect(S3K_EXAMPLE_D).toBe(read("authoring/linked-list.scene.tsx"));
   });
   it("allows the kit names minus the host-owned page pieces, and no loader of three", () => {
     expect(S3K_ALLOWED).toContain("World");
@@ -38,6 +39,7 @@ describe("positive: real scenes pass unchanged", () => {
     expect(checkScene3dCode(S3K_EXAMPLE_A)).toEqual({ ok: true, problems: [] });
     expect(checkScene3dCode(S3K_EXAMPLE_B)).toEqual({ ok: true, problems: [] });
     expect(checkScene3dCode(S3K_EXAMPLE_C)).toEqual({ ok: true, problems: [] });
+    expect(checkScene3dCode(S3K_EXAMPLE_D)).toEqual({ ok: true, problems: [] });
   });
   /**
    * The kit's own example files import their siblings by relative path (the render bundles them with the kit); a scene is ONE file importing

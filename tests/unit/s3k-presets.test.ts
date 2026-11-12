@@ -4,7 +4,7 @@ import { FINISH_DEFAULTS, resolveFinish } from "../../remotion/kit/s3k/finish-ma
 
 describe("world presets", () => {
   it("has the four looks and every one is valid", () => {
-    expect([...PRESET_NAMES].sort()).toEqual(["clear", "dusk", "haze", "overcast"]);
+    expect([...PRESET_NAMES].sort()).toEqual(["clear", "dusk", "haze", "overcast", "studio"]);
     for (const n of PRESET_NAMES) expect(presetProblems(WORLD_PRESETS[n]), n).toEqual([]);
   });
   it("keeps the approved proof look as the default (haze)", () => {
