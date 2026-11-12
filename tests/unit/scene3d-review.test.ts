@@ -28,12 +28,19 @@ describe("decideReview: rounds, stop reasons and the better scene", () => {
     expect(r).toMatchObject({ round: 0, passed: true, revise: false, stop_reason: "passed", best_round: 0, restore_sha256: null });
     expect(authorRoundOf(r)).toBe(0);
   });
-  it("a picture-check note alone asks for a revision (the pixels cannot see a boat), and the notes stay advice", () => {
-    const r = decideReview(null, input({ problems: [], advice: ["Image 2 looks like a boat, not a jet engine: no round casing"] }));
+  it("'does not look like the topic' asks for a revision (the pixels cannot see a boat); other notes alone do not", () => {
+    const r = decideReview(null, input({ problems: [], advice: ["Image 2 looks like a boat, not a jet engine: no round casing"], unlike: true }));
     expect(r).toMatchObject({ round: 0, passed: false, revise: true, stop_reason: null, problems: [] });
     expect(r.advice).toEqual(["Image 2 looks like a boat, not a jet engine: no round casing"]);
-    expect(r.history[0]!.problems).toBe(1);
-    expect(decideReview(null, input({ problems: [], advice: [] }))).toMatchObject({ passed: true, revise: false });
+    expect(r.history[0]).toMatchObject({ problems: 0, unlike: true });
+    expect(decideReview(null, input({ problems: [], advice: ["Image 3 is a little dark"] }))).toMatchObject({ passed: true, revise: false });
+  });
+  it("the better round is chosen on measured problems first, likeness second", () => {
+    let r = decideReview(null, input({ sceneSha256: sha("a"), problems: [], unlike: true })); // round 0: clean pixels, unlike
+    r = decideReview(r, input({ sceneSha256: sha("b"), problems: P(1) })); // round 1: one pixel problem, looks right
+    r = decideReview(r, input({ sceneSha256: sha("c"), problems: P(2) }));
+    r = decideReview(r, input({ sceneSha256: sha("d"), problems: P(2), unlike: true })); // round 3: max rounds
+    expect(r).toMatchObject({ stop_reason: "max_rounds", best_round: 0, restore_sha256: sha("a") });
   });
   it("asks for a revision while problems remain and fewer than 3 revisions were made", () => {
     const r0 = decideReview(null, input());

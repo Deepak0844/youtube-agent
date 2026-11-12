@@ -34,7 +34,7 @@ export const reviewBodySchema = z.object({
   /** True = the author is asked for another revision. */
   revise: z.boolean(),
   stop_reason: z.enum(["passed", "max_rounds", "budget"]).nullable(),
-  history: z.array(z.object({ round: z.number().int().min(0).max(MAX_AUTO_ROUNDS), scene_sha256: hex64, problems: z.number().int().min(0).max(16) })).min(1).max(MAX_AUTO_ROUNDS + 1),
+  history: z.array(z.object({ round: z.number().int().min(0).max(MAX_AUTO_ROUNDS), scene_sha256: hex64, problems: z.number().int().min(0).max(8), unlike: z.boolean().optional() })).min(1).max(MAX_AUTO_ROUNDS + 1),
   /** The round whose scene the owner is shown (the best one once the loop has stopped). */
   best_round: z.number().int().min(0).max(MAX_AUTO_ROUNDS),
   /** Set when the loop stopped on a worse scene: the fingerprint of the better scene that is being put back. */
@@ -85,6 +85,8 @@ export interface ReviewInput {
   sceneSha256: string;
   problems: string[];
   advice: string[];
+  /** The picture check said the subject does not look like the topic. */
+  unlike?: boolean;
   lookCount: number;
   narrationSha: string;
   /** False when the budget left for this video cannot pay for another author call. */
@@ -93,20 +95,23 @@ export interface ReviewInput {
 
 /** The next review body from the previous ACTIVE one (null = none) and what the pictures show now. */
 export function decideReview(prior: ReviewBody | null, a: ReviewInput): ReviewBody {
-  // A picture-check note (a model that looked at the pictures, e.g. "this looks like a boat, not a jet engine") also asks for a revision:
-  // the pixel measures cannot see what the subject looks like. Notes stay advice in the author prompt and never block the Look gate.
+  // The picture check saying "this does not look like the topic" (e.g. a boat, not a jet engine) also asks for a revision: the pixel
+  // measures cannot see that. Other notes do not (a vision model nearly always says something). Notes stay advice in the author prompt.
   const advice = cleanAdviceList(a.advice);
-  const common = { kind: "scene3d_review" as const, look_count: a.lookCount, narration_sha: a.narrationSha, scene_sha256: a.sceneSha256, problems: a.problems.slice(0, 8), advice, passed: a.problems.length === 0 && advice.length === 0 };
+  const unlike = a.unlike === true;
+  const common = { kind: "scene3d_review" as const, look_count: a.lookCount, narration_sha: a.narrationSha, scene_sha256: a.sceneSha256, problems: a.problems.slice(0, 8), advice, passed: a.problems.length === 0 && !unlike };
   // Confirmation: the previous review put the better scene back; these are the pictures of it. Same round, no new revision, no new history.
   if (prior && !prior.revise && prior.restore_sha256 !== null && prior.restore_sha256 === a.sceneSha256) {
     return { ...common, round: prior.round, revise: false, stop_reason: prior.stop_reason, history: prior.history, best_round: prior.best_round, restore_sha256: null };
   }
   const base = prior && prior.revise ? prior : null;
   const round = base ? Math.min(MAX_AUTO_ROUNDS, base.round + 1) : 0;
-  const history = [...(base?.history ?? []), { round, scene_sha256: a.sceneSha256, problems: common.problems.length + advice.length }];
+  const history = [...(base?.history ?? []), { round, scene_sha256: a.sceneSha256, problems: common.problems.length, ...(unlike ? { unlike } : {}) }];
   const stop = common.passed ? "passed" : round >= MAX_AUTO_ROUNDS ? "max_rounds" : !a.budgetOk ? "budget" : null;
   const revise = stop === null;
-  const best = history.reduce((x, y) => (y.problems <= x.problems ? y : x)); // fewer problems wins; on a tie the later round
+  // Fewer measured problems wins; then "looks like the topic" beats "does not"; on a full tie the later round.
+  const worse = (h: { problems: number; unlike?: boolean }) => h.problems * 2 + (h.unlike ? 1 : 0);
+  const best = history.reduce((x, y) => (worse(y) <= worse(x) ? y : x));
   return {
     ...common,
     round,

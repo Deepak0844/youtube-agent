@@ -108,6 +108,14 @@ const MAX_IMAGES_TOTAL_BYTES = 16_000_000;
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 export interface PromptImage { mediaType: string; base64: string }
 
+/** The first bytes must match the declared type, or the API refuses the whole call (an unclear outcome instead of a clean refusal). */
+function looksLike(mediaType: string, b: Uint8Array): boolean {
+  const at = (i: number, xs: number[]) => xs.every((x, k) => b[i + k] === x);
+  if (mediaType === "image/png") return at(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (mediaType === "image/jpeg") return at(0, [0xff, 0xd8, 0xff]);
+  return at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50]); // RIFF....WEBP
+}
+
 /** The prompt as one text, plus any pictures (only from user messages). Anything else (a URL, a PDF, a tool part) is refused. */
 export function promptParts(prompt: Prompt): { text: string; images: PromptImage[] } {
   const parts: string[] = [];
@@ -125,8 +133,10 @@ export function promptParts(prompt: Prompt): { text: string; images: PromptImage
               const bytes = d instanceof Uint8Array ? d : typeof d === "string" && /^[A-Za-z0-9+/]+=*$/.test(d) ? Buffer.from(d, "base64") : null;
               if (!bytes || bytes.length === 0) throw refuse("Claude Code here takes pictures as bytes only.");
               if (bytes.length > MAX_IMAGE_BYTES) throw refuse("A picture is too large for Claude Code here.");
+              if (!looksLike(p.mediaType, bytes)) throw refuse("A picture's bytes do not match its type (png, jpeg or webp).");
               total += bytes.length;
-              if (images.length >= MAX_IMAGES || total > MAX_IMAGES_TOTAL_BYTES) throw refuse(`Claude Code here takes at most ${MAX_IMAGES} pictures per call.`);
+              if (images.length >= MAX_IMAGES) throw refuse(`Claude Code here takes at most ${MAX_IMAGES} pictures per call.`);
+              if (total > MAX_IMAGES_TOTAL_BYTES) throw refuse("The pictures are too large together for one Claude Code call.");
               images.push({ mediaType: p.mediaType, base64: Buffer.from(bytes).toString("base64") });
               return [`(picture ${images.length})`];
             }
@@ -143,19 +153,26 @@ export function streamInput(text: string, images: readonly PromptImage[]): strin
   return JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
 }
 
-/** stream-json output -> the final `result` event as one JSON text (what interpret reads), or "" when there is none. */
+/**
+ * stream-json output -> the final `result` event as one JSON text (what interpret reads), or "" when there is none. The billing
+ * source (`apiKeySource`) sits in the `system` init event in this mode: it is copied onto the result so the status box keeps it.
+ */
 export function resultLine(stdout: string): string {
-  for (const line of stdout.split("\n").reverse()) {
+  let result: Record<string, unknown> | undefined;
+  let keySource: unknown;
+  for (const line of stdout.split("\n")) {
     const t = line.trim();
     if (!t.startsWith("{")) continue;
     try {
-      const j = JSON.parse(t) as { type?: unknown };
-      if (j?.type === "result") return t;
+      const j = JSON.parse(t) as Record<string, unknown>;
+      if (j?.type === "result") result = j;
+      else if (j?.type === "system" && j.subtype === "init" && keySource === undefined) keySource = j.apiKeySource;
     } catch {
-      // not a whole event: keep looking
+      // not a whole event: skip it
     }
   }
-  return "";
+  if (!result) return "";
+  return JSON.stringify(result.apiKeySource === undefined && keySource !== undefined ? { ...result, apiKeySource: keySource } : result);
 }
 
 interface Ran { code: number | null; stdout: string; stderr: string; failed?: "timeout" | "overflow" | "aborted" | "missing" | "error" }

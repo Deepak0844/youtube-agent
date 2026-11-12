@@ -457,7 +457,16 @@ describe("claude code adapter, pictures", () => {
     expect(t.runs[0]!.args.slice(0, 3)).toEqual(["-p", "--output-format", "json"]);
   });
 
-  it("finds the result event in stream output, and nothing when it is missing", () => {
+  it("refuses a picture whose bytes do not match its type, before anything starts", async () => {
+    const h = harness(({ child }) => child.finish(streamOk));
+    const bad = createImagesStep(createClaudeCodeModel("default", h.deps), 500, [{ data: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), mediaType: "image/png" }])(MSGS, "k", new AbortController().signal);
+    expect((await caught(bad)).message).toMatch(/do not match its type/);
+    expect(h.runs).toHaveLength(0);
+  });
+
+  it("finds the result event in stream output (keeping the billing source from the init event), and nothing when it is missing", () => {
+    const withInit = JSON.stringify({ type: "system", subtype: "init", apiKeySource: "none" }) + "\n" + streamOk;
+    expect(JSON.parse(resultLine(withInit)).apiKeySource).toBe("none");
     expect(JSON.parse(resultLine(streamOk)).result).toContain("boat");
     expect(resultLine('{"type":"system"}\nnot json\n')).toBe("");
   });

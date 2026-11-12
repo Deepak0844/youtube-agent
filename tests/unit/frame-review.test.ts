@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cleanModelText, logSafe, parseFrameReview, reviewProblems, reviewRecord, reviewUserText } from "@/server/core/frame-review";
-import { reviewSlots } from "@/worker/stages/frame-review";
+import { evenly, reviewSlots } from "@/worker/stages/frame-review";
 import { reviewStillFrames } from "@/server/core/tsx-preflight";
 
 const answer = (o: unknown) => JSON.stringify(o);
@@ -67,5 +67,12 @@ describe("reviewSlots", () => {
     await s.reviewCtx.paid({} as never, (async () => ({})) as never); // attempt 2 reviews
     s.beforeAsk(); // slot was used: nothing burned
     expect(step).toBe(1 + 1 + 1 + 1); // ask, burned slot, ask, review
+  });
+});
+
+describe("evenly (at most 8 pictures per vision call)", () => {
+  it("keeps all when few, else first, last and an even spread, in order", () => {
+    expect(evenly([1, 2, 3], 8)).toEqual([1, 2, 3]);
+    expect(evenly(Array.from({ length: 15 }, (_, i) => i), 8)).toEqual([0, 2, 4, 6, 8, 10, 12, 14]);
   });
 });
