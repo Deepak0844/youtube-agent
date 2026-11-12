@@ -3,6 +3,7 @@ import { BottomBar } from "@/ui/shell/bottom-bar";
 import { AreaMenuWithCounts } from "@/ui/shell/area-menu-counts";
 import { RailLive } from "@/ui/shell/nav-live";
 import { Rail } from "@/ui/shell/rail";
+import { NavProgress } from "@/ui/shell/nav-progress";
 import { SkipLink } from "@/ui/shell/skip-link";
 import { TopBar } from "@/ui/shell/topbar";
 
@@ -23,7 +24,10 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         <Suspense fallback={null}>
           <AreaMenuWithCounts />
         </Suspense>
-        <div className="flex min-w-0 flex-1 flex-col bg-page md:my-2 md:mr-2 md:rounded-frame md:border md:border-border">
+        <div className="relative flex min-w-0 flex-1 flex-col bg-page md:my-2 md:mr-2 md:overflow-clip md:rounded-frame md:border md:border-border">
+          <Suspense fallback={null}>
+            <NavProgress />
+          </Suspense>
           <TopBar />
           <main id="main" tabIndex={-1} className="flex-1 px-4 pt-6 pb-24 outline-none md:px-gutter md:pb-12">
             {children}

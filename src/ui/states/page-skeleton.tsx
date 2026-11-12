@@ -29,7 +29,7 @@ const Rows = ({ n }: { n: number }) => (
 /** Page-shaped placeholder (spec §4.6.1), so nothing jumps when the data arrives. Screen readers hear "Loading". */
 export function PageSkeleton({ variant }: { variant: Variant }) {
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
+    <div className="ui-wait flex min-w-0 flex-col gap-layout">
       <span className="sr-only" role="status">
         Loading
       </span>
