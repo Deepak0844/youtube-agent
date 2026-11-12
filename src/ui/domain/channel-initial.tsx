@@ -16,7 +16,7 @@ export function ChannelInitial({ name, index, className }: { name: string; index
   return (
     <span
       aria-hidden="true"
-      className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-control text-small font-semibold text-ground", className)}
+      className={cn("inline-flex size-6 shrink-0 items-center justify-center rounded-control text-small font-semibold text-on-tint", className)}
       style={{ backgroundColor: `hsl(${hueFor(index)} 55% 80%)` }}
     >
       {first.toLocaleUpperCase()}

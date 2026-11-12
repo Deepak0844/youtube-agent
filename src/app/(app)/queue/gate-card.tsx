@@ -269,7 +269,7 @@ export function GateCard({ item, index, rate }: { item: GateItem; index: number;
   const g = GATE_LABEL[item.gate];
   const sentBack = item.sentBackNote !== null;
   return (
-    <article aria-label={`${g.name} gate: ${item.topic}`} data-testid="gate-card" data-gate={item.gate} data-video={item.videoId} className="flex min-w-0 flex-col gap-5 rounded-card bg-surface p-pad">
+    <article aria-label={`${g.name} gate: ${item.topic}`} data-testid="gate-card" data-gate={item.gate} data-video={item.videoId} className="flex min-w-0 flex-col gap-5 rounded-card border border-border bg-surface p-pad">
       <header className="flex min-w-0 flex-col gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Pill tone="warning">{g.name} gate</Pill>

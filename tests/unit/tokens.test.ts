@@ -182,3 +182,11 @@ describe("fonts are self-hosted", () => {
     }
   });
 });
+
+describe("ink on pale tints", () => {
+  it("channel initials keep dark ink in both themes (never a theme colour on a fixed pale circle)", () => {
+    expect(g("--on-tint")).toBe("#171717");
+    expect(darkRaw["--on-tint"]).toBeUndefined();
+    expect(readFileSync("src/ui/domain/channel-initial.tsx", "utf8")).toContain("text-on-tint");
+  });
+});
