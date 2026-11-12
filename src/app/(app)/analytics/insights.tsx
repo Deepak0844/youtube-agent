@@ -23,7 +23,7 @@ export async function Insights() {
   const money = (micro: number) => formatMoney(micro, rate);
   const r = review?.report;
   return (
-    <section aria-labelledby="insights-h" className="flex min-w-0 flex-col gap-4">
+    <section aria-labelledby="insights-h" className="flex min-w-0 flex-col gap-4 rounded-card border border-border bg-surface p-pad">
       <div className="flex flex-col gap-2">
         <h2 id="insights-h" className="text-title font-semibold">Weekly review</h2>
         <p className="max-w-[68ch] text-body text-muted">
@@ -32,7 +32,7 @@ export async function Insights() {
         <RunReviewForm />
       </div>
       {!review || !r ? (
-        <p className="rounded-card border border-border bg-surface p-pad text-body text-muted">No review yet. Press Run review now, or turn the weekly review on in Settings, Schedule.</p>
+        <p className="rounded-card border border-dashed border-border p-pad text-body text-muted">No review yet. Press Run review now, or turn the weekly review on in Settings, Schedule.</p>
       ) : (
         <div data-testid="review" className="flex min-w-0 flex-col gap-4 rounded-card border border-border bg-surface p-pad">
           <p className="m-0 text-small text-muted">Week {review.week}, written {formatIst(review.createdAt)}</p>
@@ -94,7 +94,7 @@ export async function Insights() {
         <p className="max-w-[68ch] text-body text-muted">Ideas from the optimizer. Accept or dismiss records your decision only; nothing is changed for you.</p>
         <RunOptimizerForm />
         {proposals.length === 0 ? (
-          <p className="rounded-card border border-border bg-surface p-pad text-body text-muted">No proposals yet. The optimizer is off until you turn it on in Settings, Schedule, and it stays quiet below {r?.minSample ?? 10} shorts.</p>
+          <p className="rounded-card border border-dashed border-border p-pad text-body text-muted">No proposals yet. The optimizer is off until you turn it on in Settings, Schedule, and it stays quiet below {r?.minSample ?? 10} shorts.</p>
         ) : (
           <ul className="m-0 flex list-none flex-col gap-3 p-0">
             {proposals.map((p) => (

@@ -38,7 +38,7 @@ export function FindButtons({ row }: { row: string }) {
       <div className="flex flex-wrap items-center gap-3">
         <form action={find}>
           <input type="hidden" name="row" value={row} />
-          <Button type="submit" disabled={finding}>{finding ? "Looking…" : "Find competitors"}</Button>
+          <Button type="submit" loading={finding}>{finding ? "Looking…" : "Find competitors"}</Button>
         </form>
         <form action={mine}>
           <input type="hidden" name="row" value={row} />

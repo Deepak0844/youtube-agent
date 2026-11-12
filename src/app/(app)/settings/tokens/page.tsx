@@ -25,8 +25,8 @@ async function Owned() {
   await requireOwner();
   const tokens = await listApiTokens(getPool());
   return (
-    <div className="flex flex-col gap-layout">
-      <header className="flex flex-col gap-1">
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="xl:col-span-2 flex flex-col gap-1">
         <h1 className="text-page-title font-semibold tracking-tight">API tokens</h1>
         <p className="text-body text-muted">For your own scripts. A token can read status and create drafts, nothing more: it cannot pass gates, change safety settings, or reach settings, keys or tokens.</p>
       </header>

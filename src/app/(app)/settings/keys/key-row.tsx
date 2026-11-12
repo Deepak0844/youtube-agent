@@ -53,7 +53,7 @@ export function KeyRow(p: KeyRowProps) {
 
   return (
     <li className="rounded-card border border-border bg-surface p-pad" data-provider={p.id}>
-      <div className="grid min-w-0 gap-gap md:grid-cols-[minmax(0,1fr)_auto] md:items-start md:gap-x-8">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-gap">
         <div className="min-w-0">
           <h3 className="text-section font-semibold">{p.label}</h3>
           <p className="mt-1 text-small text-muted">{p.note}</p>
@@ -122,7 +122,7 @@ export function KeyRow(p: KeyRowProps) {
       </div>
 
       {showInput ? (
-        <form action={setAction} className="mt-gap flex min-w-0 flex-col gap-2 md:max-w-xl" autoComplete="off">
+        <form action={setAction} className="mt-gap flex min-w-0 flex-col gap-2" autoComplete="off">
           <input type="hidden" name="provider" value={p.id} />
           <Label htmlFor={inputId}>{p.isSet ? `New ${p.label} key` : `${p.label} API key`}</Label>
           <div className="flex min-w-0 flex-col gap-2 sm:flex-row">

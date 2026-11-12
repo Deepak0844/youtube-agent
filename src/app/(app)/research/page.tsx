@@ -50,8 +50,8 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/research">["s
   const chosen = first.channels.find((c) => c.channelId === wanted) ?? first.channels[0] ?? null;
   const v = chosen ? await loadResearch(db, chosen.channelId) : first;
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <header>
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="xl:col-span-2">
         <h1 className="text-page-title font-semibold tracking-tight">Research</h1>
         <p className="mt-2 max-w-prose text-body text-muted">
           Find channels like yours, watch them, and spot videos that are doing far better than usual. Only public numbers are kept, and they are deleted if not refreshed within {RETENTION_DAYS} days.

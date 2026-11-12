@@ -33,7 +33,7 @@ export function NotifyForm(props: {
   const [url, setUrl] = useState(props.webhookUrl);
   const [test, runTest, testing] = useActionState<FormState, FormData>(testWebhookAction, {});
   return (
-    <form action={save} className="flex flex-col gap-layout">
+    <form action={save} className="grid min-w-0 gap-layout xl:col-span-2 xl:grid-cols-2 xl:items-start">
       <section aria-labelledby="master-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="master-h" className="text-title font-semibold">Master switch</h2>
         <label className="mt-3 flex items-center gap-3 text-body">
@@ -125,8 +125,8 @@ export function NotifyForm(props: {
         </section>
       ))}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={saving}>Save</Button>
+      <div className="flex flex-wrap items-center gap-3 xl:col-span-2">
+        <Button type="submit" loading={saving}>Save</Button>
         {state.error ? <p role="alert" className="text-body text-pill-negative-ink">{state.error}</p> : state.ok ? <p role="status" className="text-body text-pill-positive-ink">Saved.</p> : <p role="status" className="sr-only" />}
       </div>
     </form>

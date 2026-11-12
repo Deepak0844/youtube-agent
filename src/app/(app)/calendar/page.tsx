@@ -41,8 +41,8 @@ async function Owned() {
   const counts = parseRunCounts(d.lastDrafting?.message ?? null);
   const money = (micro: number) => formatMoney(micro, d.rate);
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <header>
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="xl:col-span-2">
         <h1 className="text-page-title font-semibold tracking-tight">Calendar</h1>
         <p className="mt-2 max-w-prose text-body text-muted">
           What is planned and what ran. This page only shows things; to change a setting go to{" "}

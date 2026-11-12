@@ -19,7 +19,7 @@ function Msg({ s }: { s: IdeaFormState }) {
 export function AddIdeaForm({ channels }: { channels: ReadonlyArray<{ channelId: string; title: string }> }) {
   const [state, run, pending] = useActionState<IdeaFormState, FormData>(addIdeaAction, {});
   return (
-    <form action={run} className="flex min-w-0 max-w-xl flex-col gap-4 rounded-card border border-border bg-surface p-pad">
+    <form action={run} className="flex min-w-0 flex-col gap-4 rounded-card border border-border bg-surface p-pad">
       <h2 className="text-title font-semibold">Add an idea</h2>
       <div className="flex flex-col gap-2">
         <Label htmlFor="idea-topic">Topic</Label>
@@ -97,7 +97,7 @@ export function IdeaCard({ idea }: { idea: IdeaRow }) {
                 ))}
               </select>
             </div>
-            <Button type="submit" disabled={drafting}>Draft now</Button>
+            <Button type="submit" loading={drafting}>Draft now</Button>
           </form>
           <form action={dismiss}>
             <input type="hidden" name="id" value={idea.id} />

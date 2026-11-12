@@ -38,16 +38,18 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/ideas">["sear
   const pageRows = ideas.slice(req.offset, req.offset + req.limit);
   const params = { channel: shown || undefined, page: typeof sp.page === "string" ? sp.page : undefined, size: typeof sp.size === "string" ? sp.size : undefined };
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <header>
+    <div className="grid min-w-0 gap-layout xl:grid-cols-[minmax(340px,420px)_minmax(0,1fr)] xl:items-start">
+      <header className="xl:col-span-2">
         <h1 className="text-page-title font-semibold tracking-tight">Ideas</h1>
         <p className="mt-2 max-w-prose text-body text-muted">
           Topics to make next. Draft now starts a normal video that stops at its first approval step: nothing is approved or uploaded for you. Ideas too like an old idea or an existing video are refused.
         </p>
       </header>
-      <ResearchNowForm channels={channels} />
-      <AddIdeaForm channels={channels} />
-      <section aria-labelledby="backlog-h" className="flex flex-col gap-3">
+      <div className="flex min-w-0 flex-col gap-layout">
+        <ResearchNowForm channels={channels} />
+        <AddIdeaForm channels={channels} />
+      </div>
+      <section aria-labelledby="backlog-h" className="flex min-w-0 flex-col gap-3">
         <h2 id="backlog-h" className="text-title font-semibold">Backlog</h2>
         <form method="get" className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
@@ -66,7 +68,7 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/ideas">["sear
           <EmptyState icon={Lightbulb} title="No ideas yet" body="Add one above, or let research suggest some." filtered={shown ? { clearHref: "/ideas" } : undefined} />
         ) : (
           <>
-            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(360px,100%),1fr))] gap-gap p-0">
+            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(340px,100%),1fr))] gap-gap p-0">
               {pageRows.map((i) => (
                 <li key={i.id} className="min-w-0 rounded-card border border-border bg-surface p-pad">
                   <IdeaCard idea={i} />

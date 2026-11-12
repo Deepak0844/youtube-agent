@@ -21,8 +21,8 @@ async function Owned() {
   await requireOwner();
   const view = await loadAssetSettings(getPool());
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <h1 className="text-page-title font-semibold tracking-tight">Asset settings</h1>
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <h1 className="text-page-title font-semibold tracking-tight xl:col-span-2">Asset settings</h1>
       <section aria-labelledby="cleanup-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="cleanup-h" className="text-title font-semibold">Clean-up and upload limits</h2>
         <p className="mt-1 mb-2 max-w-[60ch] text-body text-muted">

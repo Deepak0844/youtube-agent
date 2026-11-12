@@ -123,8 +123,8 @@ async function Owned() {
   const view = await loadEngagement(getPool());
   const queue = view.videos.flatMap((v) => v.comments.filter(waiting).map((c) => ({ c, topic: v.topic })));
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <Header view={view} />
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <div className="min-w-0 xl:col-span-2"><Header view={view} /></div>
       <section aria-labelledby="queue-h" className="flex flex-col gap-3">
         <h2 id="queue-h" className="text-title font-semibold">Replies waiting for you ({queue.length})</h2>
         {queue.length === 0 ? (

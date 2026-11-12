@@ -17,7 +17,7 @@ export function RunOptimizerForm() {
   const [state, run, pending] = useActionState<InsightState, FormData>(() => runOptimizerAction(), {});
   return (
     <form action={run} className="flex flex-wrap items-center gap-3">
-      <Button type="submit" variant="ghost" loading={pending}>
+      <Button type="submit" variant="secondary" loading={pending}>
         {pending ? "Thinking…" : "Run optimizer now"}
       </Button>
       <Note state={state} testId="optimizer-note" />
