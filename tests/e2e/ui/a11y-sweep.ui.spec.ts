@@ -29,3 +29,18 @@ for (const path of PAGES) {
     expect(await page.evaluate(() => document.activeElement?.tagName ?? "BODY")).not.toBe("BODY");
   });
 }
+
+// Both themes (UI redesign spec §4.6.11): the run above follows the browser's light setting; this pass asks for dark.
+// Desktop only, to keep the suite short; the phone layout uses the same colour tokens.
+test.describe("dark theme", () => {
+  test.use({ colorScheme: "dark" });
+  for (const path of PAGES) {
+    test(`accessibility sweep (dark) ${path}`, async ({ page }) => {
+      test.skip((page.viewportSize()?.width ?? 1440) < 768, "desktop only");
+      const res = await page.goto(path);
+      test.skip(res?.status() === 404, "screen is switched off by its feature flag");
+      expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
+      expect(await axeViolations(page)).toEqual([]);
+    });
+  }
+});

@@ -9,13 +9,14 @@ import { loadActive, loadAttention, loadBreakers, loadKpis, loadRecent, loadUpNe
 import { loadInrRate } from "@/server/db/system-settings";
 import { loadQueue } from "@/server/db/queue-data";
 import { DecisionRow } from "@/ui/domain/decision-row";
-import { KpiStrip } from "@/ui/domain/kpi-strip";
 import { SpendLine, formatUsd } from "@/ui/domain/spend-line";
 import { cutStages } from "@/ui/domain/queue-strip";
 import { aspectFor } from "@/ui/domain/stages";
 import { Button } from "@/ui/primitives/button";
 import { Pill } from "@/ui/primitives/pill";
 import { Skeleton } from "@/ui/primitives/skeleton";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
+import { TimeAgo } from "@/ui/states/time-ago";
 import { BreakerForm } from "./queue/forms";
 import { LiveFeed } from "./queue/live-feed";
 
@@ -24,11 +25,10 @@ export const metadata = { title: "Home" };
 // Home (Doc 4 section 2, "/"): every panel reads on its own inside its own <Suspense>, and a panel that cannot load says so
 // without taking the others down. Nothing here acts except the existing "Release" button on a paused step.
 const SHOWN = 5;
-const card = "flex min-w-0 flex-col gap-3 rounded-card bg-surface p-pad";
 
 export default function Home() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-64 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="list" />}>
       <Owned />
     </Suspense>
   );
@@ -39,21 +39,24 @@ async function Owned() {
   return (
     <div className="flex min-w-0 flex-col gap-layout">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="text-page-title font-semibold tracking-tight">Home</h1>
-        <div className="flex flex-wrap gap-3">
+        <div className="min-w-0">
+          <h1 className="text-page-title font-semibold tracking-tight">Home</h1>
+          <p className="text-body text-muted">What needs you, what is running, and what it costs.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="secondary"><Link href="/videos/new?format=long">New long video</Link></Button>
           <Button asChild><Link href="/videos/new?format=short">New short</Link></Button>
-          <Button asChild variant="secondary"><Link href="/videos">Library</Link></Button>
         </div>
       </div>
       <Suspense fallback={null}><FirstRun /></Suspense>
       <LiveFeed />
       <Panel id="breakers" title="Paused steps" bare><Breakers /></Panel>
-      <Panel id="kpis" title="This month"><Kpis /></Panel>
-      <div className="grid min-w-0 gap-layout xl:grid-cols-[1fr_384px]">
+      <Panel id="kpis" title="This month" bare><Kpis /></Panel>
+      <div className="grid min-w-0 gap-layout xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-layout">
-          <Panel id="queue" title="Decision queue"><Queue /></Panel>
+          <Panel id="queue" title="Needs you" flush action={<Link href="/queue" className="text-small text-muted hover:text-text">Open queue →</Link>}><Queue /></Panel>
           <Panel id="attention" title="Needs attention"><Attention /></Panel>
-          <Panel id="active" title="Active work"><Active /></Panel>
+          <Panel id="active" title="Running now"><Active /></Panel>
           <Panel id="next" title="Up next"><UpNext /></Panel>
         </div>
         <aside aria-label="Recent activity" className="flex min-w-0 flex-col gap-layout">
@@ -81,11 +84,24 @@ async function FirstRun() {
   );
 }
 
-function Panel({ id, title, bare, children }: { id: string; title: string; bare?: boolean; children: ReactNode }) {
+/** One Home panel: a bordered card with a title row, or (`bare`) just its content. `flush` = rows run edge to edge. */
+function Panel({ id, title, bare, flush, action, children }: { id: string; title: string; bare?: boolean; flush?: boolean; action?: ReactNode; children: ReactNode }) {
+  if (bare)
+    return (
+      <section aria-labelledby={`${id}-h`} data-testid={`panel-${id}`} className="flex min-w-0 flex-col gap-3">
+        <h2 id={`${id}-h`} className="sr-only">{title}</h2>
+        <Suspense fallback={<Skeleton className="h-20" />}>{children}</Suspense>
+      </section>
+    );
   return (
-    <section aria-labelledby={`${id}-h`} data-testid={`panel-${id}`} className={bare ? "flex min-w-0 flex-col gap-3" : card}>
-      <h2 id={`${id}-h`} className={bare ? "sr-only" : "text-title font-semibold"}>{title}</h2>
-      <Suspense fallback={<Skeleton className="h-20" />}>{children}</Suspense>
+    <section aria-labelledby={`${id}-h`} data-testid={`panel-${id}`} className="flex min-w-0 flex-col overflow-hidden rounded-card border border-border bg-surface">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-pad py-3">
+        <h2 id={`${id}-h`} className="text-section font-semibold">{title}</h2>
+        {action}
+      </div>
+      <div className={flush ? "flex min-w-0 flex-col" : "flex min-w-0 flex-col gap-3 p-pad"}>
+        <Suspense fallback={<Skeleton className="m-pad h-20" />}>{children}</Suspense>
+      </div>
     </section>
   );
 }
@@ -129,31 +145,42 @@ function Breakers() {
   );
 }
 
+function Stat({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1 bg-surface p-pad">
+      <dt className="text-small text-muted">{label}</dt>
+      <dd className="m-0 flex min-w-0 flex-col gap-2">{children}</dd>
+    </div>
+  );
+}
+const figure = (n: number) => <span className="text-kpi font-semibold leading-none tracking-tight tabular-nums">{n}</span>;
+
 function Kpis() {
-  return soft("kpis", async () => ({ k: await loadKpis(getPool()), rate: await loadInrRate(getPool()) }), ({ k, rate }) => (
-    <>
-      <KpiStrip
-        lead={{ label: "In production", value: k.inProduction }}
-        figures={[
-          { label: "Made in the last 7 days", value: k.madeThisWeek },
-          { label: "Published this month", value: k.publishedThisMonth },
-        ]}
-      />
-      <div className="flex min-w-0 flex-col gap-2">
-        {k.today.capMicroUsd === null ? <p className="m-0 text-body tabular-nums">{`${spendSentence(k.today, (m) => formatUsd(m, rate))} today`}</p> : <SpendLine spentMicroUsd={k.today.spentMicroUsd} capMicroUsd={k.today.capMicroUsd} rate={rate} />}
-        <p className="m-0 text-body tabular-nums text-muted">{`${spendSentence(k.month, (m) => formatUsd(m, rate))} this month`}</p>
-      </div>
-    </>
-  ));
+  return soft(
+    "kpis",
+    async () => ({ k: await loadKpis(getPool()), rate: await loadInrRate(getPool()), waiting: (await loadQueue(getPool())).items.filter((i) => i.kind === "gate").length }),
+    ({ k, rate, waiting }) => (
+      <dl className="m-0 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-px overflow-hidden rounded-card border border-border bg-border">
+        <Stat label="Waiting on you">{figure(waiting)}</Stat>
+        <Stat label="In production">{figure(k.inProduction)}</Stat>
+        <Stat label="Made in the last 7 days">{figure(k.madeThisWeek)}</Stat>
+        <Stat label="Published this month">{figure(k.publishedThisMonth)}</Stat>
+        <Stat label="Spend">
+          {k.today.capMicroUsd === null ? <span className="text-body tabular-nums">{`${spendSentence(k.today, (m) => formatUsd(m, rate))} today`}</span> : <SpendLine spentMicroUsd={k.today.spentMicroUsd} capMicroUsd={k.today.capMicroUsd} rate={rate} />}
+          <span className="text-small tabular-nums text-muted">{`${spendSentence(k.month, (m) => formatUsd(m, rate))} this month`}</span>
+        </Stat>
+      </dl>
+    ),
+  );
 }
 
 function Queue() {
   return soft("queue", async () => ({ q: await loadQueue(getPool()), rate: await loadInrRate(getPool()) }), ({ q, rate }) => {
     const gates = q.items.flatMap((i) => (i.kind === "gate" ? [i] : [])); // oldest first already
-    if (gates.length === 0) return <Empty hint="Scripts, costs and videos that need your say-so will line up here, oldest first.">Nothing is waiting at a gate.</Empty>;
+    if (gates.length === 0) return <div className="flex flex-col gap-1 p-pad"><Empty hint="Scripts, costs and videos that need your say-so will line up here, oldest first.">Nothing is waiting at a gate.</Empty></div>;
     return (
       <>
-        <p data-testid="waiting-count" className="m-0 text-body text-muted">{`${gates.length} waiting, oldest first.`}</p>
+        <p data-testid="waiting-count" className="m-0 px-pad pt-3 text-small text-muted">{`${gates.length} waiting, oldest first.`}</p>
         {gates.slice(0, SHOWN).map((g) => (
           <DecisionRow
             key={`${g.videoId}-${g.gate}`}
@@ -170,7 +197,7 @@ function Queue() {
             channelIndex={0}
           />
         ))}
-        <Link href="/queue" className="text-body underline underline-offset-2">{gates.length > SHOWN ? `See all ${gates.length} in the queue` : "Open the queue"}</Link>
+        {gates.length > SHOWN && <Link href="/queue" className="px-pad py-3 text-body underline underline-offset-2">{`See all ${gates.length} in the queue`}</Link>}
       </>
     );
   });
@@ -211,7 +238,7 @@ function Active() {
         {rows.map((r) => (
           <li key={`${r.videoId}-${r.stage}`} className="flex min-w-0 flex-wrap items-center justify-between gap-2">
             {topicLink(r.videoId, r.topic, r.language)}
-            <span className="flex items-center gap-2 text-small text-muted"><Pill tone="neutral">Running</Pill>{stageLabel(r.stage)}, started {agoLabel(r.since)} ago</span>
+            <span className="flex items-center gap-2 text-small text-muted"><Pill tone="neutral">Running</Pill>{stageLabel(r.stage)}, started <TimeAgo at={new Date(r.since)} live /></span>
           </li>
         ))}
       </ul>
@@ -226,7 +253,7 @@ function UpNext() {
         {rows.map((r) => (
           <li key={r.videoId} className="flex min-w-0 flex-wrap items-center justify-between gap-2">
             {topicLink(r.videoId, r.topic, r.language)}
-            <span className="text-small text-muted">{stageLabel(r.stage)}, waiting {agoLabel(r.queuedAt)}</span>
+            <span className="text-small text-muted">{stageLabel(r.stage)}, queued <TimeAgo at={new Date(r.queuedAt)} /></span>
           </li>
         ))}
       </ol>
@@ -241,7 +268,7 @@ function Recent() {
         {rows.map((r, i) => (
           <li key={i} className="flex min-w-0 flex-col gap-1">
             <span className="text-body [overflow-wrap:anywhere]">{r.videoId ? <Link href={`/videos/${r.videoId}`} className="underline-offset-2 hover:underline">{r.text}</Link> : r.text}</span>
-            <span className="text-small text-faint">{agoLabel(r.at)} ago</span>
+            <span className="text-small text-faint"><TimeAgo at={new Date(r.at)} live /></span>
           </li>
         ))}
       </ul>

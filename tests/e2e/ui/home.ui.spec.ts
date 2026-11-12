@@ -5,6 +5,15 @@ import { OWNER_PASSWORD, OWNER_USERNAME } from "../fixtures/owner";
 // Runs with the seeded owner's storageState (playwright.config.mts), i.e. reuse of a real session.
 const phone = (page: Page) => (page.viewportSize()?.width ?? 1440) < 768;
 
+test("wide screen: Recent activity sits in a right-hand column beside the lists", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) < 1280, "wide screens only");
+  await page.goto("/");
+  const left = (await page.getByTestId("panel-queue").boundingBox())!;
+  const right = (await page.getByTestId("panel-recent").boundingBox())!;
+  expect(right.x).toBeGreaterThan(left.x + left.width - 1);
+  expect(Math.round(right.width)).toBe(340);
+});
+
 test("home loads every panel (none failed, none stuck loading) and shows the quick links", async ({ page }) => {
   // The e2e database is shared with other specs that create videos, so this checks each panel's state, not that it is empty.
   await page.goto("/");
@@ -16,8 +25,10 @@ test("home loads every panel (none failed, none stuck loading) and shows the qui
     await expect(panel.locator(".animate-pulse")).toHaveCount(0);
     await expect(panel).not.toContainText("Could not load");
   }
-  await expect(page.getByRole("link", { name: "New short" })).toHaveAttribute("href", /\/videos\/new/);
-  await expect(page.getByRole("link", { name: "Library" }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "New short" })).toHaveAttribute("href", /\/videos\/new\?format=short/);
+  await expect(page.getByRole("link", { name: "New long video" })).toHaveAttribute("href", /\/videos\/new\?format=long/);
+  for (const h of ["Needs you", "Needs attention", "Running now", "Up next", "Recent activity"]) await expect(page.getByRole("heading", { level: 2, name: h })).toBeVisible();
+  await expect(page.getByText("Waiting on you", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
