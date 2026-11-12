@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MIN_SHORTS_FOR_SIGNAL, beatSpans, dropOff, isNoise, parseRetention, parseStats, parseTotals, retentionAt, retentionUrl, statsUrl, totalsUrl } from "@/server/core/analytics";
+import { MIN_SHORTS_FOR_SIGNAL, beatSpans, channelSubsUrl, parseSubs, subsWindow, dropOff, isNoise, parseRetention, parseStats, parseTotals, retentionAt, retentionUrl, statsUrl, totalsUrl } from "@/server/core/analytics";
 
 describe("analytics parsing", () => {
   it("reads statistics (strings), a hidden like count stays null, bad ids are dropped", () => {
@@ -60,5 +60,18 @@ describe("beat spans and drop-off", () => {
     expect(MIN_SHORTS_FOR_SIGNAL).toBe(10);
     expect(isNoise(9)).toBe(true);
     expect(isNoise(10)).toBe(false);
+  });
+});
+
+describe("channel subscribers", () => {
+  it("covers the 7 days ending 2 days before the pull day, across a month edge", () => {
+    expect(subsWindow("2026-11-03")).toEqual({ start: "2026-10-26", end: "2026-11-01" });
+  });
+  it("asks for the whole channel's subscribers and reads them by column name", () => {
+    const u = new URL(channelSubsUrl("2026-10-26", "2026-11-01"));
+    expect(u.searchParams.get("metrics")).toBe("subscribersGained,subscribersLost");
+    expect(u.searchParams.get("filters")).toBeNull();
+    expect(parseSubs({ columnHeaders: [{ name: "subscribersLost" }, { name: "subscribersGained" }], rows: [[3, 20]] })).toEqual({ gained: 20, lost: 3 });
+    expect(parseSubs({ columnHeaders: [], rows: [] })).toEqual({ gained: null, lost: null });
   });
 });

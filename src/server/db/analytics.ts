@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { YT_ID, beatSpans, dropOff, isNoise, parseRetention, parseStats, parseTotals, retentionUrl, statsUrl, totalsUrl, type Curve, type Stats, type Totals } from "@/server/core/analytics";
+import { YT_ID, beatSpans, channelSubsUrl, parseSubs, subsWindow, dropOff, isNoise, parseRetention, parseStats, parseTotals, retentionUrl, statsUrl, totalsUrl, type Curve, type Stats, type Totals } from "@/server/core/analytics";
 import { safeReason } from "@/server/core/paid-call";
 import { quotaDay } from "@/server/core/youtube-oauth";
 import type { Keyring } from "@/server/core/vault-crypto";
@@ -69,6 +69,7 @@ export async function pullAnalytics(db: pg.Pool, ring: Keyring | (() => Keyring)
       continue;
     }
     const auth = { headers: { authorization: `Bearer ${tok.accessToken}` } };
+    await pullChannelSubs(db, http, auth, channelId, day);
     for (let i = 0; i < targets.length && !out.quotaStopped; i += BATCH) {
       const batch = targets.slice(i, i + BATCH);
       if (!(await reserveQuota(db, "videos.list"))) {
@@ -120,6 +121,31 @@ export async function pullAnalytics(db: pg.Pool, ring: Keyring | (() => Keyring)
     pulled: out.pulled, failed: out.failed, alreadyDone: out.alreadyDone, skippedChannels: out.skipped.length, quotaStopped: out.quotaStopped,
   });
   return out;
+}
+
+/** Subscribers gained and lost over the last week, one Analytics call per channel per day. Failure is written, never thrown. */
+async function pullChannelSubs(db: pg.Pool, http: GoogleHttp, auth: { headers: Record<string, string> }, channelId: string, day: string): Promise<void> {
+  const done = await db.query("select 1 from channel_analytics where channel_id = $1 and day = $2::date and error is null", [channelId, day]);
+  if (done.rowCount) return;
+  const w = subsWindow(day);
+  let gained: number | null = null;
+  let lost: number | null = null;
+  let error: string | null = null;
+  try {
+    const res = await http(channelSubsUrl(w.start, w.end), auth);
+    if (res.ok) ({ gained, lost } = parseSubs(await json(res)));
+    else error = `YouTube Analytics subscribers answered ${res.status}`;
+  } catch (e) {
+    error = `YouTube Analytics subscribers: ${safeReason(e)}`.slice(0, 500);
+  }
+  await db.query(
+    `insert into channel_analytics (channel_id, day, start_day, end_day, subscribers_gained, subscribers_lost, error)
+     values ($1, $2::date, $3::date, $4::date, $5, $6, $7)
+     on conflict (channel_id, day) do update set start_day = excluded.start_day, end_day = excluded.end_day, subscribers_gained = excluded.subscribers_gained,
+       subscribers_lost = excluded.subscribers_lost, error = excluded.error, pulled_at = now()
+       where channel_analytics.error is not null`,
+    [channelId, day, w.start, w.end, gained, lost, error],
+  );
 }
 
 export function pullMessage(r: PullResult): string {

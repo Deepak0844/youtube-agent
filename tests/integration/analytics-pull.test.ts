@@ -20,14 +20,15 @@ const YT = "abcDEF12345";
 
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-interface Fake { http: GoogleHttp; calls: string[]; failTotals: boolean }
+interface Fake { http: GoogleHttp; calls: string[]; failTotals: boolean; failSubs: boolean }
 function fake(): Fake {
-  const f: Fake = { calls: [], failTotals: false, http: async (url) => {
+  const f: Fake = { calls: [], failTotals: false, failSubs: false, http: async (url) => {
     f.calls.push(url);
     if (url.includes("oauth2.googleapis.com/token")) return reply({ access_token: "at", refresh_token: "1//r", scope: GOOGLE_SCOPES.join(" ") });
     if (url.includes("userinfo")) return reply({ sub: "sub-1", email: "me@example.com" });
     if (url.includes("youtube/v3/channels")) return reply({ items: [{ id: "UCchan1", snippet: { title: "My Channel" } }] });
     if (url.includes("youtube/v3/videos")) return reply({ items: [{ id: YT, statistics: { viewCount: "120", likeCount: "9", commentCount: "3" } }] });
+    if (url.includes("subscribersGained")) return f.failSubs ? reply({ error: "no" }, 403) : reply({ columnHeaders: [{ name: "subscribersGained" }, { name: "subscribersLost" }], rows: [[25, 4]] });
     if (url.includes("elapsedVideoTimeRatio")) return reply({ rows: [[0, 1], [0.1, 0.9], [0.5, 0.5], [1, 0.2]] });
     if (f.failTotals) return reply({ error: "boom" }, 500);
     return reply({ columnHeaders: [{ name: "views" }, { name: "estimatedMinutesWatched" }, { name: "averageViewPercentage" }], rows: [[100, 42.5, 61.2]] });
@@ -97,7 +98,7 @@ describe("analytics pull", () => {
     f.failTotals = true;
     const r = await pullAnalytics(db.pool, ring, f.http, BY, { now: NOW });
     expect(r).toMatchObject({ pulled: 0, failed: 1 });
-    expect(f.calls.filter((u) => u.includes("youtubeanalytics") && !u.includes("elapsedVideoTimeRatio"))).toHaveLength(1); // one try, no automatic retry
+    expect(f.calls.filter((u) => u.includes("youtubeanalytics") && !u.includes("elapsedVideoTimeRatio") && !u.includes("subscribersGained"))).toHaveLength(1); // one try, no automatic retry
     const bad = (await loadAnalytics(db.pool)).rows[0]!;
     expect(bad.error).toContain("totals answered 500");
     expect(bad.views).toBe(120); // the numbers that did arrive are kept
@@ -106,6 +107,24 @@ describe("analytics pull", () => {
     const ok = (await loadAnalytics(db.pool)).rows[0]!;
     expect(ok.error).toBeNull();
     expect(ok.avgViewPct).toBe(61.2);
+  });
+
+  it("stores the channel's subscribers for the last week once a day; a failed call is written and replaced by the next run", async () => {
+    const f = fake();
+    await connect(f, true);
+    await uploadedVideo();
+    f.failSubs = true;
+    await pullAnalytics(db.pool, ring, f.http, BY, { now: NOW });
+    const row = async () => (await db.pool.query("select start_day::text s, end_day::text e, subscribers_gained::int g, subscribers_lost::int l, error from channel_analytics where channel_id = 'UCchan1'")).rows;
+    expect((await row())[0]).toMatchObject({ g: null, error: expect.stringContaining("subscribers answered 403") });
+    f.failSubs = false;
+    await db.ownerPool.query("delete from video_analytics"); // let the video part run again too
+    await pullAnalytics(db.pool, ring, f.http, BY, { now: NOW });
+    expect(await row()).toEqual([{ s: "2026-10-27", e: "2026-11-02", g: 25, l: 4, error: null }]);
+    await db.ownerPool.query("delete from video_analytics");
+    f.calls.length = 0;
+    await pullAnalytics(db.pool, ring, f.http, BY, { now: NOW });
+    expect(f.calls.filter((u) => u.includes("subscribersGained"))).toHaveLength(0); // a good row is not fetched again that day
   });
 
   it("skips an unconfirmed channel and a channel that needs reconnecting, with a visible reason and no Google call", async () => {

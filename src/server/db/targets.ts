@@ -1,6 +1,6 @@
 import type pg from "pg";
 import {
-  TARGET_METRICS, TARGET_METRIC_IDS, actuals, evaluate, overTargetForLast, revenueEstimateUsd, isTargetMetric,
+  TARGET_METRICS, TARGET_METRIC_IDS, actuals, evaluate, subscriberActual, overTargetForLast, revenueEstimateUsd, isTargetMetric,
   type Actual, type ShortNumbers, type TargetMetric, type TargetStatus,
 } from "@/server/core/targets";
 import { recordAudit } from "@/server/db/audit";
@@ -38,20 +38,26 @@ export interface TargetsView {
 const numbers = (r: AnalyticsRow): ShortNumbers => ({ views: r.views, avgViewPct: r.avgViewPct, spendMicroUsd: r.spendMicroUsd });
 
 export async function loadTargets(db: pg.Pool): Promise<TargetsView> {
-  const [analytics, t, ch, s, sched] = await Promise.all([
+  const [analytics, t, ch, s, sched, subs] = await Promise.all([
     loadAnalytics(db),
     db.query<{ id: string; channel_id: string | null; metric: string; op: ">=" | "<="; value: string }>("select id, channel_id, metric, op, value::text from targets order by channel_id nulls first, id"),
     db.query<{ channel_id: string; title: string }>("select channel_id, title from youtube_channels order by title"),
     loadTargetSettings(db),
     loadScheduler(db),
+    db.query<{ channel_id: string; gained: string | null; lost: string | null }>(
+      "select distinct on (channel_id) channel_id, subscribers_gained::text as gained, subscribers_lost::text as lost from channel_analytics where error is null order by channel_id, day desc",
+    ),
   ]);
   const shorts = analytics.rows;
+  const subRows = subs.rows.map((r) => ({ channelId: r.channel_id, gained: r.gained === null ? null : Number(r.gained), lost: r.lost === null ? null : Number(r.lost) }));
   const targets = t.rows.flatMap((r): TargetRow[] => {
     if (!isTargetMetric(r.metric)) return [];
     const mine = shorts.filter((x) => r.channel_id === null || x.channelId === r.channel_id).map(numbers);
-    const a: Actual = actuals(mine)[r.metric];
+    const weekly = r.metric === "subscribers_per_week";
+    const a: Actual = weekly ? subscriberActual(subRows.filter((x) => r.channel_id === null || x.channelId === r.channel_id)) : actuals(mine)[r.metric];
     const info = TARGET_METRICS[r.metric];
-    return [{ id: Number(r.id), channelId: r.channel_id, metric: r.metric, op: r.op, value: Number(r.value), label: info.label, unit: info.unit, actual: a.value, n: a.n, status: evaluate(a, r.op, Number(r.value)) }];
+    // A weekly channel number needs one channel with data, not five shorts.
+    return [{ id: Number(r.id), channelId: r.channel_id, metric: r.metric, op: r.op, value: Number(r.value), label: info.label, unit: info.unit, actual: a.value, n: a.n, status: evaluate(a, r.op, Number(r.value), weekly ? 1 : undefined) }];
   });
   const totalViews = shorts.reduce((a, x) => a + (x.views ?? 0), 0);
   return {

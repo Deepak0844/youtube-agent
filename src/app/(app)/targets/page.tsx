@@ -40,7 +40,7 @@ async function Owned() {
       <header className="xl:col-span-2">
         <h1 className="text-page-title font-semibold tracking-tight">Targets</h1>
         <p className="mt-2 max-w-prose text-body text-muted">
-          Numbers that say what &quot;working&quot; means for a channel. They only inform you, except one opt-in rule below. A target says &quot;not enough data&quot; until at least {TARGET_MIN_SAMPLE} shorts have numbers.
+          Numbers that say what &quot;working&quot; means for a channel. They only inform you, except one opt-in rule below. A target says &quot;not enough data&quot; until at least {TARGET_MIN_SAMPLE} shorts have numbers (subscribers per week: until one analytics pull has run).
         </p>
       </header>
 
@@ -56,7 +56,7 @@ async function Owned() {
                   <span className="font-medium">{t.label}</span> <span className="text-muted">({name(t.channelId)})</span>
                   <br />
                   <span className="text-small text-muted">
-                    Target {t.op === ">=" ? "at least" : "at most"} {show(t, t.value, rate)} · now {show(t, t.actual, rate)} · {t.n} short{t.n === 1 ? "" : "s"} with data
+                    Target {t.op === ">=" ? "at least" : "at most"} {show(t, t.value, rate)} · now {show(t, t.actual, rate)} · {t.metric === "subscribers_per_week" ? `${t.n} channel${t.n === 1 ? "" : "s"} with data, last full week` : `${t.n} short${t.n === 1 ? "" : "s"} with data`}
                   </span>
                 </span>
                 <span className="flex items-center gap-3">

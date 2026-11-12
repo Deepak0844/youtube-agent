@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { actuals, evaluate, overTargetForLast, revenueEstimateUsd, TARGET_MIN_SAMPLE, type ShortNumbers } from "@/server/core/targets";
+import { actuals, evaluate, subscriberActual, overTargetForLast, revenueEstimateUsd, TARGET_MIN_SAMPLE, type ShortNumbers } from "@/server/core/targets";
 
 const s = (views: number | null, spendUsd: number, pct: number | null = 60): ShortNumbers => ({ views, avgViewPct: pct, spendMicroUsd: spendUsd * 1e6 });
 
 describe("actuals", () => {
   it("returns_null_values_with_no_shorts", () => {
-    expect(actuals([])).toEqual({ avg_view_pct: { value: null, n: 0 }, views: { value: null, n: 0 }, cost_per_short: { value: null, n: 0 }, cost_per_1k_views: { value: null, n: 0 } });
+    expect(actuals([])).toEqual({ avg_view_pct: { value: null, n: 0 }, views: { value: null, n: 0 }, cost_per_short: { value: null, n: 0 }, cost_per_1k_views: { value: null, n: 0 }, subscribers_per_week: { value: null, n: 0 } });
   });
   it("computes_each_metric_from_the_shorts", () => {
     const a = actuals([s(1000, 2, 50), s(3000, 4, 70), s(null, 1, null)]);
@@ -44,4 +44,11 @@ describe("overTargetForLast", () => {
 describe("revenueEstimateUsd", () => {
   it("is_null_without_an_rpm", () => expect(revenueEstimateUsd(5000, 0)).toBeNull());
   it("is_views_per_thousand_times_rpm", () => expect(revenueEstimateUsd(5000, 0.5)).toBe(2.5));
+});
+
+describe("subscriberActual", () => {
+  it("nets gained minus lost over channels with data and counts them", () => {
+    expect(subscriberActual([{ gained: 30, lost: 5 }, { gained: 10, lost: null }, { gained: null, lost: null }])).toEqual({ value: 35, n: 2 });
+    expect(subscriberActual([])).toEqual({ value: null, n: 0 });
+  });
 });

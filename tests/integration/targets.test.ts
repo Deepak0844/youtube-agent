@@ -3,6 +3,7 @@ import { SCHEDULER_DEFAULTS } from "@/server/core/scheduler";
 import { loadScheduler, loadTargetSettings, saveSchedulerSettings, saveTargetSettings } from "@/server/db/system-settings";
 import { applyStartingTargets, checkTargetPause, loadTargets, removeTarget, saveTarget } from "@/server/db/targets";
 import { createVideoRow } from "@/server/db/videos";
+import { ensureChannel } from "../support/channel-fixture";
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;
@@ -31,6 +32,21 @@ describe("targets", () => {
     expect((await applyStartingTargets(db.pool)).made).toEqual([]);
     const byMetric = Object.fromEntries((await loadTargets(db.pool)).targets.map((t) => [t.metric, t.value]));
     expect(byMetric).toEqual({ avg_view_pct: 70, cost_per_short: 1 });
+  });
+  it("subscribers_per_week_uses_each_channels_newest_good_week", async () => {
+    await ensureChannel(db.pool, "UCa");
+    await ensureChannel(db.pool, "UCb");
+    const row = (ch: string, day: string, g: number | null, l: number | null, err: string | null = null) =>
+      db.pool.query("insert into channel_analytics (channel_id, day, start_day, end_day, subscribers_gained, subscribers_lost, error) values ($1, $2::date, $2::date - 8, $2::date - 2, $3, $4, $5)", [ch, day, g, l, err]);
+    await row("UCa", "2026-11-01", 5, 0);
+    await row("UCa", "2026-11-08", 30, 5);
+    await row("UCa", "2026-11-09", null, null, "answered 500"); // a failed newer pull does not hide the good one
+    await row("UCb", "2026-11-08", 10, 0);
+    await saveTarget(db.pool, { channelId: null, metric: "subscribers_per_week", value: "40" });
+    await saveTarget(db.pool, { channelId: "UCb", metric: "subscribers_per_week", value: "20" });
+    const t = Object.fromEntries((await loadTargets(db.pool)).targets.map((x) => [x.channelId ?? "all", x]));
+    expect(t.all).toMatchObject({ actual: 35, n: 2, status: "behind" });
+    expect(t.UCb).toMatchObject({ actual: 10, n: 1, status: "behind" });
   });
   it("remove_deletes_the_target", async () => {
     await saveTarget(db.pool, { channelId: null, metric: "views", value: "1000" });
