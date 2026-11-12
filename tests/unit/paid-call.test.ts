@@ -121,6 +121,25 @@ describe("runPaidCall", () => {
     }
   });
 
+  it("zero_reservation_pending_or_unknown_is_called_again_and_settled_never_parked", async () => {
+    // A call reserved at $0 (Claude Code on the subscription, a local voice) cannot have cost money, so a lost outcome is retried.
+    for (const status of ["pending", "unknown"] as const) {
+      const f = fakePorts({ intent: { status, reserved: 0 } });
+      const p = okProvider();
+      expect(await runPaidCall(f.ports, ctx(), p.call)).toEqual({ text: "hi" });
+      expect(p.keys).toEqual([KEY]);
+      expect(f.log).toEqual(["reserve", "settle"]);
+      expect(f.intent()?.status).toBe("done");
+    }
+  });
+
+  it("one_micro_dollar_reserved_still_parks", async () => {
+    const f = fakePorts({ intent: { status: "unknown", reserved: 1 } });
+    const p = okProvider();
+    await expect(runPaidCall(f.ports, ctx(), p.call)).rejects.toBeInstanceOf(NeedsDecisionError);
+    expect(p.keys).toEqual([]);
+  });
+
   it("cheap_text_pending_goes_to_needs_decision_like_paid", async () => {
     for (const status of ["pending", "unknown"] as const) {
       const f = fakePorts({ intent: { status, reserved: 100 } });
