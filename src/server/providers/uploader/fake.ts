@@ -25,5 +25,8 @@ export function createFakeUploader(opts: FakeOptions = {}): Uploader & FakeCount
       }
       return { kind: "uploaded", youtubeId: `fake-${uploadId}` };
     },
+    async setThumbnail() {
+      return { ok: true as const };
+    },
   };
 }

@@ -79,6 +79,7 @@ export const AUDIT_EVENTS = {
   "upload.retry_refused": "A re-send was refused at job time (detail: upload id, reason)",
   "upload.checked": "The owner asked YouTube whether an unclear upload is live (detail: upload id, session id, outcome; never a token)",
   "upload.finished": "An upload ended (detail: upload id, outcome, YouTube video id when there is one; never a token or session address)",
+  "upload.thumbnail": "The approved thumbnail of an uploaded long video was sent to YouTube (detail: upload id, video id, ok, reason; never a token)",
   "publish.choice_saved": "The owner chose visibility, schedule and channel for a publish (detail: video id, session id, visibility, publish time, channel id)",
   "upload.requeued": "An approved upload was sent to the uploader again",
   "video.created": "The owner started a new video",

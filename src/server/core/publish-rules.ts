@@ -62,6 +62,9 @@ export interface PublishPolicyInput {
   requireEvidence: unknown;
   evidenceApproved: boolean;
   videoApproved: boolean;
+  /** Long videos must have their thumbnail approved; shorts never ask (absent = not required). */
+  thumbnailRequired?: boolean;
+  thumbnailApproved?: boolean;
   /** "approve": the 60-minute lead applies. "upload": the job runs later, so only "not already in the past" applies. */
   phase?: "approve" | "upload";
 }
@@ -76,6 +79,7 @@ export function publishPolicyProblem(i: PublishPolicyInput): string | null {
   if (i.visibility === "public" && i.allowPublic !== true) return "public publishing is switched off in settings (allow public); choose private or unlisted";
   if (!i.videoApproved) return "approve the video first";
   if (i.requireEvidence !== false && !i.evidenceApproved) return "the evidence must be signed off before publishing";
+  if (i.thumbnailRequired === true && i.thumbnailApproved !== true) return "approve the thumbnail first (Titles tab): a long video is published with its approved thumbnail";
   const at2 = (i.publishAt ?? null) as string | null;
   if (i.phase === "upload") return at2 !== null && parts(at2)!.ms <= i.nowMs ? "the scheduled publish time has already passed; approve again with a new time" : null;
   return publishLeadProblem(at2, i.nowMs);

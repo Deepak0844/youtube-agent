@@ -20,6 +20,17 @@ import type { Uploader, UploadOutcome, UploadTarget } from "./index";
 const API = "https://www.googleapis.com";
 const INIT_URL = `${API}/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status`;
 const SESSION_PREFIX = `${API}/upload/youtube/v3/videos?`;
+const THUMB_URL = `${API}/upload/youtube/v3/thumbnails/set?uploadType=media&videoId=`;
+/** YouTube's limit for a custom thumbnail. */
+export const THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
+const THUMB_REASONS: Record<string, string> = {
+  forbidden: "YouTube refused: custom thumbnails need a verified channel (verify it in YouTube Studio)",
+  invalidImage: "YouTube refused the picture",
+  mediaBodyRequired: "YouTube found no picture data",
+  uploadRateLimitExceeded: "YouTube says too many thumbnails were set recently; set it again later",
+  quotaExceeded: "YouTube says the daily quota is used up",
+  videoNotFound: "YouTube cannot find the video",
+};
 export const CHUNK_BYTES = 8 * 1024 * 1024; // a multiple of 256 KiB, as the resumable protocol requires
 export const sessionSecretName = (uploadId: string) => `youtube.upload.${uploadId}.session`;
 
@@ -83,6 +94,30 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
   }
 
   return {
+    async setThumbnail(channelRowId, youtubeId, png, signal) {
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(youtubeId)) return { ok: false, reason: "the video id is not a YouTube id" };
+      if (png.length === 0 || png.length > THUMBNAIL_MAX_BYTES) return { ok: false, reason: `the thumbnail is over YouTube's 2 MB limit (${(png.length / 1048576).toFixed(1)} MB)` };
+      try {
+        const tok = await getAccessToken(deps.pool, deps.ring, http, channelRowId);
+        if (!tok.ok) return { ok: false, reason: tok.reason === "unavailable" ? "could not get a YouTube sign-in right now" : "the channel needs to be reconnected or confirmed (Settings, Channels)" };
+        if (!(await reserveQuota(deps.pool, "thumbnails.set"))) return { ok: false, reason: `not enough YouTube quota left today (a thumbnail costs ${quotaCost("thumbnails.set")} units)` };
+        const res = await http(THUMB_URL + encodeURIComponent(youtubeId), {
+          method: "POST", signal, body: new Uint8Array(png), headers: { authorization: `Bearer ${tok.accessToken}`, "content-type": "image/png", "content-length": String(png.length) },
+        });
+        if (res.ok) return { ok: true };
+        let reason = "";
+        try {
+          const r = ((await res.json()) as { error?: { errors?: Array<{ reason?: unknown }> } })?.error?.errors?.[0]?.reason;
+          if (typeof r === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(r)) reason = r;
+        } catch {
+          // the status alone is the reason
+        }
+        return { ok: false, reason: THUMB_REASONS[reason] ?? `YouTube refused the thumbnail (HTTP ${res.status}${reason ? `, ${reason}` : ""})` };
+      } catch {
+        return { ok: false, reason: "YouTube did not answer the thumbnail request (network trouble)" };
+      }
+    },
+
     async upload(uploadId, onProgress, signal, target?: UploadTarget): Promise<UploadOutcome> {
       if (!target) return { kind: "failed", reason: "no approved file was handed to the uploader" };
       if (!Number.isSafeInteger(target.bytes) || target.bytes < 1) return { kind: "failed", reason: "the approved video file is empty" };

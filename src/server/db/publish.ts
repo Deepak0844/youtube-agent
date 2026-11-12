@@ -59,7 +59,10 @@ async function policyFacts(client: pg.PoolClient, videoId: string) {
   const requireEvidence = await getSetting(client, "policy.require_evidence");
   const videoApproved = (await approvalState(client, videoId, "video")).approved;
   const evidenceApproved = (await approvalState(client, videoId, "evidence")).approved;
-  return { allowPublic, requireEvidence, videoApproved, evidenceApproved, nowMs: await dbNowMs(client) };
+  // A long video goes out with its approved thumbnail (set right after the upload), so the thumbnail must be approved first.
+  const thumbnailRequired = (await client.query<{ format: string }>("select format from videos where id = $1", [videoId])).rows[0]?.format === "long";
+  const thumbnailApproved = thumbnailRequired ? (await approvalState(client, videoId, "thumbnail")).approved : false;
+  return { allowPublic, requireEvidence, videoApproved, evidenceApproved, thumbnailRequired, thumbnailApproved, nowMs: await dbNowMs(client) };
 }
 /**
  * Kill switch, cutover, and the connected channel's own switches (production, allow public). Read on the caller's client at

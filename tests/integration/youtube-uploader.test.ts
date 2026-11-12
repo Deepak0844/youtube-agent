@@ -30,10 +30,11 @@ interface Server {
   chunk?: (n: number, range: string) => Response;
   list?: () => Response;
   throwOnChunk?: number;
+  thumb?: () => Response;
   http: GoogleHttp;
 }
 // A fake Google. Nothing here touches the network.
-function server(o: Partial<Pick<Server, "init" | "chunk" | "list" | "throwOnChunk">> = {}): Server {
+function server(o: Partial<Pick<Server, "init" | "chunk" | "list" | "throwOnChunk" | "thumb">> = {}): Server {
   const s: Server = { calls: [], ...o, http: async () => reply({}) };
   let chunks = 0;
   s.http = async (url, init) => {
@@ -52,6 +53,7 @@ function server(o: Partial<Pick<Server, "init" | "chunk" | "list" | "throwOnChun
       if (s.chunk) return s.chunk(chunks, range);
       return end + 1 === total ? reply({ id: "vid123" }, 200) : reply("", 308, { range: `bytes=0-${end}` });
     }
+    if (url.includes("/youtube/v3/thumbnails/set")) return s.thumb ? s.thumb() : reply({ items: [{}] });
     if (url.includes("/youtube/v3/videos?part=status")) return s.list ? s.list() : reply({ items: [{ status: { privacyStatus: "private" } }] });
     throw new Error(`unexpected url ${url}`);
   };
@@ -211,7 +213,8 @@ describe("youtube uploader", () => {
     const s = server({ list: () => reply({ items: [{ status: { privacyStatus: "private" } }] }) });
     const base = s.http;
     s.http = async (url, init) => {
-      if (url.includes("/youtube/v3/videos?part=status")) await new Promise((r) => setTimeout(r, 60)); // several ticks pass here
+      if (url.includes("/youtube/v3/thumbnails/set")) return s.thumb ? s.thumb() : reply({ items: [{}] });
+    if (url.includes("/youtube/v3/videos?part=status")) await new Promise((r) => setTimeout(r, 60)); // several ticks pass here
       return base(url, init);
     };
     const p = progress();
@@ -255,5 +258,26 @@ describe("youtube uploader", () => {
     await go(s, target()).catch((e: Error) => void (msg = e.message));
     const dump = msg + JSON.stringify(await logOf()) + JSON.stringify((await db.ownerPool.query("select detail from audit_log")).rows);
     expect(dump).not.toContain("SECRET");
+  });
+});
+
+describe("youtube thumbnail", () => {
+  const set = (s: Server, png = Buffer.from("PNGDATA")) => uploader(s).setThumbnail!(rowId, "vid123", png, new AbortController().signal);
+  it("posts the picture as image/png for that video and spends thumbnail quota", async () => {
+    const s = server();
+    expect(await set(s)).toEqual({ ok: true });
+    const c = s.calls.find((x) => x.url.includes("thumbnails/set"))!;
+    expect(c.url).toBe("https://www.googleapis.com/upload/youtube/v3/thumbnails/set?uploadType=media&videoId=vid123");
+    expect([c.method, c.headers["content-type"], c.headers.authorization, c.body]).toEqual(["POST", "image/png", `Bearer ${ACCESS}`, "PNGDATA"]);
+    expect(Number((await db.ownerPool.query("select coalesce(sum(units), 0)::int n from quota_usage")).rows[0].n)).toBe(50);
+  });
+  it("a refusal is a plain sentence without the token; over 2 MB is refused before any call", async () => {
+    const s = server({ thumb: () => reply({ error: { errors: [{ reason: "forbidden" }] } }, 403) });
+    const r = await set(s);
+    expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(/verified channel/) });
+    expect(JSON.stringify(r)).not.toContain(ACCESS);
+    const big = server();
+    expect(await set(big, Buffer.alloc(2 * 1024 * 1024 + 1))).toMatchObject({ ok: false, reason: expect.stringMatching(/2 MB/) });
+    expect(big.calls).toEqual([]);
   });
 });
