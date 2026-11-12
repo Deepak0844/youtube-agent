@@ -8,6 +8,8 @@ const phone = (page: Page) => (page.viewportSize()?.width ?? 1440) < 768;
 test("wide screen: Recent activity sits in a right-hand column beside the lists", async ({ page }) => {
   test.skip((page.viewportSize()?.width ?? 0) < 1280, "wide screens only");
   await page.goto("/");
+  await expect(page.getByTestId("panel-queue")).toBeVisible(); // panels stream in: measure only once both are on the page
+  await expect(page.getByTestId("panel-recent")).toBeVisible();
   const left = (await page.getByTestId("panel-queue").boundingBox())!;
   const right = (await page.getByTestId("panel-recent").boundingBox())!;
   expect(right.x).toBeGreaterThan(left.x + left.width - 1);

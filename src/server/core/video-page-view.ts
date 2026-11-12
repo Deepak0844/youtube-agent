@@ -172,3 +172,10 @@ export function reframedFormats(runs: ReadonlyArray<{ name: string; status: stri
   }
   return REFRAME_FORMATS.filter((f) => done.has(f));
 }
+
+/** The step bar under the video title (UI redesign spec §4.3): one cell per step, told apart by word and shape. */
+export type StepBarState = "done" | "waiting" | "running" | "failed" | "todo";
+const STEP_BAR: Record<UiState, StepBarState> = { done: "done", needs_you: "waiting", running: "running", failed: "failed", pending: "todo" };
+export function stepBar(stages: ReadonlyArray<{ label: string; state: UiState }>): Array<{ label: string; state: StepBarState }> {
+  return stages.map((s) => ({ label: s.label, state: STEP_BAR[s.state] }));
+}

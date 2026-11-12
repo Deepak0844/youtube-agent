@@ -11,7 +11,7 @@ import { renderLimitNote, scale3dSummary } from "@/server/core/scale3d-view";
 import { lookView, scene3dSummary } from "@/server/core/scene3d-view";
 import { loadRepoCatalog } from "@/server/providers/renderer/scene3d-models";
 import { scriptSchema } from "@/server/core/script-contract";
-import { estimateLabel, parseTab, forceRerunOffered, voiceChanged, rerunCostNote, rerunOffered, SEVERITY_WORDS, STAGE_LABELS, STATE_WORDS, TABS, type StageView, type TabId, type UiState } from "@/server/core/video-page-view";
+import { estimateLabel, parseTab, forceRerunOffered, voiceChanged, rerunCostNote, rerunOffered, SEVERITY_WORDS, STAGE_LABELS, STATE_WORDS, stepBar, TABS, type StageView, type StepBarState, type TabId, type UiState } from "@/server/core/video-page-view";
 import { FORMAT_WORDS, KIND_WORDS, LANGUAGE_WORDS, STATUS_WORDS } from "@/server/core/videos-view";
 import { getPool } from "@/server/db/pool";
 import { jobCheckers } from "../../queue/job-checkers";
@@ -30,7 +30,9 @@ import { LiveFeed } from "../../queue/live-feed";
 import { LogTail } from "@/ui/domain/log-tail";
 import { VideoBox } from "@/ui/domain/video-box";
 import { Pill } from "@/ui/primitives/pill";
-import { Skeleton } from "@/ui/primitives/skeleton";
+import { Spinner } from "@/ui/primitives/spinner";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
+import { Check, X } from "lucide-react";
 import { ForceRerunForm, ReframeButtons, RerunForm, SaveToLibraryForm, SceneButtons } from "./controls";
 import { MakeVersionForm } from "./version-form";
 import { SoundTabPanel } from "./sound-tab";
@@ -43,7 +45,7 @@ export const metadata = { title: "Video" };
 // (?tab=). Read only except the buttons: Run again, Cancel, the gate card (all owner-only server actions) and the free scene checks.
 export default function VideoPage({ params, searchParams }: PageProps<"/videos/[id]">) {
   return (
-    <Suspense fallback={<Skeleton aria-hidden className="h-96 w-full rounded-card" />}>
+    <Suspense fallback={<PageSkeleton variant="detail" />}>
       <Owned params={params} searchParams={searchParams} />
     </Suspense>
   );
@@ -71,37 +73,48 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
 
   return (
     <div className="flex min-w-0 flex-col gap-layout">
-      <header className="flex min-w-0 flex-col gap-3">
-        <Link href="/videos" className="text-small text-muted underline">Library</Link>
-        <h1 lang={p.head.language} className="m-0 text-page-title font-semibold tracking-tight [overflow-wrap:anywhere]">{p.head.topic}</h1>
-        <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-body text-muted">
+      <header className="flex min-w-0 flex-col gap-2">
+        <Link href="/videos" className="w-fit text-small text-muted hover:text-text">← Videos</Link>
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <h1 lang={p.head.language} className="m-0 min-w-0 text-page-title font-semibold tracking-tight [overflow-wrap:anywhere]">{p.head.topic}</h1>
           <Pill tone={status.tone}>{status.label}</Pill>
-          <span>{LANGUAGE_WORDS[p.head.language]}</span>
-          <span data-testid="video-kind">Type: {KIND_WORDS[p.head.kind]}, {FORMAT_WORDS[p.head.format].toLowerCase()}</span>
-          <span data-testid="video-style">Style: {presetOf(p.head.style).label}{p.head.captionStyle ? ", punchy captions" : ""}</span>
-          <span data-testid="total-spend" className="tabular-nums">{usd(p.spend.totalMicroUsd)} spent</span>
-          <span>Started {dt.format(new Date(p.head.createdAt))} UTC</span>
-        </p>
+        </div>
       </header>
+      <StepBar p={p} />
 
-      {p.kindNote ? <p data-testid="kind-note" className="m-0 max-w-[68ch] rounded-card bg-surface p-pad text-body text-muted">{p.kindNote}</p> : null}
-      {p.frameReviewNote ? <p data-testid="frame-review-note" className={`m-0 max-w-[68ch] rounded-card bg-surface p-pad text-body ${p.frameReviewNote.warn ? "text-warning" : "text-muted"}`}>{p.frameReviewNote.text}</p> : null}
+      {p.kindNote ? <p data-testid="kind-note" className="m-0 rounded-card border border-border bg-surface p-pad text-body text-muted">{p.kindNote}</p> : null}
+      {p.frameReviewNote ? <p data-testid="frame-review-note" className={`m-0 rounded-card border border-border bg-surface p-pad text-body ${p.frameReviewNote.warn ? "text-warning" : "text-muted"}`}>{p.frameReviewNote.text}</p> : null}
       <LiveFeed />
+
+      <div className="grid min-w-0 gap-layout lg:grid-cols-[minmax(320px,38%)_minmax(0,1fr)] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-gap">
+          {p.videoSrc ? (
+            <VideoBox aspect={p.head.format === "long" ? "16:9" : "9:16"} label="Final video" className="max-w-none">
+              <video controls preload="metadata" src={p.videoSrc} poster={p.posterSrc ?? undefined} aria-label="Final video" className="size-full object-contain" />
+            </VideoBox>
+          ) : (
+            <div className={`flex items-center justify-center rounded-card border border-dashed border-border text-body text-muted ${p.head.format === "long" ? "aspect-video" : "aspect-[9/16] max-h-[420px]"}`}>No video yet</div>
+          )}
+          {p.tsxLibrary && p.head.status !== "cancelled" ? <SaveToLibraryForm videoId={p.head.id} hash={p.tsxLibrary.hash} approved={p.tsxLibrary.approved} /> : null}
+          {p.videoSrc && p.head.status !== "cancelled" ? <ReframeButtons videoId={p.head.id} links={p.reframed} /> : null}
+          {p.head.format === "short" ? <MakeVersionForm videoId={p.head.id} kind={p.head.kind} /> : null}
+        </div>
+        <div className="flex min-w-0 flex-col gap-layout">
+          <dl className="m-0 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-px overflow-hidden rounded-card border border-border bg-border">
+            <Detail label="Language">{LANGUAGE_WORDS[p.head.language]}</Detail>
+            <Detail label="Type"><span data-testid="video-kind">Type: {KIND_WORDS[p.head.kind]}, {FORMAT_WORDS[p.head.format].toLowerCase()}</span></Detail>
+            <Detail label="Style"><span data-testid="video-style">Style: {presetOf(p.head.style).label}{p.head.captionStyle ? ", punchy captions" : ""}</span></Detail>
+            <Detail label="Spent"><span data-testid="total-spend" className="tabular-nums">{usd(p.spend.totalMicroUsd)} spent</span></Detail>
+            <Detail label="Started"><span>{dt.format(new Date(p.head.createdAt))} UTC</span></Detail>
+          </dl>
+          {card ? card.kind === "gate" ? <GateCard item={card} index={0} rate={await loadInrRate(db)} /> : <DecisionCard item={card} /> : null}
+          {live && !card ? <CancelForm videoId={p.head.id} topic={p.head.topic} /> : null}
+        </div>
+      </div>
+
       <StageStrip p={p} live={live} />
 
-      {card ? card.kind === "gate" ? <GateCard item={card} index={0} rate={await loadInrRate(db)} /> : <DecisionCard item={card} /> : null}
-      {live && !card ? <CancelForm videoId={p.head.id} topic={p.head.topic} /> : null}
-
-      {p.videoSrc ? (
-        <VideoBox aspect="9:16" label="Final video">
-          <video controls preload="metadata" src={p.videoSrc} poster={p.posterSrc ?? undefined} aria-label="Final video" className="size-full object-contain" />
-        </VideoBox>
-      ) : null}
-      {p.tsxLibrary && p.head.status !== "cancelled" ? <SaveToLibraryForm videoId={p.head.id} hash={p.tsxLibrary.hash} approved={p.tsxLibrary.approved} /> : null}
-      {p.videoSrc && p.head.status !== "cancelled" ? <ReframeButtons videoId={p.head.id} links={p.reframed} /> : null}
-      {p.head.format === "short" ? <MakeVersionForm videoId={p.head.id} kind={p.head.kind} /> : null}
-
-      <nav aria-label="Video sections" className="flex min-w-0 gap-5 overflow-x-auto border-b border-rule">
+      <nav aria-label="Video sections" className="flex min-w-0 gap-4 overflow-x-auto border-b border-border">
         {TABS.map((t) => (
           <Link key={t.id} href={`/videos/${p.head.id}?tab=${t.id}`} scroll={false} aria-current={tab === t.id ? "page" : undefined} className="-mb-px inline-flex min-h-11 items-center border-b-2 border-transparent text-body text-muted aria-[current=page]:border-text aria-[current=page]:text-text sm:min-h-9">
             {t.label}
@@ -126,11 +139,47 @@ function Missing() {
   );
 }
 
+function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1 bg-surface p-pad">
+      <dt className="text-small text-muted">{label}</dt>
+      <dd className="m-0 min-w-0 text-body [overflow-wrap:anywhere]">{children}</dd>
+    </div>
+  );
+}
+
+const STEP_LOOK: Record<StepBarState, string> = {
+  done: "text-text",
+  waiting: "bg-pill-warning-bg text-pill-warning-ink",
+  running: "text-text",
+  failed: "bg-pill-negative-bg text-pill-negative-ink",
+  todo: "text-faint",
+};
+const STEP_WORD: Record<StepBarState, string> = { done: "done", waiting: "waiting for you", running: "running", failed: "failed", todo: "to do" };
+
+/** One line of steps (spec §4.3): done ✓, waiting for you, running, failed ✕, to do; words and marks, not colour alone. */
+function StepBar({ p }: { p: VideoPage }) {
+  return (
+    <ol aria-label="Progress" data-testid="step-bar" className="m-0 flex min-w-0 list-none overflow-x-auto rounded-card border border-border bg-surface p-0">
+      {stepBar(p.stages).map((s, i) => (
+        <li key={i} className={`flex min-w-28 flex-1 flex-col gap-0.5 border-r border-border px-3 py-2 last:border-0 ${STEP_LOOK[s.state]}`}>
+          <span className="text-small opacity-80">{i + 1} · {STEP_WORD[s.state]}</span>
+          <span className="flex items-center gap-1.5 text-body font-medium whitespace-nowrap">
+            {s.state === "done" ? <Check size={14} aria-hidden className="text-positive" /> : s.state === "failed" ? <X size={14} aria-hidden /> : s.state === "running" ? <Spinner /> : null}
+            {s.label}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
   const anyActive = Object.values(p.runStatus).some((r) => r === "queued" || r === "running" || r === "needs_decision");
   return (
-    <section aria-label="Steps" className="flex min-w-0 flex-col gap-3 rounded-card bg-surface p-pad">
-      <ol data-testid="stage-strip" className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2">
+    <section aria-label="Steps" className="flex min-w-0 flex-col gap-3 rounded-card border border-border bg-surface p-pad">
+      <h2 className="text-section font-semibold">Steps</h2>
+      <ol data-testid="stage-strip" className="m-0 grid list-none gap-4 p-0 sm:grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
         {p.stages.map((s: StageView) => {
           const force = forceRerunOffered(s.stage as StageName, p.runStatus[s.stage as StageName], p.head.status, anyActive, p.hasUpload, p.voice.current?.provider ?? null, p.voice.localUrl);
           const isTts = s.stage === "tts";
@@ -156,7 +205,7 @@ function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
   );
 }
 
-const Empty = ({ children }: { children: React.ReactNode }) => <p data-testid="empty" className="m-0 max-w-[60ch] rounded-card bg-surface p-pad text-body text-muted">{children}</p>;
+const Empty = ({ children }: { children: React.ReactNode }) => <p data-testid="empty" className="m-0 rounded-card border border-dashed border-border p-pad text-body text-muted">{children}</p>;
 const H = ({ children }: { children: React.ReactNode }) => <h2 className="m-0 text-title font-semibold">{children}</h2>;
 
 function Scale3dPreview({ p }: { p: VideoPage }) {
