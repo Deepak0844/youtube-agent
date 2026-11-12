@@ -30,7 +30,7 @@ export function AssetGrid({ cards, trash, trashDays }: { cards: AssetCard[]; tra
   return (
     <div className="flex min-w-0 flex-col gap-gap">
       {!trash && picked.length ? (
-        <div className="flex min-w-0 flex-wrap items-end gap-3 rounded-card bg-surface p-pad">
+        <div className="flex min-w-0 flex-wrap items-end gap-3 rounded-card border border-border bg-surface p-pad">
           <span className="text-body">{picked.length} chosen</span>
           <Input aria-label="Tag to add" value={tag} onChange={(e) => setTag(e.target.value)} maxLength={60} className="sm:max-w-48" />
           <Button variant="secondary" disabled={pending || !tag.trim()} onClick={() => run(() => tagAction(picked, [tag.trim()]), "Tag added.")}>
@@ -46,7 +46,7 @@ export function AssetGrid({ cards, trash, trashDays }: { cards: AssetCard[]; tra
       </p>
       <ul className="grid min-w-0 grid-cols-2 gap-gap md:grid-cols-4 xl:grid-cols-6">
         {cards.map((c) => (
-          <li key={c.id} data-asset={c.id} className="flex min-w-0 flex-col gap-2 rounded-card bg-surface p-3">
+          <li key={c.id} data-asset={c.id} className="flex min-w-0 flex-col gap-2 rounded-card border border-border bg-surface p-3">
             <Link href={`/assets/${c.id}`} aria-label={`Open ${c.name}`} className="block aspect-square overflow-hidden rounded-control bg-raised">
               {c.kind === "image" && c.url ? (
                 // eslint-disable-next-line @next/next/no-img-element -- a signed media URL, not an optimisable static import

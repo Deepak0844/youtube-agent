@@ -8,7 +8,7 @@ export function VideoBox({ aspect, label, children, className }: { aspect: Aspec
     <figure aria-label={label} className={cn("m-0 w-full", aspect === "9:16" ? "max-w-[360px]" : "max-w-[960px]", className)}>
       <div
         data-aspect={aspect}
-        className={cn("relative flex w-full items-center justify-center overflow-hidden rounded-card bg-surface", aspect === "9:16" ? "aspect-[9/16]" : "aspect-video")}
+        className={cn("relative flex w-full items-center justify-center overflow-hidden rounded-card border border-border bg-surface", aspect === "9:16" ? "aspect-[9/16]" : "aspect-video")}
       >
         {children ?? <span className="p-pad text-center text-body text-muted [overflow-wrap:anywhere]">No frame rendered yet</span>}
       </div>

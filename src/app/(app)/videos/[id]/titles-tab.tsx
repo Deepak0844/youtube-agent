@@ -40,7 +40,7 @@ export async function TitlesTabPanel({ p }: { p: VideoPage }) {
       {t.busy ? <p className="m-0 text-small text-muted">Writing titles now.</p> : null}
       {!t.busy && p.runStatus.seo === "failed" ? <p role="alert" className="m-0 text-small text-pill-negative-ink">The last try failed (see the Log tab). Regenerate to try again.</p> : null}
       {t.stale ? <p data-testid="titles-stale" className="m-0 text-small text-pill-negative-ink">The script changed after these were written. Regenerate to match it.</p> : null}
-      {b === null ? <p data-testid="empty" className="m-0 max-w-[60ch] rounded-card bg-surface p-pad text-body text-muted">No titles yet.</p> : (
+      {b === null ? <p data-testid="empty" className="m-0 max-w-[60ch] rounded-card border border-border bg-surface p-pad text-body text-muted">No titles yet.</p> : (
         <>
           <H>Title options</H>
           <ol className="m-0 flex list-none flex-col gap-4 p-0">

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { deviceLabel } from "@/server/core/account-view";
 import { listSessions } from "@/server/db/auth";
@@ -11,7 +12,7 @@ export const metadata = { title: "Account" };
 
 export default function AccountPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -33,12 +34,12 @@ async function Owned() {
         </p>
       </header>
 
-      <section aria-labelledby="pw-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="pw-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="pw-h" className="mb-4 text-title font-semibold">Change password</h2>
         <PasswordForm />
       </section>
 
-      <section aria-labelledby="sessions-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="sessions-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="sessions-h" className="mb-1 text-title font-semibold">Where you are signed in</h2>
         <p className="mb-4 text-small text-muted">Times are IST. If you do not recognise one, sign it out and change your password.</p>
         <ul data-testid="sessions" className="divide-y divide-rule">

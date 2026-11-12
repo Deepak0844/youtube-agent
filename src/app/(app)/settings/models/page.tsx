@@ -1,4 +1,5 @@
 import { Suspense, type ReactNode } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import {
   PROVIDERS,
@@ -30,7 +31,7 @@ export const metadata = { title: "Models" };
 
 export default function ModelsPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-64 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -136,7 +137,7 @@ function ClaudeCodeSection({ cc }: { cc: ClaudeCodeStatus }) {
   return (
     <section aria-labelledby="source-h" className="flex flex-col gap-gap">
       <h2 id="source-h" className="text-title font-semibold">AI source</h2>
-      <div className="flex flex-col gap-6 rounded-card bg-surface p-pad lg:grid lg:grid-cols-2">
+      <div className="flex flex-col gap-6 rounded-card border border-border bg-surface p-pad lg:grid lg:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-3">
           <AiSourceForm on={cc.switchOn} />
           <div className="text-small text-muted">
@@ -193,7 +194,7 @@ function Models({ models, routes, defaults, local, tests, badges, cc }: { models
 
       <section aria-labelledby="routes-h" className="flex flex-col gap-gap">
         <h2 id="routes-h" className="text-title font-semibold">Stage routing</h2>
-        <ul className="flex flex-col rounded-card bg-surface px-pad">
+        <ul className="flex flex-col rounded-card border border-border bg-surface px-pad">
           {STAGES.map((s) => {
             const currentId = routes[s.id] ?? "";
             const current = byId.get(currentId);
@@ -223,7 +224,7 @@ function Models({ models, routes, defaults, local, tests, badges, cc }: { models
         {models.length === 0 ? (
           <EmptyFrame message="No models yet. Add one below, or copy a suggestion." />
         ) : (
-          <ul className="flex flex-col rounded-card bg-surface px-pad">
+          <ul className="flex flex-col rounded-card border border-border bg-surface px-pad">
             {models.map((m) => {
               const routed = Object.entries(routes).filter(([, id]) => id === m.id).map(([st]) => STAGES.find((s) => s.id === st)?.label ?? st);
               const kind = deriveEndpointKind(m.baseUrl, local);
@@ -267,7 +268,7 @@ function Models({ models, routes, defaults, local, tests, badges, cc }: { models
         )}
       </section>
 
-      <section aria-labelledby="add-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="add-h" className="rounded-card border border-border bg-surface p-pad">
         <details>
           <summary id="add-h" className="flex min-h-11 cursor-pointer items-center text-title font-semibold">Add a model</summary>
           <div className="mt-4">
@@ -281,7 +282,7 @@ function Models({ models, routes, defaults, local, tests, badges, cc }: { models
         <p className="max-w-[60ch] text-small text-faint">
           Read-only starting points. Copying makes your own editable entry. Hosted ones arrive disabled and without a price: type the current price from the provider page.
         </p>
-        <ul className="flex flex-col rounded-card bg-surface px-pad">
+        <ul className="flex flex-col rounded-card border border-border bg-surface px-pad">
           {defaults.map((d) => (
             <li key={d.id} className="flex flex-col gap-2 border-b border-rule py-4 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">

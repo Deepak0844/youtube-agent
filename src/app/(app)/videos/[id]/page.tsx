@@ -357,7 +357,7 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
       return (
         <>
           {Array.isArray(b) && b.length > 0 ? <BeatList beats={b} /> : <Empty>No beats yet. They are written together with the script.</Empty>}
-          <div data-testid="scene-actions" className="flex min-w-0 flex-col gap-2 rounded-card bg-surface p-pad">
+          <div data-testid="scene-actions" className="flex min-w-0 flex-col gap-2 rounded-card border border-border bg-surface p-pad">
             <H>Scenes</H>
             <p className="m-0 text-body text-muted">Both buttons are free: no model is called and nothing is spent.</p>
             <SceneButtons videoId={p.head.id} />

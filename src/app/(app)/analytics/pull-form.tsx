@@ -8,7 +8,7 @@ export function PullForm() {
   const [state, run, pending] = useActionState<PullState, FormData>(() => pullAnalyticsAction(), {});
   return (
     <form action={run} className="flex flex-wrap items-center gap-3">
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" loading={pending}>
         {pending ? "Pulling…" : "Run now"}
       </Button>
       {state.message ? (

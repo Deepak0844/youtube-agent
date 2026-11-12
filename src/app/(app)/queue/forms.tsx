@@ -24,7 +24,7 @@ function OneButton({ action, fields, label, variant, ariaLabel }: { action: Act;
       {Object.entries(fields).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />
       ))}
-      <Button type="submit" variant={variant} disabled={pending} aria-label={ariaLabel}>
+      <Button type="submit" variant={variant} loading={pending} aria-label={ariaLabel}>
         {label}
       </Button>
       <Result state={state} />
@@ -137,7 +137,7 @@ export function DecisionForm({ fields, choice, label, hint, variant, needsCheck 
         </label>
       ) : null}
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant={variant} disabled={pending}>
+        <Button type="submit" variant={variant} loading={pending}>
           {label}
         </Button>
         <Result state={state} />
@@ -195,7 +195,7 @@ export function PublishChoiceForm({ videoId, visibility, publishAtIst, channelId
         <input name="publishAtIst" type="datetime-local" defaultValue={publishAtIst} disabled={vis !== "private"} className={FIELD} />
       </label>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="secondary" disabled={pending}>Save these choices</Button>
+        <Button type="submit" variant="secondary" loading={pending}>Save these choices</Button>
         <Result state={state} />
       </div>
     </form>
@@ -231,7 +231,7 @@ export function OutlineEditForm({ fields, chapters }: { fields: Omit<GateFields,
         </fieldset>
       ))}
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="secondary" disabled={pending}>Save the edited outline</Button>
+        <Button type="submit" variant="secondary" loading={pending}>Save the edited outline</Button>
         <Result state={state} />
       </div>
     </form>

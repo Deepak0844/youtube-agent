@@ -9,7 +9,7 @@ import { saveInrRateAction, type RateState } from "./rate-action";
 export function RateForm({ rate }: { rate: number }) {
   const [state, action, pending] = useActionState<RateState, FormData>(saveInrRateAction, {});
   return (
-    <section aria-labelledby="rate-h" className="rounded-card bg-surface p-pad">
+    <section aria-labelledby="rate-h" className="rounded-card border border-border bg-surface p-pad">
       <h2 id="rate-h" className="text-title font-semibold">Rupee rate</h2>
       <p className="mt-1 mb-5 max-w-[60ch] text-body text-muted">
         Amounts show in dollars with a rupee figure beside them. Spending limits and stored amounts stay in dollars; this rate only changes what is shown.
@@ -19,7 +19,7 @@ export function RateForm({ rate }: { rate: number }) {
           <Label htmlFor="inr_rate">Rupees per US dollar</Label>
           <Input id="inr_rate" name="inr_rate" type="text" inputMode="decimal" required defaultValue={String(rate)} />
         </div>
-        <Button type="submit" disabled={pending}>Save</Button>
+        <Button type="submit" loading={pending}>Save</Button>
         {state.error ? <p role="alert" className="text-body text-pill-negative-ink">{state.error}</p> : state.ok ? <p role="status" className="text-body text-pill-positive-ink">Saved.</p> : null}
       </form>
     </section>

@@ -41,7 +41,7 @@ export function UploadDetailsForm({ videoId, details, saved, channelTitle, chapt
         <textarea ref={description} name="description" defaultValue={details.description} rows={8} className={FIELD} />
       </label>
       {chapterLines ? (
-        <div className="flex max-w-[68ch] flex-col gap-2 rounded-card bg-surface p-pad">
+        <div className="flex max-w-[68ch] flex-col gap-2 rounded-card border border-border bg-surface p-pad">
           <p className="m-0 text-small text-muted">Chapters from the finished video. YouTube shows them when they are in the description.</p>
           <pre data-testid="chapter-lines" className="m-0 whitespace-pre-wrap text-body [overflow-wrap:anywhere]">{chapterLines}</pre>
           <div><Button type="button" variant="secondary" onClick={addChapters}>Add chapters to the description</Button></div>
@@ -61,7 +61,7 @@ export function UploadDetailsForm({ videoId, details, saved, channelTitle, chapt
       <YesNo name="made_for_kids" label="Is this video made for kids?" hint="Your choice, shown every time. It starts from the channel setting (No unless the channel says yes)." value={details.made_for_kids} />
       <YesNo name="synthetic_content" label="Does it show altered or synthetic content that looks real?" hint="YouTube asks this. It starts from the channel default." value={details.synthetic_content} />
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={pending}>Save details</Button>
+        <Button type="submit" loading={pending}>Save details</Button>
         {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
       </div>
     </form>

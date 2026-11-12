@@ -11,7 +11,7 @@ export async function EngineNumbersSection() {
   const saved = await loadEngineNumbers(getPool());
   const rows: EngineNumberRow[] = ENGINE_NUMBER_FIELDS.map((f) => ({ ...f, def: show(SETTINGS[f.key].default), current: show(saved[f.key]) }));
   return (
-    <section aria-labelledby="engine-h" className="rounded-card bg-surface p-pad">
+    <section aria-labelledby="engine-h" className="rounded-card border border-border bg-surface p-pad">
       <h2 id="engine-h" className="text-title font-semibold">Engine numbers</h2>
       <p className="mt-1 mb-5 max-w-[60ch] text-body text-muted">
         Retries, time limits, the circuit breaker and the video quality checks. Wrong values can make stages fail or let bad

@@ -17,7 +17,7 @@ export function RunOptimizerForm() {
   const [state, run, pending] = useActionState<InsightState, FormData>(() => runOptimizerAction(), {});
   return (
     <form action={run} className="flex flex-wrap items-center gap-3">
-      <Button type="submit" variant="ghost" disabled={pending}>
+      <Button type="submit" variant="ghost" loading={pending}>
         {pending ? "Thinking…" : "Run optimizer now"}
       </Button>
       <Note state={state} testId="optimizer-note" />
@@ -29,7 +29,7 @@ export function RunReviewForm() {
   const [state, run, pending] = useActionState<InsightState, FormData>(() => runReviewAction(), {});
   return (
     <form action={run} className="flex flex-wrap items-center gap-3">
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" loading={pending}>
         {pending ? "Writing…" : "Run review now"}
       </Button>
       <Note state={state} testId="review-note" />
@@ -42,10 +42,10 @@ export function DecideForm({ id, title }: { id: string; title: string }) {
   return (
     <form action={run} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="id" value={id} />
-      <Button type="submit" name="decision" value="accept" variant="secondary" disabled={pending} aria-label={`Accept proposal: ${title}`}>
+      <Button type="submit" name="decision" value="accept" variant="secondary" loading={pending} aria-label={`Accept proposal: ${title}`}>
         Accept
       </Button>
-      <Button type="submit" name="decision" value="dismiss" variant="ghost" disabled={pending} aria-label={`Dismiss proposal: ${title}`}>
+      <Button type="submit" name="decision" value="dismiss" variant="ghost" loading={pending} aria-label={`Dismiss proposal: ${title}`}>
         Dismiss
       </Button>
       <Note state={state} testId="proposal-note" />

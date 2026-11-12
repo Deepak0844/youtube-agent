@@ -55,7 +55,7 @@ export function TrendsButton() {
   const [state, action, pending] = useActionState<ResearchState, FormData>(() => refreshTrendsAction(), {});
   return (
     <form action={action} className="flex flex-wrap items-center gap-3">
-      <Button type="submit" variant="secondary" disabled={pending}>{pending ? "Reading…" : "Refresh trends"}</Button>
+      <Button type="submit" variant="secondary" loading={pending}>{pending ? "Reading…" : "Refresh trends"}</Button>
       <Msg s={state} id="trends-msg" />
     </form>
   );
@@ -67,8 +67,8 @@ export function DecideButtons({ channel, competitor, title }: { channel: string;
     <form action={action} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="channel" value={channel} />
       <input type="hidden" name="competitor" value={competitor} />
-      <Button type="submit" name="decision" value="watch" disabled={pending} aria-label={`Watch ${title}`}>Watch</Button>
-      <Button type="submit" name="decision" value="reject" variant="ghost" disabled={pending} aria-label={`Not relevant: ${title}`}>Not relevant</Button>
+      <Button type="submit" name="decision" value="watch" loading={pending} aria-label={`Watch ${title}`}>Watch</Button>
+      <Button type="submit" name="decision" value="reject" variant="ghost" loading={pending} aria-label={`Not relevant: ${title}`}>Not relevant</Button>
       {state.message ? <span role="alert" className="text-small text-pill-negative-ink">{state.message}</span> : null}
     </form>
   );
@@ -83,7 +83,7 @@ export function AddChannelForm({ row }: { row: string }) {
         <Label htmlFor="r-ref">Channel handle or id</Label>
         <input id="r-ref" name="ref" type="text" required maxLength={80} placeholder="@handle or UC…" className={field} />
       </div>
-      <Button type="submit" disabled={pending}>Add channel</Button>
+      <Button type="submit" loading={pending}>Add channel</Button>
       <Msg s={state} id="add-msg" />
     </form>
   );

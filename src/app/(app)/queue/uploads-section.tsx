@@ -13,7 +13,7 @@ const watch = (id: string) => `https://www.youtube.com/watch?v=${encodeURICompon
 export function UploadsSection({ rows }: { rows: UploadListRow[] }) {
   if (rows.length === 0) return null;
   return (
-    <section aria-labelledby="uploads-h" data-testid="uploads-list" className="flex flex-col gap-3 rounded-card bg-surface p-pad">
+    <section aria-labelledby="uploads-h" data-testid="uploads-list" className="flex flex-col gap-3 rounded-card border border-border bg-surface p-pad">
       <h2 id="uploads-h" className="text-title font-semibold">Uploads</h2>
       <ul className="m-0 flex list-none flex-col gap-4 p-0">
         {rows.map((u) => (

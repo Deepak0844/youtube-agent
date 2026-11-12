@@ -19,7 +19,7 @@ export function SetupForm({ token }: { token: string }) {
           {state.error}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending} className="w-full sm:min-h-11">
+      <Button type="submit" loading={pending} className="w-full sm:min-h-11">
         Create owner account
       </Button>
     </form>

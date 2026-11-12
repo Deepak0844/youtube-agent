@@ -52,7 +52,7 @@ export function KeyRow(p: KeyRowProps) {
   const busy = setPending || testPending || removePending;
 
   return (
-    <li className="rounded-card bg-surface p-pad" data-provider={p.id}>
+    <li className="rounded-card border border-border bg-surface p-pad" data-provider={p.id}>
       <div className="grid min-w-0 gap-gap md:grid-cols-[minmax(0,1fr)_auto] md:items-start md:gap-x-8">
         <div className="min-w-0">
           <h3 className="text-section font-semibold">{p.label}</h3>

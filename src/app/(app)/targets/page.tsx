@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { formatIst, formatMoney } from "@/server/core/display-format";
 import { TARGET_MIN_SAMPLE } from "@/server/core/targets";
@@ -12,7 +13,7 @@ export const metadata = { title: "Targets" };
 // Targets. requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function TargetsPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -43,7 +44,7 @@ async function Owned() {
         </p>
       </header>
 
-      <section aria-labelledby="t-h" className="flex flex-col gap-4 rounded-card bg-surface p-pad">
+      <section aria-labelledby="t-h" className="flex flex-col gap-4 rounded-card border border-border bg-surface p-pad">
         <h2 id="t-h" className="text-title font-semibold">Your targets</h2>
         {v.targets.length === 0 ? (
           <p className="text-body text-muted">No targets yet. Add one below, or use the starting targets.</p>
@@ -69,13 +70,13 @@ async function Owned() {
         <StartingTargetsButton />
       </section>
 
-      <section aria-labelledby="a-h" className="flex flex-col gap-4 rounded-card bg-surface p-pad">
+      <section aria-labelledby="a-h" className="flex flex-col gap-4 rounded-card border border-border bg-surface p-pad">
         <h2 id="a-h" className="text-title font-semibold">Add or change a target</h2>
         <p className="text-small text-muted">Saving a target that already exists for the same channel and metric replaces it.</p>
         <AddTargetForm channels={v.channels} />
       </section>
 
-      <section aria-labelledby="p-h" className="flex flex-col gap-4 rounded-card bg-surface p-pad">
+      <section aria-labelledby="p-h" className="flex flex-col gap-4 rounded-card border border-border bg-surface p-pad">
         <h2 id="p-h" className="text-title font-semibold">Pause rule and revenue estimate</h2>
         <p className="max-w-[60ch] text-body text-muted">
           If cost per 1,000 views is over your target for each of the last N shorts, overnight drafting is switched off once and you get a notice. It never switches anything on. Overnight drafting is currently {v.drafting ? "on" : "off"}.

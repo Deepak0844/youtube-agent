@@ -84,7 +84,7 @@ export function LimitsForm(props: { renders: number; jobs: number; warnGb: numbe
         ))}
       </fieldset>
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={pending}>Save limits</Button>
+        <Button type="submit" loading={pending}>Save limits</Button>
         <Result state={state} />
       </div>
     </form>
@@ -100,7 +100,7 @@ export function KillSwitchForm({ on }: { on: boolean }) {
         Stop every upload (kill switch)
       </label>
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={pending}>Save</Button>
+        <Button type="submit" loading={pending}>Save</Button>
         <Result state={state} />
       </div>
     </form>
@@ -120,7 +120,7 @@ export function CutoverForm({ done }: { done: boolean }) {
         <Input id="typed" name="typed" autoComplete="off" spellCheck={false} />
       </div>
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={pending}>Save</Button>
+        <Button type="submit" loading={pending}>Save</Button>
         <Result state={state} />
       </div>
     </form>
@@ -164,7 +164,7 @@ export function LocalServicesForm({ entries, max }: { entries: string[]; max: nu
         I understand the app will be allowed to call any address I add. (Needed only when adding.)
       </label>
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={pending}>Save list</Button>
+        <Button type="submit" loading={pending}>Save list</Button>
         <Result state={state} />
       </div>
     </form>

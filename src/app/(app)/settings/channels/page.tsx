@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { GOOGLE_SCOPES, scopeLabel } from "@/server/core/youtube-oauth";
 import { getPool } from "@/server/db/pool";
@@ -16,7 +17,7 @@ export const metadata = { title: "Channels" };
 
 export default function ChannelsPage({ searchParams }: PageProps<"/settings/channels">) {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned searchParams={searchParams} />
     </Suspense>
   );
@@ -61,15 +62,15 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/settings/chan
       </header>
 
       {err ? (
-        <p role="alert" className="rounded-card bg-surface p-pad text-body text-negative">
+        <p role="alert" className="rounded-card border border-border bg-surface p-pad text-body text-negative">
           {err}
         </p>
       ) : null}
-      {sp.connected ? <p className="rounded-card bg-surface p-pad text-body text-muted">Connected. Check the channel below, then confirm it is yours.</p> : null}
+      {sp.connected ? <p className="rounded-card border border-border bg-surface p-pad text-body text-muted">Connected. Check the channel below, then confirm it is yours.</p> : null}
 
-      {accounts.length === 0 ? <p className="rounded-card bg-surface p-pad text-body text-muted">No channels yet.</p> : null}
+      {accounts.length === 0 ? <p className="rounded-card border border-border bg-surface p-pad text-body text-muted">No channels yet.</p> : null}
       {accounts.map((a) => (
-        <section key={a.id} className="flex flex-col gap-3 rounded-card bg-surface p-pad">
+        <section key={a.id} className="flex flex-col gap-3 rounded-card border border-border bg-surface p-pad">
           <h2 className="text-title font-semibold">{a.email || "Google account"}</h2>
           <ul className="flex flex-col gap-3">
             {a.channels.map((c) => {

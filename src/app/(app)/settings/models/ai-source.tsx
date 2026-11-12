@@ -44,7 +44,7 @@ export function AiSourceForm({ on }: { on: boolean }) {
         </span>
       </label>
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" loading={pending}>
           {pending ? "Switching" : "Switch"}
         </Button>
         <Status state={state} />

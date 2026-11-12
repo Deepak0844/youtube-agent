@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { formatIst } from "@/server/core/display-format";
 import { microToDollars } from "@/server/core/spend";
@@ -13,7 +14,7 @@ export const metadata = { title: "Budgets" };
 // Spending limits. requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function BudgetsPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -38,7 +39,7 @@ async function Owned() {
         </p>
       </header>
 
-      <section aria-labelledby="spent-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="spent-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="spent-h" className="text-title font-semibold">Spending so far</h2>
         <dl className="mt-3 grid gap-3 sm:grid-cols-2">
           {[["Today", today], ["This month", month]].map(([label, t]) => (
@@ -73,7 +74,7 @@ async function Owned() {
         </ul>
       </section>
 
-      <section aria-labelledby="recent-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="recent-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="recent-h" className="text-title font-semibold">Recent changes</h2>
         {recent.rows.length === 0 ? (
           <p className="mt-2 text-body text-muted">No limit has been changed yet.</p>

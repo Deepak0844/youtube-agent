@@ -14,7 +14,7 @@ export function RerunForm({ videoId, stage, label, estimate, costNote }: { video
       <input type="hidden" name="stage" value={stage} />
       <p className="m-0 text-small text-muted">Takes {estimate}. {costNote}</p>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="secondary" disabled={pending} aria-label={`Run ${label} again`}>Run {label} again</Button>
+        <Button type="submit" variant="secondary" loading={pending} aria-label={`Run ${label} again`}>Run {label} again</Button>
         {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
       </div>
     </form>
@@ -47,8 +47,8 @@ export function ReframeButtons({ videoId, links = {} }: { videoId: string; links
     <form action={run} className="flex min-w-0 flex-col gap-2">
       <input type="hidden" name="videoId" value={videoId} />
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" name="format" value="16x9" variant="secondary" disabled={pending}>Make 16:9 version</Button>
-        <Button type="submit" name="format" value="1x1" variant="secondary" disabled={pending}>Make 1:1 version</Button>
+        <Button type="submit" name="format" value="16x9" variant="secondary" loading={pending}>Make 16:9 version</Button>
+        <Button type="submit" name="format" value="1x1" variant="secondary" loading={pending}>Make 1:1 version</Button>
         {links["16x9"] ? <a href={links["16x9"]} download="final-16x9.mp4" className="text-small underline">Open 16:9 file</a> : null}
         {links["1x1"] ? <a href={links["1x1"]} download="final-1x1.mp4" className="text-small underline">Open 1:1 file</a> : null}
         {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
@@ -88,7 +88,7 @@ export function SceneButtons({ videoId }: { videoId: string }) {
 export function SaveToLibraryForm({ videoId, hash, approved }: { videoId: string; hash: string; approved: boolean }) {
   const [state, run, pending] = useActionState<RerunState, FormData>(saveTsxToLibraryAction, {});
   return (
-    <form action={run} data-testid="save-to-library" className="flex min-w-0 flex-col gap-2 rounded-card bg-surface p-pad">
+    <form action={run} data-testid="save-to-library" className="flex min-w-0 flex-col gap-2 rounded-card border border-border bg-surface p-pad">
       <input type="hidden" name="videoId" value={videoId} />
       <input type="hidden" name="seenHash" value={hash} />
       <p className="m-0 text-body text-muted">Nothing is kept unless you say so. Animation file {hash.slice(0, 8)}.</p>

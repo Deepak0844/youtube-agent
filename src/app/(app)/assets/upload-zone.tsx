@@ -142,7 +142,7 @@ export function UploadZone({ onDone }: { onDone?: () => void }) {
   );
 
   return (
-    <section aria-labelledby={`${uid}-h`} className="flex min-w-0 flex-col gap-gap rounded-card bg-surface p-pad">
+    <section aria-labelledby={`${uid}-h`} className="flex min-w-0 flex-col gap-gap rounded-card border border-border bg-surface p-pad">
       <h2 id={`${uid}-h`} className="text-title font-semibold">
         Add files
       </h2>

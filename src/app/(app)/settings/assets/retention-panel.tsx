@@ -13,7 +13,7 @@ export function RetentionPanel() {
     <div data-testid="retention-panel" className="flex min-w-0 flex-col gap-3">
       <form action={run} className="flex flex-wrap items-center gap-3">
         <input type="hidden" name="mode" value="preview" />
-        <Button type="submit" variant="secondary" disabled={pending}>
+        <Button type="submit" variant="secondary" loading={pending}>
           Show what would be deleted
         </Button>
       </form>
@@ -38,7 +38,7 @@ export function RetentionPanel() {
           {p.items.length > 0 && !state.done ? (
             <form action={run} className="flex flex-wrap items-center gap-3">
               <input type="hidden" name="mode" value="run" />
-              <Button type="submit" variant="destructive" disabled={pending}>
+              <Button type="submit" variant="destructive" loading={pending}>
                 Delete these now
               </Button>
             </form>

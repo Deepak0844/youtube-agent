@@ -52,7 +52,7 @@ function Msg({ s }: { s: SeriesFormState }) {
 export function PlanPartsForm({ seriesId }: { seriesId: string }) {
   const [state, run, pending] = useActionState<SeriesFormState, FormData>(planPartsAction, {});
   return (
-    <form action={run} className="flex min-w-0 max-w-xl flex-col gap-3 rounded-card bg-surface p-pad">
+    <form action={run} className="flex min-w-0 max-w-xl flex-col gap-3 rounded-card border border-border bg-surface p-pad">
       <h2 className="text-title font-semibold">Add episodes</h2>
       <input type="hidden" name="id" value={seriesId} />
       <div className="flex flex-col gap-2">
@@ -60,7 +60,7 @@ export function PlanPartsForm({ seriesId }: { seriesId: string }) {
         <textarea id="episodes" name="episodes" rows={5} required className={areaClass} placeholder={"Arrays - How memory is laid out\nHash maps - Lookup in one step"} />
       </div>
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={pending}>Add to the plan</Button>
+        <Button type="submit" loading={pending}>Add to the plan</Button>
         <Msg s={state} />
       </div>
     </form>

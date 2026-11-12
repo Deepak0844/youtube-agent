@@ -10,7 +10,7 @@ function RunNow({ label, run }: { label: string; run: () => Promise<PullState> }
   const [state, act, pending] = useActionState<PullState, FormData>(() => run(), {});
   return (
     <form action={act} className="flex flex-wrap items-center gap-3 py-1">
-      <Button type="submit" disabled={pending}>{pending ? "Running…" : label}</Button>
+      <Button type="submit" loading={pending}>{pending ? "Running…" : label}</Button>
       {state.message ? (
         <p role={state.ok ? "status" : "alert"} className={state.ok ? "text-body text-pill-positive-ink" : "text-body text-pill-negative-ink"}>
           {state.message}

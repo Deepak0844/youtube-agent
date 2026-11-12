@@ -40,7 +40,7 @@ export function CapRow(p: CapRowProps) {
   const message = state.kind ? state.message : undefined;
 
   return (
-    <li className="rounded-card bg-surface p-pad" data-scope={p.scope}>
+    <li className="rounded-card border border-border bg-surface p-pad" data-scope={p.scope}>
       <div className="grid min-w-0 gap-gap md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-x-8">
         <div className="min-w-0">
           <h3 className="text-section font-semibold">{p.title}</h3>
@@ -81,7 +81,7 @@ export function CapRow(p: CapRowProps) {
             <Label htmlFor={switchId}>No limit</Label>
           </div>
           <div>
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" loading={pending}>
               {pending ? "Saving…" : "Save limit"}
             </Button>
           </div>

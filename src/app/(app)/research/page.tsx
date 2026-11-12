@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { RETENTION_DAYS } from "@/server/core/research";
 import { getPool } from "@/server/db/pool";
@@ -11,13 +12,13 @@ export const metadata = { title: "Research" };
 // Everything from YouTube, Hacker News and Wikimedia is untrusted text: it is shown through React's escaping and never acted on.
 export default function ResearchPage({ searchParams }: PageProps<"/research">) {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned searchParams={searchParams} />
     </Suspense>
   );
 }
 
-const card = "flex min-w-0 flex-col gap-4 rounded-card bg-surface p-pad";
+const card = "flex min-w-0 flex-col gap-4 rounded-card border border-border bg-surface p-pad";
 const n = (v: number) => v.toLocaleString("en-US");
 
 function TrendList({ title, id, items }: { title: string; id: string; items: ResearchView["trends"]["hackernews"] }) {

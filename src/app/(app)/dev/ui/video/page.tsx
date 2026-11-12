@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { notFound } from "next/navigation";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { CutStrip } from "@/ui/domain/cut-strip";
@@ -18,7 +19,7 @@ export const metadata = { title: "Dev UI video" };
 // The Short detail layout against made-up data. Dev/staging only, never in the nav.
 export default function DevVideo() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-64 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );

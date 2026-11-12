@@ -21,7 +21,7 @@ export function ResearchNowForm({ channels }: { channels: ReadonlyArray<{ channe
           ))}
         </select>
       </div>
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" loading={pending}>
         {pending ? "Researching…" : "Research now"}
       </Button>
       <p className="m-0 basis-full text-small text-muted">

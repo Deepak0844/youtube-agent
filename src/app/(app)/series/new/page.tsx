@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { connectedChannelOptions } from "@/server/db/ideas";
 import { getPool } from "@/server/db/pool";
@@ -8,7 +9,7 @@ export const metadata = { title: "New series" };
 
 export default function NewSeriesPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );

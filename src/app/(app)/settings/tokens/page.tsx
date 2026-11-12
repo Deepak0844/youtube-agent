@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { SCOPE_LABEL } from "@/server/core/api-token";
 import { listApiTokens } from "@/server/db/api-tokens";
@@ -12,7 +13,7 @@ export const metadata = { title: "API tokens" };
 
 export default function TokensPage() {
   return (
-    <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>
+    <Suspense fallback={<PageSkeleton variant="form" />}>
       <Owned />
     </Suspense>
   );
@@ -29,13 +30,13 @@ async function Owned() {
         <h1 className="text-page-title font-semibold tracking-tight">API tokens</h1>
         <p className="text-body text-muted">For your own scripts. A token can read status and create drafts, nothing more: it cannot pass gates, change safety settings, or reach settings, keys or tokens.</p>
       </header>
-      <section aria-labelledby="new-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="new-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="new-h" className="mb-4 text-title font-semibold">
           New token
         </h2>
         <TokenForm />
       </section>
-      <section aria-labelledby="list-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="list-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="list-h" className="mb-4 text-title font-semibold">
           Your tokens
         </h2>

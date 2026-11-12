@@ -39,7 +39,7 @@ export function CutoutForm({ id }: { id: string }) {
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={pending}>{pending ? "Asking..." : "Make a cut-out"}</Button>
+        <Button type="submit" loading={pending}>{pending ? "Asking..." : "Make a cut-out"}</Button>
         <p role="status" aria-live="polite" className={cn("m-0 text-body", state.message ? "text-pill-negative-ink" : "text-muted")}>
           {state.message ?? (state.ok ? "Asked for. It is made in the background; this list updates." : "")}
         </p>

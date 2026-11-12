@@ -55,7 +55,7 @@ export function EngineNumbersForm({ rows }: { rows: EngineNumberRow[] }) {
         })}
       </div>
       <div className="flex flex-wrap items-center gap-4">
-        <Button type="submit" disabled={pending}>Save engine numbers</Button>
+        <Button type="submit" loading={pending}>Save engine numbers</Button>
         {state.error ? (
           <p role="alert" className="text-body text-pill-negative-ink">{state.error}</p>
         ) : state.ok ? (

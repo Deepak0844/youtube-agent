@@ -34,7 +34,7 @@ export function NotifyForm(props: {
   const [test, runTest, testing] = useActionState<FormState, FormData>(testWebhookAction, {});
   return (
     <form action={save} className="flex flex-col gap-layout">
-      <section aria-labelledby="master-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="master-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="master-h" className="text-title font-semibold">Master switch</h2>
         <label className="mt-3 flex items-center gap-3 text-body">
           <input type="checkbox" name="master" defaultChecked={props.master} className={box} />
@@ -43,7 +43,7 @@ export function NotifyForm(props: {
         <p className="mt-1 text-small text-muted">The bell in the top bar always keeps the record, even when this is off.</p>
       </section>
 
-      <section aria-labelledby="quiet-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="quiet-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="quiet-h" className="text-title font-semibold">Quiet hours</h2>
         <p className="mt-1 text-small text-muted">During quiet hours desktop and webhook messages are held, not sent. The bell still fills.</p>
         <label className="mt-3 flex items-center gap-3 text-body">
@@ -70,7 +70,7 @@ export function NotifyForm(props: {
         </label>
       </section>
 
-      <section aria-labelledby="hook-h" className="rounded-card bg-surface p-pad">
+      <section aria-labelledby="hook-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="hook-h" className="text-title font-semibold">Webhook</h2>
         <p className="mt-1 text-small text-muted">
           Posts JSON with title, text and message (works with Slack, Discord and ntfy style hooks). Public addresses only. Leave empty for none.
@@ -88,7 +88,7 @@ export function NotifyForm(props: {
       </section>
 
       {GROUPS.map(([g, label]) => (
-        <section key={g} aria-labelledby={`g-${g}`} className="rounded-card bg-surface p-pad">
+        <section key={g} aria-labelledby={`g-${g}`} className="rounded-card border border-border bg-surface p-pad">
           <h2 id={`g-${g}`} className="text-title font-semibold">{label}</h2>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-body">

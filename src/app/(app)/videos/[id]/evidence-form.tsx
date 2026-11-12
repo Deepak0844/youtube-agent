@@ -20,7 +20,7 @@ export function EvidenceEditor({ videoId, initial, verified }: { videoId: string
       <input type="hidden" name="claims" value={JSON.stringify(rows.map(toWire))} />
       <ol className="m-0 flex list-none flex-col gap-4 p-0">
         {rows.map((r, i) => (
-          <li key={i} data-testid="claim-row" className="flex min-w-0 flex-col gap-2 rounded-card bg-surface p-pad">
+          <li key={i} data-testid="claim-row" className="flex min-w-0 flex-col gap-2 rounded-card border border-border bg-surface p-pad">
             <label className="flex flex-col gap-1 text-small text-muted">Claim
               <input aria-label={`Claim ${i + 1} text`} value={r.text} onChange={(e) => set(i, { text: e.target.value })} className={FIELD} />
             </label>
@@ -50,8 +50,8 @@ export function EvidenceEditor({ videoId, initial, verified }: { videoId: string
       </ol>
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="secondary" onClick={() => setRows((x) => [...x, blank()])}>Add claim</Button>
-        <Button type="submit" disabled={pending}>{verified ? "Re-verify" : "Save and verify"}</Button>
-        <Button type="submit" variant="ghost" name="intent" value="reseed" disabled={pending}>Start again from the script</Button>
+        <Button type="submit" loading={pending}>{verified ? "Re-verify" : "Save and verify"}</Button>
+        <Button type="submit" variant="ghost" name="intent" value="reseed" loading={pending}>Start again from the script</Button>
       </div>
       <p className="m-0 text-small text-muted">Verify checks each link with a quick, safe request (public web addresses only, 10 links at most, one try each). Only you can do this.</p>
       {state.message ? <p role={state.ok ? "status" : "alert"} className={state.ok ? "m-0 text-body text-pill-positive-ink" : "m-0 text-body text-pill-negative-ink"}>{state.message}</p> : null}
