@@ -13,7 +13,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     // suppressHydrationWarning: the head script may set data-theme on <html> before React hydrates.
     <html lang="en" className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        {/* suppressHydrationWarning: some browser extensions (a pop-up blocker was seen) rewrite this tag (src added, body
+            emptied); without it the root fails to hydrate and the dev server reloads the page in a loop. */}
+        <script suppressHydrationWarning dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
