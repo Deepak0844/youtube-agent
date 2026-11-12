@@ -15,6 +15,16 @@ export const totalsUrl = (videoId: string, start: string, end: string): string =
 export const retentionUrl = (videoId: string, start: string, end: string): string =>
   `${ANALYTICS_URL}?${q({ ids: "channel==MINE", startDate: start, endDate: end, dimensions: "elapsedVideoTimeRatio", metrics: "audienceWatchRatio", filters: `video==${videoId}` })}`;
 
+/** Channel totals for a date range: subscribers gained and lost (no video filter: the whole channel). */
+export const channelSubsUrl = (start: string, end: string): string =>
+  `${ANALYTICS_URL}?${q({ ids: "channel==MINE", startDate: start, endDate: end, metrics: "subscribersGained,subscribersLost" })}`;
+
+/** The 7-day window a pull on `day` (YYYY-MM-DD) covers: the 7 days ending 2 days earlier, since Analytics data lags. */
+export function subsWindow(day: string): { start: string; end: string } {
+  const at = (back: number) => new Date(Date.parse(`${day}T00:00:00Z`) - back * 86_400_000).toISOString().slice(0, 10);
+  return { start: at(8), end: at(2) };
+}
+
 export interface Stats { views: number | null; likes: number | null; comments: number | null }
 const num = (v: unknown): number | null => {
   const n = typeof v === "string" || typeof v === "number" ? Number(v) : NaN;
@@ -44,6 +54,18 @@ export function parseTotals(body: unknown): Totals {
     return i >= 0 && Array.isArray(row) ? num(row[i]) : null;
   };
   return { views: at("views"), minutesWatched: at("estimatedMinutesWatched"), avgViewPct: at("averageViewPercentage") };
+}
+
+export interface Subs { gained: number | null; lost: number | null }
+/** Channel subscriber totals, matched by column name. No row -> both null. */
+export function parseSubs(body: unknown): Subs {
+  const b = body as { columnHeaders?: Array<{ name?: unknown }>; rows?: unknown[][] };
+  const row = Array.isArray(b?.rows) ? b.rows[0] : undefined;
+  const at = (name: string) => {
+    const i = Array.isArray(b?.columnHeaders) ? b.columnHeaders.findIndex((h) => h?.name === name) : -1;
+    return i >= 0 && Array.isArray(row) ? num(row[i]) : null;
+  };
+  return { gained: at("subscribersGained"), lost: at("subscribersLost") };
 }
 
 export type Curve = Array<[ratio: number, watch: number]>;

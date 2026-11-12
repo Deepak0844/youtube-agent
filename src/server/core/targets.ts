@@ -1,10 +1,11 @@
 // Targets (Phase 6, parity with the old agent/targets.py): numbers per channel that say what "working" means. Pure, no IO.
-// Subscribers gained per week is not here: the analytics pull does not collect it yet.
+// Subscribers per week is a channel number, not a per-short one: actuals() leaves it empty and the db layer fills it in.
 export const TARGET_METRICS = {
   avg_view_pct: { label: "Average view %", op: ">=", unit: "%", start: 70 },
   views: { label: "Views per short (median)", op: ">=", unit: "", start: null },
   cost_per_short: { label: "Cost per short", op: "<=", unit: "$", start: 2 },
   cost_per_1k_views: { label: "Cost per 1,000 views", op: "<=", unit: "$", start: null },
+  subscribers_per_week: { label: "Subscribers gained per week (net)", op: ">=", unit: "", start: null },
 } as const;
 export type TargetMetric = keyof typeof TARGET_METRICS;
 export const TARGET_METRIC_IDS = Object.keys(TARGET_METRICS) as TargetMetric[];
@@ -40,7 +41,14 @@ export function actuals(shorts: readonly ShortNumbers[]): Record<TargetMetric, A
     views: { value: views.length ? median(views) : null, n: views.length },
     cost_per_short: { value: shorts.length ? round(shorts.reduce((a, s) => a + s.spendMicroUsd, 0) / 1e6 / shorts.length, 2) : null, n: shorts.length },
     cost_per_1k_views: { value: totalViews > 0 ? round(totalSpend / (totalViews / 1000), 2) : null, n: withViews.length },
+    subscribers_per_week: { value: null, n: 0 },
   };
+}
+
+/** Net subscribers over the latest good weekly row of each channel in scope (gained minus lost); n = channels with data. */
+export function subscriberActual(rows: ReadonlyArray<{ gained: number | null; lost: number | null }>): Actual {
+  const ok = rows.filter((r) => r.gained !== null);
+  return { value: ok.length ? ok.reduce((a, r) => a + r.gained! - (r.lost ?? 0), 0) : null, n: ok.length };
 }
 
 export type TargetStatus = "on_track" | "behind" | "no_data";
