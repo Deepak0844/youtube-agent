@@ -42,11 +42,11 @@ beforeEach(async () => {
 const q = (sql: string, params: unknown[] = []) => db.pool.query(sql, params);
 async function makeOwner(): Promise<void> {
   const l = await createSetupLink(db.pool, "create", BASE);
-  expect(await consumeSetupLink(db.pool, l.slice(`${BASE}/setup/`.length), { username: "alice", password: PW })).toEqual({ ok: true });
+  expect(await consumeSetupLink(db.pool, l.slice(`${BASE}/setup/`.length), { username: "alice@example.com", password: PW })).toEqual({ ok: true });
 }
 /** A real sign-in: returns its token and its session id (what requireOwner would give). */
 async function signIn(): Promise<{ token: string; id: string }> {
-  const r = await login(db.pool, { username: "alice", password: PW, ip: "10.0.0.1", userAgent: "ua" });
+  const r = await login(db.pool, { username: "alice@example.com", password: PW, ip: "10.0.0.1", userAgent: "ua" });
   if (!r.ok) throw new Error("login failed");
   const s = await validateSession(db.pool, r.token);
   if (!s.ok) throw new Error("no session");
@@ -78,8 +78,8 @@ describe("changePasswordAction", () => {
     expect(await validateSession(db.pool, c.value)).toEqual({ ok: true, sessionId: me.id }); // the new one is this same session
     expect((await validateSession(db.pool, other.token)).ok).toBe(false); // the other sign-in was signed out
 
-    expect((await login(db.pool, { username: "alice", password: NEWPW, ip: "10.0.0.2", userAgent: "ua" })).ok).toBe(true);
-    expect((await login(db.pool, { username: "alice", password: PW, ip: "10.0.0.3", userAgent: "ua" })).ok).toBe(false);
+    expect((await login(db.pool, { username: "alice@example.com", password: NEWPW, ip: "10.0.0.2", userAgent: "ua" })).ok).toBe(true);
+    expect((await login(db.pool, { username: "alice@example.com", password: PW, ip: "10.0.0.3", userAgent: "ua" })).ok).toBe(false);
     const a = JSON.stringify(await auditEvents("password.%"));
     expect(a).toContain("password.changed");
     for (const secret of [PW, NEWPW, c.value, me.token]) expect(a).not.toContain(secret);
@@ -116,7 +116,7 @@ describe("changePasswordAction", () => {
     }
     expect(await failures()).toBe(0);
     expect(h.cookieSets).toHaveLength(0);
-    expect((await login(db.pool, { username: "alice", password: PW, ip: "10.0.0.2", userAgent: "ua" })).ok).toBe(true); // still the old password
+    expect((await login(db.pool, { username: "alice@example.com", password: PW, ip: "10.0.0.2", userAgent: "ua" })).ok).toBe(true); // still the old password
   });
 
   it("five wrong tries lock the change, as at sign-in (a stolen cookie cannot guess the password freely)", async () => {
@@ -139,7 +139,7 @@ describe("changePasswordAction", () => {
       expect(r, origin).toEqual({ ok: false, message: "That request did not come from this page. Nothing was changed." });
     }
     expect(await failures()).toBe(0);
-    expect((await login(db.pool, { username: "alice", password: PW, ip: "10.0.0.2", userAgent: "ua" })).ok).toBe(true);
+    expect((await login(db.pool, { username: "alice@example.com", password: PW, ip: "10.0.0.2", userAgent: "ua" })).ok).toBe(true);
   });
 
   it("is session-only: it asks requireOwner, which reads the cookie, and the file never reads an API token", async () => {

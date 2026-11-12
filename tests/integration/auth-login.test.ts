@@ -45,10 +45,10 @@ const verifies = () => spies.verify!.mock.calls.length;
 
 async function makeOwner(): Promise<void> {
   const l = await createSetupLink(db.pool, "create", BASE);
-  expect(await consumeSetupLink(db.pool, l.slice(`${BASE}/setup/`.length), { username: "alice", password: PW })).toEqual({ ok: true });
+  expect(await consumeSetupLink(db.pool, l.slice(`${BASE}/setup/`.length), { username: "alice@example.com", password: PW })).toEqual({ ok: true });
 }
 const attempt = (o: Partial<Parameters<typeof login>[1]> = {}) =>
-  login(db.pool, { username: "alice", password: PW, ip: "10.0.0.1", userAgent: "ua", ...o });
+  login(db.pool, { username: "alice@example.com", password: PW, ip: "10.0.0.1", userAgent: "ua", ...o });
 const wrong = (o: Partial<Parameters<typeof login>[1]> = {}) => attempt({ password: "wrong password here", ...o });
 async function fail(key: string, ip: string, n: number) {
   for (let i = 0; i < n; i++) await q("insert into login_attempts (username_key, ip, at, success) values ($1,$2,clock_timestamp(),false)", [key, ip]);
@@ -66,7 +66,7 @@ async function failures(): Promise<number> {
 describe("login basics", () => {
   it("happy_path_creates_session_stores_only_hash", async () => {
     await makeOwner();
-    const r = await attempt({ username: "  ALICE ", userAgent: "x".repeat(400) });
+    const r = await attempt({ username: "  ALICE@EXAMPLE.COM ", userAgent: "x".repeat(400) });
     if (!r.ok) throw new Error("expected ok");
     expect(r.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const idle = r.expiresAt.getTime();
@@ -85,7 +85,7 @@ describe("login basics", () => {
     await makeOwner();
     const a = await wrong({ ip: "1.1.1.1" });
     expect(spies.dummy!).not.toHaveBeenCalled();
-    const b = await attempt({ username: "nobody", ip: "1.1.1.2" });
+    const b = await attempt({ username: "nobody@example.com", ip: "1.1.1.2" });
     expect(spies.dummy!).toHaveBeenCalledTimes(1);
     const c = await attempt({ username: "bad name!\u0000", ip: "1.1.1.3" });
     expect(spies.dummy!).toHaveBeenCalledTimes(2);
@@ -104,10 +104,10 @@ describe("login basics", () => {
 
   it("case_and_unicode_variants_share_one_lockout_key", async () => {
     await makeOwner();
-    for (const u of ["alice", "ALICE", " Alice ", "ａｌｉｃｅ"]) await wrong({ username: u, ip: `9.9.9.${u.length}` });
+    for (const u of ["alice@example.com", "ALICE@example.com", " Alice@Example.com ", "ａｌｉｃｅ@example.com"]) await wrong({ username: u, ip: `9.9.9.${u.length}` });
     // 4 failures (different ips): one more via a variant -> 5 -> locked for ALL variants
-    await wrong({ username: "aLiCe", ip: "9.9.9.99" });
-    const r = await attempt({ username: "ALICE", ip: "9.9.9.200" });
+    await wrong({ username: "aLiCe@example.com", ip: "9.9.9.99" });
+    const r = await attempt({ username: "ALICE@example.com", ip: "9.9.9.200" });
     expect(r).toMatchObject({ ok: false, reason: "locked" });
   });
 
@@ -163,7 +163,7 @@ describe("lockout", () => {
     await makeOwner();
     for (const n of [5, 6, 7, 12, 30]) {
       await db.ownerPool.query("truncate login_attempts");
-      await fail("alice", "7.7.7.7", n);
+      await fail("alice@example.com", "7.7.7.7", n);
       const r = await attempt({ ip: "8.8.8.8" });
       expect(r).toMatchObject({ ok: false, reason: "locked" });
       if (r.ok) return;
@@ -177,16 +177,16 @@ describe("lockout", () => {
 
   it("boundary_4_failures_not_locked", async () => {
     await makeOwner();
-    await fail("alice", "7.7.7.7", 4);
+    await fail("alice@example.com", "7.7.7.7", 4);
     expect((await attempt({ ip: "8.8.8.8" })).ok).toBe(true);
   });
 
   it("per_ip_lockout_independent_of_username_and_other_ip_free", async () => {
     await makeOwner();
     for (const u of ["u1", "u2", "u3", "u4", "u5"]) expect(await attempt({ username: u, ip: "5.5.5.5" })).toEqual({ ok: false, reason: "invalid" });
-    const locked = await attempt({ username: "alice", ip: "5.5.5.5" });
+    const locked = await attempt({ username: "alice@example.com", ip: "5.5.5.5" });
     expect(locked).toMatchObject({ ok: false, reason: "locked" });
-    expect(await attempt({ username: "alice", ip: "6.6.6.6" })).toMatchObject({ ok: true });
+    expect(await attempt({ username: "alice@example.com", ip: "6.6.6.6" })).toMatchObject({ ok: true });
   });
 
   it("missing_ip_uses_shared_unknown_bucket", async () => {
@@ -197,15 +197,15 @@ describe("lockout", () => {
 
   it("success_resets_username_streak", async () => {
     await makeOwner();
-    await fail("alice", "3.3.3.3", 4);
+    await fail("alice@example.com", "3.3.3.3", 4);
     expect((await attempt({ ip: "4.4.4.4" })).ok).toBe(true);
-    await fail("alice", "3.3.3.3", 4); // 4 again after the success: still free
+    await fail("alice@example.com", "3.3.3.3", 4); // 4 again after the success: still free
     expect((await attempt({ ip: "4.4.4.5" })).ok).toBe(true);
   });
 
   it("failures_older_than_24h_do_not_count", async () => {
     await makeOwner();
-    await fail("alice", "3.3.3.3", 6);
+    await fail("alice@example.com", "3.3.3.3", 6);
     await back(25 * 3600);
     expect((await attempt()).ok).toBe(true);
   });
@@ -223,7 +223,7 @@ describe("lockout", () => {
 
   it("concurrent_attempts_on_different_usernames_from_one_ip_are_capped_by_ip", async () => {
     await makeOwner();
-    const rs = await Promise.all(Array.from({ length: 12 }, (_, i) => attempt({ username: `user${i}`, ip: "2.2.2.2" })));
+    const rs = await Promise.all(Array.from({ length: 12 }, (_, i) => attempt({ username: `user${i}@example.com`, ip: "2.2.2.2" })));
     expect(rs.filter((r) => !r.ok && r.reason === "invalid")).toHaveLength(5);
     expect(rs.filter((r) => !r.ok && r.reason === "locked")).toHaveLength(7);
   });
@@ -241,7 +241,7 @@ describe("second factor", () => {
 
   it("needs_totp_creates_no_session_records_nothing_and_does_not_reset_streak", async () => {
     await enable();
-    await fail("alice", "1.2.3.4", 3);
+    await fail("alice@example.com", "1.2.3.4", 3);
     const before = Number((await q("select count(*) n from login_attempts")).rows[0].n);
     expect(await attempt({ ip: "1.2.3.4" })).toEqual({ ok: false, reason: "needs_totp" });
     expect((await q("select count(*) n from sessions")).rows[0].n).toBe("0");
@@ -374,7 +374,7 @@ describe("sessions", () => {
     expect(await changePassword(db.pool, sessionId, "not the password", NEWPW)).toEqual({ ok: false, reason: "invalid" });
     expect(await failures()).toBe(1);
     expect(await changePassword(db.pool, sessionId, PW, "short")).toEqual({ ok: false, reason: "weak_password" });
-    expect(await changePassword(db.pool, sessionId, PW, "alice")).toEqual({ ok: false, reason: "weak_password" });
+    expect(await changePassword(db.pool, sessionId, PW, "alice@example.com")).toEqual({ ok: false, reason: "weak_password" });
     expect((await attempt()).ok).toBe(true); // old password still works
   });
 
@@ -436,7 +436,7 @@ describe("sessions", () => {
 describe("lockout does not become a denial of service", () => {
   it("locked_attempts_are_not_recorded_and_do_not_extend_the_lock", async () => {
     await makeOwner();
-    await fail("alice", "7.7.7.7", 5);
+    await fail("alice@example.com", "7.7.7.7", 5);
     const n0 = Number((await q("select count(*) n from login_attempts")).rows[0].n);
     for (let i = 0; i < 3; i++) expect(await attempt({ ip: `8.8.8.${i}` })).toMatchObject({ reason: "locked" });
     expect(Number((await q("select count(*) n from login_attempts")).rows[0].n)).toBe(n0);
@@ -444,7 +444,7 @@ describe("lockout does not become a denial of service", () => {
 
   it("lock_expires_delay_after_last_real_failure", async () => {
     await makeOwner();
-    await fail("alice", "7.7.7.7", 5);
+    await fail("alice@example.com", "7.7.7.7", 5);
     for (let i = 0; i < 8; i++) await attempt({ ip: `8.8.8.${i}` }); // hammering while locked
     await back(61); // 60 s delay for 5 real failures has passed
     expect((await attempt({ ip: "8.8.8.99" })).ok).toBe(true);
@@ -453,7 +453,7 @@ describe("lockout does not become a denial of service", () => {
   it("known_good_ip_bypasses_username_lock_but_not_ip_lock", async () => {
     await makeOwner();
     expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
-    await fail("alice", "9.9.9.9", 8); // attacker failures from elsewhere lock the username
+    await fail("alice@example.com", "9.9.9.9", 8); // attacker failures from elsewhere lock the username
     expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
     await fail("other", "1.1.1.1", 5); // now the ip itself is locked
     expect(await attempt({ ip: "1.1.1.1" })).toMatchObject({ ok: false, reason: "locked" });
@@ -462,7 +462,7 @@ describe("lockout does not become a denial of service", () => {
   it("unknown_ip_is_locked_by_username_lock", async () => {
     await makeOwner();
     expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
-    await fail("alice", "9.9.9.9", 5);
+    await fail("alice@example.com", "9.9.9.9", 5);
     expect(await attempt({ ip: "2.2.2.2" })).toMatchObject({ ok: false, reason: "locked" });
   });
 
@@ -470,14 +470,14 @@ describe("lockout does not become a denial of service", () => {
     await makeOwner();
     expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
     await q("update login_attempts set at = at - interval '31 days' where success");
-    await fail("alice", "9.9.9.9", 5);
+    await fail("alice@example.com", "9.9.9.9", 5);
     expect(await attempt({ ip: "1.1.1.1" })).toMatchObject({ ok: false, reason: "locked" });
   });
 
   it("attacker_rotating_ips_cannot_keep_a_known_good_ip_locked_out", async () => {
     await makeOwner();
     expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
-    for (let i = 0; i < 30; i++) await attempt({ password: "bad bad bad bad", ip: `66.0.0.${i}`, username: "alice" });
+    for (let i = 0; i < 30; i++) await attempt({ password: "bad bad bad bad", ip: `66.0.0.${i}`, username: "alice@example.com" });
     expect((await attempt({ ip: "1.1.1.1" })).ok).toBe(true);
   });
 
@@ -501,7 +501,7 @@ describe("admission control", () => {
     configureAuthAdmission({ maxInFlightAuth: 3, maxPerIp: 1 });
     const small = new pg.Pool({ connectionString: url(), max: 4 });
     try {
-      const flood = Promise.all(Array.from({ length: 40 }, (_, i) => login(small, { username: `user${i}`, password: "wrong wrong wrong", ip: `20.0.0.${i}` })));
+      const flood = Promise.all(Array.from({ length: 40 }, (_, i) => login(small, { username: `user${i}@example.com`, password: "wrong wrong wrong", ip: `20.0.0.${i}` })));
       await new Promise((r) => setTimeout(r, 50));
       const t0 = Date.now();
       await small.query("select 1");
@@ -536,7 +536,7 @@ describe("admission control", () => {
       },
     });
     const holder = wrong({ ip: "60.0.0.1" });
-    const busy = await login(counting, { username: "alice", password: PW, ip: "60.0.0.2" });
+    const busy = await login(counting, { username: "alice@example.com", password: PW, ip: "60.0.0.2" });
     const busyCp = await changePassword(counting, "00000000-0000-4000-8000-000000000000", PW, NEWPW, "60.0.0.3");
     expect(busy).toEqual({ ok: false, reason: "busy" });
     expect(busyCp).toEqual({ ok: false, reason: "busy" });
@@ -550,7 +550,7 @@ describe("admission control", () => {
     const broken = { connect: async () => { throw new Error("db down"); }, query: async () => { throw new Error("db down"); } } as unknown as pg.Pool;
     await fail("x", "70.0.0.1", 5); // ip locked: cheap refusals, no scrypt
     for (let i = 0; i < 100; i++) {
-      await expect(login(broken, { username: "alice", password: PW, ip: "70.0.0.9" })).rejects.toThrow();
+      await expect(login(broken, { username: "alice@example.com", password: PW, ip: "70.0.0.9" })).rejects.toThrow();
       expect(await attempt({ ip: "70.0.0.1" })).toMatchObject({ reason: "locked" });
     }
     expect((await attempt({ ip: "70.0.0.5" })).ok).toBe(true);
@@ -563,7 +563,7 @@ describe("admission control", () => {
 describe("ip hardening", () => {
   it("ipv4_mapped_ipv6_and_plain_ipv4_share_one_lock", async () => {
     await makeOwner();
-    for (let i = 0; i < 5; i++) await attempt({ username: `user${i}`, ip: "::ffff:9.9.9.9" });
+    for (let i = 0; i < 5; i++) await attempt({ username: `user${i}@example.com`, ip: "::ffff:9.9.9.9" });
     expect(await attempt({ ip: "9.9.9.9" })).toMatchObject({ ok: false, reason: "locked" });
     expect(await attempt({ ip: " ::FFFF:909:909 " })).toMatchObject({ ok: false, reason: "locked" });
   });
@@ -571,7 +571,7 @@ describe("ip hardening", () => {
   it("unknown_ip_success_does_not_bypass_username_lock", async () => {
     await makeOwner();
     expect((await attempt({ ip: undefined })).ok).toBe(true);
-    await fail("alice", "9.9.9.9", 5);
+    await fail("alice@example.com", "9.9.9.9", 5);
     expect(await attempt({ ip: undefined })).toMatchObject({ ok: false, reason: "locked" });
   });
 
@@ -580,7 +580,7 @@ describe("ip hardening", () => {
     const r = await attempt({ ip: undefined });
     if (!r.ok) throw new Error("login");
     const { sessionId } = (await validateSession(db.pool, r.token)) as { sessionId: string };
-    await fail("alice", "9.9.9.9", 5);
+    await fail("alice@example.com", "9.9.9.9", 5);
     expect(await changePassword(db.pool, sessionId, PW, NEWPW)).toEqual({ ok: false, reason: "locked" });
   });
 });
@@ -677,7 +677,7 @@ describe("audit", () => {
     const en = await enableTotp(db.pool, code, t - 90_000);
     if (!en.ok) throw new Error("enable");
     await wrong({ password: "hunter2-secret-pw" });
-    await attempt({ username: "totally-secret-username-1", password: "pw-pw-pw-pw-pw" });
+    await attempt({ username: "totally-secret-username-1@example.com", password: "pw-pw-pw-pw-pw" });
     const ok = await attempt({ code: en.recoveryCodes[0]! });
     if (!ok.ok) throw new Error("login");
     const { sessionId } = (await validateSession(db.pool, ok.token)) as { sessionId: string };
@@ -688,7 +688,7 @@ describe("audit", () => {
     expect(all).toContain("login.success");
     expect(all).toContain("login.failure");
     expect(all).toContain("password.changed");
-    for (const secretStr of [PW, NEWPW, "hunter2-secret-pw", "totally-secret-username-1", "pw-pw-pw-pw-pw", ok.token, ch.token, secret, ...en.recoveryCodes, en.recoveryCodes[0]!.replace(/-/g, "")]) {
+    for (const secretStr of [PW, NEWPW, "hunter2-secret-pw", "totally-secret-username-1@example.com", "pw-pw-pw-pw-pw", ok.token, ch.token, secret, ...en.recoveryCodes, en.recoveryCodes[0]!.replace(/-/g, "")]) {
       expect(all).not.toContain(secretStr);
     }
   });

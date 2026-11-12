@@ -39,7 +39,7 @@ const step = Math.floor(NOW / 30000);
 async function makeOwner(): Promise<void> {
   if ((await q("select 1 from owner")).rows.length > 0) return;
   const l = await createSetupLink(db.pool, "create", BASE);
-  expect(await consumeSetupLink(db.pool, l.slice(`${BASE}/setup/`.length), { username: "alice", password: PW })).toEqual({ ok: true });
+  expect(await consumeSetupLink(db.pool, l.slice(`${BASE}/setup/`.length), { username: "alice@example.com", password: PW })).toEqual({ ok: true });
 }
 async function enable(): Promise<{ secret: string; codes: string[] }> {
   await makeOwner();
@@ -55,7 +55,7 @@ describe("enrollment", () => {
     await makeOwner();
     const { secret, uri } = await beginTotpEnrollment(db.pool);
     expect(uri).toContain(`secret=${secret}`);
-    expect(uri).toContain("alice");
+    expect(uri).toContain("alice%40example.com");
     const o = (await q("select * from owner")).rows[0];
     expect(o.totp_pending_secret).toBe("vault:totp.pending");
     expect(o.totp_secret).toBeNull();

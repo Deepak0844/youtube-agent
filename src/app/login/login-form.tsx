@@ -14,7 +14,7 @@ export function LoginForm({ next }: { next: string }) {
   return (
     <form action={action} className="flex w-full flex-col gap-5">
       <input type="hidden" name="next" value={next} />
-      <Field label="Username" id="login-username" name="username" autoComplete="username" required value={username} onChange={(e) => setUsername(e.target.value)} />
+      <Field label="Email" id="login-username" name="username" type="email" autoComplete="email" required value={username} onChange={(e) => setUsername(e.target.value)} />
       <Field label="Password" id="login-password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
       {state.needCode ? (
         <Field label="Authentication or recovery code" id="login-code" name="code" autoComplete="one-time-code" required autoFocus />

@@ -29,7 +29,7 @@ const q = (sql: string, params: unknown[] = []) => db.pool.query(sql, params);
 
 async function makeOwner(): Promise<void> {
   const l = await createSetupLink(db.pool, "create", BASE);
-  expect(await consumeSetupLink(db.pool, l.slice(`${BASE}/setup/`.length), { username: "alice", password: PW })).toEqual({ ok: true });
+  expect(await consumeSetupLink(db.pool, l.slice(`${BASE}/setup/`.length), { username: "alice@example.com", password: PW })).toEqual({ ok: true });
 }
 async function enable(): Promise<{ secret: string; codes: string[] }> {
   await makeOwner();
@@ -44,7 +44,7 @@ const dump = async () =>
     (await q("select name, encode(ciphertext,'hex') c, encode(nonce,'hex') n, key_id, hint from secrets")).rows,
     (await q("select * from audit_log")).rows,
   ]);
-const attempt = (code?: string) => login(db.pool, { username: "alice", password: PW, ip: "10.0.0.1", userAgent: "ua", code, now: new Date(NOW) });
+const attempt = (code?: string) => login(db.pool, { username: "alice@example.com", password: PW, ip: "10.0.0.1", userAgent: "ua", code, now: new Date(NOW) });
 const vaultCount = async () => (await q("select count(*) n from secrets where name like 'totp.%'")).rows[0].n;
 
 describe("enroll stores only ciphertext", () => {

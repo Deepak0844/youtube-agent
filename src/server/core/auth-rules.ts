@@ -44,12 +44,14 @@ export function lockoutDelayMs(recentFailures: number): number {
   return Math.min(LOCKOUT_BASE_MS * 2 ** exp, LOCKOUT_CAP_MS);
 }
 
-// NFKC, trim, lowercase, then NFKC again (lowercasing can produce new composable sequences). Only ASCII [a-z0-9._-], 3-64 chars.
-// Anything else (including look-alike Unicode that survives NFKC) returns null.
+// The sign-in name is an email address (stored in owner.username). NFKC, trim, lowercase, then NFKC again (lowercasing can
+// produce new composable sequences). Only plain ASCII addresses: local part [a-z0-9._%+-] up to 64 chars, a dotted domain of
+// [a-z0-9-] labels, 254 chars total. Anything else (including look-alike Unicode that survives NFKC) returns null.
+const EMAIL = /^[a-z0-9._%+-]{1,64}@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
 export function normalizeUsername(input: string): string | null {
   if (typeof input !== "string") return null;
   const n = input.normalize("NFKC").trim().toLowerCase().normalize("NFKC");
-  return /^[a-z0-9._-]{3,64}$/.test(n) ? n : null;
+  return n.length <= 254 && EMAIL.test(n) ? n : null;
 }
 
 export const SESSION_IDLE_MS = 8 * 3_600_000;

@@ -11,7 +11,7 @@ import { withTestDb, type TestDb } from "../support/db";
 const run = promisify(execFile);
 const BASE = "http://localhost:3000";
 const PW = "correct horse battery staple";
-const USER = "alice";
+const USER = "alice@example.com";
 
 let db: TestDb;
 beforeAll(async () => {
@@ -49,7 +49,7 @@ describe("setup links", () => {
   it("create_twice_second_refused", async () => {
     await makeOwner();
     const second = await link("create");
-    expect(await consumeSetupLink(db.pool, tokenOf(second), { username: "bob12", password: PW })).toEqual({ ok: false, reason: "invalid" });
+    expect(await consumeSetupLink(db.pool, tokenOf(second), { username: "bob12@example.com", password: PW })).toEqual({ ok: false, reason: "invalid" });
     expect((await q("select username from owner")).rows).toEqual([{ username: USER }]);
   });
 
@@ -91,13 +91,13 @@ describe("setup links", () => {
     expect(await consumeSetupLink(db.pool, t, { username: USER, password: "short" })).toEqual({ ok: false, reason: "weak_password" });
     expect(await consumeSetupLink(db.pool, t, { username: USER, password: "password123" })).toEqual({ ok: false, reason: "weak_password" });
     expect(await consumeSetupLink(db.pool, t, { username: USER, password: "x".repeat(5000) })).toEqual({ ok: false, reason: "weak_password" });
-    expect(await consumeSetupLink(db.pool, t, { username: "a b", password: PW })).toEqual({ ok: false, reason: "bad_username" });
-    expect(await consumeSetupLink(db.pool, t, { username: "аlice", password: PW })).toEqual({ ok: false, reason: "bad_username" });
+    expect(await consumeSetupLink(db.pool, t, { username: "a b@example.com", password: PW })).toEqual({ ok: false, reason: "bad_username" });
+    expect(await consumeSetupLink(db.pool, t, { username: "аlice@example.com", password: PW })).toEqual({ ok: false, reason: "bad_username" });
     expect((await q("select used_at from setup_links")).rows[0].used_at).toBeNull();
     expect(await ownerExists(db.pool)).toBe(false);
-    expect(await consumeSetupLink(db.pool, t, { username: " Alice ", password: PW })).toEqual({ ok: true });
+    expect(await consumeSetupLink(db.pool, t, { username: " Alice@Example.com ", password: PW })).toEqual({ ok: true });
     const o = (await q("select username, password_hash from owner")).rows[0];
-    expect(o.username).toBe("alice");
+    expect(o.username).toBe("alice@example.com");
     expect(await verifyPassword(PW, o.password_hash)).toBe(true);
   });
 
@@ -106,7 +106,7 @@ describe("setup links", () => {
     const url = db.pool.options.connectionString!;
     const pools = Array.from({ length: 20 }, () => new pg.Pool({ connectionString: url, max: 1 }));
     try {
-      const res = await Promise.all(pools.map((p, i) => consumeSetupLink(p, t, { username: `user${i}`.padEnd(5, "x"), password: PW })));
+      const res = await Promise.all(pools.map((p, i) => consumeSetupLink(p, t, { username: `user${i}x@example.com`, password: PW })));
       expect(res.filter((r) => r.ok)).toHaveLength(1);
       expect(res.filter((r) => !r.ok && r.reason === "used")).toHaveLength(19);
       expect((await q("select count(*)::int as n from owner")).rows[0].n).toBe(1);
@@ -160,9 +160,9 @@ describe("reset", () => {
     await makeOwner();
     await seedSecurity();
     const t = tokenOf(await link("reset"));
-    expect(await consumeSetupLink(db.pool, t, { username: "newowner", password: "another long passphrase" })).toEqual({ ok: true });
+    expect(await consumeSetupLink(db.pool, t, { username: "newowner@example.com", password: "another long passphrase" })).toEqual({ ok: true });
     const o = (await q("select * from owner")).rows[0];
-    expect(o.username).toBe("newowner");
+    expect(o.username).toBe("newowner@example.com");
     expect(await verifyPassword("another long passphrase", o.password_hash)).toBe(true);
     expect(await verifyPassword(PW, o.password_hash)).toBe(false);
     expect(o.totp_secret).toBeNull();
@@ -198,7 +198,7 @@ describe("reset", () => {
     const url = db.pool.options.connectionString!;
     const pools = Array.from({ length: 20 }, () => new pg.Pool({ connectionString: url, max: 1 }));
     try {
-      const res = await Promise.all(pools.map((p, i) => consumeSetupLink(p, t, { username: `user${i}`.padEnd(5, "x"), password: PW })));
+      const res = await Promise.all(pools.map((p, i) => consumeSetupLink(p, t, { username: `user${i}x@example.com`, password: PW })));
       expect(res.filter((r) => r.ok)).toHaveLength(1);
       expect(res.filter((r) => !r.ok && r.reason === "used")).toHaveLength(19);
     } finally {

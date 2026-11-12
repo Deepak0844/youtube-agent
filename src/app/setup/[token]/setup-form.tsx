@@ -11,7 +11,7 @@ export function SetupForm({ token }: { token: string }) {
   return (
     <form action={action} className="flex w-full flex-col gap-5">
       <input type="hidden" name="token" value={token} />
-      <Field label="Username" id="setup-username" name="username" autoComplete="username" required />
+      <Field label="Email" id="setup-username" name="username" type="email" autoComplete="email" required />
       <Field label="Password (12+ characters)" id="setup-password" name="password" type="password" autoComplete="new-password" required minLength={12} />
       <Field label="Repeat password" id="setup-confirm" name="confirm" type="password" autoComplete="new-password" required minLength={12} />
       {state.error ? (
