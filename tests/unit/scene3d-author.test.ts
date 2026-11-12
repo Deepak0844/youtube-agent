@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "@/server/core/agent-loop";
 import { sha256Hex } from "@/server/core/content-hash";
 import { KnownFailure } from "@/server/core/paid-call";
-import { S3K_EXAMPLE_A, S3K_EXAMPLE_B, S3K_EXAMPLE_C } from "@/server/core/s3k-kit-dts";
+import { S3K_EXAMPLE_A, S3K_EXAMPLE_B, S3K_EXAMPLE_C, S3K_EXAMPLE_D } from "@/server/core/s3k-kit-dts";
 import { authorScene3d } from "@/server/core/scene3d-author";
 import { AUTHOR_MAX_ATTEMPTS, authorMessages, authorSystemPrompt, authorUserPrompt, captionOf, extractScene, retryPrompt, sceneFrames, sceneProps } from "@/server/core/scene3d-author-prompt";
 import { readSceneCodeBody, sceneCodeSha } from "@/server/core/scene3d-code-body";
@@ -74,6 +74,8 @@ describe("the prompt", () => {
     expect(sys).toContain(S3K_EXAMPLE_A);
     expect(sys).toContain(S3K_EXAMPLE_B);
     expect(sys).toContain(S3K_EXAMPLE_C);
+    expect(sys).toContain(S3K_EXAMPLE_D);
+    expect(sys).toMatch(/never put a crane, ship, container, tower or engine in your scene unless THIS story is about one/);
     expect(sys).toContain("## World (sky, haze, sun, light, ground, sea)");
     expect(sys).not.toContain("## Examples (imitate these)");
     expect(sys).not.toContain("Tunnels");

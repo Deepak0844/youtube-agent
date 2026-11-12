@@ -3,10 +3,10 @@ Write one scene file that imports ONLY from "s3k" and "three" (plus react and re
 
 ## Rules (each one prevents a look that was rejected)
 1. Order inside <Stage>: <World/> first, then your objects, <CameraRig/>, and <Finish/> LAST.
-2. Nothing floats: place every object with rest(object, plane) (or models.get(...) which already stands on y = 0). Never guess a y.
+2. Nothing floats: place every object with rest(object, plane) (or models.get(...) which already stands on y = 0). Never guess a y. Only an idea scene (data structure, algorithm, network) may hang its parts in the air above a "studio" ground (example D).
 3. All motion is a pure function of t from useT(): build once in useMemo, then call part.update(t) each render. No Math.random (use rnd(seed)), no state between frames, no Date, no timers.
 4. Build in useMemo keyed by [models]; never create meshes, textures or materials per frame. Repeating things use instance(); keep draw calls low.
-5. Frame the focus, not the world: portrait is narrow. A shot should fill 0.5..1 of the safe area (coverage.fill); use { frame: { box } } shots and check onReport.
+5. Frame the focus, not the world: portrait is narrow and TALL. A shot should fill 0.5..1 of the safe area (coverage.fill); use { frame: { box } } shots and check onReport. Lay the subject out to fill the tall frame (never a long thin row), and change angle and distance between shots.
 6. Camera never below ground or water: pass floor to CameraRig. Keep the sun's focus box tight (World focus) so shadows stay crisp.
 7. Strata and ground textures are world-aligned (a pebble has one size everywhere); tile = metres per texture tile.
 8. Captions: <=32 characters, one per shot, through Stage overlay={<Captions items={...}/>}.
@@ -32,6 +32,7 @@ parts.update(useT());                                // every render
 - clear: fogDensity 0.0024, sun 3.6 at 48 deg elevation, exposure 1, fog #dcebf3
 - dusk: fogDensity 0.0036, sun 2.8 at 12 deg elevation, exposure 1.1, fog #e9b08e
 - overcast: fogDensity 0.0042, sun 1.3 at 55 deg elevation, exposure 1.05, fog #d3d9dc
+- studio: fogDensity 0.004, sun 2.4 at 50 deg elevation, exposure 1.1, fog #1c2640
 Limits: fogDensity 0..0.02, sunIntensity 0..10, sunElevationDeg 2..89, exposure 0.3..3.
 
 ## Types
@@ -43,7 +44,7 @@ type Layer = { color: string; h: number; pebbles?: boolean | { count?: number; r
 type RigShot = { t: number; at: V3; look: V3 } | { t: number; frame: { box: Box; yawDeg: number; pitchDeg: number; distanceMul?: number } };
 type Coverage = { fits: boolean; width: number; height: number; fill: number };
 type Safe = { top: number; bottom: number; left: number; right: number };
-type PresetName = "clear" | "haze" | "dusk" | "overcast";
+type PresetName = "clear" | "haze" | "dusk" | "overcast" | "studio";
 type WorldPreset = { top: string; mid: string; horizon: string; fog: string; fogDensity: number; sun: string; sunIntensity: number; sunAzimuthDeg: number; sunElevationDeg: number; glow: number; hemiSky: string; hemiGround: string; hemiK: number; bounce: string; exposure: number };
 type ModelResolver = { resolve(ref: { catalog: string } | { file: string }): { url: string } | null };
 type FitOptions = { size?: number; height?: boolean; info?: { default_scale?: number; pivot?: "bottom" | "center" }; matte?: boolean };
@@ -158,6 +159,8 @@ export const Captions: FC<{ items: readonly { from: number; to: number; text: st
 export function captionPhase(t: number, from: number, to: number): { active: boolean; k: number; alpha: number };
 /** 3D measuring line with end ticks and a label that faces the camera. */
 export const Ruler: FC<{ from: V3; to: V3; label: string; color?: string; width?: number; labelSize?: number }>;
+/** A text tag in the scene (white on a dark pill, faces the camera, drawn on top), size = height in metres: name the parts (head, next, null). */
+export function label(text: string, o?: { size?: number; color?: string; background?: string }): THREE.Sprite;
 ```
 
 ## Models, instancing, particles
@@ -208,6 +211,8 @@ export function box(w: number, h: number, d: number, mat: THREE.Material, x: num
 export function cyl(rt: number, rb: number, len: number, mat: THREE.Material, axis: "x" | "y" | "z", x: number, y: number, z: number, parent?: THREE.Object3D, seg?: number): THREE.Mesh;
 /** Strut of radius r from a to b. */
 export function between(a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material, parent?: THREE.Object3D, seg?: number): THREE.Mesh;
+/** Arrow from a to b (shaft of radius r, cone head ending at b): use it for any direction, flow or "points to" link. */
+export function arrow(a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material, parent?: THREE.Object3D): THREE.Group;
 /** Wedge of a ring around the x axis (half pipe, tunnel wall): outer/inner radius, angles in radians, length along +x. */
 export function sector(rO: number, rI: number, a0: number, a1: number, len: number): THREE.ExtrudeGeometry;
 /** Full ring around the x axis. */

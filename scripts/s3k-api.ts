@@ -14,10 +14,10 @@ Write one scene file that imports ONLY from "s3k" and "three" (plus react and re
 
 ## Rules (each one prevents a look that was rejected)
 1. Order inside <Stage>: <World/> first, then your objects, <CameraRig/>, and <Finish/> LAST.
-2. Nothing floats: place every object with rest(object, plane) (or models.get(...) which already stands on y = 0). Never guess a y.
+2. Nothing floats: place every object with rest(object, plane) (or models.get(...) which already stands on y = 0). Never guess a y. Only an idea scene (data structure, algorithm, network) may hang its parts in the air above a \"studio\" ground (example D).
 3. All motion is a pure function of t from useT(): build once in useMemo, then call part.update(t) each render. No Math.random (use rnd(seed)), no state between frames, no Date, no timers.
 4. Build in useMemo keyed by [models]; never create meshes, textures or materials per frame. Repeating things use instance(); keep draw calls low.
-5. Frame the focus, not the world: portrait is narrow. A shot should fill 0.5..1 of the safe area (coverage.fill); use { frame: { box } } shots and check onReport.
+5. Frame the focus, not the world: portrait is narrow and TALL. A shot should fill 0.5..1 of the safe area (coverage.fill); use { frame: { box } } shots and check onReport. Lay the subject out to fill the tall frame (never a long thin row), and change angle and distance between shots.
 6. Camera never below ground or water: pass floor to CameraRig. Keep the sun's focus box tight (World focus) so shadows stay crisp.
 7. Strata and ground textures are world-aligned (a pebble has one size everywhere); tile = metres per texture tile.
 8. Captions: <=32 characters, one per shot, through Stage overlay={<Captions items={...}/>}.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { S3K_EXAMPLE_A, S3K_EXAMPLE_B, S3K_EXAMPLE_C } from "@/server/core/s3k-kit-dts";
+import { S3K_EXAMPLE_A, S3K_EXAMPLE_B, S3K_EXAMPLE_C, S3K_EXAMPLE_D } from "@/server/core/s3k-kit-dts";
 import { typeCheckScene3d } from "@/server/render/scene3d-typecheck";
 
 const B = 55_000; // budget for every real check; only the timeout test uses 1 ms
@@ -11,6 +11,7 @@ describe("typeCheckScene3d", () => {
     expect(a.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(await typeCheckScene3d(S3K_EXAMPLE_B, B)).toMatchObject({ ok: true, problems: [] });
     expect(await typeCheckScene3d(S3K_EXAMPLE_C, B)).toMatchObject({ ok: true, problems: [] });
+    expect(await typeCheckScene3d(S3K_EXAMPLE_D, B)).toMatchObject({ ok: true, problems: [] });
   }, 120_000);
 
   it("reads an array element as the element, not as maybe-undefined (the prompt tells the model to index with arr[i])", async () => {

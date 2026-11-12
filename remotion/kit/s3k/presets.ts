@@ -19,7 +19,7 @@ export type WorldPreset = {
   exposure: number;
 };
 
-export const PRESET_NAMES = ["clear", "haze", "dusk", "overcast"] as const;
+export const PRESET_NAMES = ["clear", "haze", "dusk", "overcast", "studio"] as const;
 export type PresetName = (typeof PRESET_NAMES)[number];
 
 export const WORLD_PRESETS: Record<PresetName, WorldPreset> = {
@@ -28,6 +28,8 @@ export const WORLD_PRESETS: Record<PresetName, WorldPreset> = {
   clear: { top: "#5ea7e6", mid: "#a9d3f2", horizon: "#e3f0f7", fog: "#dcebf3", fogDensity: 0.0024, sun: "#fff1dc", sunIntensity: 3.6, sunAzimuthDeg: -38, sunElevationDeg: 48, glow: 0.45, hemiSky: "#dff0ff", hemiGround: "#f0dcb8", hemiK: 0.35, bounce: "#e8dcc2", exposure: 1.0 },
   dusk: { top: "#35417f", mid: "#d98a8c", horizon: "#f8b98a", fog: "#e9b08e", fogDensity: 0.0036, sun: "#ffb27a", sunIntensity: 2.8, sunAzimuthDeg: -60, sunElevationDeg: 12, glow: 1, hemiSky: "#8f8fd0", hemiGround: "#c98a6a", hemiK: 0.5, bounce: "#c98a6a", exposure: 1.1 },
   overcast: { top: "#8e99a3", mid: "#bcc5cb", horizon: "#d9dee1", fog: "#d3d9dc", fogDensity: 0.0042, sun: "#f4f4f2", sunIntensity: 1.3, sunAzimuthDeg: -30, sunElevationDeg: 55, glow: 0, hemiSky: "#dfe6ea", hemiGround: "#b8b4aa", hemiK: 0.8, bounce: "#b8b4aa", exposure: 1.05 },
+  // studio: a dark navy backdrop for ideas (data structures, algorithms, networks): glowing parts and labels read best on it
+  studio: { top: "#0d1324", mid: "#18213a", horizon: "#26324f", fog: "#1c2640", fogDensity: 0.004, sun: "#e8eeff", sunIntensity: 2.4, sunAzimuthDeg: -35, sunElevationDeg: 50, glow: 0, hemiSky: "#6f86c9", hemiGround: "#20263a", hemiK: 0.9, bounce: "#2a3554", exposure: 1.1 },
 };
 
 const HEX = /^#[0-9a-fA-F]{6}$/;

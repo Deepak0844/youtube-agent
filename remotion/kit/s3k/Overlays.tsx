@@ -32,6 +32,24 @@ export const Captions: React.FC<{ items: readonly CaptionItem[]; /** Distance fr
 
 export type RulerProps = { from: [number, number, number]; to: [number, number, number]; label: string; color?: string; /** Line thickness in metres (default 0.12). */ width?: number; /** Label height in metres (default 1.6). */ labelSize?: number };
 
+/** A text tag in the 3D scene (white bold text on a dark pill, always facing the camera, drawn over geometry): put it just above or beside
+ *  the part it names. `size` is the tag height in metres; the width follows the text. Build once in useMemo; show or hide with .visible. */
+export function label(text: string, o: { size?: number; color?: string; background?: string } = {}): THREE.Sprite {
+  const c = document.createElement("canvas");
+  const x = c.getContext("2d")!;
+  const font = "900 72px Arial, Helvetica, sans-serif";
+  x.font = font;
+  const w = Math.min(2048, Math.ceil(x.measureText(text).width) + 96);
+  c.width = w; c.height = 128;
+  x.fillStyle = o.background ?? "rgba(24,24,26,0.92)"; x.beginPath(); x.roundRect(4, 4, w - 8, 120, 40); x.fill();
+  x.fillStyle = o.color ?? "#fff"; x.font = font; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(text, w / 2, 68);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, toneMapped: false, depthTest: false, transparent: true }));
+  const h = o.size ?? 1; sp.scale.set((h * w) / 128, h, 1);
+  sp.renderOrder = 20; sp.userData.noAO = true;
+  return sp;
+}
+
 /** A measuring line between two points with end ticks and a text label above its middle (the label always faces the camera). */
 export const Ruler: React.FC<RulerProps> = (props) => {
   const p = useStable(props);
