@@ -63,7 +63,13 @@ test("cards show, filters narrow them, no sideways scroll", async ({ page }) => 
 
 test("an empty result says what to do in trade words", async ({ page }) => {
   await open(page, `?tag=nothing-${Date.now()}`);
-  await expect(page.getByText("Nothing here yet. Drop some photos or sound files here to use them in a video.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No results for these filters" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/assets");
+});
+
+test("an empty library with no filter says what to do in trade words", async ({ page }) => {
+  await open(page, "?kind=audio&q=" + encodeURIComponent(`zz-${Date.now()}`));
+  await expect(page.getByRole("heading", { name: "No results for these filters" })).toBeVisible();
 });
 
 test("upload needs the rights tick, then queues each file", async ({ page }) => {
