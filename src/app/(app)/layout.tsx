@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { BottomBar } from "@/ui/shell/bottom-bar";
-import { AreaMenuLive, RailLive } from "@/ui/shell/nav-live";
+import { AreaMenuWithCounts } from "@/ui/shell/area-menu-counts";
+import { RailLive } from "@/ui/shell/nav-live";
 import { Rail } from "@/ui/shell/rail";
 import { SkipLink } from "@/ui/shell/skip-link";
 import { TopBar } from "@/ui/shell/topbar";
@@ -20,7 +21,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           </Suspense>
         </div>
         <Suspense fallback={null}>
-          <AreaMenuLive />
+          <AreaMenuWithCounts />
         </Suspense>
         <div className="flex min-w-0 flex-1 flex-col bg-page md:my-2 md:mr-2 md:rounded-frame md:border md:border-border">
           <TopBar />

@@ -194,7 +194,7 @@ function Models({ models, routes, defaults, local, tests, badges, cc }: { models
 
       <section aria-labelledby="routes-h" className="flex flex-col gap-gap">
         <h2 id="routes-h" className="text-title font-semibold">Stage routing</h2>
-        <ul className="flex flex-col rounded-card border border-border bg-surface px-pad">
+        <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(340px,100%),1fr))] gap-gap p-0">
           {STAGES.map((s) => {
             const currentId = routes[s.id] ?? "";
             const current = byId.get(currentId);
@@ -202,7 +202,7 @@ function Models({ models, routes, defaults, local, tests, badges, cc }: { models
             const fit = current ? eligibleForStage(s.id, current) : undefined;
             const stale = current && (!checkModelUsable(current, local).ok || !fit?.ok);
             return (
-              <li key={s.id} className="flex flex-col gap-2 border-b border-rule py-4 last:border-b-0 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] lg:items-center lg:gap-6">
+              <li key={s.id} className="flex min-w-0 flex-col gap-3 rounded-card border border-border bg-surface p-pad">
                 <div className="min-w-0">
                   <h3 className="text-section font-semibold">{s.label}</h3>
                   <p className="text-small text-faint">{s.hint}</p>
@@ -224,12 +224,12 @@ function Models({ models, routes, defaults, local, tests, badges, cc }: { models
         {models.length === 0 ? (
           <EmptyFrame message="No models yet. Add one below, or copy a suggestion." />
         ) : (
-          <ul className="flex flex-col rounded-card border border-border bg-surface px-pad">
+          <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(420px,100%),1fr))] gap-gap p-0">
             {models.map((m) => {
               const routed = Object.entries(routes).filter(([, id]) => id === m.id).map(([st]) => STAGES.find((s) => s.id === st)?.label ?? st);
               const kind = deriveEndpointKind(m.baseUrl, local);
               return (
-                <li key={m.id} className="border-b border-rule py-4 last:border-b-0">
+                <li key={m.id} className="min-w-0 rounded-card border border-border bg-surface p-pad">
                   <div className="flex min-w-0 flex-col gap-2">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <h3 className="min-w-0 text-section font-semibold [overflow-wrap:anywhere]">{m.label}</h3>

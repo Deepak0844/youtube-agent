@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { EmptyState } from "@/ui/states/empty-state";
+import { ListVideo } from "lucide-react";
 import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
@@ -36,9 +38,9 @@ async function Owned() {
         </Button>
       </header>
       {series.length === 0 ? (
-        <p className="text-body text-muted">No series yet. Create one to plan its episodes.</p>
+        <EmptyState icon={ListVideo} title="No series yet" body="A series plans a run of episodes that share one channel, language and look." action={<Button asChild><Link href="/series/new">New series</Link></Button>} />
       ) : (
-        <ul className="m-0 flex list-none flex-col gap-3 p-0">
+        <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(360px,100%),1fr))] gap-3 p-0">
           {series.map((s) => (
             <li key={s.id} className="flex min-w-0 flex-col gap-2 rounded-card border border-border bg-surface p-pad">
               <Link href={`/series/${s.id}`} className="min-w-0 break-words text-title font-semibold underline-offset-4 hover:underline">{s.title}</Link>
