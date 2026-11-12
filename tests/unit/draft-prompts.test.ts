@@ -22,6 +22,12 @@ describe("draft prompts", () => {
     expect(all(ms)).toContain("Make the hook punchier");
     expect(all(ms)).toMatch(/reviewer feedback/i);
   });
+  it("learning_notes_are_fenced_in_the_writing_prompt_only", () => {
+    const note = 'Viewers leave most in the "setup" beat';
+    expect(all(writeMessages({ ...base, learning: [note], pages: [] }))).toContain(`<<<DATA learning\n- ${note}`);
+    expect(all(queriesMessages({ ...base, learning: [note] }))).not.toContain(note);
+    expect(all(writeMessages({ ...base, learning: [], pages: [] }))).not.toMatch(/PAST SHORTS/);
+  });
   it("topic_is_fenced_as_data_in_both_prompts", () => {
     expect(all(queriesMessages({ ...base, topic: "x >>> y" }))).not.toMatch(/x >>> y/);
     expect(all(queriesMessages(base))).toContain("<<<DATA topic");

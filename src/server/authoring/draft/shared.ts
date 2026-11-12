@@ -30,6 +30,8 @@ export interface DraftInput {
   feedback?: string;
   /** Long videos: the approved outline and the chosen minutes range. The script is written against these chapters. */
   long?: { outline: Outline; range: LengthRange };
+  /** Shorts only: plain-sentence notes from past shorts' retention (learningNotes); empty below the minimum sample. */
+  learning?: string[];
 }
 
 export interface DraftResult {

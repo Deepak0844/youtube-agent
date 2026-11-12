@@ -120,7 +120,7 @@ export function buildReport(i: WeeklyInput): WeeklyReport {
 
 /**
  * Plain-sentence learning notes for other stages to read (idea and script writers). Silent below the minimum sample: with
- * fewer than 10 shorts that have a retention curve it returns nothing rather than inventing a trend. Not wired into authoring yet.
+ * fewer than 10 shorts that have a retention curve it returns nothing rather than inventing a trend. Read by the idea researcher and the Draft stage (shorts).
  */
 export function learningNotes(shorts: readonly ShortStat[]): string[] {
   const withCurve = shorts.filter((s) => Object.keys(s.beatDrops).length > 0);

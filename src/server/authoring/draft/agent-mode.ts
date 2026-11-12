@@ -97,7 +97,7 @@ export function fetchedPages(messages: Message[]): Map<string, string> {
 export async function agentDraft(ctx: StageContext, deps: DraftDeps, input: DraftInput & { format: "short" | "long" }): Promise<DraftResult> {
   const store = deps.store === undefined ? createPgAgentStepStore(deps.db, ctx.stage.id) : deps.store;
   const tools = draftTools(deps.web);
-  let messages: Message[] = agentMessages({ topic: input.topic, lang: input.lang, kind: input.kind, format: input.format, notes: input.notes, feedback: input.feedback, long: input.long });
+  let messages: Message[] = agentMessages({ topic: input.topic, lang: input.lang, kind: input.kind, format: input.format, notes: input.notes, feedback: input.feedback, long: input.long, learning: input.learning });
   let spent = 0;
   let stepsLeft = AGENT_TOTAL_STEPS;
 
