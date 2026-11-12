@@ -58,7 +58,7 @@ test("set the default voice for shorts and for code-scene videos", async ({ page
   await row(page, "edge").getByRole("switch").click();
   await expect(row(page, "edge").getByText("On", { exact: true })).toBeVisible();
 
-  for (const [scope, voice] of [["Shorts", "en-US-AriaNeural"], ["Code-scene videos", "en-GB-SoniaNeural"]]) {
+  for (const [scope, voice] of [["Shorts", "en-US-AriaNeural"], ["Code-scene videos", "hi-IN-SwaraNeural"]]) {
     await page.getByLabel("Provider", { exact: true }).selectOption({ label: "Edge voices (voice)" });
     await page.getByLabel("Used for", { exact: true }).selectOption({ label: scope! });
     await page.getByLabel(/Narration voice/).fill(voice!);
@@ -67,11 +67,11 @@ test("set the default voice for shorts and for code-scene videos", async ({ page
   }
   const table = page.getByTestId("route-table");
   await expect(table.getByRole("row", { name: /Shorts.*Edge voices.*en-US-AriaNeural/ })).toBeVisible();
-  await expect(table.getByRole("row", { name: /Code-scene videos.*Edge voices.*en-GB-SoniaNeural/ })).toBeVisible();
+  await expect(table.getByRole("row", { name: /Code-scene videos.*Edge voices.*hi-IN-SwaraNeural/ })).toBeVisible();
   const routes = await db.query("select scope, provider, voice from media_routes order by scope");
   expect(routes.rows).toEqual([
     { scope: "format:short", provider: "edge", voice: "en-US-AriaNeural" },
-    { scope: "kind:tsx", provider: "edge", voice: "en-GB-SoniaNeural" },
+    { scope: "kind:tsx", provider: "edge", voice: "hi-IN-SwaraNeural" },
   ]);
   const audit = await db.query("select count(*)::int as n from audit_log where event in ('route.changed', 'provider.toggled') and at > now() - interval '1 minute'");
   expect(audit.rows[0].n).toBeGreaterThanOrEqual(3);
