@@ -102,6 +102,13 @@ test("a page that went stale says so, approves nothing and shows the new content
   await open(page, topic);
   const c = card(page, topic);
   const before = await c.getByTestId("review-ref").textContent();
+  // Pause the live feed (as a hidden tab does) so the page cannot refresh itself to the new version before the click:
+  // this test is about a page that really went stale.
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(page.getByTestId("live-feed")).toHaveAttribute("data-state", "paused");
   await addContent(db(), videoId, "script", { body: script(topic), sha256: sha256Hex(`script-new-${videoId}`) });
   await c.getByRole("button", { name: /^Approve script/ }).click();
   await expect(c.getByRole("alert").filter({ hasText: "Review again." }).first()).toHaveText("This changed while you were looking. Review again.");
