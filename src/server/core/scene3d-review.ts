@@ -34,7 +34,7 @@ export const reviewBodySchema = z.object({
   /** True = the author is asked for another revision. */
   revise: z.boolean(),
   stop_reason: z.enum(["passed", "max_rounds", "budget"]).nullable(),
-  history: z.array(z.object({ round: z.number().int().min(0).max(MAX_AUTO_ROUNDS), scene_sha256: hex64, problems: z.number().int().min(0).max(8) })).min(1).max(MAX_AUTO_ROUNDS + 1),
+  history: z.array(z.object({ round: z.number().int().min(0).max(MAX_AUTO_ROUNDS), scene_sha256: hex64, problems: z.number().int().min(0).max(16) })).min(1).max(MAX_AUTO_ROUNDS + 1),
   /** The round whose scene the owner is shown (the best one once the loop has stopped). */
   best_round: z.number().int().min(0).max(MAX_AUTO_ROUNDS),
   /** Set when the loop stopped on a worse scene: the fingerprint of the better scene that is being put back. */
@@ -93,14 +93,17 @@ export interface ReviewInput {
 
 /** The next review body from the previous ACTIVE one (null = none) and what the pictures show now. */
 export function decideReview(prior: ReviewBody | null, a: ReviewInput): ReviewBody {
-  const common = { kind: "scene3d_review" as const, look_count: a.lookCount, narration_sha: a.narrationSha, scene_sha256: a.sceneSha256, problems: a.problems.slice(0, 8), advice: cleanAdviceList(a.advice), passed: a.problems.length === 0 };
+  // A picture-check note (a model that looked at the pictures, e.g. "this looks like a boat, not a jet engine") also asks for a revision:
+  // the pixel measures cannot see what the subject looks like. Notes stay advice in the author prompt and never block the Look gate.
+  const advice = cleanAdviceList(a.advice);
+  const common = { kind: "scene3d_review" as const, look_count: a.lookCount, narration_sha: a.narrationSha, scene_sha256: a.sceneSha256, problems: a.problems.slice(0, 8), advice, passed: a.problems.length === 0 && advice.length === 0 };
   // Confirmation: the previous review put the better scene back; these are the pictures of it. Same round, no new revision, no new history.
   if (prior && !prior.revise && prior.restore_sha256 !== null && prior.restore_sha256 === a.sceneSha256) {
     return { ...common, round: prior.round, revise: false, stop_reason: prior.stop_reason, history: prior.history, best_round: prior.best_round, restore_sha256: null };
   }
   const base = prior && prior.revise ? prior : null;
   const round = base ? Math.min(MAX_AUTO_ROUNDS, base.round + 1) : 0;
-  const history = [...(base?.history ?? []), { round, scene_sha256: a.sceneSha256, problems: common.problems.length }];
+  const history = [...(base?.history ?? []), { round, scene_sha256: a.sceneSha256, problems: common.problems.length + advice.length }];
   const stop = common.passed ? "passed" : round >= MAX_AUTO_ROUNDS ? "max_rounds" : !a.budgetOk ? "budget" : null;
   const revise = stop === null;
   const best = history.reduce((x, y) => (y.problems <= x.problems ? y : x)); // fewer problems wins; on a tie the later round

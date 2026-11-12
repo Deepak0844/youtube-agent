@@ -75,7 +75,7 @@ export function scene3dReviewAttempt(deps: StageDeps): AttemptHandler {
     const lookCount = await lookSendBackCount(deps.db, video.id);
     // Only worth looking at the money when another round could actually follow.
     const nextRound = prior && prior.revise ? prior.round + 1 : 0;
-    const budgetOk = problems.length === 0 || nextRound >= 3 ? true : await budgetAllowsAnotherRound(deps, video);
+    const budgetOk = (problems.length === 0 && advice.length === 0) || nextRound >= 3 ? true : await budgetAllowsAnotherRound(deps, video);
     let review: ReviewBody = decideReview(prior, { sceneSha256: scene.source_sha256, problems, advice, lookCount, narrationSha, budgetOk });
 
     const files: string[] = [];
@@ -93,7 +93,7 @@ export function scene3dReviewAttempt(deps: StageDeps): AttemptHandler {
       }
     }
     content.push({ kind: "review", body: review });
-    ctx.log(`review: round ${review.round}, ${problems.length} problem${problems.length === 1 ? "" : "s"}${review.revise ? ", asking for a revision" : review.stop_reason ? `, stop (${review.stop_reason})` : ""}${review.restore_sha256 ? `, putting back round ${review.best_round}` : ""}`);
+    ctx.log(`review: round ${review.round}, ${problems.length} problem${problems.length === 1 ? "" : "s"}, ${review.advice.length} picture note${review.advice.length === 1 ? "" : "s"}${review.revise ? ", asking for a revision" : review.stop_reason ? `, stop (${review.stop_reason})` : ""}${review.restore_sha256 ? `, putting back round ${review.best_round}` : ""}`);
     return { files, content, result: { kind: "scene3d_review", round: review.round, problems: problems.length, revise: review.revise, stop: review.stop_reason, best_round: review.best_round } };
   };
 }

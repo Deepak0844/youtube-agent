@@ -28,6 +28,13 @@ describe("decideReview: rounds, stop reasons and the better scene", () => {
     expect(r).toMatchObject({ round: 0, passed: true, revise: false, stop_reason: "passed", best_round: 0, restore_sha256: null });
     expect(authorRoundOf(r)).toBe(0);
   });
+  it("a picture-check note alone asks for a revision (the pixels cannot see a boat), and the notes stay advice", () => {
+    const r = decideReview(null, input({ problems: [], advice: ["Image 2 looks like a boat, not a jet engine: no round casing"] }));
+    expect(r).toMatchObject({ round: 0, passed: false, revise: true, stop_reason: null, problems: [] });
+    expect(r.advice).toEqual(["Image 2 looks like a boat, not a jet engine: no round casing"]);
+    expect(r.history[0]!.problems).toBe(1);
+    expect(decideReview(null, input({ problems: [], advice: [] }))).toMatchObject({ passed: true, revise: false });
+  });
   it("asks for a revision while problems remain and fewer than 3 revisions were made", () => {
     const r0 = decideReview(null, input());
     expect(r0).toMatchObject({ round: 0, revise: true, stop_reason: null });
