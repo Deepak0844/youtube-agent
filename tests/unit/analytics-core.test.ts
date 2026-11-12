@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { MIN_SHORTS_FOR_SIGNAL, beatSpans, channelSubsUrl, parseSubs, subsWindow, dropOff, isNoise, parseRetention, parseStats, parseTotals, retentionAt, retentionUrl, statsUrl, totalsUrl } from "@/server/core/analytics";
+import { MIN_SHORTS_FOR_SIGNAL, releasedNow, beatSpans, channelSubsUrl, parseSubs, subsWindow, dropOff, isNoise, parseRetention, parseStats, parseTotals, retentionAt, retentionUrl, statsUrl, totalsUrl } from "@/server/core/analytics";
 
 describe("analytics parsing", () => {
   it("reads statistics (strings), a hidden like count stays null, bad ids are dropped", () => {
     const m = parseStats({ items: [{ id: "abc_123", statistics: { viewCount: "40", commentCount: "2" } }, { id: "bad id!", statistics: {} }, { statistics: {} }] });
     expect([...m.keys()]).toEqual(["abc_123"]);
-    expect(m.get("abc_123")).toEqual({ views: 40, likes: null, comments: 2 });
+    expect(m.get("abc_123")).toEqual({ views: 40, likes: null, comments: 2, privacy: null });
     expect(parseStats(null).size).toBe(0);
   });
   it("reads totals by column name, and no row means all null", () => {
@@ -73,5 +73,21 @@ describe("channel subscribers", () => {
     expect(u.searchParams.get("filters")).toBeNull();
     expect(parseSubs({ columnHeaders: [{ name: "subscribersLost" }, { name: "subscribersGained" }], rows: [[3, 20]] })).toEqual({ gained: 20, lost: 3 });
     expect(parseSubs({ columnHeaders: [], rows: [] })).toEqual({ gained: null, lost: null });
+  });
+});
+
+describe("scheduled release", () => {
+  const meta = { visibility: "private", publish_at: "2026-11-04T10:00:00.000Z" };
+  const after = Date.parse("2026-11-04T12:00:00Z");
+  it("is done only for a scheduled private choice whose time passed and YouTube says public", () => {
+    expect(releasedNow(meta, "public", after)).toBe(true);
+    expect(releasedNow(meta, "private", after)).toBe(false);
+    expect(releasedNow(meta, "public", Date.parse("2026-11-04T09:00:00Z"))).toBe(false);
+    expect(releasedNow({ visibility: "public", publish_at: null }, "public", after)).toBe(false);
+    expect(releasedNow(null, "public", after)).toBe(false);
+  });
+  it("reads the privacy next to the statistics", () => {
+    expect(parseStats({ items: [{ id: "abc", statistics: {}, status: { privacyStatus: "public" } }] }).get("abc")?.privacy).toBe("public");
+    expect(statsUrl(["a"])).toContain("part=statistics,status");
   });
 });

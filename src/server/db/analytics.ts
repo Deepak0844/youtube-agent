@@ -1,9 +1,10 @@
 import type pg from "pg";
-import { YT_ID, beatSpans, channelSubsUrl, parseSubs, subsWindow, dropOff, isNoise, parseRetention, parseStats, parseTotals, retentionUrl, statsUrl, totalsUrl, type Curve, type Stats, type Totals } from "@/server/core/analytics";
+import { YT_ID, releasedNow, beatSpans, channelSubsUrl, parseSubs, subsWindow, dropOff, isNoise, parseRetention, parseStats, parseTotals, retentionUrl, statsUrl, totalsUrl, type Curve, type Stats, type Totals } from "@/server/core/analytics";
 import { safeReason } from "@/server/core/paid-call";
 import { quotaDay } from "@/server/core/youtube-oauth";
 import type { Keyring } from "@/server/core/vault-crypto";
 import { recordAudit } from "./audit";
+import { notifySafe } from "./notify";
 import { getAccessToken, reserveQuota, type GoogleHttp } from "./youtube-channels";
 
 // "Run now" analytics pull. Read-only against YouTube: videos.list (statistics) and the YouTube Analytics API. Every call goes
@@ -113,6 +114,7 @@ export async function pullAnalytics(db: pg.Pool, ring: Keyring | (() => Keyring)
         );
         if (error) out.failed++;
         else out.pulled++;
+        if (s?.privacy === "public") await releaseNotice(db, t.videoId, opts.now ?? new Date());
       }
     }
   }
@@ -146,6 +148,17 @@ async function pullChannelSubs(db: pg.Pool, http: GoogleHttp, auth: { headers: R
        where channel_analytics.error is not null`,
     [channelId, day, w.start, w.end, gained, lost, error],
   );
+}
+
+/** "Scheduled release done", once per video (the notification's transition id), when a scheduled private video is now public. */
+async function releaseNotice(db: pg.Pool, videoId: string, now: Date): Promise<void> {
+  try {
+    const meta = (await db.query<{ body: unknown }>("select body from video_content where video_id = $1 and kind = 'metadata' order by version desc limit 1", [videoId])).rows[0]?.body;
+    if (!releasedNow(meta, "public", now.getTime())) return;
+    await notifySafe(db, undefined, { event: "scheduled_release_done", videoId, from: "scheduled", to: "scheduled_release_done", transitionId: `release.${videoId}`, detail: "The scheduled video is public now." });
+  } catch {
+    // a notice is never worth failing the pull
+  }
 }
 
 export function pullMessage(r: PullResult): string {

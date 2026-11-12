@@ -5,7 +5,7 @@ export const ANALYTICS_URL = "https://youtubeanalytics.googleapis.com/v2/reports
 export const MIN_SHORTS_FOR_SIGNAL = 10;
 export const YT_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
-export const statsUrl = (ids: string[]): string => `${DATA_VIDEOS_URL}?part=statistics&maxResults=50&id=${ids.map(encodeURIComponent).join(",")}`;
+export const statsUrl = (ids: string[]): string => `${DATA_VIDEOS_URL}?part=statistics,status&maxResults=50&id=${ids.map(encodeURIComponent).join(",")}`;
 
 const q = (o: Record<string, string>) => new URLSearchParams(o).toString();
 /** Totals for one video: views, estimatedMinutesWatched, averageViewPercentage. */
@@ -25,23 +25,35 @@ export function subsWindow(day: string): { start: string; end: string } {
   return { start: at(8), end: at(2) };
 }
 
-export interface Stats { views: number | null; likes: number | null; comments: number | null }
+export interface Stats { views: number | null; likes: number | null; comments: number | null; /** status.privacyStatus as YouTube reports it now, or null. */ privacy?: string | null }
 const num = (v: unknown): number | null => {
   const n = typeof v === "string" || typeof v === "number" ? Number(v) : NaN;
   return Number.isFinite(n) && n >= 0 ? n : null;
 };
 
-/** videos.list part=statistics -> stats by video id. A hidden like count simply stays null. */
+/** videos.list part=statistics,status -> stats (and privacy now) by video id. A hidden like count simply stays null. */
 export function parseStats(body: unknown): Map<string, Stats> {
   const out = new Map<string, Stats>();
   const items = (body as { items?: unknown })?.items;
   if (!Array.isArray(items)) return out;
-  for (const it of items as Array<{ id?: unknown; statistics?: Record<string, unknown> }>) {
+  for (const it of items as Array<{ id?: unknown; statistics?: Record<string, unknown>; status?: { privacyStatus?: unknown } }>) {
     if (typeof it?.id !== "string" || !YT_ID.test(it.id)) continue;
     const s = it.statistics ?? {};
-    out.set(it.id, { views: num(s.viewCount), likes: num(s.likeCount), comments: num(s.commentCount) });
+    const p = it.status?.privacyStatus;
+    out.set(it.id, { views: num(s.viewCount), likes: num(s.likeCount), comments: num(s.commentCount), privacy: typeof p === "string" && /^[a-z]{1,20}$/.test(p) ? p : null });
   }
   return out;
+}
+
+/**
+ * A scheduled release has happened when the owner approved "private, publish at T", T has passed, and YouTube now says public.
+ * `meta` is the newest publish choice (metadata body).
+ */
+export function releasedNow(meta: unknown, privacy: string | null | undefined, nowMs: number): boolean {
+  const m = meta as { visibility?: unknown; publish_at?: unknown } | null;
+  if (privacy !== "public" || m?.visibility !== "private" || typeof m.publish_at !== "string") return false;
+  const at = Date.parse(m.publish_at);
+  return Number.isFinite(at) && at <= nowMs;
 }
 
 export interface Totals { views: number | null; minutesWatched: number | null; avgViewPct: number | null }

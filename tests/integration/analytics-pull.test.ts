@@ -20,14 +20,14 @@ const YT = "abcDEF12345";
 
 const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-interface Fake { http: GoogleHttp; calls: string[]; failTotals: boolean; failSubs: boolean }
+interface Fake { http: GoogleHttp; calls: string[]; failTotals: boolean; failSubs: boolean; privacy: string }
 function fake(): Fake {
-  const f: Fake = { calls: [], failTotals: false, failSubs: false, http: async (url) => {
+  const f: Fake = { calls: [], failTotals: false, failSubs: false, privacy: "private", http: async (url) => {
     f.calls.push(url);
     if (url.includes("oauth2.googleapis.com/token")) return reply({ access_token: "at", refresh_token: "1//r", scope: GOOGLE_SCOPES.join(" ") });
     if (url.includes("userinfo")) return reply({ sub: "sub-1", email: "me@example.com" });
     if (url.includes("youtube/v3/channels")) return reply({ items: [{ id: "UCchan1", snippet: { title: "My Channel" } }] });
-    if (url.includes("youtube/v3/videos")) return reply({ items: [{ id: YT, statistics: { viewCount: "120", likeCount: "9", commentCount: "3" } }] });
+    if (url.includes("youtube/v3/videos")) return reply({ items: [{ id: YT, statistics: { viewCount: "120", likeCount: "9", commentCount: "3" }, status: { privacyStatus: f.privacy } }] });
     if (url.includes("subscribersGained")) return f.failSubs ? reply({ error: "no" }, 403) : reply({ columnHeaders: [{ name: "subscribersGained" }, { name: "subscribersLost" }], rows: [[25, 4]] });
     if (url.includes("elapsedVideoTimeRatio")) return reply({ rows: [[0, 1], [0.1, 0.9], [0.5, 0.5], [1, 0.2]] });
     if (f.failTotals) return reply({ error: "boom" }, 500);
@@ -125,6 +125,22 @@ describe("analytics pull", () => {
     f.calls.length = 0;
     await pullAnalytics(db.pool, ring, f.http, BY, { now: NOW });
     expect(f.calls.filter((u) => u.includes("subscribersGained"))).toHaveLength(0); // a good row is not fetched again that day
+  });
+
+  it("tells the owner once when a scheduled private video turned public", async () => {
+    const f = fake();
+    await connect(f, true);
+    const id = await uploadedVideo();
+    await addContent(db.pool, id, "metadata", { body: { visibility: "private", publish_at: "2026-11-04T10:00:00.000Z" }, sha256: "1".repeat(64) });
+    const notices = async () => (await db.pool.query("select event, to_state from notifications where video_id = $1", [id])).rows;
+    await pullAnalytics(db.pool, ring, f.http, BY, { now: NOW });
+    expect(await notices()).toEqual([]); // still private on YouTube
+    f.privacy = "public";
+    await db.ownerPool.query("delete from video_analytics");
+    await pullAnalytics(db.pool, ring, f.http, BY, { now: NOW });
+    await db.ownerPool.query("delete from video_analytics");
+    await pullAnalytics(db.pool, ring, f.http, BY, { now: NOW });
+    expect(await notices()).toEqual([{ event: "scheduled_release_done", to_state: "scheduled_release_done" }]);
   });
 
   it("skips an unconfirmed channel and a channel that needs reconnecting, with a visible reason and no Google call", async () => {
