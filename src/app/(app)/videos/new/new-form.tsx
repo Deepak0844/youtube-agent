@@ -17,7 +17,7 @@ const selectClass = cn("w-full rounded-control border border-control bg-surface 
 const card = "m-0 flex min-w-0 flex-col gap-4 rounded-card border border-border bg-surface p-pad";
 const cardTitle = "text-section font-semibold";
 
-export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, characters, initialFormat = "short" }: { scaleLimitNote: string | null; scene3dNote: string | null; maxLongMinutes: number; aiNote: string | null; characters: Array<{ id: string; name: string }>; initialFormat?: "short" | "long" }) {
+export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, characters, channels = [], initialFormat = "short" }: { scaleLimitNote: string | null; scene3dNote: string | null; maxLongMinutes: number; aiNote: string | null; characters: Array<{ id: string; name: string }>; channels?: Array<{ id: string; title: string; language: string; style: string | null }>; initialFormat?: "short" | "long" }) {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
   const [kind, setKind] = useState<"scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "scene3d" | "scene3d_code">("scene_kit");
   const [format, setFormat] = useState<"short" | "long">(initialFormat);
@@ -33,6 +33,14 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
   // Custom animation has no Classic look: its default card is AI Studio. Scene kit keeps Classic ("" = no style).
   const [picked, setPicked] = useState("");
   const style = custom && picked === "" ? "ai_studio" : picked;
+  const [language, setLanguage] = useState("en");
+  // Picking a channel fills in its default narration language and look; the owner can still change both.
+  const pickChannel = (id: string) => {
+    const c = channels.find((x) => x.id === id);
+    if (!c) return;
+    if ((LANGUAGE_ORDER as readonly string[]).includes(c.language)) setLanguage(c.language);
+    if (c.style) setPicked(c.style);
+  };
   return (
     <form action={run} onChange={() => setDirty(true)} className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
       <section aria-labelledby="basics-h" className={card}>
@@ -44,7 +52,7 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="language">Narration language</Label>
-        <select id="language" name="language" defaultValue="en" className={selectClass}>
+        <select id="language" name="language" value={language} onChange={(e) => setLanguage(e.target.value)} className={selectClass}>
           {LANGUAGE_ORDER.map((l) => (
             <option key={l} value={l}>
               {LANGUAGE_WORDS[l]} ({l})
@@ -52,6 +60,20 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
           ))}
         </select>
       </div>
+      {channels.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="channel">Channel</Label>
+          <select id="channel" name="channel" defaultValue="" onChange={(e) => pickChannel(e.target.value)} aria-describedby="channel-help" className={selectClass}>
+            <option value="">Choose later</option>
+            {channels.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+          <p id="channel-help" className="m-0 text-small text-faint">Fills in the channel&apos;s language and look. You can also pick the channel when you publish.</p>
+        </div>
+      ) : null}
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor="format">Format</Label>

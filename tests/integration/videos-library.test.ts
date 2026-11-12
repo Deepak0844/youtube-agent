@@ -6,6 +6,7 @@ import { registerAsset } from "@/server/db/assets";
 import { startNewVideo } from "@/server/db/video-create";
 import { listVideos } from "@/server/db/videos-list";
 import { createVideoRow } from "@/server/db/videos";
+import { ensureChannel } from "../support/channel-fixture";
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;
@@ -137,6 +138,16 @@ describe("startNewVideo (the createVideoAction data path)", () => {
     for (const bad of [{ topic: "", language: "en" }, { topic: "x".repeat(201), language: "en" }, { topic: "x", language: "xx" }]) expect(input(bad).ok).toBe(false);
     expect((await db.pool.query("select count(*)::int as n from videos")).rows[0].n).toBe(0);
     expect((await db.pool.query("select count(*)::int as n from audit_log where event = 'video.created'")).rows[0].n).toBe(0);
+  });
+
+  it("stores a connected channel picked on the form, and refuses an unknown one before anything is written", async () => {
+    await ensureChannel(db.pool, "UCpicked");
+    const v = { topic: "x", language: "en", kind: "scene_kit", format: "short" } as const;
+    const r = await startNewVideo(db.pool, queue, actor, v, "UCpicked");
+    if (!r.ok) throw new Error(r.message);
+    expect((await db.pool.query("select channel_id from videos where id = $1", [r.videoId])).rows[0].channel_id).toBe("UCpicked");
+    expect((await startNewVideo(db.pool, queue, actor, v, "UCnope")).ok).toBe(false);
+    expect((await db.pool.query("select count(*)::int as n from videos")).rows[0].n).toBe(1);
   });
 
   it("a non-owner actor creates nothing", async () => {
