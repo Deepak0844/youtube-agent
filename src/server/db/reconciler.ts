@@ -26,7 +26,8 @@ import { cancelQueuedStage, toNumber } from "./stages";
 // stage gets at most 1 + maxAttempts deliveries. Runtime selects attemptBasis="claim" instead, budgeting actual
 // execution starts (fence > maxAttempts) while capacity deferrals and queue repairs only advance delivery ids.
 // This bounds errors that leave no open intent (a throwing stepsFor,
-// bugs); an open intent always wins (needs_decision), and needs_decision rows are never touched.
+// bugs); an open intent with money reserved always wins (needs_decision), and needs_decision rows are never touched.
+// An open intent reserved at $0 never parks: it cannot have cost money, so A requeues and B fails at the cap as if none were open.
 // Branch B at the cap checks for an open intent exactly like A (stage lock, then intents lock, separate statements):
 // an open intent parks the row (pending -> unknown, needs_decision) instead of failing it.
 // Queued rows with cancel_requested are moved to 'cancelled' (cancelQueuedStage) and never re-enqueued; claimStage
@@ -85,14 +86,17 @@ async function decideExpired(pool: pg.Pool, id: string, maxAttempts: number, bas
         await client.query("rollback");
         return { kind: "skip" };
       }
-      const open = await client.query(
-        `select id from spend_intents
+      // Locks every open intent (lock order), but only one with money RESERVED parks the row: a $0 call (Claude Code on the
+      // subscription, a local voice) cannot have cost anything, and the next attempt's runPaidCall simply runs it again.
+      const open = await client.query<{ id: string; reserved_micro_usd: string }>(
+        `select id, reserved_micro_usd from spend_intents
           where stage_run_id = $1 and status not in ('done', 'failed_known')
           order by id for update`,
         [id],
       );
+      const paidOpen = open.rows.some((r) => toNumber(r.reserved_micro_usd) > 0);
       let decision: Decision;
-      if (open.rowCount! > 0) {
+      if (paidOpen) {
         await client.query(
           "update spend_intents set status = 'unknown', updated_at = clock_timestamp() where stage_run_id = $1 and status = 'pending'",
           [id],
@@ -170,14 +174,17 @@ async function decideQueuedOverCap(
         await client.query("rollback");
         return "skip";
       }
-      const open = await client.query(
-        `select id from spend_intents
+      // Locks every open intent (lock order), but only one with money RESERVED parks the row: a $0 call (Claude Code on the
+      // subscription, a local voice) cannot have cost anything, and the next attempt's runPaidCall simply runs it again.
+      const open = await client.query<{ id: string; reserved_micro_usd: string }>(
+        `select id, reserved_micro_usd from spend_intents
           where stage_run_id = $1 and status not in ('done', 'failed_known')
           order by id for update`,
         [id],
       );
+      const paidOpen = open.rows.some((r) => toNumber(r.reserved_micro_usd) > 0);
       let decision: "failed" | "needs_decision";
-      if (open.rowCount! > 0) {
+      if (paidOpen) {
         await client.query(
           "update spend_intents set status = 'unknown', updated_at = clock_timestamp() where stage_run_id = $1 and status = 'pending'",
           [id],

@@ -17,6 +17,8 @@ import { callKey } from "./spend";
 //   reserve -> existing done                 : return the stored result; provider NOT called.
 //   reserve -> existing failed_known         : TERMINAL for this key: throw KnownFailureError (stored reason);
 //                                              provider NOT called. Retrying means a new step/tool index.
+//   reserve -> existing pending | unknown,
+//     reserved 0 (a $0 route)              : called again on the same intent and settled (it cannot have cost money).
 //   reserve -> existing pending | unknown    : markUnknown + markStageNeedsDecision + throw NeedsDecisionError
 //                                              (maxCostMicroUsd = the reservation); provider NOT called. NEVER retried,
 //                                              whatever `kind` is. `kind` ("paid" | "cheap_text") has NO effect yet.
@@ -290,6 +292,10 @@ export async function runPaidCall<T>(
     const stored = r.result as { error?: unknown } | undefined;
     throw new KnownFailureError(typeof stored?.error === "string" ? stored.error : "known failure");
   }
+
+  // pending | unknown with NOTHING reserved: the call cannot have cost money (a $0 route: Claude Code on the subscription, a local
+  // voice), so asking the owner about billing is noise. Run it again on the same intent; settle accepts pending and unknown.
+  if (r.reservedMicroUsd === 0) return execute(r.intentId);
 
   // pending | unknown: the outcome of an earlier attempt is not known. Never call again, whatever the kind.
   await ports.markUnknown(r.intentId);

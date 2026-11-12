@@ -87,6 +87,39 @@ describe("reconciler", () => {
     expect((await queue.liveJobIds()).size).toBe(0);
   });
 
+  it("expired_stage_with_only_zero_reserved_open_intents_is_requeued_not_parked", async () => {
+    // A $0 route (Claude Code on the subscription) killed mid-call: nothing can have been charged, so no billing question.
+    for (const intentStatus of ["pending", "unknown"]) {
+      const id = await newStage();
+      const c = await claim(id);
+      expect((await reserveIntent(db.pool, c, { stepIndex: 0, toolCallIndex: 0, reserveMicroUsd: 0, budgetScopes: ["g"] })).kind).toBe("new");
+      await db.pool.query("update spend_intents set status=$2 where stage_run_id=$1", [id, intentStatus]);
+      await expireLease(id);
+      expect(await reconcile(db.pool, queue), intentStatus).toMatchObject({ ...NONE, requeued: [id] });
+      expect((await getStage(db.pool, id))?.status, intentStatus).toBe("queued");
+    }
+  });
+
+  it("expired_stage_with_a_zero_and_a_paid_open_intent_still_parks", async () => {
+    const id = await newStage();
+    const c = await claim(id);
+    expect((await reserveIntent(db.pool, c, { stepIndex: 0, toolCallIndex: 0, reserveMicroUsd: 0, budgetScopes: ["g"] })).kind).toBe("new");
+    expect((await reserve(c, 1)).kind).toBe("new");
+    await expireLease(id);
+    expect(await reconcile(db.pool, queue, { graceMs: 0 })).toMatchObject({ ...NONE, needsDecision: [id] });
+    expect((await getStage(db.pool, id))?.status).toBe("needs_decision");
+  });
+
+  it("queued_row_over_max_attempts_with_only_a_zero_reserved_intent_fails_not_parks", async () => {
+    const id = await newStage();
+    const c = await claim(id);
+    expect((await reserveIntent(db.pool, c, { stepIndex: 0, toolCallIndex: 0, reserveMicroUsd: 0, budgetScopes: ["g"] })).kind).toBe("new");
+    await db.pool.query("update stage_runs set status='queued', lease_owner=NULL, lease_until=NULL, attempt_seq=3 where id=$1", [id]);
+    await ageRow(id);
+    expect(await reconcile(db.pool, queue, { graceMs: 0, maxAttempts: 3 })).toMatchObject({ ...NONE, failed: [id] });
+    expect((await getStage(db.pool, id))?.status).toBe("failed");
+  });
+
   it("expired_stage_with_only_done_and_failed_known_intents_is_requeued", async () => {
     const id = await newStage();
     const c = await claim(id);
