@@ -21,7 +21,10 @@ const listItem = (page: Page, topic: string) => page.getByRole("region", { name:
 async function open(page: Page, topic?: string) {
   await page.goto("/queue");
   await expect(page.getByRole("heading", { level: 1, name: "Queue" })).toBeVisible();
-  if (topic) await listItem(page, topic).click();
+  // Click only when the item is not already open: re-clicking the open item keeps the same card (and its "what you saw"
+  // snapshot), so a gate that settled in between would rightly show as changed and keep Approve off.
+  if (topic && (await card(page, topic).count()) === 0) await listItem(page, topic).click();
+  if (topic) await expect(card(page, topic)).toBeVisible();
 }
 
 async function axeViolations(page: Page): Promise<string[]> {
