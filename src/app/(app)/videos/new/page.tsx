@@ -12,6 +12,8 @@ import { LONG_HARD_MAX_MINUTES } from "@/server/core/long-form";
 import { Skeleton } from "@/ui/primitives/skeleton";
 import { NewForm } from "./new-form";
 
+export const metadata = { title: "New video" };
+
 export default function NewVideo() {
   return (
     <Suspense fallback={<Skeleton aria-hidden className="h-96 w-full rounded-card" />}>

@@ -37,6 +37,8 @@ import { SoundTabPanel } from "./sound-tab";
 import { EvidenceTabPanel } from "./evidence-tab";
 import { TitlesTabPanel } from "./titles-tab";
 
+export const metadata = { title: "Video" };
+
 // The video page (Doc 4 /videos/[id]): where it is now, what it cost, and the content of each step, one tab at a time
 // (?tab=). Read only except the buttons: Run again, Cancel, the gate card (all owner-only server actions) and the free scene checks.
 export default function VideoPage({ params, searchParams }: PageProps<"/videos/[id]">) {

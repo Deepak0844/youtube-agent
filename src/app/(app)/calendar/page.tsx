@@ -8,6 +8,8 @@ import { loadCalendar } from "@/server/db/calendar-data";
 import { getPool } from "@/server/db/pool";
 import { UploadList } from "./calendar-parts";
 
+export const metadata = { title: "Calendar" };
+
 // Calendar: read only. Settings change on /settings/schedule. requireOwner() reads the cookie, so it runs inside <Suspense> (cacheComponents).
 export default function CalendarPage() {
   return (

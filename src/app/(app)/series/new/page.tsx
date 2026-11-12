@@ -4,6 +4,8 @@ import { connectedChannelOptions } from "@/server/db/ideas";
 import { getPool } from "@/server/db/pool";
 import { NewSeriesForm } from "./new-series-form";
 
+export const metadata = { title: "New series" };
+
 export default function NewSeriesPage() {
   return (
     <Suspense fallback={<div aria-hidden className="h-96 rounded-card bg-surface" />}>

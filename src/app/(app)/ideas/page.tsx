@@ -7,6 +7,8 @@ import { Label } from "@/ui/primitives/label";
 import { AddIdeaForm, IdeaCard } from "./idea-parts";
 import { ResearchNowForm } from "./research-now";
 
+export const metadata = { title: "Ideas" };
+
 // The idea backlog. requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function IdeasPage({ searchParams }: PageProps<"/ideas">) {
   return (

@@ -11,6 +11,8 @@ import { Button } from "@/ui/primitives/button";
 import { Pill } from "@/ui/primitives/pill";
 import { Skeleton } from "@/ui/primitives/skeleton";
 
+export const metadata = { title: "Videos" };
+
 // The Library (Doc 4 /videos): every video, newest first. Filters and the page number live in the address bar.
 export default function Library({ searchParams }: PageProps<"/videos">) {
   return (

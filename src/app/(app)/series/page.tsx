@@ -8,6 +8,8 @@ import { loadInrRate } from "@/server/db/system-settings";
 import { Button } from "@/ui/primitives/button";
 import { CostLine } from "./series-parts";
 
+export const metadata = { title: "Series" };
+
 // Series list. requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function SeriesPage() {
   return (

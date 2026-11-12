@@ -19,6 +19,8 @@ import { cn, focusRing } from "@/ui/lib/cn";
 import { Pill } from "@/ui/primitives/pill";
 import { Skeleton } from "@/ui/primitives/skeleton";
 
+export const metadata = { title: "Audit log" };
+
 const PAGE_SIZE = 50;
 
 // Read-only. searchParams and the session are request-time data, so everything sits inside <Suspense> (cacheComponents).

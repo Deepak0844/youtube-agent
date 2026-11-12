@@ -5,6 +5,8 @@ import { getPool } from "@/server/db/pool";
 import { AssetSettingsForm } from "./asset-settings-form";
 import { RetentionPanel } from "./retention-panel";
 
+export const metadata = { title: "Asset settings" };
+
 // Reads the session (cookies), so it sits inside <Suspense> with a static frame.
 export default function AssetSettings() {
   return (

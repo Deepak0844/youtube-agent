@@ -14,6 +14,8 @@ import { GateCard, ageLabel } from "./gate-card";
 import { LiveFeed } from "./live-feed";
 import { UploadsSection } from "./uploads-section";
 
+export const metadata = { title: "Queue" };
+
 // The decision queue (Doc 4 /queue): everything that waits on the owner, oldest first. Reads the session and live rows, so
 // it sits inside <Suspense> with a static frame. Each card renders the hash and content versions it was built from and posts
 // them back; the actions compare them with the live state.

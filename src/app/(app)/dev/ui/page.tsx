@@ -31,6 +31,8 @@ import { stagesFor, type CutStage, type Format, type StageState } from "@/ui/dom
 import { VideoBox } from "@/ui/domain/video-box";
 import { sample } from "@/ui/sample/data";
 
+export const metadata = { title: "Dev UI" };
+
 // Design review aid: every building block in every state. Dev/staging only, never in the nav.
 export default function DevUi() {
   return (

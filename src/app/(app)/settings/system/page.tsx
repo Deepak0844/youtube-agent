@@ -12,6 +12,8 @@ import { RunNowForms } from "./run-now";
 import { BackupSection } from "./backup-section";
 import { CutoverForm, KillSwitchForm, LimitsForm, LocalServicesForm } from "./forms";
 
+export const metadata = { title: "System" };
+
 // Reads the session (cookies) and live server facts, so everything sits inside <Suspense> with a static frame.
 export default function SystemSettings() {
   return (

@@ -37,8 +37,9 @@ test("status shows reachability, vault, disk and versions, and no secrets", asyn
 
 test("the system page is in the nav and marked current", async ({ page }) => {
   await open(page);
-  const link = page.getByRole("navigation", { name: phone(page) ? "Bottom" : "Primary" }).getByRole("link", { name: /System|More/ });
-  if (!phone(page)) await expect(link).toHaveAttribute("aria-current", "page");
+  if (phone(page)) await page.getByRole("navigation", { name: "Bottom" }).getByRole("button", { name: "Settings" }).click();
+  const link = page.getByRole("navigation", { name: phone(page) ? "Settings pages" : "Primary" }).getByRole("link", { name: "System", exact: true });
+  await expect(link).toHaveAttribute("aria-current", "page");
 });
 
 test("a good list saves, is shown normalised, and survives a reload", async ({ page }) => {

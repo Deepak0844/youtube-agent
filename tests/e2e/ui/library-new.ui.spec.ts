@@ -121,13 +121,14 @@ test("new video: the 3D story (AI-written scene) choice explains itself, shows o
   expect(row).toEqual([{ kind: "scene3d_code", format: "short", style: null }]);
 });
 
-test("nav: Library and New are reachable and only the current one is marked", async ({ page }) => {
+test("nav: Videos and New video are reachable and only the current one is marked", async ({ page }) => {
   const phone = (page.viewportSize()?.width ?? 1440) < 768;
   await page.goto("/videos/new");
   await page.waitForLoadState("networkidle");
-  const nav = page.getByRole("navigation", { name: phone ? "Bottom" : "Primary" });
-  await expect(nav.getByRole("link", { name: "New" })).toHaveAttribute("aria-current", "page");
-  await expect(nav.getByRole("link", { name: "Library" })).not.toHaveAttribute("aria-current", /.+/);
+  if (phone) await page.getByRole("navigation", { name: "Bottom" }).getByRole("button", { name: "Make" }).click();
+  const nav = page.getByRole("navigation", { name: phone ? "Make pages" : "Primary" });
+  await expect(nav.getByRole("link", { name: "New video" })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("link", { name: "Videos" })).not.toHaveAttribute("aria-current", /.+/);
 });
 
 test("the New form offers the AI video type with its character picker and says when no provider is chosen yet", async ({ page }) => {

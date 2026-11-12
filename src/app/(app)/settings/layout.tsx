@@ -1,4 +1,4 @@
-// Frame for every /settings/* page. The nav lives in the shell; this only gives settings pages one readable column.
+// Frame for every /settings/* page. The menu lives in the shell; pages use the full width (spec 2026-11-12: no max-width).
 export default function SettingsLayout({ children }: LayoutProps<"/settings">) {
-  return <div className="max-w-4xl">{children}</div>;
+  return <>{children}</>;
 }

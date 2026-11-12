@@ -5,6 +5,8 @@ import { getPool } from "@/server/db/pool";
 import { loadResearch, type ResearchView } from "@/server/db/research";
 import { AddChannelForm, ChannelPicker, DecideButtons, FindButtons, TrendsButton } from "./research-forms";
 
+export const metadata = { title: "Research" };
+
 // Research. requireOwner() and searchParams are request-time data, so they sit inside <Suspense> (cacheComponents).
 // Everything from YouTube, Hacker News and Wikimedia is untrusted text: it is shown through React's escaping and never acted on.
 export default function ResearchPage({ searchParams }: PageProps<"/research">) {

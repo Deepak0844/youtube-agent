@@ -160,7 +160,7 @@ test("touch targets are 44px on phone and everything is reachable by keyboard", 
 test("the audit page is in the nav", async ({ page }) => {
   await open(page);
   if (phone(page)) return; // phone shows it under More
-  await expect(page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Audit" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Audit log" })).toHaveAttribute("aria-current", "page");
 });
 
 test("logging in is visible in the log", async ({ page }) => {

@@ -12,6 +12,8 @@ import { VIDEO_MODEL_IDS } from "@/server/core/video-models";
 import { RouteForm } from "./route-form";
 import { VoiceServers, type VoiceServerView } from "./voice-servers";
 
+export const metadata = { title: "Providers" };
+
 // Media providers (voice, music, sound effects, images, stock) and which one each kind of video uses.
 // requireOwner() reads the cookie (request-time data), so it runs inside <Suspense> (cacheComponents).
 export default function ProvidersPage() {

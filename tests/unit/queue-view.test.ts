@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dryRunAllowed } from "@/lib/dry-run";
 import { cutStages } from "@/ui/domain/queue-strip";
-import { visibleNav } from "@/ui/shell/nav-config";
+import { visibleAreas } from "@/ui/shell/nav-config";
 
 const states = (s: ReturnType<typeof cutStages>) => s.map((x) => `${x.key}:${x.state}`).join(" ");
 
@@ -50,7 +50,7 @@ describe("dry run availability and navigation", () => {
     expect(dryRunAllowed({ NODE_ENV: "production", ENGINE_DRY_RUN: "1" })).toBe(false);
   });
   it("the nav lists /queue", () => {
-    const hrefs = visibleNav().flatMap((g) => g.items.map((i) => i.href));
+    const hrefs = visibleAreas().flatMap((a) => a.items.map((i) => i.href));
     expect(hrefs).toContain("/queue");
   });
 });

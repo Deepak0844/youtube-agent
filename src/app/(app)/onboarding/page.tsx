@@ -7,6 +7,8 @@ import { getPool } from "@/server/db/pool";
 import { Button } from "@/ui/primitives/button";
 import { Pill } from "@/ui/primitives/pill";
 
+export const metadata = { title: "Get started" };
+
 // First-run setup. Each step links to the page that already has the form; done/not-done is read from saved state.
 // The wizard never sets a key or approves anything, and the last step only reads settings.
 export default function OnboardingPage() {
