@@ -109,6 +109,9 @@ test("a page that went stale says so, approves nothing and shows the new content
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect(page.getByTestId("live-feed")).toHaveAttribute("data-state", "paused");
+  // Also refuse the page's background re-render requests (router refresh / prefetch revalidation), so nothing but the
+  // click can bring the new version in. The approve itself is a POST and still goes through.
+  await page.route((url) => url.searchParams.has("_rsc"), (route) => route.abort());
   await addContent(db(), videoId, "script", { body: script(topic), sha256: sha256Hex(`script-new-${videoId}`) });
   await c.getByRole("button", { name: /^Approve script/ }).click();
   await expect(c.getByRole("alert").filter({ hasText: "Review again." }).first()).toHaveText("This changed while you were looking. Review again.");
