@@ -111,6 +111,14 @@ describe("providers page data layer", () => {
     expect((await db.ownerPool.query("select 1 from media_routes")).rowCount).toBe(0);
   });
 
+  it("an Edge route refuses a voice Edge cannot read, and keeps a supported one or none", async () => {
+    await setProviderEnabled(db.pool, "edge", true, "session");
+    await expect(setMediaRoute(db.pool, { scope: "default", provider: "edge", voice: "en-US-GuyNeural" }, "session")).rejects.toThrow("Edge supports only these voices");
+    expect((await db.ownerPool.query("select 1 from media_routes")).rowCount).toBe(0);
+    await setMediaRoute(db.pool, { scope: "default", provider: "edge", voice: "en-US-AriaNeural" }, "session");
+    expect(await resolveRoute(db.pool, "voice", { format: "short", videoKind: "tsx" })).toEqual({ provider: "edge", voice: "en-US-AriaNeural" });
+  });
+
   it("route_change_writes_audit_row", async () => {
     await setProviderEnabled(db.pool, "edge", true, "session");
     await setMediaRoute(db.pool, { scope: "kind:tsx", provider: "edge", voice: " en-US-AriaNeural " }, "session");

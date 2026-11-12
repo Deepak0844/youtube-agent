@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { EDGE_VOICES } from "@/server/core/edge-voices";
 import { KEY_SLOT, canEnable, canRoute, isPriced, routeScope, type PriceRule } from "@/server/core/media-catalog";
 import { secretName, type ProviderId } from "@/server/core/provider-keys";
 import { isVideoModel } from "@/server/core/video-models";
@@ -104,6 +105,8 @@ export async function setMediaRoute(db: pg.Pool, r: { scope: string; provider: s
     if (!rows[0]) throw new RegistryError("Unknown provider.");
     const kind = rows[0].kind;
     if (kind !== "voice" && voice) throw new RegistryError("Only voice providers have a narration voice.");
+    // Edge reads only its one voice per language: refuse any other name now, not at the first narration.
+    if (r.provider === "edge" && voice && !Object.values(EDGE_VOICES).includes(voice)) throw new RegistryError(`Edge supports only these voices: ${Object.values(EDGE_VOICES).join(", ")}. Leave the voice empty to use the one for the video's language.`);
     if (kind !== "video" && model) throw new RegistryError("Only AI video providers have a model.");
     if (kind === "video" && (!model || !isVideoModel(r.provider, model))) throw new RegistryError("Choose one of this provider's video models.");
     const ok = canRoute(rows[0]);
