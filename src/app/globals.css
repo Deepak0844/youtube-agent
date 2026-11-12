@@ -32,3 +32,20 @@ body {
 
 /* Real overlays only (menus, dialogs, sheets, toasts, tooltips, the bell panel) lift above the page; nothing at rest has a shadow. */
 .overlay-lift { box-shadow: 0 10px 30px -8px rgb(0 0 0 / 0.35), 0 2px 6px rgb(0 0 0 / 0.12); } /* data-ui overlay */
+
+/* Motion (UI redesign): short enter animations for everything that opens, and a soft fade when a page changes.
+   The prefers-reduced-motion rule above shortens them to nothing. */
+@keyframes ui-pop { from { opacity: 0; transform: translateY(-4px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes ui-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ui-rise { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes ui-slide-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@keyframes ui-slide-left { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes ui-slide-right { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+@keyframes ui-page { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.ui-pop { animation: ui-pop 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: var(--radix-popper-transform-origin, top right); }
+.ui-fade { animation: ui-fade 160ms ease-out both; }
+.ui-rise { animation: ui-rise 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.ui-slide-up { animation: ui-slide-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.ui-slide-left { animation: ui-slide-left 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.ui-slide-right { animation: ui-slide-right 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.ui-page { animation: ui-page 200ms ease-out both; }

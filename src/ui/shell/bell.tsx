@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { Bell, CircleAlert, CircleCheck, CircleX } from "lucide-react";
+import { Bell, Check, CheckCheck, CircleAlert, CircleCheck, CircleX } from "lucide-react";
 import { requireOwner } from "@/lib/auth/require-owner";
-import { markAllReadAction } from "@/app/_actions/notifications";
+import { markAllReadAction, markOneReadAction } from "@/app/_actions/notifications";
 import { getPool } from "@/server/db/pool";
 import { listNotifications, unreadCount } from "@/server/db/notify";
 import { bellItem } from "@/server/core/notify-view";
@@ -42,20 +42,23 @@ export async function NotificationBell() {
       <div
         role="region"
         aria-label="Notifications"
-        className="absolute right-0 z-30 mt-2 flex w-96 flex-col overflow-hidden rounded-card border border-border bg-surface text-text overlay-lift max-sm:fixed max-sm:inset-x-3 max-sm:top-14 max-sm:w-auto"
+        className="ui-pop absolute right-0 z-30 mt-2 flex w-96 flex-col overflow-hidden rounded-card border border-border bg-surface text-text overlay-lift max-sm:fixed max-sm:inset-x-3 max-sm:top-14 max-sm:w-auto"
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <p className="flex items-center gap-2 text-section font-semibold">
             Notifications
             {unread > 0 ? <span className="rounded-full bg-raised px-2 text-small font-medium text-muted">{unread} new</span> : null}
           </p>
-          {unread > 0 ? (
-            <form action={markAllReadAction}>
-              <button type="submit" className={cn("rounded-control px-1.5 py-0.5 text-small text-muted hover:bg-raised hover:text-text", focusRing)}>
-                Mark all read
-              </button>
-            </form>
-          ) : null}
+          <form action={markAllReadAction}>
+            <button
+              type="submit"
+              disabled={unread === 0}
+              className={cn("flex items-center gap-1.5 rounded-control px-1.5 py-1 text-small text-muted hover:bg-raised hover:text-text disabled:pointer-events-none disabled:opacity-50", focusRing)}
+            >
+              <CheckCheck size={14} aria-hidden />
+              Mark all read
+            </button>
+          </form>
         </div>
         {rows.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
@@ -88,14 +91,27 @@ export async function NotificationBell() {
                 </>
               );
               return (
-                <li key={r.id} data-testid="bell-item" className="border-b border-border last:border-0">
+                <li key={r.id} data-testid="bell-item" className="group flex items-stretch border-b border-border last:border-0">
                   {b.href ? (
-                    <Link href={b.href} className={cn("flex gap-3 px-4 py-3 hover:bg-raised", focusRing)}>
+                    <Link href={b.href} className={cn("flex min-w-0 flex-1 gap-3 px-4 py-3 hover:bg-raised", focusRing)}>
                       {body}
                     </Link>
                   ) : (
-                    <div className="flex gap-3 px-4 py-3">{body}</div>
+                    <div className="flex min-w-0 flex-1 gap-3 px-4 py-3">{body}</div>
                   )}
+                  {b.unread ? (
+                    <form action={markOneReadAction} className="flex items-start pt-2.5 pr-2">
+                      <input type="hidden" name="id" value={r.id} />
+                      <button
+                        type="submit"
+                        aria-label={`Mark as read: ${b.title}`}
+                        title="Mark as read"
+                        className={cn("flex size-7 items-center justify-center rounded-control text-faint hover:bg-raised hover:text-text", focusRing)}
+                      >
+                        <Check size={14} aria-hidden />
+                      </button>
+                    </form>
+                  ) : null}
                 </li>
               );
             })}

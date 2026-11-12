@@ -13,26 +13,28 @@ export const DialogDescription = ({ className, ...p }: React.ComponentProps<type
   <D.Description className={cn("text-body text-muted", className)} {...p} />
 );
 
-export const overlay = "fixed inset-0 z-40 bg-ground/70";
+export const overlay = "ui-fade fixed inset-0 z-40 bg-ground/70";
 
-export function DialogContent({ className, children, ...props }: React.ComponentProps<typeof D.Content>) {
+export function DialogContent({ className, children, hideClose = false, ...props }: React.ComponentProps<typeof D.Content> & { hideClose?: boolean }) {
   return (
     <D.Portal>
       <D.Overlay className={overlay} />
       <D.Content
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 flex max-h-[85dvh] w-[calc(100%-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-gap overflow-auto rounded-frame border border-border bg-surface p-pad text-text overlay-lift",
+          "ui-rise fixed top-1/2 left-1/2 z-50 flex max-h-[85dvh] w-[calc(100%-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-gap overflow-auto rounded-frame border border-border bg-surface p-pad text-text overlay-lift",
           className,
         )}
         {...props}
       >
         {children}
+        {hideClose ? null : (
         <D.Close
           aria-label="Close"
           className={cn("absolute top-3 right-3 flex size-11 items-center justify-center rounded-control text-muted hover:text-text sm:size-9", fade, focusRing)}
         >
           <X size={16} aria-hidden />
         </D.Close>
+        )}
       </D.Content>
     </D.Portal>
   );

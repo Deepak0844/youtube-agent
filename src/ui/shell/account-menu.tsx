@@ -26,7 +26,7 @@ export function AccountMenu({ signOut }: { signOut: () => Promise<void> }) {
       <DropdownMenu onOpenChange={(open) => open && setTheme(readTheme())}>
         <DropdownMenuTrigger
           aria-label="Account"
-          className={cn("flex size-11 items-center justify-center rounded-control text-muted hover:text-text md:size-9", fade, focusRing)}
+          className={cn("flex size-11 items-center justify-center rounded-control text-muted hover:bg-raised hover:text-text md:size-9", fade, focusRing)}
         >
           <CircleUser size={20} aria-hidden />
         </DropdownMenuTrigger>
