@@ -15,7 +15,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
     <>
       <SkipLink />
       <div className="flex min-h-dvh bg-ground">
-        <div className="sticky top-0 hidden h-dvh w-16 shrink-0 md:block">
+        <div className="sticky top-0 hidden h-dvh w-20 shrink-0 md:block">
           <Suspense fallback={<Rail active={null} />}>
             <RailLive />
           </Suspense>

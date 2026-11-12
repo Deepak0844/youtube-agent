@@ -177,7 +177,7 @@ async function Owned({ searchParams }: Pick<PageProps<"/queue">, "searchParams">
 function ListRow({ href, on, topic, lang, meta, pill }: { href: string; on?: boolean; topic: string; lang: string; meta: string; pill: ReactNode }) {
   return (
     <li className="border-b border-border last:border-0">
-      <Link href={href} aria-current={on ? "true" : undefined} className={cn("flex min-w-0 flex-col gap-1.5 px-3 py-3 hover:bg-raised", on && "bg-raised shadow-[inset_2px_0_0_var(--text)]", focusRing)}>
+      <Link href={href} aria-current={on ? "true" : undefined} className={cn("flex min-w-0 flex-col gap-1.5 px-3 py-3 hover:bg-raised", on && "relative bg-raised before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-text before:content-['']", focusRing)}>
         <span lang={lang} className="min-w-0 font-medium text-text [overflow-wrap:anywhere]">{topic}</span>
         <span className="text-small text-faint">{meta}</span>
         <span>{pill}</span>

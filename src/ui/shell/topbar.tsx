@@ -36,11 +36,11 @@ async function SpendToday() {
   } catch {
     phone = wide = "Spend unavailable";
   }
-  // Phone: dollars only (the rupee text does not fit 390 px). md and up: dollars and rupees.
+  // Phone and tablet: dollars only (the rupee text does not fit). lg and up: dollars and rupees.
   return (
     <>
-      <span className="md:hidden">{phone}</span>
-      <span className="hidden md:inline">{wide}</span>
+      <span className="lg:hidden">{phone}</span>
+      <span className="hidden lg:inline">{wide}</span>
     </>
   );
 }
@@ -59,10 +59,10 @@ export function TopBar() {
         </Suspense>
       </div>
 
-      <div className="ml-auto hidden md:block">
+      <div className="ml-auto hidden lg:block">
         <CommandMenu />
       </div>
-      <div className="flex items-center gap-4 max-md:ml-auto md:gap-5">
+      <div className="flex items-center gap-4 max-lg:ml-auto md:gap-5">
         <p className="text-small whitespace-nowrap text-muted md:text-body">
           <Suspense fallback="$– of $– today">
             <SpendToday />

@@ -46,7 +46,7 @@ function Frame({ id }: { id: StyleId }) {
       </>;
     case "storybook_calm":
       return <>
-        <Box s={{ inset: 0, background: `radial-gradient(circle at 70% 24%, #2a2350, ${c[0]} 60%)` }} />
+        <Box s={{ inset: 0, background: `radial-gradient(circle at 70% 24%, #2a2350, ${c[0]} 60%)` }} /> {/* taste-skill-ignore: draws the video look itself, not app chrome */}
         <Box s={{ left: "62%", top: "20%", width: "20%", aspectRatio: "1", borderRadius: "50%", background: "#FFE9B5", boxShadow: "0 0 24px 8px rgba(255,200,120,.45)" }} />
         <Box s={{ left: "-10%", right: "-10%", bottom: "-6%", height: "34%", background: "#143324", borderRadius: "55% 45% 0 0" }} />
         {[[20, 50], [34, 60], [58, 54], [72, 64]].map(([x, y]) => <Box key={x} s={{ left: `${x}%`, top: `${y}%`, width: 5, height: 5, borderRadius: "50%", background: c[2], boxShadow: "0 0 8px 3px rgba(255,179,71,.6)" }} />)}
@@ -68,23 +68,23 @@ function Frame({ id }: { id: StyleId }) {
       </>;
     case "retention_shorts":
       return <>
-        <Box s={{ inset: 0, background: `linear-gradient(170deg, ${c[0]}, ${c[1]})` }} />
+        <Box s={{ inset: 0, background: `linear-gradient(170deg, ${c[0]}, ${c[1]})` }} /> {/* taste-skill-ignore: draws the video look itself, not app chrome */}
         <Box s={{ left: "6%", right: "6%", top: "9%", textAlign: "center", color: "#fff", textTransform: "uppercase", WebkitTextStroke: "1px #000", ...h(10) }}>You&apos;re doing this wrong</Box>
         <Box s={{ left: "16%", right: "16%", top: "34%", aspectRatio: "1", background: "rgba(255,255,255,.12)", border: `3px solid ${c[2]}`, borderRadius: 14 }} />
         <Box s={{ left: "6%", right: "6%", top: "78%", textAlign: "center", color: "#fff", WebkitTextStroke: "1px #000", ...h(10) }}>STOP <span style={{ color: c[2] }}>GUESSING</span></Box>
       </>;
     case "wrapped_stats":
       return <>
-        <Box s={{ inset: 0, background: `radial-gradient(circle at 20% 10%, #2b1b63, ${c[0]} 60%)` }} />
+        <Box s={{ inset: 0, background: `radial-gradient(circle at 20% 10%, #2b1b63, ${c[0]} 60%)` }} /> {/* taste-skill-ignore: draws the video look itself, not app chrome */}
         <Box s={{ left: "8%", top: "10%", color: c[2], fontSize: "4cqw", letterSpacing: "0.14em", fontFamily: "ui-monospace, monospace" }}>YOUR YEAR</Box>
         <Box s={{ left: "8%", top: "16%", color: c[1], ...h(36, { lineHeight: 0.9 }) }}>21%</Box>
         {[92, 74, 55, 41].map((w, i) => <Box key={w} s={{ left: "8%", top: `${52 + i * 9}%`, width: `${w * 0.8}%`, height: "5%", borderRadius: 3, background: i % 2 ? c[3] : c[2] }} />)}
       </>;
     case "ai_studio":
       return <>
-        <Box s={{ inset: 0, background: `radial-gradient(circle at 25% 18%, rgba(99,102,241,.55), transparent 55%), radial-gradient(circle at 80% 70%, rgba(77,184,168,.32), transparent 55%), ${c[0]}` }} />
+        <Box s={{ inset: 0, background: `radial-gradient(circle at 25% 18%, rgba(99,102,241,.55), transparent 55%), radial-gradient(circle at 80% 70%, rgba(77,184,168,.32), transparent 55%), ${c[0]}` }} /> {/* taste-skill-ignore: draws the video look itself, not app chrome */}
         <Box s={{ left: "8%", right: "8%", top: "9%", color: "#fff", ...h(10) }}>How electricity is <span style={{ color: c[4] }}>really made</span></Box>
-        <Box s={{ left: "28%", top: "30%", width: "44%", aspectRatio: "1", borderRadius: "50%", background: `radial-gradient(circle, #fff3c4, ${c[4]} 45%, transparent 70%)` }} />
+        <Box s={{ left: "28%", top: "30%", width: "44%", aspectRatio: "1", borderRadius: "50%", background: `radial-gradient(circle, #fff3c4, ${c[4]} 45%, transparent 70%)` }} /> {/* taste-skill-ignore: draws the video look itself, not app chrome */}
         <Box s={{ left: "18%", top: "62%", width: "64%", aspectRatio: "2.2", borderRadius: "50%", border: `5px solid ${c[1]}`, boxShadow: `0 0 16px ${c[1]}` }} />
       </>;
   }
@@ -95,7 +95,7 @@ export function StyleMock({ id }: { id: AnyStyleId | "" }) {
   return (
     <div aria-hidden className="relative aspect-[9/13] w-full overflow-hidden rounded-control" style={{ containerType: "inline-size" }}>
       {id === "" || !PRESETS[id].sheet ? (
-        <div className="absolute inset-0" style={{ background: "linear-gradient(165deg, #0a1640, #1e40af)" }}>
+        <div className="absolute inset-0" style={{ background: "linear-gradient(165deg, #0a1640, #1e40af)" }}> {/* taste-skill-ignore: draws the video look itself, not app chrome */}
           <div className="absolute top-[10%] right-[10%] left-[10%] text-[10cqw] leading-tight font-black text-white">Colours change every video</div>
         </div>
       ) : (

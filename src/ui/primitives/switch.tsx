@@ -15,7 +15,7 @@ export function Switch({ className, ...props }: React.ComponentProps<typeof S.Ro
       )}
       {...props}
     >
-      <S.Thumb className="block size-5 rounded-full bg-page shadow-sm transition-transform duration-150 motion-reduce:transition-none data-[state=checked]:translate-x-5 data-[state=checked]:bg-page" />
+      <S.Thumb className="block size-5 rounded-full border border-border bg-page transition-transform duration-150 motion-reduce:transition-none data-[state=checked]:translate-x-5 data-[state=checked]:bg-page" />
     </S.Root>
   );
 }

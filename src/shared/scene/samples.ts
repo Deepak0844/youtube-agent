@@ -6,7 +6,7 @@ const b = (kind: string) => ({ id: `s-${kind}`.slice(0, 32).replace(/_/g, "-"), 
 
 export const SAMPLE_SCENES: Record<string, Record<string, unknown>> = {
   algo_cells: { ...b("algo_cells"), title: "Bubble sort", cells: ["5", "2", "8", "1"], steps: [{ at: 500, type: "compare", i: 0, j: 1 }, { at: 1200, type: "swap", i: 0, j: 1 }, { at: 2000, type: "mark_done", i: 3 }] },
-  browser: { ...b("browser"), title: "Pricing", url: "example.com/pricing", blocks: [{ type: "heading", text: "Simple pricing" }, { type: "text", text: "Free for small teams." }, { type: "image", asset: "img-demo" }] },
+  browser: { ...b("browser"), title: "Pricing", url: "example.com/pricing", blocks: [{ type: "heading", text: "Simple pricing" }, { type: "text", text: "Free for small teams." }, { type: "image", asset: "img-demo" }] }, // taste-skill-ignore: a dev-only sample page
   chart: { ...b("chart"), chart: "bar", title: "Visits", labels: ["Mon", "Tue", "Wed"], series: [{ values: [3, 7, 5] }] },
   chat_thread: { ...b("chat_thread"), messages: [{ from: "user", text: "Did it ship?" }, { from: "assistant", text: "Yes, just now." }] },
   chess: { ...b("chess"), moves: [{ from: "e2", to: "e4" }, { from: "e7", to: "e5" }], highlights: ["e4"], caption: "King pawn opening" },

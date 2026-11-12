@@ -29,7 +29,7 @@ export function AlertDialogContent({ className, ...props }: React.ComponentProps
       <A.Overlay className={overlay} />
       <A.Content
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 flex w-[calc(100%-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-gap rounded-frame border border-border bg-surface p-pad text-text shadow-xl",
+          "fixed top-1/2 left-1/2 z-50 flex w-[calc(100%-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-gap rounded-frame border border-border bg-surface p-pad text-text overlay-lift",
           className,
         )}
         {...props}

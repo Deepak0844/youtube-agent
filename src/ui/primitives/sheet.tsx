@@ -23,7 +23,7 @@ export function SheetContent({ side = "right", className, children, ...props }: 
   return (
     <D.Portal>
       <D.Overlay className={overlay} />
-      <D.Content className={cn("fixed z-50 flex flex-col gap-gap overflow-auto border-border bg-surface p-pad text-text shadow-xl", sides[side], className)} {...props}>
+      <D.Content className={cn("fixed z-50 flex flex-col gap-gap overflow-auto border-border bg-surface p-pad text-text overlay-lift", sides[side], className)} {...props}>
         {children}
         <D.Close aria-label="Close" className={cn("absolute top-3 right-3 flex size-11 items-center justify-center rounded-control text-muted hover:text-text", fade, focusRing)}>
           <X size={16} aria-hidden />

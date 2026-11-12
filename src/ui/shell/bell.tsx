@@ -32,7 +32,7 @@ export async function NotificationBell() {
           </span>
         ) : null}
       </summary>
-      <div className="absolute right-0 z-20 mt-2 w-80 rounded-card max-sm:fixed max-sm:inset-x-4 max-sm:top-14 max-sm:w-auto bg-raised p-3 shadow-lg" role="region" aria-label="Notifications">
+      <div className="absolute right-0 z-20 mt-2 w-80 rounded-card max-sm:fixed max-sm:inset-x-4 max-sm:top-14 max-sm:w-auto bg-raised p-3 overlay-lift" role="region" aria-label="Notifications">
         {items.length === 0 ? (
           <p className="text-body text-muted">Nothing yet.</p>
         ) : (
