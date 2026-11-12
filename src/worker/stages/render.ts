@@ -1,4 +1,4 @@
-import { lstat, rm, stat } from "node:fs/promises";
+import { copyFile, lstat, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { KnownFailure } from "@/server/core/paid-call";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
@@ -19,6 +19,7 @@ import type { RenderArgs, Renderer } from "@/server/providers/renderer";
 import { MAX_VIDEO_BYTES } from "@/server/providers/renderer/remotion-container";
 import { joinClips, type MixDeps } from "@/server/render/mix";
 import { openRegular, promotedPath, type AttemptHandler } from "./attempt";
+import { videoPath } from "@/server/storage/paths";
 import { contentBody, LANDSCAPE_SIZE, loadVideo, SIZE, type StageDeps } from "./deps";
 import { audioSeconds } from "./voice-audio";
 
@@ -172,36 +173,65 @@ export function renderAttempt(deps: StageDeps): AttemptHandler {
     const chunks = landscape && doc && deps.mix ? chapterFrameChunks(landscape.chapters, FPS) : [];
     let image: string | undefined;
     let chaptersRendered = 0;
+    let chaptersReused = 0;
     if (chunks.length > 1 && deps.mix && doc) {
-      const res = await renderInChapters(deps.renderer, deps.mix, ctx, args, chunks, Math.max(...doc.scenes.map((x) => x.startMs + x.durationMs)) / 1000);
+      const res = await renderInChapters(deps.renderer, deps.mix, ctx, args, chunks, Math.max(...doc.scenes.map((x) => x.startMs + x.durationMs)) / 1000, videoPath(deps.root, video.id, "chapter-cache"));
       image = res.image;
       chaptersRendered = res.chunks;
+      chaptersReused = res.reused ?? 0;
     } else {
       const r = await deps.renderer.render(ctx, args);
       if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
       image = r.image;
     }
-    return { files: ["render.mp4"], result: { rendered: "render.mp4", scenes: doc ? doc.scenes.length : null, image: image ?? null, ...retime, ...(chaptersRendered > 0 ? { chunks: chaptersRendered } : {}), ...(chapterInfo ? { chapters: chapterInfo.marks, chaptersFrom: chapterInfo.from, totalMs: doc ? total(doc) : null } : {}) } };
+    return { files: ["render.mp4"], result: { rendered: "render.mp4", scenes: doc ? doc.scenes.length : null, image: image ?? null, ...retime, ...(chaptersRendered > 0 ? { chunks: chaptersRendered } : {}), ...(chaptersReused > 0 ? { chunksReused: chaptersReused } : {}), ...(chapterInfo ? { chapters: chapterInfo.marks, chaptersFrom: chapterInfo.from, totalMs: doc ? total(doc) : null } : {}) } };
   };
 }
 
 /**
  * Draws a long video one chapter at a time and joins the clips into render.mp4 (no sound: the voice step lays the narration on). Each chapter is its own
- * renderer call, so each gets the full time limit and memory. The clips are removed whether it worked or not. A joined length more than 2 s away
- * from the scenes (a chapter missing or drawn twice) fails the stage and keeps nothing.
+ * renderer call, so each gets the full time limit and memory. The clips are removed from the attempt folder whether it worked or not. A joined length
+ * more than 2 s away from the scenes (a chapter missing or drawn twice) fails the stage and keeps nothing.
+ *
+ * `cacheDir` (optional): every finished chapter is also kept there, named by a hash of everything that shapes it (scenes, captions, look, size, frame
+ * range). A later attempt copies a matching clip back instead of drawing it again, so a failure in chapter 5 does not redraw chapters 1-4. A reused clip
+ * drawn by another render image than this attempt's fresh chapters is drawn again (one video, one image). The cache is removed once the video is joined.
  */
-export async function renderInChapters(renderer: Renderer, mix: MixDeps, ctx: Parameters<AttemptHandler>[0], args: RenderArgs, chunks: readonly FrameChunk[], expectedS: number): Promise<{ chunks: number; image?: string }> {
+export async function renderInChapters(renderer: Renderer, mix: MixDeps, ctx: Parameters<AttemptHandler>[0], args: RenderArgs, chunks: readonly FrameChunk[], expectedS: number, cacheDir?: string): Promise<{ chunks: number; image?: string; reused?: number }> {
   const nameOf = (i: number) => `chapter-${String(i + 1).padStart(2, "0")}.mp4`;
+  // File names and paths do not change the picture; everything else in args does.
+  const keyOf = (chunk: FrameChunk) => sha256Hex(canonicalJson({ ...args, outFile: null, sceneFile: null, audioFile: null, chunk }));
   const clips: string[] = [];
-  let image: string | undefined;
+  const images: Array<string | undefined> = [];
+  const reused = new Set<number>();
+  const draw = async (i: number, chunk: FrameChunk) => {
+    const r = await renderer.render(ctx, { ...args, outFile: nameOf(i), chunk });
+    if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
+    images[i] = r.image;
+    reused.delete(i);
+    if (cacheDir) await keep(cacheDir, keyOf(chunk), path.join(ctx.attemptDir, nameOf(i)), r.image).catch(() => ctx.log(`render: chapter ${i + 1} could not be kept for a retry`));
+  };
   try {
     for (const [i, chunk] of chunks.entries()) {
-      ctx.log(`render: chapter ${i + 1} of ${chunks.length}`);
-      const r = await renderer.render(ctx, { ...args, outFile: nameOf(i), chunk });
-      if (path.dirname(path.resolve(r.outPath)) !== path.resolve(ctx.attemptDir)) throw new KnownFailure("The renderer wrote outside its attempt folder.");
-      image = r.image ?? image;
+      const hit = cacheDir ? await cached(cacheDir, keyOf(chunk)) : null;
+      if (hit) {
+        await copyFile(hit.file, path.join(ctx.attemptDir, nameOf(i)));
+        images[i] = hit.image;
+        reused.add(i);
+        ctx.log(`render: chapter ${i + 1} of ${chunks.length} reused from an earlier attempt`);
+      } else {
+        ctx.log(`render: chapter ${i + 1} of ${chunks.length}`);
+        await draw(i, chunk);
+      }
       clips.push(nameOf(i));
     }
+    const fresh = images.find((im, i) => !reused.has(i) && im !== undefined);
+    for (const i of [...reused]) {
+      if (fresh === undefined || images[i] === fresh) continue;
+      ctx.log(`render: chapter ${i + 1} was drawn by another render image, drawing it again`);
+      await draw(i, chunks[i]!);
+    }
+    const image = fresh ?? images.find((im) => im !== undefined);
     const outFile = path.join(ctx.attemptDir, "render.mp4");
     const joinedS = await joinClips(mix, ctx, { clips, out: outFile });
     if ((await stat(outFile)).size > MAX_VIDEO_BYTES) {
@@ -210,12 +240,40 @@ export async function renderInChapters(renderer: Renderer, mix: MixDeps, ctx: Pa
     }
     if (Math.abs(joinedS - expectedS) > 2) {
       await rm(path.join(ctx.attemptDir, "render.mp4"), { force: true }).catch(() => undefined);
+      // A clip in the cache may be the wrong one: drop it all so the next attempt draws every chapter.
+      if (cacheDir) await rm(cacheDir, { recursive: true, force: true }).catch(() => undefined);
       throw new KnownFailure(`The joined video is ${joinedS.toFixed(1)} s but the scenes add up to ${expectedS.toFixed(1)} s. Nothing was kept.`);
     }
-    return { chunks: clips.length, ...(image ? { image } : {}) };
+    if (cacheDir) await rm(cacheDir, { recursive: true, force: true }).catch(() => undefined);
+    return { chunks: clips.length, ...(image ? { image } : {}), ...(reused.size ? { reused: reused.size } : {}) };
   } finally {
     await Promise.all([...chunks.keys()].map((i) => rm(path.join(ctx.attemptDir, nameOf(i)), { force: true }))).catch(() => undefined);
     await rm(path.join(ctx.attemptDir, "chapters.txt"), { force: true }).catch(() => undefined);
+  }
+}
+
+const KEY = /^[0-9a-f]{64}$/;
+/** Copies a finished clip into the cache (temp name, then rename, so a half-written clip is never found). */
+async function keep(dir: string, key: string, clip: string, image: string | undefined): Promise<void> {
+  if (!KEY.test(key)) return;
+  await mkdir(dir, { recursive: true });
+  const tmp = path.join(dir, `${key}.mp4.tmp`);
+  await copyFile(clip, tmp);
+  await writeFile(path.join(dir, `${key}.json`), JSON.stringify({ image: image ?? null }));
+  await rename(tmp, path.join(dir, `${key}.mp4`));
+}
+
+/** A kept clip for this key, or null. Only a regular, non-empty file counts. */
+async function cached(dir: string, key: string): Promise<{ file: string; image: string | undefined } | null> {
+  if (!KEY.test(key)) return null;
+  const file = path.join(dir, `${key}.mp4`);
+  try {
+    const st = await lstat(file);
+    if (!st.isFile() || st.size === 0) return null;
+    const meta = JSON.parse(await readFile(path.join(dir, `${key}.json`), "utf8")) as { image?: unknown };
+    return { file, image: typeof meta.image === "string" ? meta.image : undefined };
+  } catch {
+    return null;
   }
 }
 
