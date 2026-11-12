@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NOTIFY_EVENTS, NOTIFY_EVENT_IDS, decideDelivery, defaultSwitches, eventForState, localMinutes, scrubText, type NotifySettings } from "@/server/core/notify";
+import { NOTIFY_EVENTS, NOTIFY_EVENT_IDS, decideDelivery, defaultSwitches, failureEvent, eventForState, localMinutes, scrubText, type NotifySettings } from "@/server/core/notify";
 import { SETTINGS } from "@/server/core/settings-registry";
 import { gateWaitInput } from "@/server/db/notify";
 import { isAuditEvent } from "@/server/core/audit-events";
@@ -135,5 +135,13 @@ describe("gateWaitInput", () => {
     expect(gateWaitInput("v", "script", "active", "t")).toEqual({ event: "script_review", videoId: "v", from: "active", to: "gate.script", transitionId: "t" });
     expect(gateWaitInput("v", "comment_reply", "active", "t")?.event).toBe("comment_replies");
     expect(gateWaitInput("v", "look", "active", "t")).toBeNull();
+  });
+});
+
+describe("failureEvent", () => {
+  it("a QA block is video_blocked; any other failure or no result is video_failed", () => {
+    expect(failureEvent({ error: "known_failure: qa_failed: The video has no audio track." })).toBe("video_blocked");
+    expect(failureEvent({ error: "known_failure: missing stage handler: draft" })).toBe("video_failed");
+    expect(failureEvent(null)).toBe("video_failed");
   });
 });
