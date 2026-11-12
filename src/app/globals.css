@@ -29,3 +29,6 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Real overlays only (menus, dialogs, sheets, toasts, tooltips, the bell panel) lift above the page; nothing at rest has a shadow. */
+.overlay-lift { box-shadow: 0 10px 30px -8px rgb(0 0 0 / 0.35), 0 2px 6px rgb(0 0 0 / 0.12); } /* data-ui overlay */

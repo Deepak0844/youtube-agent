@@ -100,7 +100,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
           {p.head.format === "short" ? <MakeVersionForm videoId={p.head.id} kind={p.head.kind} /> : null}
         </div>
         <div className="flex min-w-0 flex-col gap-layout">
-          <dl className="m-0 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-px overflow-hidden rounded-card border border-border bg-border">
+          <dl className="m-0 grid min-w-0 grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
             <Detail label="Language">{LANGUAGE_WORDS[p.head.language]}</Detail>
             <Detail label="Type"><span data-testid="video-kind">Type: {KIND_WORDS[p.head.kind]}, {FORMAT_WORDS[p.head.format].toLowerCase()}</span></Detail>
             <Detail label="Style"><span data-testid="video-style">Style: {presetOf(p.head.style).label}{p.head.captionStyle ? ", punchy captions" : ""}</span></Detail>
@@ -141,7 +141,7 @@ function Missing() {
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1 bg-surface p-pad">
+    <div className="flex min-w-0 flex-col gap-1 rounded-control border border-border bg-surface p-3">
       <dt className="text-small text-muted">{label}</dt>
       <dd className="m-0 min-w-0 text-body [overflow-wrap:anywhere]">{children}</dd>
     </div>

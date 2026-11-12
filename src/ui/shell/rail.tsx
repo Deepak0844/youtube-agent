@@ -14,7 +14,7 @@ function RailItem({ area, href, current }: { area: Area; href: string; current: 
       href={href}
       aria-current={on ? "page" : undefined}
       className={cn(
-        "flex w-13 flex-col items-center gap-1 rounded-card py-1.5 text-[11px] leading-none",
+        "flex w-16 flex-col items-center gap-1 rounded-card py-1.5 text-[11px] leading-none",
         on ? "bg-raised font-medium text-text" : "text-muted hover:text-text",
         fade,
         focusRing,

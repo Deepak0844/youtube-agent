@@ -11,8 +11,8 @@ import { Rail } from "./rail";
 export function RailLive() {
   return <Rail active={usePathname()} />;
 }
-export function AreaMenuLive() {
-  return <AreaMenu active={usePathname()} />;
+export function AreaMenuLive({ counts }: { counts?: Record<string, number> }) {
+  return <AreaMenu active={usePathname()} counts={counts} />;
 }
 export function BreadcrumbsLive() {
   return <Breadcrumbs active={usePathname()} />;

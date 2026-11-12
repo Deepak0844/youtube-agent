@@ -21,7 +21,7 @@ export function DialogContent({ className, children, ...props }: React.Component
       <D.Overlay className={overlay} />
       <D.Content
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 flex max-h-[85dvh] w-[calc(100%-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-gap overflow-auto rounded-frame border border-border bg-surface p-pad text-text shadow-xl",
+          "fixed top-1/2 left-1/2 z-50 flex max-h-[85dvh] w-[calc(100%-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col gap-gap overflow-auto rounded-frame border border-border bg-surface p-pad text-text overlay-lift",
           className,
         )}
         {...props}

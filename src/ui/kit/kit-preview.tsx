@@ -55,7 +55,7 @@ export function PreviewStage({ data, videoId, title, style, captionStyle }: { da
           <div className="flex flex-wrap gap-2">
             <button type="button" aria-pressed={look === null} onClick={() => setLook(null)} className="min-h-9 rounded-control bg-raised px-3 text-small aria-pressed:outline aria-pressed:outline-2">This video&apos;s own</button>
             {LOOKS.map((l, i) => (
-              <button key={l.name} type="button" aria-label={l.name} aria-pressed={look === i} onClick={() => setLook(i)} className="size-9 rounded-full border border-rule aria-pressed:outline aria-pressed:outline-2" style={{ background: `linear-gradient(135deg, ${l.from}, ${l.to})`, boxShadow: `inset -10px -10px 0 -4px ${l.accent}` }} />
+              <button key={l.name} type="button" aria-label={l.name} aria-pressed={look === i} onClick={() => setLook(i)} className="size-9 rounded-full border border-rule aria-pressed:outline aria-pressed:outline-2" style={{ /* taste-skill-ignore: dev kit preview of a video background */ background: `linear-gradient(135deg, ${l.from}, ${l.to})`, boxShadow: `inset -10px -10px 0 -4px ${l.accent}` }} />
             ))}
           </div>
         </fieldset>
@@ -72,7 +72,7 @@ export function PreviewStage({ data, videoId, title, style, captionStyle }: { da
               <button type="button" onClick={() => ref.current?.seekTo(r.startFrame)} className="flex min-h-11 w-full items-center gap-3 rounded-control bg-surface px-3 text-left text-body hover:bg-raised sm:min-h-9">
                 <span className="tabular-nums text-muted">{r.startLabel}</span>
                 <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{r.kind.replace(/_/g, " ")}</span>
-                <span aria-label={r.ok ? "Passed the checks" : "Has a problem"} className={r.ok ? "text-pill-positive-ink" : "text-pill-warning-ink"}>{r.ok ? "✓" : "!"}</span>
+                <span aria-label={r.ok ? "Passed the checks" : "Has a problem"} className={r.ok ? "text-pill-positive-ink" : "text-pill-warning-ink"}>{r.ok ? "✓" /* taste-skill-ignore: dev kit mark */ : "!"}</span>
               </button>
             </li>
           ))}

@@ -42,7 +42,7 @@ export function AuthFrame({ title, lead, children }: { title: string; lead: stri
         </div>
       </div>
       <div className="flex items-center justify-center px-4 pb-10 sm:px-gutter lg:py-10 lg:pr-gutter lg:pl-0">
-        <section className="flex w-full max-w-md flex-col gap-6 rounded-frame border border-border bg-page p-6 shadow-sm sm:p-8">
+        <section className="flex w-full max-w-md flex-col gap-6 rounded-frame border border-border bg-page p-6 sm:p-8">
           <div className="flex flex-col gap-1">
             <h1 className="text-page-title font-semibold tracking-tight text-text">{title}</h1>
             <p className="text-body text-muted">{lead}</p>

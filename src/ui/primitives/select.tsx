@@ -27,7 +27,7 @@ export const SelectContent = ({ className, children, ...p }: React.ComponentProp
     <S.Content
       position="popper"
       sideOffset={6}
-      className={cn("min-w-(--radix-select-trigger-width) z-50 rounded-card border border-border bg-surface p-1 text-text shadow-lg", className)}
+      className={cn("min-w-(--radix-select-trigger-width) z-50 rounded-card border border-border bg-surface p-1 text-text overlay-lift", className)}
       {...p}
     >
       <S.Viewport>{children}</S.Viewport>

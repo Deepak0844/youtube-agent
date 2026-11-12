@@ -16,12 +16,12 @@ const words = (id: string) => id.replace(/_/g, " ");
 export function NewSeriesForm({ channels }: { channels: ReadonlyArray<{ channelId: string; title: string }> }) {
   const [state, run, pending] = useActionState<SeriesFormState, FormData>(createSeriesAction, {});
   return (
-    <form action={run} className="flex min-w-0 max-w-xl flex-col gap-4 rounded-card border border-border bg-surface p-pad">
-      <div className="flex flex-col gap-2">
+    <form action={run} className="grid min-w-0 gap-4 rounded-card border border-border bg-surface p-pad md:grid-cols-2 xl:grid-cols-3">
+      <div className="flex flex-col gap-2 md:col-span-2 xl:col-span-3">
         <Label htmlFor="series-title">Title</Label>
         <Input id="series-title" name="title" required minLength={3} maxLength={80} autoComplete="off" placeholder="Data structures in 40 seconds" />
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 md:col-span-2 xl:col-span-3">
         <Label htmlFor="series-premise">Premise (optional)</Label>
         <textarea id="series-premise" name="premise" rows={3} maxLength={1000} className={areaClass} />
       </div>
@@ -76,7 +76,7 @@ export function NewSeriesForm({ channels }: { channels: ReadonlyArray<{ channelI
         <Label htmlFor="series-cap">Spend cap in dollars (empty = no limit)</Label>
         <Input id="series-cap" name="capUsd" type="number" inputMode="decimal" min={0} step={0.5} />
       </div>
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4 md:col-span-2 xl:col-span-3">
         <Button type="submit" loading={pending}>Create series</Button>
         {state.error ? <p role="alert" className="m-0 text-body text-pill-negative-ink">{state.error}</p> : null}
       </div>
