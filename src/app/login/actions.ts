@@ -42,7 +42,7 @@ export async function loginAction(prev: LoginState, form: FormData): Promise<Log
     if (r.reason === "vault")
       return { needCode: prev.needCode, error: "Two-factor sign-in is unavailable: the vault key is missing or wrong. Restore VAULT_MASTER_KEY, or run npm run owner:reset." };
     if (r.reason === "busy") return { needCode: prev.needCode, error: "Busy right now. Try again in a moment." };
-    return { needCode: prev.needCode, error: prev.needCode ? "Incorrect username, password or code." : "Incorrect username or password." };
+    return { needCode: prev.needCode, error: prev.needCode ? "Incorrect email, password or code." : "Incorrect email or password." };
   }
   const secure = isSecureRequest({ protocol: h.get("origin")?.split("//")[0], forwardedProto: h.get("x-forwarded-proto"), trustProxy: trustProxy() });
   (await cookies()).set(SESSION_COOKIE, r.token, sessionCookieAttrs(secure));

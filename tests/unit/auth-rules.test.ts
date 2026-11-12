@@ -44,31 +44,27 @@ describe("lockoutDelayMs", () => {
   });
 });
 
-describe("normalizeUsername", () => {
+describe("normalizeUsername (sign-in email)", () => {
   it.each([
-    ["Owner", "owner"],
-    ["  Admin.User_1-x  ", "admin.user_1-x"],
-    ["abc", "abc"],
-    ["\uFF21\uFF22\uFF23", "abc"], // fullwidth folds to ascii under NFKC
-    ["a".repeat(64), "a".repeat(64)],
+    ["Owner@Example.com", "owner@example.com"],
+    ["  admin.user_1+yt@mail.example.co.in  ", "admin.user_1+yt@mail.example.co.in"],
+    ["a@b.co", "a@b.co"],
+    ["\uFF21@\uFF22.co", "a@b.co"], // fullwidth folds to ascii under NFKC
+    [`${"a".repeat(64)}@x.io`, `${"a".repeat(64)}@x.io`],
   ])("accepts %s", (input, out) => {
     expect(normalizeUsername(input)).toBe(out);
   });
   it.each([
-    "ab", "", "   ", "a".repeat(65), "has space", "a@b.c", "o\u0441ner", // Cyrillic es
-    "\u0430dmin", "adm\u200Bin", "ad\u0000min", "ad\nmin", "caf\u00E9", "a/b", "\u0131\u0307ab", "\uFF21\uFF22 ",
+    "owner", "", "   ", "@b.co", "a@", "a@b", "a@b.", "a@.co", "a@-b.co", "a@b-.co", "a b@c.co", "a@@b.co", `${"a".repeat(65)}@x.io`,
+    `a@${"b".repeat(250)}.co`, "o\u0441ner@x.co", "adm\u200Bin@x.co", "ad\u0000min@x.co", "ad\nmin@x.co", "caf\u00E9@x.co", "a/b@x.co",
   ])("rejects %j", (input) => {
     expect(normalizeUsername(input)).toBeNull();
   });
   it("Kelvin sign folds to ascii k under NFKC (accepted as the folded value)", () => {
-    expect(normalizeUsername("xx\u212A")).toBe("xxk");
-  });
-  it("length is measured after normalisation and trim", () => {
-    expect(normalizeUsername("  ab  ")).toBeNull();
-    expect(normalizeUsername(" abc ")).toBe("abc");
+    expect(normalizeUsername("xx\u212A@x.co")).toBe("xxk@x.co");
   });
   it("is idempotent", () => {
-    const n = normalizeUsername("  \uFF2Fwner ")!;
+    const n = normalizeUsername("  \uFF2Fwner@X.co ")!;
     expect(normalizeUsername(n)).toBe(n);
   });
   it("non-string returns null", () => {

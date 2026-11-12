@@ -11,20 +11,20 @@ async function fresh(browser: Browser) {
 }
 async function signIn(page: import("@playwright/test").Page, username: string, password: string) {
   await page.waitForLoadState("networkidle"); // controlled inputs: typing before hydration would be overwritten
-  await page.getByLabel("Username").fill(username);
+  await page.getByLabel("Email").fill(username);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
 }
-const uname = (p: string) => `${p}-${Math.random().toString(36).slice(2, 10)}`;
+const uname = (p: string) => `${p}-${Math.random().toString(36).slice(2, 10)}@example.com`;
 
 test("wrong password shows one generic message, same for unknown user", async ({ browser }) => {
   const { context, page } = await fresh(browser);
   await page.goto("/login");
   await signIn(page, uname("nobody"), "wrong-password-123");
-  await expect(page.locator("form p[role=alert]")).toHaveText("Incorrect username or password.");
+  await expect(page.locator("form p[role=alert]")).toHaveText("Incorrect email or password.");
   await expect(page.locator("form p[role=alert]")).toHaveCount(1);
   await signIn(page, OWNER_USERNAME, "wrong-password-123");
-  await expect(page.locator("form p[role=alert]")).toHaveText("Incorrect username or password.");
+  await expect(page.locator("form p[role=alert]")).toHaveText("Incorrect email or password.");
   await expect(page).toHaveURL(/\/login/);
   await context.close();
 });
@@ -69,7 +69,7 @@ for (const width of [1440, 390]) {
     await page.goto("/login");
     await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
     await expect(page.getByRole("navigation")).toHaveCount(0); // public page: no app shell
-    for (const target of [page.getByLabel("Username"), page.getByLabel("Password"), page.getByRole("button", { name: "Sign in" })]) {
+    for (const target of [page.getByLabel("Email"), page.getByLabel("Password"), page.getByRole("button", { name: "Sign in" })]) {
       await expect(target).toBeVisible();
       expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     }
@@ -85,7 +85,7 @@ test("lockout message appears after 5 failures", async ({ browser }) => {
   await page.goto("/login");
   for (let i = 0; i < 5; i++) {
     await signIn(page, name, "wrong-password-123");
-    await expect(page.locator("form p[role=alert]")).toHaveText("Incorrect username or password.");
+    await expect(page.locator("form p[role=alert]")).toHaveText("Incorrect email or password.");
   }
   await signIn(page, name, "wrong-password-123");
   await expect(page.locator("form p[role=alert]")).toHaveText(/Too many attempts\. Try again in \d+ minutes?\./); // the IP lock is shared with other specs, so the wait can be 1 or 2 minutes

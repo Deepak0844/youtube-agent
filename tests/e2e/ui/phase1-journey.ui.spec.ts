@@ -42,7 +42,7 @@ async function fresh(browser: Browser) {
 }
 async function signIn(page: Page, password: string, code?: string) {
   await page.waitForLoadState("networkidle"); // controlled inputs: typing before hydration would be overwritten
-  await page.getByLabel("Username").fill(OWNER_USERNAME);
+  await page.getByLabel("Email").fill(OWNER_USERNAME);
   await page.getByLabel("Password").fill(password);
   if (code) await page.getByLabel("Authentication or recovery code").fill(code);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -86,7 +86,7 @@ test("Phase 1 journey: from setup link to a fully configured, audited studio", a
     expect(new URL(link).pathname).toMatch(/^\/setup\/.+/);
     await page.goto(link);
     await page.waitForLoadState("networkidle");
-    await page.getByLabel("Username").fill(OWNER_USERNAME);
+    await page.getByLabel("Email").fill(OWNER_USERNAME);
     await page.getByLabel("Password (12+ characters)").fill(NEW_PASSWORD);
     await page.getByLabel("Repeat password").fill(NEW_PASSWORD);
     await page.getByRole("button", { name: "Create owner account" }).click();

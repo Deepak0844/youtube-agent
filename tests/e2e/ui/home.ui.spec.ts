@@ -125,7 +125,7 @@ test("sign out from the account menu ends the session", async ({ browser, baseUR
   const page = await context.newPage();
   await page.goto("/login");
   await page.waitForLoadState("networkidle");
-  await page.getByLabel("Username").fill(OWNER_USERNAME);
+  await page.getByLabel("Email").fill(OWNER_USERNAME);
   await page.getByLabel("Password").fill(OWNER_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Home" })).toBeVisible();

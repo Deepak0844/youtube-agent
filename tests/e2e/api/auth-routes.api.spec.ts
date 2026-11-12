@@ -9,7 +9,7 @@ const ORIGIN = `http://127.0.0.1:${port}`;
 // Lockouts are also per address, so addresses must never repeat within a run (a random pick collides: birthday problem).
 let nextHost = Math.floor(Math.random() * 254);
 const uniq = () => `203.0.113.${(nextHost++ % 254) + 1}`;
-const uname = (p: string) => `${p}-${Math.random().toString(36).slice(2, 10)}`;
+const uname = (p: string) => `${p}-${Math.random().toString(36).slice(2, 10)}@example.com`;
 const cookie = (t: string) => ({ cookie: `ytstudio_session=${t}` });
 
 function loginReq(request: APIRequestContext, body: object, headers: Record<string, string> = {}) {

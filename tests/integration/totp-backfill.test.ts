@@ -28,7 +28,7 @@ beforeEach(async () => {
   spoof.on = false;
   await db.reset();
   const l = await createSetupLink(db.pool, "create", "http://localhost:3000");
-  await consumeSetupLink(db.pool, l.slice("http://localhost:3000/setup/".length), { username: "alice", password: "correct horse battery staple" });
+  await consumeSetupLink(db.pool, l.slice("http://localhost:3000/setup/".length), { username: "alice@example.com", password: "correct horse battery staple" });
 });
 afterAll(async () => {
   await db?.stop();

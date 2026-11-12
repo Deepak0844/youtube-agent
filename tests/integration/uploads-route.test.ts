@@ -42,8 +42,8 @@ beforeEach(async () => {
   rmSync(incoming(), { recursive: true, force: true });
   rmSync(path.join(root, "assets"), { recursive: true, force: true });
   const link = await createSetupLink(db.pool, "create", BASE);
-  await consumeSetupLink(db.pool, link.slice(link.lastIndexOf("/") + 1), { username: "owner", password: "correct-horse-battery-staple-7!" });
-  const s = await login(db.pool, { username: "owner", password: "correct-horse-battery-staple-7!", ip: "198.51.100.5", userAgent: "t" });
+  await consumeSetupLink(db.pool, link.slice(link.lastIndexOf("/") + 1), { username: "owner@example.com", password: "correct-horse-battery-staple-7!" });
+  const s = await login(db.pool, { username: "owner@example.com", password: "correct-horse-battery-staple-7!", ip: "198.51.100.5", userAgent: "t" });
   if (!s.ok) throw new Error("login failed");
   cookie = `ytstudio_session=${s.token}`;
   batch = crypto.randomUUID();

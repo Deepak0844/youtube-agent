@@ -7,7 +7,7 @@ import { SetupForm } from "./setup-form";
 // Public (see PUBLIC_ROUTES). The token is request-time data, so everything that touches it sits inside <Suspense>.
 export default function SetupPage({ params }: PageProps<"/setup/[token]">) {
   return (
-    <AuthFrame title="Set up YT Studio" lead="Choose the username and password you will use to sign in. This link works once.">
+    <AuthFrame title="Set up YT Studio" lead="Choose the email and password you will use to sign in. This link works once.">
       <Suspense fallback={null}>
         <Body params={params} />
       </Suspense>
