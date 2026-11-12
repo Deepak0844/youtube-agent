@@ -9,7 +9,7 @@ import { uuidv7 } from "@/server/core/ids";
 import { UPLOAD_CAPS } from "@/server/core/publish-rules";
 import { approveGate, liveGateHash, sendBack } from "@/server/db/approvals";
 import { createPool } from "@/server/db/pool";
-import { approvePublish, readUploadTarget, requeueUpload } from "@/server/db/publish";
+import { approvePublish, readUploadTarget, recheckPublishStart, requeueUpload } from "@/server/db/publish";
 import { hashStoredFile } from "@/server/storage/hash-file";
 import { setSetting } from "@/server/db/settings";
 import { markStalled } from "@/server/db/uploads";
@@ -64,8 +64,8 @@ interface Seed {
   videoPath: string;
   videoBytes: Buffer;
 }
-async function seed(o: { visibility?: string; publishAt?: string | null; approveEvidence?: boolean; approveVideo?: boolean; channel?: string | null } = {}): Promise<Seed> {
-  const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t", channelId: o.channel === undefined ? "UC-test" : o.channel });
+async function seed(o: { visibility?: string; publishAt?: string | null; approveEvidence?: boolean; approveVideo?: boolean; channel?: string | null; long?: boolean } = {}): Promise<Seed> {
+  const v = await createVideoRow(db.pool, { format: o.long ? "long" : "short", kind: "scene_kit", language: "en", topic: "t", channelId: o.channel === undefined ? "UC-test" : o.channel, ...(o.long ? { lengthMinMinutes: 3, lengthMaxMinutes: 8 } : {}) });
   if (o.channel !== null) await ensureChannel(db.pool, o.channel ?? "UC-test", { allowPublic: true });
   const videoBytes = Buffer.from(`video-bytes-${v.id}`);
   const videoPath = `videos/${v.id}/final.mp4`;
@@ -875,5 +875,42 @@ describe("savePublishChoice", () => {
     await db.ownerPool.query("update youtube_channels set status = 'needs_reconnect'");
     expect(await savePublishChoice(db.pool, s.videoId, base, actor)).toMatchObject({ ok: false });
     expect(await savePublishChoice(db.pool, s.videoId, base, { kind: "system" } as never)).toMatchObject({ ok: false });
+  });
+});
+
+describe("long videos and their thumbnail", () => {
+  const card = async (s: Seed, text: string) => {
+    const rel = `videos/${s.videoId}/thumb-${text}.png`;
+    writeFileSync(path.join(root, rel), text);
+    await addContent(db.pool, s.videoId, "thumbnail", { filePath: rel, sha256: sha(Buffer.from(text)) });
+  };
+  const approveCard = async (s: Seed) =>
+    approveGate(db.pool, { videoId: s.videoId, gate: "thumbnail", seenHash: (await liveGateHash(db.pool, s.videoId, "thumbnail"))!.hash, actor: { kind: "session", sessionId: s.sessionId } });
+
+  it("refuses the publish approval until the thumbnail is approved", async () => {
+    const s = await seed({ long: true });
+    const first = await approve(s);
+    expect(first.res).toMatchObject({ ok: false });
+    expect(JSON.stringify(first.res)).toMatch(/approve the thumbnail/);
+    await card(s, "c1");
+    await approveCard(s);
+    expect((await approve(s)).res).toMatchObject({ ok: true });
+  });
+
+  it("a new card after approving stops the job at its start, but never a running upload's last-piece check", async () => {
+    const s = await seed({ long: true });
+    await card(s, "c1");
+    await approveCard(s);
+    const { res } = await approve(s);
+    if (!res.ok) throw new Error("fixture");
+    const hash = (await liveGateHash(db.pool, s.videoId, "publish"))!.hash;
+    await card(s, "c2"); // the thumbnail approval is void now
+    const c = await db.pool.connect();
+    try {
+      expect(await recheckPublishStart(c, { videoId: s.videoId, approvalHash: hash })).toBeNull();
+    } finally {
+      c.release();
+    }
+    expect(await readUploadTarget(db.pool, res.uploadId, { root })).toMatchObject({ ok: false, reason: "policy" });
   });
 });

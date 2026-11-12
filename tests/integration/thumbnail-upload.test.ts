@@ -62,7 +62,7 @@ describe("sendApprovedThumbnail", () => {
     const s = setter();
     expect(await sendApprovedThumbnail(db.pool, s.u, up, { root })).toBe("set");
     expect(s.calls).toEqual([{ yt: "ytABC123", bytes: "png-bytes" }]);
-    expect(await log(up)).toEqual(["thumbnail_set"]);
+    expect(await log(up)).toEqual(["thumbnail_claimed", "thumbnail_set"]);
     expect(await sendApprovedThumbnail(db.pool, s.u, up, { root })).toBe("skipped");
     expect(s.calls).toHaveLength(1);
   });
@@ -71,11 +71,11 @@ describe("sendApprovedThumbnail", () => {
     const a = await video("long", { card: "draft", approve: false });
     const s = setter();
     expect(await sendApprovedThumbnail(db.pool, s.u, a.up, { root })).toBe("failed");
-    expect((await log(a.up))[0]).toMatch(/^thumbnail_failed: the thumbnail is not approved/);
+    expect((await log(a.up))[1]).toMatch(/^thumbnail_failed: the thumbnail is not approved/);
     const b = await video("long", { card: "approved" });
     writeFileSync(b.file, "swapped!");
     expect(await sendApprovedThumbnail(db.pool, s.u, b.up, { root })).toBe("failed");
-    expect((await log(b.up))[0]).toBe("thumbnail_failed: the thumbnail file changed after it was approved");
+    expect((await log(b.up))[1]).toBe("thumbnail_failed: the thumbnail file changed after it was approved");
     expect(s.calls).toEqual([]);
   });
 
@@ -84,7 +84,7 @@ describe("sendApprovedThumbnail", () => {
     const s = setter({ ok: false, reason: "YouTube refused: custom thumbnails need a verified channel" });
     expect(await sendApprovedThumbnail(db.pool, s.u, up, { root })).toBe("failed");
     expect(await sendApprovedThumbnail(db.pool, s.u, up, { root })).toBe("skipped");
-    expect(await log(up)).toEqual(["thumbnail_failed: YouTube refused: custom thumbnails need a verified channel"]);
+    expect(await log(up)).toEqual(["thumbnail_claimed", "thumbnail_failed: YouTube refused: custom thumbnails need a verified channel"]);
     const short = await video("short");
     expect(await sendApprovedThumbnail(db.pool, setter().u, short.up, { root })).toBe("skipped");
   });

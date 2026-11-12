@@ -1,4 +1,7 @@
+import { stat } from "node:fs/promises";
+import path from "node:path";
 import { KnownFailure } from "@/server/core/paid-call";
+import { THUMBNAIL_MAX_BYTES } from "@/server/providers/uploader/youtube";
 import { getAsset } from "@/server/db/assets";
 import { latestContent } from "@/server/db/videos";
 import type { AttemptHandler } from "./attempt";
@@ -34,6 +37,9 @@ export function thumbnailAttempt(deps: StageDeps): AttemptHandler {
     const topic = (await deps.db.query<{ topic: string }>("select topic from videos where id = $1", [video.id])).rows[0]?.topic ?? "";
     const title = await thumbnailTitleFor(deps.db, video.id, topic);
     const r = await deps.thumbnails.draw(ctx, { title, seed: video.id, ...(pictureRef ? { pictureRef } : {}), outFile: "thumbnail.png" });
+    // YouTube takes a custom thumbnail of at most 2 MB: refuse a bigger card here, before the owner can approve one that can never be sent.
+    const size = (await stat(path.join(ctx.attemptDir, "thumbnail.png"))).size;
+    if (size > THUMBNAIL_MAX_BYTES) throw new KnownFailure(`The card is ${(size / 1048576).toFixed(1)} MB, but YouTube takes at most 2 MB. Pick a simpler picture and make it again.`);
     return { files: ["thumbnail.png"], content: [{ kind: "thumbnail", file: "thumbnail.png" }], result: { thumbnail: "thumbnail.png", picture: pictureRef ? "own" : "none", image: r.image } };
   };
 }

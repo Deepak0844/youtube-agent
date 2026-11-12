@@ -96,7 +96,8 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
   return {
     async setThumbnail(channelRowId, youtubeId, png, signal) {
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(youtubeId)) return { ok: false, reason: "the video id is not a YouTube id" };
-      if (png.length === 0 || png.length > THUMBNAIL_MAX_BYTES) return { ok: false, reason: `the thumbnail is over YouTube's 2 MB limit (${(png.length / 1048576).toFixed(1)} MB)` };
+      if (png.length === 0) return { ok: false, reason: "the thumbnail file is empty" };
+      if (png.length > THUMBNAIL_MAX_BYTES) return { ok: false, reason: `the thumbnail is over YouTube's 2 MB limit (${(png.length / 1048576).toFixed(1)} MB)` };
       try {
         const tok = await getAccessToken(deps.pool, deps.ring, http, channelRowId);
         if (!tok.ok) return { ok: false, reason: tok.reason === "unavailable" ? "could not get a YouTube sign-in right now" : "the channel needs to be reconnected or confirmed (Settings, Channels)" };

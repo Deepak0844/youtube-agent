@@ -54,13 +54,15 @@ async function sessionIsLive(db: pg.PoolClient, sessionId: string): Promise<bool
 }
 const dbNowMs = async (db: pg.PoolClient): Promise<number> => Number((await db.query<{ ms: string }>("select (extract(epoch from clock_timestamp()) * 1000)::bigint::text as ms")).rows[0]!.ms);
 /** The settings and sibling approvals the policy needs, read one after another on the caller's client. */
-async function policyFacts(client: pg.PoolClient, videoId: string) {
+// `thumbnail: false` skips the thumbnail rule: the recheck inside the start transaction and before the LAST chunk must not let a new
+// thumbnail card stop a video upload that is already running (the thumbnail is checked at approval and at job start).
+async function policyFacts(client: pg.PoolClient, videoId: string, opts: { thumbnail?: boolean } = {}) {
   const allowPublic = await getSetting(client, "policy.allow_public");
   const requireEvidence = await getSetting(client, "policy.require_evidence");
   const videoApproved = (await approvalState(client, videoId, "video")).approved;
   const evidenceApproved = (await approvalState(client, videoId, "evidence")).approved;
   // A long video goes out with its approved thumbnail (set right after the upload), so the thumbnail must be approved first.
-  const thumbnailRequired = (await client.query<{ format: string }>("select format from videos where id = $1", [videoId])).rows[0]?.format === "long";
+  const thumbnailRequired = opts.thumbnail !== false && (await client.query<{ format: string }>("select format from videos where id = $1", [videoId])).rows[0]?.format === "long";
   const thumbnailApproved = thumbnailRequired ? (await approvalState(client, videoId, "thumbnail")).approved : false;
   return { allowPublic, requireEvidence, videoApproved, evidenceApproved, thumbnailRequired, thumbnailApproved, nowMs: await dbNowMs(client) };
 }
@@ -196,7 +198,7 @@ export async function recheckPublishStart(q: pg.PoolClient, row: { videoId: stri
   const meta = s === "no_video" ? undefined : s.inputs.content.metadata;
   if (s === "no_video" || !s.live.ok || s.live.hash !== state.hash || !meta || metadataProblem(meta.body)) return "approval_changed";
   const body = meta.body as Record<string, unknown>;
-  const problem = publishPolicyProblem({ visibility: body.visibility, publishAt: body.publish_at ?? null, ...(await policyFacts(q, row.videoId)), phase: "upload" });
+  const problem = publishPolicyProblem({ visibility: body.visibility, publishAt: body.publish_at ?? null, ...(await policyFacts(q, row.videoId, { thumbnail: false })), phase: "upload" });
   if (problem) return "policy";
   return (await channelSafetyProblem(q, body.visibility, s.inputs.channelId)) ? "policy" : null;
 }

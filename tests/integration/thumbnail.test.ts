@@ -123,6 +123,13 @@ describe("thumbnail stage", () => {
     expect(t.asked).toHaveLength(1);
     expect((await latestContent(db.pool, v.id, "thumbnail"))?.version).toBe(1);
   });
+  it("refuses a card over YouTube's 2 MB limit, so one that can never be sent is never offered for approval", async () => {
+    const v = await long();
+    const big: ThumbnailRenderer = { async draw(ctx, a) { const outPath = path.join(ctx.attemptDir, a.outFile); writeFileSync(outPath, Buffer.alloc(2 * 1024 * 1024 + 1)); return { outPath, image: "img1" }; } };
+    await requestThumbnail(db.pool, queue, v.id);
+    expect((await runQueued(v.id, deps(big))).kind).toBe("known_failure");
+    expect(await latestContent(db.pool, v.id, "thumbnail")).toBeNull();
+  });
   it("fails plainly when no renderer is wired", async () => {
     const v = await long();
     await requestThumbnail(db.pool, queue, v.id);
