@@ -226,9 +226,10 @@ describe("stage routing and capabilities", () => {
     expect(eligibleForStage("research", m({ toolUse: false, nativeWebSearch: false })).ok).toBe(false);
     expect(eligibleForStage("research", m({ toolUse: false, nativeWebSearch: true })).ok).toBe(true);
   });
-  it("a claude_code row counts as tool-free whatever it claims (tools are off in the adapter)", () => {
-    const cc = { ...m({ toolUse: true, vision: true, nativeWebSearch: true }), provider: "claude_code" };
-    for (const id of ["qa_vision", "research"]) expect(eligibleForStage(id, cc).ok, id).toBe(false);
+  it("a claude_code row counts as tool-free whatever it claims (tools are off in the adapter), but it sees pictures", () => {
+    const cc = { ...m({ toolUse: true, vision: false, nativeWebSearch: true }), provider: "claude_code" };
+    for (const id of ["research"]) expect(eligibleForStage(id, cc).ok, id).toBe(false);
+    for (const id of ["qa_vision", "review_frames"]) expect(eligibleForStage(id, cc).ok, id).toBe(true); // pictures go inside the message
     for (const id of ["outline", "draft", "build_scene_kit", "build_tsx", "build_scale3d", "direct_scene3d", "author_scene3d", "titles", "comment_replies"]) expect(eligibleForStage(id, cc).ok, id).toBe(true);
   });
   it("unknown stage is refused", () => expect(eligibleForStage("nope", m({})).ok).toBe(false));

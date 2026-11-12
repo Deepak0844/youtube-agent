@@ -11,20 +11,19 @@ const everyStageOnApi = { outline: api.id, draft: api.id, build_scene_kit: api.i
 const base: SwitchInput = { on: true, routes: everyStageOnApi, models: [api, other, cc], local: [], previous: null, claudeCodeId: cc.id };
 
 describe("AI source switch (pure)", () => {
-  it("ON routes only the text stages Claude Code can do and remembers what they had", () => {
+  it("ON routes the text stages and the picture checks Claude Code can do (not tool stages) and remembers what they had", () => {
     const p = planAiSource(base);
     if (!p.ok) throw new Error(p.reason);
-    expect(p.routes).toEqual({ ...everyStageOnApi, outline: cc.id, draft: cc.id, build_scene_kit: cc.id, build_tsx: cc.id, build_scale3d: cc.id, direct_scene3d: cc.id, author_scene3d: cc.id, titles: cc.id, comment_replies: cc.id });
-    expect(p.previous).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, build_scale3d: api.id, direct_scene3d: api.id, author_scene3d: api.id, titles: api.id, comment_replies: null });
+    expect(p.routes).toEqual({ ...everyStageOnApi, outline: cc.id, draft: cc.id, build_scene_kit: cc.id, build_tsx: cc.id, build_scale3d: cc.id, direct_scene3d: cc.id, author_scene3d: cc.id, titles: cc.id, comment_replies: cc.id, qa_vision: cc.id, review_frames: cc.id });
+    expect(p.previous).toMatchObject({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, build_scale3d: api.id, direct_scene3d: api.id, author_scene3d: api.id, titles: api.id, comment_replies: null });
     const text = p.notes.join("\n");
-    expect(text).toMatch(/QA, vision review stays on its current model: it needs image input/);
     expect(text).toMatch(/Research and ideas stays on its current model/);
     expect(text).toMatch(/Draft: .*search-then-write/);
   });
 
   it("ON judges Claude Code as tool-free even if an older catalog row claims tools", () => {
     const p = planAiSource({ ...base, models: [api, other, { ...cc, capabilities: all }] });
-    expect(p.ok && [p.routes.build_tsx, p.routes.research, p.routes.qa_vision]).toEqual([cc.id, api.id, api.id]);
+    expect(p.ok && [p.routes.build_tsx, p.routes.research, p.routes.qa_vision]).toEqual([cc.id, api.id, cc.id]);
   });
 
   it("ON refuses when already on, without a Claude Code model, or when it is disabled", () => {

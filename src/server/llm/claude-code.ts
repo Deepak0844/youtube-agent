@@ -9,6 +9,8 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { createSemaphore } from "@/server/core/semaphore";
 
 // Text-only language model backed by the owner's local Claude Code (`claude -p`, subscription login). ADR 0014.
+// Pictures (vision stages): sent INSIDE the stdin message (`--input-format stream-json`), never as files, so tools stay off and
+// nothing on disk is readable; png/jpeg/webp only, at most MAX_IMAGES, each and all together size-capped.
 // Rules: no shell (argument array), prompt on stdin only, tools/MCP/hooks/skills off, an empty temp cwd deleted after, a
 // minimal env (never ANTHROPIC_*, DATABASE_URL, VAULT* or any app secret), a timeout that kills the process group, a stdout
 // cap, one process at a time, and a daily cap taken BEFORE the process starts. Every error leaving here is one of ours
@@ -83,9 +85,9 @@ const queue = createSemaphore(1);
 export const minimalEnv = (src: Record<string, string | undefined>): Record<string, string> =>
   Object.fromEntries(ENV_ALLOW.flatMap((k) => (typeof src[k] === "string" ? [[k, src[k]]] : [])));
 
-export function claudeArgs(modelId: string): string[] {
+export function claudeArgs(modelId: string, opts: { images?: boolean } = {}): string[] {
   const args = [
-    "-p", "--output-format", "json",
+    "-p", ...(opts.images ? ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"] : ["--output-format", "json"]),
     "--tools", "",
     "--disallowedTools", BUILTIN_TOOLS.join(","),
     "--permission-mode", "dontAsk",
@@ -100,19 +102,77 @@ export function claudeArgs(modelId: string): string[] {
 }
 
 type Prompt = Array<{ role: string; content: unknown }>;
-function promptText(prompt: Prompt): string {
+export const MAX_IMAGES = 8;
+export const MAX_IMAGE_BYTES = 3_500_000; // under the API's 5 MB base64 limit per picture
+const MAX_IMAGES_TOTAL_BYTES = 16_000_000;
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+export interface PromptImage { mediaType: string; base64: string }
+
+/** The first bytes must match the declared type, or the API refuses the whole call (an unclear outcome instead of a clean refusal). */
+function looksLike(mediaType: string, b: Uint8Array): boolean {
+  const at = (i: number, xs: number[]) => xs.every((x, k) => b[i + k] === x);
+  if (mediaType === "image/png") return at(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (mediaType === "image/jpeg") return at(0, [0xff, 0xd8, 0xff]);
+  return at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50]); // RIFF....WEBP
+}
+
+/** The prompt as one text, plus any pictures (only from user messages). Anything else (a URL, a PDF, a tool part) is refused. */
+export function promptParts(prompt: Prompt): { text: string; images: PromptImage[] } {
   const parts: string[] = [];
+  const images: PromptImage[] = [];
+  let total = 0;
   for (const m of prompt) {
     const text =
       typeof m.content === "string"
         ? m.content
-        : (m.content as Array<{ type: string; text?: string }>).map((p) => {
-            if (p.type !== "text" || typeof p.text !== "string") throw refuse("Claude Code here takes text only.");
-            return p.text;
+        : (m.content as Array<{ type: string; text?: string; data?: unknown; mediaType?: unknown }>).flatMap((p) => {
+            if (p.type === "text" && typeof p.text === "string") return [p.text];
+            if (p.type === "file" && m.role === "user" && typeof p.mediaType === "string" && IMAGE_TYPES.has(p.mediaType)) {
+              // The SDK wraps bytes as { type: "data", data }; a URL ({ type: "url" }) is never fetched here.
+              const d = (p.data as { type?: unknown; data?: unknown } | null)?.type === "data" ? (p.data as { data: unknown }).data : p.data;
+              const bytes = d instanceof Uint8Array ? d : typeof d === "string" && /^[A-Za-z0-9+/]+=*$/.test(d) ? Buffer.from(d, "base64") : null;
+              if (!bytes || bytes.length === 0) throw refuse("Claude Code here takes pictures as bytes only.");
+              if (bytes.length > MAX_IMAGE_BYTES) throw refuse("A picture is too large for Claude Code here.");
+              if (!looksLike(p.mediaType, bytes)) throw refuse("A picture's bytes do not match its type (png, jpeg or webp).");
+              total += bytes.length;
+              if (images.length >= MAX_IMAGES) throw refuse(`Claude Code here takes at most ${MAX_IMAGES} pictures per call.`);
+              if (total > MAX_IMAGES_TOTAL_BYTES) throw refuse("The pictures are too large together for one Claude Code call.");
+              images.push({ mediaType: p.mediaType, base64: Buffer.from(bytes).toString("base64") });
+              return [`(picture ${images.length})`];
+            }
+            throw refuse("Claude Code here takes text and png, jpeg or webp pictures only.");
           }).join("\n");
     parts.push(`[${m.role}]\n${text}`);
   }
-  return parts.join("\n\n");
+  return { text: parts.join("\n\n"), images };
+}
+
+/** stdin for a call with pictures: one stream-json user message, pictures first, then the whole prompt text. */
+export function streamInput(text: string, images: readonly PromptImage[]): string {
+  const content = [...images.map((i) => ({ type: "image", source: { type: "base64", media_type: i.mediaType, data: i.base64 } })), { type: "text", text }];
+  return JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n";
+}
+
+/**
+ * stream-json output -> the final `result` event as one JSON text (what interpret reads), or "" when there is none. The billing
+ * source (`apiKeySource`) sits in the `system` init event in this mode: it is copied onto the result so the status box keeps it.
+ */
+export function resultLine(stdout: string): string {
+  let result: Record<string, unknown> | undefined;
+  let keySource: unknown;
+  for (const line of stdout.split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("{")) continue;
+    try {
+      const j = JSON.parse(t) as Record<string, unknown>;
+      if (j?.type === "result") result = j;
+      else if (j?.type === "system" && j.subtype === "init" && keySource === undefined) keySource = j.apiKeySource;
+    } catch {
+      // not a whole event: skip it
+    }
+  }
+  if (!result) return "";
+  return JSON.stringify(result.apiKeySource === undefined && keySource !== undefined ? { ...result, apiKeySource: keySource } : result);
 }
 
 interface Ran { code: number | null; stdout: string; stderr: string; failed?: "timeout" | "overflow" | "aborted" | "missing" | "error" }
@@ -235,7 +295,9 @@ export function createClaudeCodeModel(modelId: string, deps: ClaudeCodeDeps): La
     async doGenerate(options) {
       if (!MODEL_ID.test(modelId)) throw refuse("That Claude Code model id is not allowed.");
       if ((options.tools?.length ?? 0) > 0) throw refuse("Claude Code runs with tools off here, so it cannot run tool steps.");
-      const input = promptText(options.prompt as Prompt);
+      const { text: promptBody, images } = promptParts(options.prompt as Prompt);
+      const withImages = images.length > 0;
+      const input = withImages ? streamInput(promptBody, images) : promptBody;
       if (!(await deps.gate.enabled())) throw refuse("Claude Code is switched off. Turn it on in Settings > Models.");
       const signal = options.abortSignal;
       // Checked and taken in the same tick (no await between), so two callers cannot both pass.
@@ -244,7 +306,8 @@ export function createClaudeCodeModel(modelId: string, deps: ClaudeCodeDeps): La
         if (signal?.aborted) throw refuse(CANCELLED); // cancelled while queued: no cap slot used
         if (!(await deps.gate.takeSlot())) throw refuse("daily Claude Code cap reached. It resets at midnight UTC.");
         if (signal?.aborted) throw refuse(CANCELLED);
-        return runOnce(deps, claudeArgs(modelId), input, signal, deps.timeoutMs ?? callTimeoutMs(options.maxOutputTokens));
+        const ran = await runOnce(deps, claudeArgs(modelId, { images: withImages }), input, signal, deps.timeoutMs ?? callTimeoutMs(options.maxOutputTokens));
+        return withImages ? { ...ran, stdout: resultLine(ran.stdout) } : ran;
       });
       let got: Interpreted;
       try {

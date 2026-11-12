@@ -22,14 +22,14 @@ const SKIP_NO_VISION = "picture check skipped: no vision model";
  * The advisory picture check. NEVER fails the stage and never blocks the gate: no route, no price, no budget or an unreadable answer give a
  * skipped/unavailable note. Only an unclear paid outcome, a cancel or a lost lease go up untouched (the owner decides).
  */
-export async function adviceFor(llm: LlmClient | null, ctx: LlmStageContext, picks: readonly StillPick[], pngs: readonly Uint8Array[]): Promise<Advice> {
+export async function adviceFor(llm: LlmClient | null, ctx: LlmStageContext, picks: readonly StillPick[], pngs: readonly Uint8Array[], topic?: string): Promise<Advice> {
   if (!llm) return { status: "skipped", reason: SKIP_NO_VISION };
   const why = (await llm.routeProblem?.("review_frames")) ?? null;
   if (why !== null) return { status: "skipped", reason: `${SKIP_NO_VISION} (${logSafe(why)})` };
   try {
     const r = await llm.vision(ctx, {
       stage: "review_frames",
-      messages: adviceMessages(picks.map((p) => ({ shotId: p.shotId, caption: p.caption }))),
+      messages: adviceMessages(picks.map((p) => ({ shotId: p.shotId, caption: p.caption })), topic),
       images: pngs.map((data) => ({ data, mediaType: "image/png" as const })),
       maxOutputTokens: ADVICE_MAX_OUTPUT_TOKENS,
     });
@@ -91,7 +91,8 @@ export function scene3dStillsAttempt(deps: StageDeps): AttemptHandler {
     let advice: Advice = { status: "skipped", reason: SKIP_NO_VISION };
     if (deps.makeLlm) {
       const llm = deps.makeLlm(await videoMoneyScopes(deps.db, video));
-      advice = await adviceFor(llm, ctx, picks, pngs);
+      const topic = (await deps.db.query<{ topic: string }>("select topic from videos where id = $1", [video.id])).rows[0]?.topic;
+      advice = await adviceFor(llm, ctx, picks, pngs, topic);
     }
     ctx.log(`previews: ${picks.length} pictures drawn; picture check: ${advice.status}`);
     const body = buildPreviewsBody({ sceneSha256: sceneSha, picks, shas, advice, hero: r.hero });

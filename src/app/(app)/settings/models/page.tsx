@@ -141,7 +141,7 @@ function ClaudeCodeSection({ cc }: { cc: ClaudeCodeStatus }) {
         <div className="flex min-w-0 flex-col gap-3">
           <AiSourceForm on={cc.switchOn} />
           <div className="text-small text-muted">
-            <p>Claude Code takes over the text stages it can do. You can still change any single stage below.</p>
+            <p>Claude Code takes over the text stages and the picture checks it can do. You can still change any single stage below.</p>
             {stays.length > 0 ? (
               <ul className="mt-1 list-disc pl-5">
                 {stays.map((s) => (

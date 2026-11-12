@@ -6,8 +6,8 @@ import type { Message } from "@/server/core/agent-loop";
 import { NotProcessedError, classifyError } from "@/server/core/error-class";
 import { KnownFailure, runPaidCall, type PaidCallPorts } from "@/server/core/paid-call";
 import { priceCardFor, modelInputSchema, type ModelRow } from "@/server/core/llm-catalog";
-import { createAiSdkStep } from "@/server/llm/ai-sdk-step";
-import { callTimeoutMs, createClaudeCodeModel, type ClaudeCodeDeps, type SpawnClaude } from "@/server/llm/claude-code";
+import { createAiSdkStep, createImagesStep } from "@/server/llm/ai-sdk-step";
+import { MAX_IMAGES, callTimeoutMs, createClaudeCodeModel, resultLine, type ClaudeCodeDeps, type SpawnClaude } from "@/server/llm/claude-code";
 
 // Every test fakes the process: the real `claude` binary is never started here.
 
@@ -413,11 +413,62 @@ describe("claude code in the catalog", () => {
     expect(modelInputSchema([]).safeParse({ ...base, isFree: false }).success).toBe(false);
     expect(modelInputSchema([]).safeParse({ ...base, baseUrl: "https://example.com" }).success).toBe(false);
   });
-  it("cannot claim tool use, image input or web search (tools are off), so tool stages never route to it", () => {
+  it("cannot claim tool use or web search (tools are off), so tool stages never route to it; image input is allowed", () => {
     const base = { provider: "claude_code", modelId: "default", label: "Claude Code", baseUrl: null, prices: null, isFree: true, capabilities: row.capabilities, enabled: true };
-    for (const flag of ["toolUse", "vision", "nativeWebSearch"]) {
+    expect(modelInputSchema([]).safeParse({ ...base, capabilities: { ...row.capabilities, vision: true } }).success).toBe(true);
+    for (const flag of ["toolUse", "nativeWebSearch"]) {
       expect(modelInputSchema([]).safeParse({ ...base, capabilities: { ...row.capabilities, [flag]: true } }).success, flag).toBe(false);
     }
+  });
+});
+
+describe("claude code adapter, pictures", () => {
+  const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+  const streamOk = [
+    JSON.stringify({ type: "system", subtype: "init" }),
+    JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "x" }] } }),
+    JSON.stringify({ type: "result", subtype: "success", is_error: false, result: '{"notes":["Image 2: looks like a boat"]}', usage: { input_tokens: 400, output_tokens: 20 } }),
+  ].join("\n") + "\n";
+  const see = (h: ReturnType<typeof harness>, n = 2) =>
+    createImagesStep(createClaudeCodeModel("default", h.deps), 500, Array.from({ length: n }, () => ({ data: PNG, mediaType: "image/png" as const })))(MSGS, "k", new AbortController().signal);
+
+  it("sends the pictures inside one stream-json message on stdin, tools still off, and reads the final result event", async () => {
+    const h = harness(({ child }) => child.finish(streamOk));
+    const r = await see(h);
+    expect(r.text).toBe('{"notes":["Image 2: looks like a boat"]}');
+    const a = h.runs[0]!.args;
+    expect(a.slice(0, 6)).toEqual(["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]);
+    expect(a[a.indexOf("--tools") + 1]).toBe("");
+    for (const t of ["Read", "Bash", "WebFetch"]) expect(a[a.indexOf("--disallowedTools") + 1]!.split(",")).toContain(t);
+    const msg = JSON.parse(h.runs[0]!.stdin.trim()) as { type: string; message: { content: Array<{ type: string; source?: { media_type: string; data: string }; text?: string }> } };
+    expect(msg.type).toBe("user");
+    expect(msg.message.content.map((c) => c.type)).toEqual(["image", "image", "text"]);
+    expect(msg.message.content[0]!.source).toEqual({ type: "base64", media_type: "image/png", data: Buffer.from(PNG).toString("base64") });
+    expect(msg.message.content[2]!.text).toContain("Make a title about --dangerously-skip-permissions");
+    expect(h.runs[0]!.cwdWasEmpty).toBe(true); // nothing is written to disk for the pictures
+  });
+
+  it("refuses too many pictures before anything starts; a text-only call keeps the old json mode", async () => {
+    const h = harness(({ child }) => child.finish(streamOk));
+    expect((await caught(see(h, MAX_IMAGES + 1))).message).toMatch(/at most 8 pictures/);
+    expect(h.runs).toHaveLength(0);
+    const t = harness();
+    await run(t);
+    expect(t.runs[0]!.args.slice(0, 3)).toEqual(["-p", "--output-format", "json"]);
+  });
+
+  it("refuses a picture whose bytes do not match its type, before anything starts", async () => {
+    const h = harness(({ child }) => child.finish(streamOk));
+    const bad = createImagesStep(createClaudeCodeModel("default", h.deps), 500, [{ data: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), mediaType: "image/png" }])(MSGS, "k", new AbortController().signal);
+    expect((await caught(bad)).message).toMatch(/do not match its type/);
+    expect(h.runs).toHaveLength(0);
+  });
+
+  it("finds the result event in stream output (keeping the billing source from the init event), and nothing when it is missing", () => {
+    const withInit = JSON.stringify({ type: "system", subtype: "init", apiKeySource: "none" }) + "\n" + streamOk;
+    expect(JSON.parse(resultLine(withInit)).apiKeySource).toBe("none");
+    expect(JSON.parse(resultLine(streamOk)).result).toContain("boat");
+    expect(resultLine('{"type":"system"}\nnot json\n')).toBe("");
   });
 });
 

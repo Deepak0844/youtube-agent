@@ -57,8 +57,8 @@ describe("AI source switch", () => {
     const notes = await setAiSource(db.pool, true, session);
     const cc = (await listModels(db.pool)).find((m) => m.provider === "claude_code")!;
     expect(cc).toMatchObject({ enabled: true, isFree: true, prices: null });
-    expect(await listRoutes(db.pool)).toEqual({ outline: cc.id, draft: cc.id, build_scene_kit: cc.id, titles: cc.id, comment_replies: cc.id, build_tsx: cc.id, build_scale3d: cc.id, direct_scene3d: cc.id, author_scene3d: cc.id, research: api.id });
-    expect(await getSetting(db.pool, "ai.previous_routes")).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, build_scale3d: api.id, direct_scene3d: api.id, author_scene3d: api.id, titles: api.id, comment_replies: null });
+    expect(await listRoutes(db.pool)).toEqual({ outline: cc.id, draft: cc.id, build_scene_kit: cc.id, titles: cc.id, comment_replies: cc.id, build_tsx: cc.id, build_scale3d: cc.id, direct_scene3d: cc.id, author_scene3d: cc.id, qa_vision: cc.id, review_frames: cc.id, research: api.id });
+    expect(await getSetting(db.pool, "ai.previous_routes")).toEqual({ outline: api.id, draft: api.id, build_scene_kit: api.id, build_tsx: api.id, build_scale3d: api.id, direct_scene3d: api.id, author_scene3d: api.id, titles: api.id, comment_replies: null, qa_vision: null, review_frames: null });
     expect(await claudeCodeEnabled(db.pool)).toBe(true);
     expect(notes.join("\n")).toMatch(/Research and ideas stays on its current model/);
     const audit = await db.pool.query("select detail from audit_log where event = 'ai_source.changed'");
@@ -140,7 +140,8 @@ describe("AI source switch, review fixes", () => {
   it("a claude_code row that claims tool use still cannot be routed to a tool stage", async () => {
     const cc = await createModel(db.pool, ccRow, session);
     await db.ownerPool.query(`update llm_models set capabilities = capabilities || '{"toolUse":true,"vision":true,"nativeWebSearch":true}' where id = $1`, [cc.id]);
-    for (const stage of ["qa_vision", "research"]) await expect(setRoute(db.pool, stage, cc.id, session)).rejects.toThrow(/lacks/);
+    for (const stage of ["research"]) await expect(setRoute(db.pool, stage, cc.id, session)).rejects.toThrow(/lacks/);
+    await setRoute(db.pool, "qa_vision", cc.id, session); // pictures go inside the message: a picture stage is allowed
     await setRoute(db.pool, "outline", cc.id, session);
   });
 });

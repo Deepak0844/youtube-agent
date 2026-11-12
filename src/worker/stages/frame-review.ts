@@ -27,6 +27,13 @@ export const beatMidFrames = (timed: readonly ReviewBeat[]): number[] => timed.m
 export const SKIP_NO_VISION = "frame review skipped: no vision model";
 
 /** Whether a review can run at all, checked BEFORE extra stills are rendered. A skipped verdict, or null when it can. */
+export const REVIEW_MAX_FRAMES = 8;
+/** At most `n` items, the first and last kept and the rest spread evenly, in order. */
+export function evenly<T>(xs: readonly T[], n: number): T[] {
+  if (xs.length <= n) return [...xs];
+  return Array.from({ length: n }, (_, i) => xs[Math.round((i * (xs.length - 1)) / (n - 1))]!);
+}
+
 export async function reviewReady(llm: LlmClient): Promise<FrameReview | null> {
   const why = (await llm.routeProblem?.("review_frames")) ?? null;
   return why === null ? null : { status: "skipped", reason: `${SKIP_NO_VISION} (${logSafe(why)})` };
@@ -39,14 +46,16 @@ export async function reviewShots(
   shots: readonly { frame: number; jpeg: Uint8Array }[],
   style?: string | null,
 ): Promise<FrameReview> {
+  // At most REVIEW_MAX_FRAMES pictures per call (some models, Claude Code here, take 8): spread evenly over the video.
+  const picked = evenly(shots, REVIEW_MAX_FRAMES);
   try {
     const r = await llm.vision(ctx, {
       stage: "review_frames",
-      messages: reviewMessages(reviewUserText(shots, timed, style)),
-      images: shots.map((s) => ({ data: s.jpeg, mediaType: "image/jpeg" as const })),
+      messages: reviewMessages(reviewUserText(picked, timed, style)),
+      images: picked.map((s) => ({ data: s.jpeg, mediaType: "image/jpeg" as const })),
       maxOutputTokens: REVIEW_MAX_OUTPUT_TOKENS,
     });
-    return parseFrameReview(r.text, shots.map((s) => s.frame));
+    return parseFrameReview(r.text, picked.map((s) => s.frame));
   } catch (err) {
     if (err instanceof LlmRefusal) return { status: "skipped", reason: `${SKIP_NO_VISION} (${logSafe(err.message)})` };
     if (err instanceof UnpricedCallError) return { status: "skipped", reason: "frame review skipped: the vision model has no usable price" };
