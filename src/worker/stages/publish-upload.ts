@@ -3,6 +3,7 @@ import type { UploadCaps } from "@/server/core/upload-rules";
 import { UPLOAD_CAPS } from "@/server/core/publish-rules";
 import { recordAudit } from "@/server/db/audit";
 import { channelCaps, readUploadTarget, recheckPublishStart } from "@/server/db/publish";
+import { sendApprovedThumbnail } from "@/server/db/thumbnail-upload";
 import { runUpload } from "@/server/db/upload-job";
 import { isUnclearReason, manualRetry, startUpload, unclearCleared } from "@/server/db/uploads";
 import type { NotifySend } from "@/server/db/notify";
@@ -62,7 +63,13 @@ async function handleRetry(pool: pg.Pool, deps: PublishUploadDeps, uploadId: str
     started.attempt,
   );
   await auditFinished(pool, uploadId);
+  await afterUpload(pool, deps, uploadId);
   return { started: true };
+}
+
+/** A long video's approved thumbnail, once the upload ended as uploaded. Never fails the job: the video is already up. */
+async function afterUpload(pool: pg.Pool, deps: PublishUploadDeps, uploadId: string): Promise<void> {
+  await sendApprovedThumbnail(pool, deps.uploader, uploadId, { root: deps.root }).catch(() => undefined);
 }
 
 /** One audit row for how the attempt ended (the upload row is the truth; no tokens, no session address). */
@@ -124,5 +131,6 @@ export async function handlePublishUpload(pool: pg.Pool, deps: PublishUploadDeps
     started.attempt,
   );
   await auditFinished(pool, uploadId);
+  await afterUpload(pool, deps, uploadId);
   return { started: true };
 }

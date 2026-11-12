@@ -32,5 +32,10 @@ export interface UploadTarget {
 // by the publish job (worker/stages/publish-upload.ts). A fake may ignore it; a real uploader (Phase 5) must use it.
 export interface Uploader {
   upload(uploadId: string, onProgress: (bytesSent: number) => Promise<void>, signal: AbortSignal, target?: UploadTarget): Promise<UploadOutcome>;
+  /**
+   * Sets an already-uploaded video's thumbnail (YouTube thumbnails.set). `png` is the approved picture, already read and
+   * hash-checked by the caller. Never throws: a refusal is a plain sentence. Optional: an uploader without it sets none.
+   */
+  setThumbnail?(channelRowId: string, youtubeId: string, png: Buffer, signal: AbortSignal): Promise<{ ok: true } | { ok: false; reason: string }>;
 }
 export type { UploadOutcome };

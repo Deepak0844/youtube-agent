@@ -50,6 +50,12 @@ describe("metadata", () => {
 
 describe("publishPolicyProblem", () => {
   it("passes a private publish", () => expect(publishPolicyProblem({ ...ok })).toBeNull());
+  it("a long video needs its thumbnail approved; a short never asks", () => {
+    expect(publishPolicyProblem({ ...ok, thumbnailRequired: true, thumbnailApproved: false })).toMatch(/approve the thumbnail/);
+    expect(publishPolicyProblem({ ...ok, thumbnailRequired: true })).toMatch(/approve the thumbnail/);
+    expect(publishPolicyProblem({ ...ok, thumbnailRequired: true, thumbnailApproved: true })).toBeNull();
+    expect(publishPolicyProblem({ ...ok, thumbnailRequired: false })).toBeNull();
+  });
   it("public needs the kill switch to be exactly true (fail closed on anything else)", () => {
     expect(publishPolicyProblem({ ...ok, visibility: "public", allowPublic: true })).toBeNull();
     for (const v of [false, null, undefined, "true", 1, "yes"]) expect(publishPolicyProblem({ ...ok, visibility: "public", allowPublic: v }), String(v)).toMatch(/public/i);
