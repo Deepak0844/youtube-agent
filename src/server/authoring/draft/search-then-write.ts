@@ -78,7 +78,7 @@ async function gatherPages(web: WebTools, queries: string[], signal: AbortSignal
 }
 
 export async function searchThenWrite(ctx: StageContext, deps: DraftDeps, input: DraftInput & { format: "short" | "long" }): Promise<DraftResult> {
-  const prompt = { topic: input.topic, lang: input.lang, kind: input.kind, format: input.format, notes: input.notes, feedback: input.feedback, long: input.long };
+  const prompt = { topic: input.topic, lang: input.lang, kind: input.kind, format: input.format, notes: input.notes, feedback: input.feedback, long: input.long, learning: input.learning };
   const q = await deps.llm.generate(ctx, { stage: "draft", schema: queriesSchema, messages: queriesMessages(prompt), maxOutputTokens: 400, invalidRetries: 1 });
   let spent = q.spentMicroUsd;
 

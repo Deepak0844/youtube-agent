@@ -15,6 +15,8 @@ export interface DraftPromptInput {
   feedback?: string;
   /** Long videos: the approved outline and the chosen minutes range. */
   long?: { outline: Outline; range: LengthRange };
+  /** Notes computed from past shorts' retention. Data, fenced like everything else. */
+  learning?: string[];
 }
 export interface PageExcerpt {
   url: string;
@@ -88,6 +90,13 @@ function topicBlocks(i: DraftPromptInput): string {
   return parts.join("\n\n");
 }
 
+/** Topic blocks plus what past shorts showed (for the writing prompts; the search-query prompt does not need it). */
+function writeBlocks(i: DraftPromptInput): string {
+  const notes = (i.learning ?? []).filter((n) => n.trim()).slice(0, 5);
+  if (!notes.length) return topicBlocks(i);
+  return `${topicBlocks(i)}\n\nWHAT PAST SHORTS ON THIS CHANNEL SHOWED (computed from viewer retention; use it to keep viewers watching):\n${fenceUntrusted("learning", notes.map((n) => `- ${n}`).join("\n"))}`;
+}
+
 export function queriesMessages(i: DraftPromptInput): Message[] {
   return [
     { role: "system", content: SYSTEM_QUERIES },
@@ -101,7 +110,7 @@ export function writeMessages(i: DraftPromptInput & { pages: PageExcerpt[] }): M
     : "(no web pages could be fetched; use computed evidence only)";
   return [
     { role: "system", content: system(i) },
-    { role: "user", content: `${topicBlocks(i)}\n\nEXCERPTS:\n${excerpts}` },
+    { role: "user", content: `${writeBlocks(i)}\n\nEXCERPTS:\n${excerpts}` },
   ];
 }
 
@@ -112,7 +121,7 @@ export function agentMessages(i: DraftPromptInput): Message[] {
       role: "system",
       content: `${system(i)}\n\nFirst research with the webSearch and fetchPage tools (fetchPage only takes a URL that webSearch returned). Cite only pages you fetched.`,
     },
-    { role: "user", content: topicBlocks(i) },
+    { role: "user", content: writeBlocks(i) },
   ];
 }
 

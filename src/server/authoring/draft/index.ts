@@ -1,5 +1,7 @@
 import type pg from "pg";
+import { learningNotes } from "@/server/core/insights";
 import { KnownFailure } from "@/server/core/paid-call";
+import { loadInsightShorts } from "@/server/db/insights";
 import { approvedOutline } from "@/server/db/stage-content";
 import type { StageContext, StageHandler } from "@/server/core/stage-handler";
 import { draftModeForStage, ensureDraftScopes, loadDraftVideo, pendingScriptFeedback, saveDraftContent } from "@/server/db/draft-store";
@@ -40,10 +42,12 @@ export function createDraftHandler(d: { db: pg.Pool; makeLlm: (budgetScopes: str
       long = { outline: outline.outline, range: { min: video.length_min_minutes, max: video.length_max_minutes } };
     }
     const feedback = await pendingScriptFeedback(d.db, videoId);
+    // What past shorts showed (retention by beat). Shorts only; a read failure just means no notes.
+    const learning = video.format === "short" ? learningNotes(await loadInsightShorts(d.db).catch(() => [])) : [];
     const { script, spentMicroUsd } = await runDraft(
       ctx,
       { llm: d.makeLlm(scopes), web: d.makeWeb(), db: d.db },
-      { topic: video.topic, lang: video.language, kind: video.kind, format: video.format, ...(video.notes ? { notes: video.notes } : {}), ...(feedback ? { feedback } : {}), ...(long ? { long } : {}) },
+      { topic: video.topic, lang: video.language, kind: video.kind, format: video.format, ...(video.notes ? { notes: video.notes } : {}), ...(feedback ? { feedback } : {}), ...(long ? { long } : {}), ...(learning.length ? { learning } : {}) },
     );
     const versions = await saveDraftContent(d.db, videoId, ctx.claim, script);
     return { title: script.title, spentMicroUsd, versions };
