@@ -50,8 +50,8 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/settings/chan
   const accounts = await listAccounts(getPool());
 
   return (
-    <div className="flex flex-col gap-layout">
-      <header className="flex items-start justify-between gap-4">
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="xl:col-span-2 flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-page-title font-semibold tracking-tight">YouTube channels</h1>
           <p className="text-body text-muted">Channels connected through your own Google app. Nothing is uploaded from here.</p>
@@ -70,8 +70,8 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/settings/chan
 
       {accounts.length === 0 ? <p className="rounded-card border border-border bg-surface p-pad text-body text-muted">No channels yet.</p> : null}
       {accounts.map((a) => (
-        <section key={a.id} className="flex flex-col gap-3 rounded-card border border-border bg-surface p-pad">
-          <h2 className="text-title font-semibold">{a.email || "Google account"}</h2>
+        <section key={a.id} className="flex min-w-0 flex-col gap-3 rounded-card border border-border bg-surface p-pad">
+          <h2 className="min-w-0 text-title font-semibold [overflow-wrap:anywhere]">{a.email || "Google account"}</h2>
           <ul className="flex flex-col gap-3">
             {a.channels.map((c) => {
               const [tone, word] = STATUS[c.status];
@@ -79,7 +79,7 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/settings/chan
                 <li key={c.id} className="flex flex-wrap items-center gap-3">
                   <span className="min-w-0 flex-1">
                     <span className="block text-body font-semibold">{c.title || "Untitled channel"}</span>
-                    <span className="block font-mono text-small text-faint">{c.channelId}</span>
+                    <span className="block font-mono text-small text-faint [overflow-wrap:anywhere]">{c.channelId}</span>
                   </span>
                   <Pill tone={tone}>{word}</Pill>
                   {c.status === "unconfirmed" ? (

@@ -23,8 +23,8 @@ async function Owned() {
   const db = getPool();
   const [settings, runs] = await Promise.all([loadScheduler(db), recentRuns(db, 10)]);
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <header>
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="xl:col-span-2">
         <h1 className="text-page-title font-semibold tracking-tight">Schedule</h1>
         <p className="mt-2 max-w-prose text-body text-muted">
           What the app does by itself, and when. All hours are India time (IST). A job that fails is not tried again the same day; you get a notice instead.

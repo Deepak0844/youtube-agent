@@ -36,8 +36,8 @@ async function Owned() {
   const [v, rate] = await Promise.all([loadTargets(db), loadInrRate(db)]);
   const name = (id: string | null) => (id === null ? "All channels" : v.channels.find((c) => c.channelId === id)?.title ?? id);
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <header>
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="xl:col-span-2">
         <h1 className="text-page-title font-semibold tracking-tight">Targets</h1>
         <p className="mt-2 max-w-prose text-body text-muted">
           Numbers that say what &quot;working&quot; means for a channel. They only inform you, except one opt-in rule below. A target says &quot;not enough data&quot; until at least {TARGET_MIN_SAMPLE} shorts have numbers.

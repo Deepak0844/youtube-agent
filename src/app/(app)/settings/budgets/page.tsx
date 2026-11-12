@@ -30,8 +30,8 @@ async function Owned() {
   const [{ templates, today, month }, recent] = await Promise.all([listBudgetTemplates(db), listAudit(db, { eventPrefix: "budget.cap_changed", limit: 8 })]);
 
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <header>
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="xl:col-span-2">
         <h1 className="text-page-title font-semibold tracking-tight">Budgets</h1>
         <p className="mt-2 max-w-prose text-body text-muted">
           The most the studio may spend, per video and per day or month. A limit of $0 stops all spending. &quot;No limit&quot; lifts the limit completely.

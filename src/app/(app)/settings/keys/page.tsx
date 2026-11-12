@@ -50,10 +50,10 @@ async function Owned() {
 
       {GROUPS.map((group) => (
         <section key={group} aria-labelledby={`g-${group.replace(" ", "-")}`} className="flex flex-col gap-gap">
-          <h2 id={`g-${group.replace(" ", "-")}`} className="text-small font-semibold tracking-wide text-faint uppercase">
+          <h2 id={`g-${group.replace(" ", "-")}`} className="text-section font-semibold">
             {group === "Language model" ? "Language models" : group === "Image" ? "Images" : group}
           </h2>
-          <ul className="m-0 flex list-none flex-col gap-gap p-0">
+          <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(380px,100%),1fr))] items-start gap-gap p-0">
             {PROVIDERS.filter((p) => p.role === group).map((p) => {
               const r = byId.get(p.id)!;
               return (

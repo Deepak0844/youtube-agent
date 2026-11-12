@@ -28,8 +28,8 @@ async function Owned() {
     return { id, title: NOTIFY_EVENTS[id].title, group: NOTIFY_EVENTS[id].group, in_app: true, desktop: sw.desktop, webhook: sw.webhook };
   });
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <header>
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="xl:col-span-2">
         <h1 className="text-page-title font-semibold tracking-tight">Notifications</h1>
         <p className="mt-2 max-w-prose text-body text-muted">
           Who is told, and how, when a video needs you, something goes wrong, or good news arrives. A message that cannot be delivered never stops the studio.

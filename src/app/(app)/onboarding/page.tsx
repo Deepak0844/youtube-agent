@@ -27,12 +27,12 @@ async function Owned() {
   const checks = dryRunChecks(facts);
   const doneCount = steps.filter((s) => s.done).length;
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <header>
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="xl:col-span-2">
         <h1 className="text-page-title font-semibold tracking-tight">Set up</h1>
         <p data-testid="progress" className="mt-2 max-w-prose text-body text-muted">{`${doneCount} of ${steps.length} steps done. Each step opens the page where you do it, then come back here.`}</p>
       </header>
-      <ol className="m-0 flex list-none flex-col gap-3 p-0">
+      <ol className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(420px,100%),1fr))] items-start gap-3 p-0 xl:col-span-2">
         {steps.map((s, i) => (
           <li key={s.id} id={s.id === "dryrun" ? "dryrun" : undefined} data-testid={`step-${s.id}`} className="flex min-w-0 flex-col gap-3 rounded-card border border-border bg-surface p-pad">
             <div className="flex flex-wrap items-center justify-between gap-2">

@@ -70,8 +70,8 @@ async function Owned() {
   await requireOwner();
   const view = await loadAnalytics(getPool());
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <header className="flex flex-col gap-2">
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="flex flex-col gap-2 xl:col-span-2">
         <h1 className="text-page-title font-semibold tracking-tight">Analytics</h1>
         <p className="max-w-[68ch] text-body text-muted">
           Numbers for videos uploaded to your connected channels. Press Run now to ask YouTube; this only reads, it never changes anything
@@ -80,15 +80,15 @@ async function Owned() {
         <PullForm />
       </header>
       {view.noise && view.rows.length > 0 ? (
-        <p role="note" data-testid="noise-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">
+        <p role="note" data-testid="noise-note" className="m-0 max-w-[68ch] xl:col-span-2 rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">
           Only {view.shortsWithCurve} of your shorts {view.shortsWithCurve === 1 ? "has" : "have"} a retention curve. With fewer than {MIN_SHORTS_FOR_SIGNAL} shorts, treat
           the retention and biggest-drop numbers as noise.
         </p>
       ) : null}
       {view.rows.length === 0 ? (
-        <p className="rounded-card border border-border bg-surface p-pad text-body text-muted">No uploaded videos yet. Once a short is uploaded, its numbers show here.</p>
+        <p className="rounded-card border border-dashed border-border p-pad text-body text-muted xl:col-span-2">No uploaded videos yet. Once a short is uploaded, its numbers show here.</p>
       ) : (
-        <ul className="m-0 flex list-none flex-col gap-3 p-0">
+        <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(420px,100%),1fr))] gap-3 p-0 xl:col-span-2">
           {view.rows.map((r) => (
             <Row key={r.videoId} r={r} />
           ))}

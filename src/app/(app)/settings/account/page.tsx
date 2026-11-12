@@ -26,8 +26,8 @@ async function Owned() {
   const [name, sessions] = await Promise.all([ownerUsername(db), listSessions(db)]);
   const others = sessions.filter((s) => s.id !== sessionId);
   return (
-    <div className="flex flex-col gap-layout">
-      <header className="flex flex-col gap-1">
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="xl:col-span-2 flex flex-col gap-1">
         <h1 className="text-page-title font-semibold tracking-tight">Account</h1>
         <p className="text-body text-muted">
           Signed in as <strong data-testid="owner-name">{name ?? "the owner"}</strong>. Changing the password signs every other sign-in out.

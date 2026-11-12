@@ -262,12 +262,12 @@ function UpNext() {
 }
 
 function Recent() {
-  return soft("recent", () => loadRecent(getPool()), (rows) =>
+  return soft("recent", () => loadRecent(getPool(), 8), (rows) =>
     rows.length === 0 ? <Empty>No activity yet.</Empty> : (
       <ul className="m-0 flex list-none flex-col gap-3 p-0">
         {rows.map((r, i) => (
           <li key={i} className="flex min-w-0 flex-col gap-1">
-            <span className="text-body [overflow-wrap:anywhere]">{r.videoId ? <Link href={`/videos/${r.videoId}`} className="underline-offset-2 hover:underline">{r.text}</Link> : r.text}</span>
+            <span title={r.text} className="line-clamp-2 text-body [overflow-wrap:anywhere]">{r.videoId ? <Link href={`/videos/${r.videoId}`} className="underline-offset-2 hover:underline">{r.text}</Link> : r.text}</span>
             <span className="text-small text-faint"><TimeAgo at={new Date(r.at)} live /></span>
           </li>
         ))}

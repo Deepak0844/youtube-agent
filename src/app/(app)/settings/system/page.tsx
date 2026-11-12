@@ -33,12 +33,13 @@ async function Owned() {
   const blockers = localServiceBlockers();
   const configProblem = ownServiceConfigProblem();
   return (
-    <div className="flex min-w-0 flex-col gap-layout">
-      <h1 className="text-page-title font-semibold tracking-tight">System</h1>
-      <Status s={status} />
+    // Wide screens: two columns of cards; Status and the two long forms span both (UI redesign: no half-empty pages).
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <h1 className="text-page-title font-semibold tracking-tight xl:col-span-2">System</h1>
+      <div className="min-w-0 xl:col-span-2"><Status s={status} /></div>
       <BackupSection />
       <RateForm rate={await loadInrRate(db)} />
-      <section aria-labelledby="limits-h" className="rounded-card border border-border bg-surface p-pad">
+      <section aria-labelledby="limits-h" className="rounded-card border border-border bg-surface p-pad xl:col-span-2">
         <h2 id="limits-h" className="text-title font-semibold">Limits</h2>
         <p className="mt-1 mb-5 text-body text-muted">How much the studio does at once, and how long a video may run.</p>
         <LimitsForm
@@ -54,7 +55,7 @@ async function Owned() {
           tracksLater={["Code scenes (Phase 4)", "Collage (Phase 8)", "AI video (Phase 9)"]}
         />
       </section>
-      <EngineNumbersSection />
+      <div className="min-w-0 xl:col-span-2"><EngineNumbersSection /></div>
       <section aria-labelledby="uploads-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="uploads-h" className="text-title font-semibold">Uploads to YouTube</h2>
         <p className="mt-1 mb-5 max-w-[60ch] text-body text-muted">
@@ -101,11 +102,12 @@ const VAULT: Record<SystemStatus["vault"]["status"], { tone: "positive" | "warni
   unreadable: { tone: "negative", label: "Some keys unreadable" },
 };
 
+/** One status tile: label above its value (no label-left / value-far-right rows across a wide card). */
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-rule py-2 last:border-b-0">
-      <dt className="text-body text-muted">{label}</dt>
-      <dd className="flex min-w-0 items-center gap-2 text-body [overflow-wrap:anywhere]">{children}</dd>
+    <div className="flex min-w-0 flex-col gap-1.5 rounded-control border border-border bg-page p-3">
+      <dt className="text-small text-muted">{label}</dt>
+      <dd className="flex min-w-0 flex-wrap items-center gap-2 text-body [overflow-wrap:anywhere]">{children}</dd>
     </div>
   );
 }
@@ -126,7 +128,7 @@ function Status({ s }: { s: SystemStatus }) {
     <section aria-labelledby="status-h" className="rounded-card border border-border bg-surface p-pad">
       <h2 id="status-h" className="text-title font-semibold">Status</h2>
       <p className="mt-1 mb-3 text-body text-muted">Read only. No keys or addresses are shown here.</p>
-      <dl>
+      <dl className="grid grid-cols-[repeat(auto-fill,minmax(min(230px,100%),1fr))] gap-2">
         <Row label="Database"><Up ok={s.db.ok} ms={s.db.ms} /></Row>
         <Row label="Redis"><Up ok={s.redis.ok} ms={s.redis.ms} /></Row>
         <Row label="Key vault"><Pill tone={v.tone}>{v.label}</Pill></Row>

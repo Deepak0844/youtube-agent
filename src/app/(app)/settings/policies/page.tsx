@@ -25,8 +25,8 @@ async function Owned() {
   await requireOwner();
   const p = await loadPolicies(getPool());
   return (
-    <div className="flex flex-col gap-layout">
-      <header className="flex flex-col gap-1">
+    <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
+      <header className="xl:col-span-2 flex flex-col gap-1">
         <h1 className="text-page-title font-semibold tracking-tight">Policies</h1>
         <p data-testid="public-summary" className="max-w-[68ch] text-body text-muted">{publicSummary(p)} Every publish still needs your approval, whatever is set here.</p>
         <p className="max-w-[68ch] text-small text-muted">The evidence rule is shown only; it is not changed from a page. The public switch below can be changed, and turning it on asks you to type a phrase.</p>
