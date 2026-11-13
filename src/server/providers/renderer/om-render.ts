@@ -70,6 +70,14 @@ export function checkOmProps(props: unknown): string[] {
       const need = OM_CUT_TYPES[type];
       if (!Object.hasOwn(OM_CUT_TYPES, type) || !need) problems.push(`${who}: type '${type}' is not a scene type of this app's composer (see remotion-composer/SCENE_TYPES.md).`);
       else if (need.some((f) => cut[f] === undefined || cut[f] === null || cut[f] === "")) problems.push(`${who}: a ${type} needs ${need.join(", ")}.`);
+      else if (type === "bar_chart" || type === "pie_chart" || type === "kpi_grid") {
+        // the chart components animate value as a number; anything else draws as NaN
+        if (!Array.isArray(cut.chartData)) problems.push(`${who}: chartData must be a list of { label, value }.`);
+        else {
+          const bad = cut.chartData.findIndex((d: unknown) => typeof (d as { value?: unknown } | null)?.value !== "number" || !Number.isFinite((d as { value: number }).value));
+          if (bad >= 0) problems.push(`${who}: chartData[${bad}].value must be a number (it is drawn as a counting number).`);
+        }
+      }
     } else if (typeof cut.source === "string" && cut.source !== "" && !SOURCE_EXT.some((e) => (cut.source as string).toLowerCase().endsWith(e))) {
       problems.push(`${who}: source '${cut.source.slice(0, 80)}' must be a staged .png, .jpg, .jpeg, .webp or .mp4 file.`);
     }

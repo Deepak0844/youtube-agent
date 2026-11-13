@@ -81,6 +81,14 @@ describe("OpenMontage scene lists on the host", () => {
     ]);
   });
 
+  it("refuses_chart_values_that_are_not_numbers", () => {
+    // KPIGrid, BarChart and PieChart animate value as a number: a "✓" draws as NaN
+    const cut = (o: Record<string, unknown>) => ({ cuts: [{ id: "k", in_seconds: 0, out_seconds: 2, ...o }] });
+    expect(checkOmProps(cut({ type: "kpi_grid", chartData: [{ label: "Laptop", value: "✓" }, { label: "CI", value: 3 }] }))).toEqual(["Cut 0 (k): chartData[0].value must be a number (it is drawn as a counting number)."]);
+    expect(checkOmProps(cut({ type: "bar_chart", chartData: "lots" }))).toEqual(["Cut 0 (k): chartData must be a list of { label, value }."]);
+    expect(checkOmProps(cut({ type: "pie_chart", chartData: [{ label: "a", value: 60 }, { label: "b", value: 40 }] }))).toEqual([]);
+  });
+
   it("refuses_unusable_scene_lists", () => {
     expect(checkOmProps([])).toEqual(["The scene list is not a JSON object."]);
     expect(checkOmProps({ cuts: [] })).toEqual(["The scene list has no cuts."]);

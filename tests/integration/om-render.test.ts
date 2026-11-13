@@ -63,6 +63,25 @@ describe("OpenMontage scene lists through the locked renderer", () => {
     expect(Math.abs(p.durationS - 21)).toBeLessThan(0.5);
   }, 600_000);
 
+  it("lays a KPI grid out inside a portrait frame", async () => {
+    // OpenMontage's KPIGrid placed its cards for 1920x1080; in a 1080-wide short the third card ran off the right edge
+    const c = ctx("kpi-portrait");
+    const props = { theme: "flat-motion-graphics", cuts: [{ id: "k", type: "kpi_grid", in_seconds: 0, out_seconds: 3, title: "Same everywhere", columns: 3, cardBackgroundColor: "#FF0000", chartData: [{ label: "Laptop", value: 1 }, { label: "CI", value: 2 }, { label: "Prod", value: 3 }] }] };
+    const r = await renderOm(deps, c, { props, orientation: "portrait", outFile: "x.mp4", stills: [60] });
+    if (!r.ok) throw new Error(`${r.message} ${r.problems.join(" | ")}`);
+    const p = png(path.join(c.attemptDir, r.stills[0]!));
+    const red = (x0: number, x1: number) => {
+      let n = 0;
+      for (let y = 0; y < p.height; y++) for (let x = x0; x < x1; x++) {
+        const i = (y * p.width + x) * 4;
+        if (p.data[i]! > 200 && p.data[i + 1]! < 60 && p.data[i + 2]! < 60) n++;
+      }
+      return n;
+    };
+    expect(red(0, 1000)).toBeGreaterThan(10_000); // the cards are drawn
+    expect(red(1040, 1080)).toBe(0); // and none reaches the right margin
+  }, 600_000);
+
   it("refuses a remote asset inside the box", async () => {
     const c = ctx("remote");
     const props = { ...reel, cuts: [{ id: "a", source: "https://example.com/a.png", in_seconds: 0, out_seconds: 1 }] };

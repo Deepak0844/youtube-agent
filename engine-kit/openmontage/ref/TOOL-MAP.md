@@ -14,6 +14,7 @@ Engine tools you have: `check_code`, `preview_frames`, `list_assets`, `fetch_ass
 | `skills/...`, `pipeline_defs/...`, `schemas/...`, `styles/...` | `ref/openmontage/skills/...` and so on (read-only) |
 | `projects/<slug>/` (the project folder) | your work folder (the current folder) |
 | `projects/<slug>/artifacts/<name>.json`, stage artifacts | `om/<name>.json`, named as the schema names it (`brief.json`, `research_brief.json`, `proposal_packet.json`, `script.json`, `scene_plan.json`, `asset_manifest.json`, `edit_decisions.json`, ...) |
+| `composition.json`, `composition_path` (the Remotion props the compose stage assembles) | `om/composition.json` |
 | `projects/<id>/checkpoint_<stage>.json`, `write_checkpoint(...)` | write `om/checkpoint_<stage>.json` yourself, with the fields the checkpoint protocol lists |
 | `projects/<slug>/assets/...`, `public/...` | `assets/` (filled by `fetch_asset`); refer to files by their name inside `assets/` |
 | `projects/<slug>/index.tsx` (a bespoke or "atelier" composition) | `scene/video.tsx`, checked with `check_code` and previewed with `preview_frames` |
@@ -26,7 +27,7 @@ Engine tools you have: `check_code`, `preview_frames`, `list_assets`, `fetch_ass
 
 | OpenMontage tool or command | Here | Available |
 |---|---|---|
-| `video_compose`, `remotion_render`, `npx remotion render Explainer` | Write the Explainer scene list to `om/edit_decisions.json` (the `cuts`, `overlays`, `captions`, `audio`, `theme` the Explainer composition takes) and run `check_scenes`. The app renders it after your run. | yes, as described |
+| `video_compose`, `remotion_render`, `npx remotion render Explainer` | Do the compose stage's "assemble composition JSON" step: write `om/composition.json` (the `cuts`, `overlays`, `captions`, `audio`, `theme` the Explainer composition takes) and run `check_scenes`. Do not render: the app renders it after your run. | yes, as described |
 | `npx remotion still`, `atelier_snapshots`, snapshots of a composition | `preview_frames` on `scene/video.tsx` | yes |
 | `scaffold_atelier_project` | create `scene/video.tsx` yourself | yes |
 | `composition_validator`, `score_slideshow_risk`, `slideshow_risk`, delivery promise checks | `check_scenes` | yes |
@@ -48,7 +49,11 @@ Engine tools you have: `check_code`, `preview_frames`, `list_assets`, `fetch_ass
 | `technical_probe` (a field of `source_media_review`) | not used: Explainer and Animation videos have no footage of yours to review | n/a |
 | the tool registry (`tools.tool_registry`, `install_instructions`) | this map is the registry | n/a |
 
-## Writing the Explainer scene list (`om/edit_decisions.json`)
+## Writing the Explainer composition (`om/composition.json`)
+
+`om/edit_decisions.json` is the edit artifact and must stay valid against its schema (its cuts carry timing, `reason` and
+`source` only; `renderer_family`, `render_runtime` and `metadata.delivery_promise` live there). The scene components and their
+fields go in `om/composition.json`, built from the edit decisions and the scene plan, exactly as the compose stage does.
 
 The look comes from the composer's own scene components. Use them; do not draw your own pictures for a scene.
 

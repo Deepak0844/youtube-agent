@@ -17,10 +17,11 @@ OpenMontage's pipelines and guides are in `ref/openmontage/` (read-only). Follow
 4. Write each stage's artifact to `om/<name>.json`, valid against `ref/openmontage/schemas/artifacts/<name>.schema.json`, and
    its checkpoint to `om/checkpoint_<stage>.json`.
 5. Style: use the playbook `ref/openmontage/styles/<style>.yaml` the request names; set the same name as the Explainer `theme`.
-6. Templated path (default): the edit stage's output is the Explainer scene list in `om/edit_decisions.json`, built from the
+6. Templated path (default): the edit stage writes `om/edit_decisions.json` (valid against its schema); the compose stage's
+   "assemble composition JSON" step writes the Explainer composition to `om/composition.json`, built from the
    composer's own scene types (`ref/openmontage/remotion-composer/SCENE_TYPES.md`, examples in
    `ref/openmontage/remotion-composer/public/demo-props/`; see TOOL-MAP "Writing the Explainer scene list"). Run
-   `check_scenes` and fix the list until its last line is `VERDICT: pass`.
+   `check_scenes` and fix the files until its last line is `VERDICT: pass`. Never render; the app does.
    Bespoke path (only when the runtime-selector guide says the templated components cannot carry the idea): write
    `scene/video.tsx`, then `check_code` and `preview_frames`.
 7. Human approvals in the guides are the app's gates: finish the artifact and checkpoint, then stop and report.

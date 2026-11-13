@@ -163,7 +163,7 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 - remotion/kit/om/components/charts/BarChart.tsx: OpenMontage (AGPL-3.0), copied as written.
 - remotion/kit/om/components/charts/LineChart.tsx: OpenMontage (AGPL-3.0), copied as written.
 - remotion/kit/om/components/charts/PieChart.tsx: OpenMontage (AGPL-3.0), copied as written.
-- remotion/kit/om/components/charts/KPIGrid.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/charts/KPIGrid.tsx: OpenMontage (AGPL-3.0), patched: lays the grid out in the real frame size instead of a fixed 1920x1080 (engine-kit/openmontage/patches/).
 - remotion/kit/om/components/charts/index.ts: OpenMontage (AGPL-3.0), copied as written.
 - remotion/kit/om/LICENSE: OpenMontage's licence (AGPL-3.0).
 - engine-kit/openmontage/LICENSE: OpenMontage's licence (AGPL-3.0).
@@ -174,6 +174,7 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 - engine-kit/openmontage/ref/styles/anime-ghibli.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
 - engine-kit/openmontage/patches/remotion__kit__om__Explainer.tsx.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
 - engine-kit/openmontage/patches/remotion__kit__om__Root.tsx.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
+- engine-kit/openmontage/patches/remotion__kit__om__components__charts__KPIGrid.tsx.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
 - engine-kit/openmontage/patches/remotion__kit__om__components__index.ts.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
 - engine-kit/openmontage/patches/remotion__kit__om__lib__resolveAsset.ts.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
 - engine-kit/openmontage/ref/pipeline_defs/animated-explainer.yaml: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.

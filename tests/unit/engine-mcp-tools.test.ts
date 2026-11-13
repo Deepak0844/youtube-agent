@@ -105,64 +105,85 @@ describe("engine tools", () => {
 });
 
 describe("check_scenes", () => {
+  // OpenMontage keeps two files: the edit artifact (om/edit_decisions.json, strict schema: renderer_family, delivery promise in
+  // metadata) and the composition the Explainer draws (om/composition.json: cuts with component types, overlays, audio, theme).
   const reel = JSON.parse(readFileSync("tests/fixtures/openmontage/animated-reel-20s.json", "utf8")) as { cuts: Array<Record<string, unknown>> };
   const shots = ["push_in", "static", "pan", "static"];
   const plan = { version: "1", scenes: reel.cuts.map((c, i) => ({ type: c.type, description: `scene ${i}`, narrative_role: "beat", shot_intent: "why", shot_language: { camera_movement: shots[i], shot_size: ["wide", "medium", "close", "wide"][i] } })) };
-  const edit = (over: Record<string, unknown> = {}) => ({ version: "1", render_runtime: "remotion", renderer_family: "explainer", ...reel, metadata: { delivery_promise: { promise_type: "data_explainer", motion_required: false, tone_mode: "educational", quality_floor: "presentable" } }, ...over });
+  const edit = (over: Record<string, unknown> = {}) => ({
+    version: "1", render_runtime: "remotion", renderer_family: "explainer",
+    cuts: reel.cuts.map((c) => ({ id: c.id, source: "", in_seconds: c.in_seconds, out_seconds: c.out_seconds })),
+    metadata: { delivery_promise: { promise_type: "data_explainer", motion_required: false, tone_mode: "educational", quality_floor: "presentable" } },
+    ...over,
+  });
+  const comp = (over: Record<string, unknown> = {}) => ({ ...reel, ...over });
   const put = async (rel: string, v: unknown) => {
     await mkdir(path.dirname(path.join(work, rel)), { recursive: true });
     await writeFile(path.join(work, rel), typeof v === "string" ? v : JSON.stringify(v));
   };
   const run = async (args: Record<string, unknown> = {}) => (await tool(deps(), "check_scenes").run(args)).map((c) => (c.type === "text" ? c.text : "")).join("\n");
+  const verdict = (t: string) => t.trim().split("\n").at(-1);
 
   it("check_scenes_reports_all_checks", async () => {
+    await put("om/composition.json", comp());
     await put("om/edit_decisions.json", edit());
     await put("om/scene_plan.json", plan);
     const t = await run();
     for (const h of ["Shape", "Assets and timing", "Slideshow risk", "Delivery promise"]) expect(t).toContain(`## ${h}`);
-    expect(t.trim().split("\n").at(-1)).toBe("VERDICT: pass");
+    expect(verdict(t)).toBe("VERDICT: pass");
   });
 
   it("check_scenes_names_a_missing_asset", async () => {
-    await put("om/edit_decisions.json", edit({ cuts: [...reel.cuts, { id: "clip", source: "intro.mp4", in_seconds: 20, out_seconds: 22 }], audio: { narration: { src: "voice.wav" } } }));
+    await put("om/composition.json", comp({ cuts: [...reel.cuts, { id: "clip", source: "intro.mp4", in_seconds: 20, out_seconds: 22 }], audio: { narration: { src: "voice.wav" } } }));
+    await put("om/edit_decisions.json", edit());
     await put("assets/voice.wav", "x");
     const t = await run();
     expect(t).toContain("Missing asset: intro.mp4 (looked in assets)");
     expect(t).toContain("Narration duration: 18.0s"); // probed through the injected probe, inside work/assets only
-    expect(t.trim().split("\n").at(-1)).toBe("VERDICT: fail");
+    expect(verdict(t)).toBe("VERDICT: fail");
   });
 
   it("check_scenes_blocks_like_openmontage_pre_compose", async () => {
+    await put("om/composition.json", comp());
     await put("om/edit_decisions.json", edit({ renderer_family: undefined, metadata: { delivery_promise: { promise_type: "motion_led", motion_required: true } } }));
     const t = await run();
     expect(t).toContain("No renderer_family in edit_decisions.");
     expect(t).toContain("Delivery promise violation: Motion ratio 0% is below minimum 70% for motion_led.");
-    expect(t.trim().split("\n").at(-1)).toBe("VERDICT: fail");
+    expect(verdict(t)).toBe("VERDICT: fail");
+  });
+
+  it("check_scenes_without_an_edit_file_blocks_on_renderer_family", async () => {
+    await put("om/composition.json", comp());
+    const t = await run();
+    expect(t).toContain("No renderer_family in edit_decisions.");
+    expect(verdict(t)).toBe("VERDICT: fail");
   });
 
   it("fail_when_slideshow_verdict_is_fail", async () => {
+    await put("om/composition.json", comp());
     await put("om/edit_decisions.json", edit({ renderer_family: "cinematic" })); // repeated text cards, no intent, cinematic claim without hero or lighting: 4.43
     await put("om/scene_plan.json", { version: "1", scenes: Array.from({ length: 5 }, () => ({ type: "text_card", description: "same", shot_language: { camera_movement: "pan", shot_size: "wide" } })) });
     const t = await run();
     expect(t).toMatch(/Slideshow risk score 4\.\d\/5\.0 \(verdict: fail\)/);
-    expect(t.trim().split("\n").at(-1)).toBe("VERDICT: fail");
+    expect(verdict(t)).toBe("VERDICT: fail");
   });
 
   it("check_scenes_refuses_paths_outside_work_and_links", async () => {
     await expect(run({ file: "../x.json" })).rejects.toThrow(ToolMessage);
     await expect(run({ file: path.join(outside, "secret.txt") })).rejects.toThrow(ToolMessage);
+    await expect(run({ edit: "../x.json" })).rejects.toThrow(ToolMessage);
     await mkdir(path.join(work, "om"), { recursive: true });
-    await symlink(path.join(outside, "secret.txt"), path.join(work, "om", "edit_decisions.json"));
+    await symlink(path.join(outside, "secret.txt"), path.join(work, "om", "composition.json"));
     await expect(run()).rejects.toThrow(/Links are not allowed/);
-    await rm(path.join(work, "om", "edit_decisions.json"));
-    await put("om/edit_decisions.json", edit({ cuts: [{ id: "a", type: "text_card", in_seconds: 0, out_seconds: 1, source: "../../secret.txt" }] }));
-    expect(await run()).toContain("Missing asset: ../../secret.txt"); // an asset name never reaches outside work/assets
+    await rm(path.join(work, "om", "composition.json"));
+    await put("om/composition.json", comp({ cuts: [{ id: "a", in_seconds: 0, out_seconds: 1, source: "../../secret.png" }] }));
+    expect(await run()).toContain("Missing asset: ../../secret.png"); // an asset name never reaches outside work/assets
   });
 
   it("check_scenes_refuses_files_over_512_KB_and_bad_json", async () => {
-    await put("om/edit_decisions.json", "x".repeat(513 * 1024));
+    await put("om/composition.json", "x".repeat(513 * 1024));
     await expect(run()).rejects.toThrow(/512 KB/);
-    await put("om/edit_decisions.json", "{nope");
+    await put("om/composition.json", "{nope");
     await expect(run()).rejects.toThrow(/not valid JSON/);
   });
 });
