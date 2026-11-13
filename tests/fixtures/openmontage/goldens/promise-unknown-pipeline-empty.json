@@ -1,0 +1,23 @@
+{
+ "pipeline": "made-up",
+ "intent": {},
+ "approvedFallback": null,
+ "cuts": [],
+ "expected": {
+  "promise": {
+   "promise_type": "hybrid",
+   "motion_required": false,
+   "source_required": false,
+   "tone_mode": "corporate",
+   "quality_floor": "presentable",
+   "approved_fallback": null
+  },
+  "check": {
+   "valid": false,
+   "violations": [
+    "No cuts provided"
+   ],
+   "motion_ratio": 0.0
+  }
+ }
+}

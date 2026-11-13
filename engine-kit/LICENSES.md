@@ -246,3 +246,18 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 - tests/fixtures/openmontage/goldens/slideshow-kpi-boundary.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
 - tests/fixtures/openmontage/goldens/slideshow-repeated-ties.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
 - tests/fixtures/openmontage/goldens/slideshow-varied.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- src/server/engine/om-checks/delivery-promise.ts: TypeScript port of OpenMontage lib/delivery_promise.py (AGPL-3.0).
+- src/server/engine/om-checks/scene-pacing.ts: TypeScript port of OpenMontage lib/verify_scene_pacing.py (AGPL-3.0).
+- tests/fixtures/openmontage/goldens/pacing-aligned.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/pacing-cue-off.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/pacing-no-landmarks.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/pacing-overflow.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/pacing-underfill-empty-cues.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/promise-animation-motion.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/promise-animation-no-motion-wanted.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/promise-animation-reel-still-ok.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/promise-animation-reel.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/promise-explainer-reel.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/promise-footage.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/promise-talking-head-forced.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/promise-unknown-pipeline-empty.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
