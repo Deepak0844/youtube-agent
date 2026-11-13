@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { YT_KIT_MODULE, YT_KIT_NAMES } from "@/server/core/tsx-kit";
-import { OLD_LIBS } from "@/server/core/oldlib-names";
+import { OLD_LIB_PLAIN, OLD_LIBS } from "@/server/core/oldlib-names";
 
 // SECURITY CONTROL (first line, ADR 0009): a static check of ONE model-written Remotion TSX file before it is type-checked,
 // bundled or rendered. It works on the TypeScript AST, not on regexes over the code. It is deliberately strict: an
@@ -246,6 +246,8 @@ function walk(source: string, problems: string[]): void {
 
   let reactDefault = false;
   const imported = new Set<string>();
+  // yt-old constants declared as plain strings, numbers or booleans: usable as plain values (nothing to call or smuggle).
+  const plainImported = new Set<string>();
   let hasDefault = false;
   let hasMeta = false;
   const seenComments = new Set<number>();
@@ -389,7 +391,10 @@ function walk(source: string, problems: string[]): void {
         const name = (el.propertyName ?? el.name).text;
         if (el.propertyName && name !== el.name.text) add(el, `imports: renaming imports ('${snip(el)}') is not allowed; import the name as is.`);
         else if (!allowed.includes(name)) add(el, `imports: '${echo(name)}' is not allowed from '${spec}'; use only the allow-listed names.`);
-        else imported.add(name);
+        else {
+          imported.add(name);
+          if (OLD_LIB_PLAIN[spec]?.includes(name)) plainImported.add(name);
+        }
       }
     }
   }
@@ -531,7 +536,7 @@ function walk(source: string, problems: string[]): void {
   }
 
   function isProtected(name: string): boolean {
-    return GLOBAL_OBJECTS.has(name) || imported.has(name) || (reactDefault && name === REACT_DEFAULT);
+    return GLOBAL_OBJECTS.has(name) || (imported.has(name) && !plainImported.has(name)) || (reactDefault && name === REACT_DEFAULT);
   }
 
   function memberName(id: ts.Identifier): void {

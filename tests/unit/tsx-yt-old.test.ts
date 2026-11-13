@@ -28,6 +28,12 @@ describe("yt-old imports in the static check", () => {
     }
   });
 
+  it("plain constants (font names, numbers) may be used as values; functions and objects stay call-or-member only", () => {
+    expect(checkTsx(scene(`import { FONT_MONO } from "yt-old/fonts";`, `<AbsoluteFill style={{ fontFamily: FONT_MONO }} />`)).problems).toEqual([]);
+    expect(checkTsx(scene(`import { EASE_OUT } from "yt-old/shorts";\nconst f = EASE_OUT;`)).problems.join(" ")).toMatch(/EASE_OUT' may only be used as/);
+    expect(checkTsx(scene(`import { COLORS } from "yt-old/brand";\nconst c = COLORS;`)).problems.join(" ")).toMatch(/COLORS' may only be used as/);
+  });
+
   it("the libraries' own dependencies are not importable from a scene", () => {
     for (const spec of ["lucide-react", "chroma-js", "@remotion/google-fonts/Inter"]) expect(checkTsx(scene(`import X from "${spec}";`)).ok, spec).toBe(false);
   });
