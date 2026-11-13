@@ -117,6 +117,20 @@ describe("runEngine", () => {
     await first;
   }, 20_000);
 
+  it("registers Claude with the identity the orphan sweep checks, and unregisters it at the end", async () => {
+    const v = await video();
+    const reg: Array<{ pid: number; startedAtEpoch: number; commandLabel: string; argsSha256: string }> = [];
+    const unreg: Array<[number, number]> = [];
+    const registry = { register: async (r: (typeof reg)[number]) => void reg.push(r), unregister: async (pid: number, at: number) => void unreg.push([pid, at]) };
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(new Error("stop")), 1500);
+    await runEngine(deps({ registry }), req(v, { mode: "hang" }, { signal: ac.signal }));
+    expect(reg).toHaveLength(1);
+    expect(reg[0]!.argsSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(reg[0]!.commandLabel).toBe("node"); // the fake runs under node; the real one is "claude"
+    expect(unreg).toEqual([[reg[0]!.pid, reg[0]!.startedAtEpoch]]);
+  }, 20_000);
+
   it("worker_restart_leaves_run_killed", async () => {
     const v = await video();
     await db.pool.query("insert into engine_runs (video_id, stage_run_id, kind) values ($1, $2, 'build')", [v, STAGE]);

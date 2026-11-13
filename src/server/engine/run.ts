@@ -4,6 +4,7 @@ import type { EngineConfig } from "@/server/core/engine-config";
 import { finishEngineRun, startEngineRun, type EngineUsage } from "@/server/db/engine-runs";
 import { minimalEnv } from "@/server/llm/claude-code";
 import type { ChildRegistry } from "@/server/render/child";
+import { argsHash, commandLabelOf, readProcInfo } from "@/server/render/proc-info";
 import { engineArgs, type EngineRunKind } from "./args";
 import { parseLimit } from "./limit";
 import { startToolsHost, type ToolsHost } from "./mcp/host";
@@ -70,7 +71,20 @@ function launch(d: EngineDeps, ws: Workspace, args: string[], prompt: string, ti
     const onAbort = () => { aborted = true; killGroup(); };
     if (signal.aborted) onAbort();
     else signal.addEventListener("abort", onAbort, { once: true });
-    if (child.pid && d.registry) void d.registry.register({ pid: child.pid, startedAtEpoch: Math.floor(started / 1000), commandLabel: "claude-engine", argsSha256: "", stageRunId }).catch(() => undefined);
+    // Registered with the identity the orphan sweep checks (ps start time and args hash), as runChild does, so a worker crash
+    // never leaves Claude running unseen. If the process cannot be tracked, it is stopped at once.
+    let startedAtEpoch = Math.floor(started / 1000);
+    let registered = false;
+    if (child.pid && d.registry) {
+      const pid = child.pid;
+      void (async () => {
+        const info = await readProcInfo(pid);
+        if (!info) return; // already gone
+        startedAtEpoch = info.startedAtEpoch;
+        await d.registry!.register({ pid, startedAtEpoch, commandLabel: commandLabelOf(info.args), argsSha256: argsHash(info.args), stageRunId });
+        registered = true;
+      })().catch(() => killGroup());
+    }
     child.stdout.on("data", (c: Buffer) => {
       size += c.length;
       if (size > (d.maxStdoutBytes ?? MAX_STDOUT)) { killGroup(); return; }
@@ -89,7 +103,7 @@ function launch(d: EngineDeps, ws: Workspace, args: string[], prompt: string, ti
     child.on("close", (code) => {
       clearTimeout(timer);
       signal.removeEventListener("abort", onAbort);
-      if (child.pid && d.registry) void d.registry.unregister(child.pid, Math.floor(started / 1000)).catch(() => undefined);
+      if (child.pid && d.registry && registered) void d.registry.unregister(child.pid, startedAtEpoch).catch(() => undefined);
       resolve({ code, timedOut, aborted, result });
     });
     child.stdin.on("error", () => undefined);
