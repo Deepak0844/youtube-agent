@@ -26,3 +26,15 @@ export const OLD_LIBS: Readonly<Record<string, readonly string[]>> = {
   "yt-old/techprops": ["CONTAINER_COLORS","PropLayer","LaptopSvg","ServerRackSvg","ContainerSvg","CargoShipSvg","CloudSvg","StatusBadge","LayerStack"],
   "yt-old/terminal": ["TerminalWindow"],
 };
+
+// Of those, the constants declared as a plain string, number or boolean: a scene may use them as plain values (fontFamily: FONT_MONO).
+// Every other import stays usable only as X(...) or X.name, as for yt-kit.
+export const OLD_LIB_PLAIN: Readonly<Record<string, readonly string[]>> = {
+  "yt-old/aspect": ["SRC_W","SRC_H"],
+  "yt-old/brand": ["GRADIENT"],
+  "yt-old/chess": ["START_FEN"],
+  "yt-old/floatprops": ["BRASS","LIQUID"],
+  "yt-old/fonts": ["FONT_DISPLAY","FONT_BODY","FONT_MONO","FONT_SERIF","FONT_EDITORIAL"],
+  "yt-old/map": ["MAX_LAT"],
+  "yt-old/orbit": ["GM","R_EARTH","ISS_ALT"],
+};
