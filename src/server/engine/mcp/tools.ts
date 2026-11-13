@@ -57,7 +57,7 @@ const MAX_JSON_BYTES = 512 * 1024;
 /** A JSON artifact in the work folder (om/...): inside work, no links, at most 512 KB, an object. Missing = null when optional. */
 async function readJson(d: EngineToolDeps, rel: string, optional: boolean): Promise<Record<string, unknown> | null> {
   const full = safeWorkPath(d.workDir, rel);
-  if (!full) throw new ToolMessage("Give a file path inside the work folder, like om/edit_decisions.json.");
+  if (!full) throw new ToolMessage("Give a file path inside the work folder, like om/composition.json.");
   await noLinks(d.workDir, full);
   const st = await lstat(full).catch(() => null);
   if (!st?.isFile()) {
@@ -117,26 +117,28 @@ export function engineTools(d: EngineToolDeps): McpTool[] {
     {
       name: "check_scenes",
       description:
-        "Run OpenMontage's pre-render checks on the scene list (om/edit_decisions.json): shape, staged assets and audio length, slideshow risk, delivery promise, renderer_family. Ends with VERDICT: pass, revise or fail.",
+        "Run OpenMontage's pre-render checks: the composition (om/composition.json: shape, staged assets, audio length) and the edit (om/edit_decisions.json: slideshow risk, delivery promise, renderer_family). Ends with VERDICT: pass, revise or fail.",
       inputSchema: {
         type: "object",
         properties: {
-          file: { type: "string", description: "Default om/edit_decisions.json" },
+          file: { type: "string", description: "The composition the Explainer draws. Default om/composition.json" },
+          edit: { type: "string", description: "Default om/edit_decisions.json (optional file)" },
           plan: { type: "string", description: "Default om/scene_plan.json (optional file)" },
           brief: { type: "string", description: "Default om/proposal_packet.json (optional file)" },
         },
         additionalProperties: false,
       },
       run: async (a) => {
-        const { file, plan, brief } = obj(a);
+        const { file, edit: editFile, plan, brief } = obj(a);
         const rel = (v: unknown, def: string) => (v === undefined ? def : typeof v === "string" ? v : "");
-        const edit = (await readJson(d, rel(file, "om/edit_decisions.json"), false))!;
+        const composition = (await readJson(d, rel(file, "om/composition.json"), false))!;
+        const editDecisions = await readJson(d, rel(editFile, "om/edit_decisions.json"), true);
         const scenePlan = await readJson(d, rel(plan, "om/scene_plan.json"), true);
         const proposal = await readJson(d, rel(brief, "om/proposal_packet.json"), true);
         // Asset names resolve inside work/assets only; a name that climbs out or passes a link is simply missing.
         const assetsDir = path.join(d.workDir, "assets");
         const found = new Map<string, number | null>();
-        for (const name of referencedAssets(edit)) {
+        for (const name of referencedAssets(composition)) {
           const full = safeWorkPath(assetsDir, name);
           if (!full) continue;
           const linked = await noLinks(d.workDir, full).then(() => false, () => true);
@@ -144,7 +146,7 @@ export function engineTools(d: EngineToolDeps): McpTool[] {
           if (!st?.isFile()) continue;
           found.set(name, /\.(wav|mp3|m4a|aac|flac|ogg|mp4|webm|mov)$/i.test(name) ? await d.probeDuration(full).catch(() => null) : null);
         }
-        const r = checkScenes({ editDecisions: edit, scenePlan, proposal, files: { exists: (n) => found.has(n), durationS: (n) => found.get(n) ?? null } });
+        const r = checkScenes({ composition, editDecisions, scenePlan, proposal, files: { exists: (n) => found.has(n), durationS: (n) => found.get(n) ?? null } });
         return [{ type: "text", text: r.report }];
       },
     },

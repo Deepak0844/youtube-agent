@@ -64,11 +64,11 @@ async function main(): Promise<void> {
       `Make a 40-second vertical (1080x1920) Explainer short on "${omTopic}" with the openmontage-pipeline skill.`,
       "This is a test run of the pipeline. Rules for it:",
       "- This build run has no web access: for the research stage use your own knowledge and say so in the research brief.",
-      "- Work the animated-explainer pipeline's stages in order through the edit stage; skip compose and publish.",
+      "- Work the animated-explainer pipeline's stages in order through the edit stage, then only the compose stage's step that assembles the composition JSON (om/composition.json); do not render; skip publish.",
       "- Write every stage artifact to om/, valid against its schema, and a checkpoint per stage.",
       "- Where a stage asks for human approval, pick the recommended option yourself, note it in the checkpoint, and go on (do not stop).",
       "- Style playbook: flat-motion-graphics. There is no narration audio yet: leave audio empty.",
-      "- Run check_scenes on om/edit_decisions.json and fix the files until its last line is VERDICT: pass.",
+      "- Run check_scenes and fix the files until its last line is VERDICT: pass.",
       "Finish with a short summary: the stages done, the files written, which guides you read, and the last check_scenes verdict.",
     ].join("\n");
     const prompt = omTopic ? omPrompt : toolsPrompt;

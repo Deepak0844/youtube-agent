@@ -1,4 +1,6 @@
-// check_scenes: the checks OpenMontage runs before it renders an edit, in one report for the engine. Ports (AGPL-3.0):
+// check_scenes: the checks OpenMontage runs before it renders an edit, in one report for the engine. As in OpenMontage, the
+// composition (what the Explainer draws: om/composition.json) and the edit artifact (om/edit_decisions.json: renderer_family,
+// delivery promise) are separate files; the validator and the cut checks read the composition. Ports (AGPL-3.0):
 // tools/analysis/composition_validator.py (composition.ts) and video_compose.py _pre_compose_validation (below: delivery
 // promise, slideshow risk, renderer_family), plus our own shape check of the scene list (checkOmProps, om-render.ts).
 // Verdict: fail on any error or block (OpenMontage would not render), revise on a slideshow "revise" warning, else pass.
@@ -10,8 +12,10 @@ import { scoreSlideshowRisk } from "./slideshow-risk";
 
 type Obj = Record<string, unknown>;
 export interface CheckScenesInput {
-  /** om/edit_decisions.json */
-  editDecisions: Obj;
+  /** om/composition.json: the Explainer props (cuts, overlays, captions, audio, theme) */
+  composition: Obj;
+  /** om/edit_decisions.json, when there is one (renderer_family, render_runtime, metadata.delivery_promise) */
+  editDecisions?: Obj | null;
   /** om/scene_plan.json, when there is one */
   scenePlan?: Obj | null;
   /** om/proposal_packet.json, when there is one (its production_plan.delivery_promise is used if the edit has none) */
@@ -23,7 +27,7 @@ const obj = (v: unknown): Obj => (typeof v === "object" && v !== null && !Array.
 const list = (v: unknown): Obj[] => (Array.isArray(v) ? v.map(obj) : []);
 const bullets = (xs: string[]) => (xs.length ? xs.map((x) => `- ${x}`) : ["- none"]);
 
-/** The asset names a scene list refers to (cut sources and backgrounds, narration and music). */
+/** The asset names a composition refers to (cut sources and backgrounds, narration and music). */
 export function referencedAssets(edit: Obj): string[] {
   const names = new Set<string>();
   for (const c of list(edit.cuts)) for (const k of ["source", "backgroundImage"]) if (typeof c[k] === "string" && c[k]) names.add(c[k] as string);
@@ -35,17 +39,18 @@ export function referencedAssets(edit: Obj): string[] {
 }
 
 export function checkScenes(input: CheckScenesInput): { verdict: Verdict; report: string } {
-  const edit = input.editDecisions;
-  const cuts = list(edit.cuts);
+  const compo = input.composition;
+  const edit = obj(input.editDecisions);
+  const cuts = list(compo.cuts);
   const blocks: string[] = [];
   const warnings: string[] = [];
 
-  const shape = checkOmProps(edit);
-  const comp = validateComposition(edit, input.files);
+  const shape = checkOmProps(compo);
+  const comp = validateComposition(compo, input.files);
 
   // _pre_compose_validation 1: delivery promise (edit metadata, then the edit's top level, then our proposal packet)
   const promiseLines: string[] = [];
-  const data = pyGet(obj(edit.metadata), "delivery_promise", null) || edit.delivery_promise || obj(obj(input.proposal).production_plan).delivery_promise;
+  const data = pyGet(obj(edit.metadata), "delivery_promise", null) || edit.delivery_promise || obj(compo.metadata).delivery_promise || obj(obj(input.proposal).production_plan).delivery_promise;
   if (data) {
     try {
       const promise = promiseFromDict(obj(data));
@@ -58,7 +63,7 @@ export function checkScenes(input: CheckScenesInput): { verdict: Verdict; report
   } else warnings.push("No delivery_promise in edit_decisions — skipping promise validation");
 
   // _pre_compose_validation 2: slideshow risk (scene plan, or scenes made from the cuts)
-  const rendererFamily = typeof edit.renderer_family === "string" ? edit.renderer_family : null;
+  const rendererFamily = typeof edit.renderer_family === "string" && edit.renderer_family ? edit.renderer_family : null;
   let scenes = list(obj(input.scenePlan).scenes);
   if (scenes.length === 0 && cuts.length > 0) {
     scenes = cuts.map((c) => ({

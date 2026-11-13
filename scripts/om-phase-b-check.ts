@@ -1,5 +1,5 @@
 // OpenMontage parity, Phase B proof (dev only): checks the om/ artifacts an engine run wrote (npm run engine:smoke --
-// --openmontage) against OpenMontage's schemas, then draws frames of its edit (om/edit_decisions.json) portrait through the
+// --openmontage) against OpenMontage's schemas, then draws frames of its composition (om/composition.json) portrait through the
 // locked renderer. Schema check uses Python's jsonschema (a general library, not OpenMontage code; this app's ajv is v6 and
 // cannot read 2020-12 schemas).   npx tsx scripts/om-phase-b-check.ts [.data/compare/om-phase-b]
 import { execFileSync } from "node:child_process";
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
     console.log((e as { stdout?: string }).stdout ?? e);
   }
 
-  const edit = JSON.parse(readFileSync(path.join(om, "edit_decisions.json"), "utf8")) as Record<string, unknown>;
+  const edit = JSON.parse(readFileSync(path.join(om, "composition.json"), "utf8")) as Record<string, unknown>;
   const plan = existsSync(path.join(om, "scene_plan.json")) ? (JSON.parse(readFileSync(path.join(om, "scene_plan.json"), "utf8")) as Record<string, unknown>) : {};
   const props = { ...edit, theme: edit.theme ?? plan.style_playbook ?? "flat-motion-graphics" };
   const cuts = (edit.cuts as Array<{ in_seconds: number; out_seconds: number }>) ?? [];
