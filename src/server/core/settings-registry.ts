@@ -75,6 +75,12 @@ export const SETTINGS = {
   "engine.retry_backoff_seconds": { schema: z.array(posInt.max(86_400)).min(1).max(10), default: [30, 120, 480], safety: true, label: "Retry back-off seconds (config.py:28)" },
   "engine.timeout_stage_s": { schema: posInt.min(10).max(86_400), default: 1800, safety: true, label: "Stage timeout, seconds (config.py:26)" },
   "engine.timeout_author_s": { schema: posInt.min(10).max(86_400), default: 2400, safety: true, label: "Author stage timeout, seconds (config.py:58)" },
+  // The new video engine (ADR 0015): Claude Code with tools in a locked per-video folder. Off until the owner turns it on.
+  "engine.enabled": { schema: z.boolean(), default: false, safety: true, label: "New video engine (Claude Code with tools)" },
+  "engine.build_timeout_s": { schema: posInt.min(60).max(14_400), default: 2700, safety: true, label: "Engine build run limit for a Short, seconds" },
+  "engine.long_build_timeout_s": { schema: posInt.min(60).max(28_800), default: 5400, safety: true, label: "Engine build run limit for a long video, seconds" },
+  "engine.max_turns": { schema: posInt.max(500), default: 80, safety: true, label: "Engine run turn limit" },
+  "engine.limit_retry_s": { schema: posInt.min(60).max(86_400), default: 1800, safety: true, label: "Retry gap after the Claude usage limit when no reset time is given, seconds" },
   "engine.timeout_live_s": { schema: posInt.min(60).max(172_800), default: 43200, safety: true, label: "Live stage timeout, seconds (Doc 02 4.7: 12 h)" },
   "engine.lease_s": { schema: posInt.min(5).max(3600), default: 60, safety: true, label: "Stage lease, seconds (config.py:29)" },
   "engine.heartbeat_s": { schema: posInt.max(600), default: 5, safety: true, label: "Heartbeat, seconds (config.py:30)" },
