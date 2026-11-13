@@ -167,15 +167,61 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 - remotion/kit/om/components/charts/index.ts: OpenMontage (AGPL-3.0), copied as written.
 - remotion/kit/om/LICENSE: OpenMontage's licence (AGPL-3.0).
 - engine-kit/openmontage/LICENSE: OpenMontage's licence (AGPL-3.0).
-- engine-kit/openmontage/styles/clean-professional.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
-- engine-kit/openmontage/styles/flat-motion-graphics.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
-- engine-kit/openmontage/styles/minimalist-diagram.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
-- engine-kit/openmontage/styles/premium-minimalist.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
-- engine-kit/openmontage/styles/anime-ghibli.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
+- engine-kit/openmontage/ref/styles/clean-professional.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
+- engine-kit/openmontage/ref/styles/flat-motion-graphics.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
+- engine-kit/openmontage/ref/styles/minimalist-diagram.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
+- engine-kit/openmontage/ref/styles/premium-minimalist.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
+- engine-kit/openmontage/ref/styles/anime-ghibli.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
 - engine-kit/openmontage/patches/remotion__kit__om__Explainer.tsx.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
 - engine-kit/openmontage/patches/remotion__kit__om__Root.tsx.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
 - engine-kit/openmontage/patches/remotion__kit__om__components__index.ts.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
 - engine-kit/openmontage/patches/remotion__kit__om__lib__resolveAsset.ts.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
+- engine-kit/openmontage/ref/pipeline_defs/animated-explainer.yaml: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/pipeline_defs/animation.yaml: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/explainer/asset-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/explainer/compose-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/explainer/edit-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/explainer/executive-producer.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/explainer/idea-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/explainer/proposal-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/explainer/publish-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/explainer/research-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/explainer/scene-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/explainer/script-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/animation/asset-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/animation/compose-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/animation/edit-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/animation/executive-producer.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/animation/idea-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/animation/proposal-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/animation/publish-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/animation/research-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/animation/scene-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/pipelines/animation/script-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/meta/reviewer.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/meta/checkpoint-protocol.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/meta/taste-direction.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/meta/bespoke-composition.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/meta/animation-runtime-selector.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/meta/creative-intake.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/meta/voice-performance-director.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/core/remotion.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/creative/storytelling.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/creative/animation-pipeline.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/creative/short-form.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/creative/long-form.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/creative/data-visualization.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/creative/broll-planning.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/skills/creative/typography.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/schemas/artifacts/brief.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/schemas/artifacts/research_brief.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/schemas/artifacts/proposal_packet.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/schemas/artifacts/script.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/schemas/artifacts/scene_plan.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/schemas/artifacts/asset_manifest.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/schemas/artifacts/edit_decisions.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/schemas/artifacts/render_report.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/schemas/artifacts/publish_log.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
 - engine-kit/openmontage/MANIFEST.json: ours; the list of OpenMontage files taken.
 - engine-kit/openmontage/UPSTREAM.json: ours; the OpenMontage commit the files come from.
 - tests/fixtures/openmontage/animated-reel-20s.json: OpenMontage demo scene list (`remotion-composer/public/demo-props/`, AGPL-3.0), copied as written.

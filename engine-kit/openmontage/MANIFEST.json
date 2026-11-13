@@ -1,5 +1,5 @@
 {
-  "about": "Every file this app takes from OpenMontage (AGPL-3.0, https://github.com/calesthio/OpenMontage), and where it goes. Nothing else comes in. Phase A: the stripped Explainer composer (Remotion) and the 5 style playbooks. Our edits are patches in patches/, re-applied by npm run openmontage:sync.",
+  "about": "Every file this app takes from OpenMontage (AGPL-3.0, https://github.com/calesthio/OpenMontage), and where it goes. Nothing else comes in. remotion/kit/om: the stripped Explainer composer (Remotion). engine-kit/openmontage/ref: the Explainer and Animation pipelines, their directors, meta and craft guides, artifact schemas and style playbooks, in OpenMontage's own layout, seeded read-only into every engine run as ref/openmontage. Our edits are patches in patches/, re-applied by npm run openmontage:sync.",
   "repo": "https://github.com/calesthio/OpenMontage",
   "files": [
     {
@@ -119,24 +119,208 @@
       "to": "engine-kit/openmontage/LICENSE"
     },
     {
+      "from": "pipeline_defs/animated-explainer.yaml",
+      "to": "engine-kit/openmontage/ref/pipeline_defs/animated-explainer.yaml"
+    },
+    {
+      "from": "pipeline_defs/animation.yaml",
+      "to": "engine-kit/openmontage/ref/pipeline_defs/animation.yaml"
+    },
+    {
+      "from": "skills/pipelines/explainer/asset-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/explainer/asset-director.md"
+    },
+    {
+      "from": "skills/pipelines/explainer/compose-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/explainer/compose-director.md"
+    },
+    {
+      "from": "skills/pipelines/explainer/edit-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/explainer/edit-director.md"
+    },
+    {
+      "from": "skills/pipelines/explainer/executive-producer.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/explainer/executive-producer.md"
+    },
+    {
+      "from": "skills/pipelines/explainer/idea-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/explainer/idea-director.md"
+    },
+    {
+      "from": "skills/pipelines/explainer/proposal-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/explainer/proposal-director.md"
+    },
+    {
+      "from": "skills/pipelines/explainer/publish-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/explainer/publish-director.md"
+    },
+    {
+      "from": "skills/pipelines/explainer/research-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/explainer/research-director.md"
+    },
+    {
+      "from": "skills/pipelines/explainer/scene-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/explainer/scene-director.md"
+    },
+    {
+      "from": "skills/pipelines/explainer/script-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/explainer/script-director.md"
+    },
+    {
+      "from": "skills/pipelines/animation/asset-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/animation/asset-director.md"
+    },
+    {
+      "from": "skills/pipelines/animation/compose-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/animation/compose-director.md"
+    },
+    {
+      "from": "skills/pipelines/animation/edit-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/animation/edit-director.md"
+    },
+    {
+      "from": "skills/pipelines/animation/executive-producer.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/animation/executive-producer.md"
+    },
+    {
+      "from": "skills/pipelines/animation/idea-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/animation/idea-director.md"
+    },
+    {
+      "from": "skills/pipelines/animation/proposal-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/animation/proposal-director.md"
+    },
+    {
+      "from": "skills/pipelines/animation/publish-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/animation/publish-director.md"
+    },
+    {
+      "from": "skills/pipelines/animation/research-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/animation/research-director.md"
+    },
+    {
+      "from": "skills/pipelines/animation/scene-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/animation/scene-director.md"
+    },
+    {
+      "from": "skills/pipelines/animation/script-director.md",
+      "to": "engine-kit/openmontage/ref/skills/pipelines/animation/script-director.md"
+    },
+    {
+      "from": "skills/meta/reviewer.md",
+      "to": "engine-kit/openmontage/ref/skills/meta/reviewer.md"
+    },
+    {
+      "from": "skills/meta/checkpoint-protocol.md",
+      "to": "engine-kit/openmontage/ref/skills/meta/checkpoint-protocol.md"
+    },
+    {
+      "from": "skills/meta/taste-direction.md",
+      "to": "engine-kit/openmontage/ref/skills/meta/taste-direction.md"
+    },
+    {
+      "from": "skills/meta/bespoke-composition.md",
+      "to": "engine-kit/openmontage/ref/skills/meta/bespoke-composition.md"
+    },
+    {
+      "from": "skills/meta/animation-runtime-selector.md",
+      "to": "engine-kit/openmontage/ref/skills/meta/animation-runtime-selector.md"
+    },
+    {
+      "from": "skills/meta/creative-intake.md",
+      "to": "engine-kit/openmontage/ref/skills/meta/creative-intake.md"
+    },
+    {
+      "from": "skills/meta/voice-performance-director.md",
+      "to": "engine-kit/openmontage/ref/skills/meta/voice-performance-director.md"
+    },
+    {
+      "from": "skills/core/remotion.md",
+      "to": "engine-kit/openmontage/ref/skills/core/remotion.md"
+    },
+    {
+      "from": "skills/creative/storytelling.md",
+      "to": "engine-kit/openmontage/ref/skills/creative/storytelling.md"
+    },
+    {
+      "from": "skills/creative/animation-pipeline.md",
+      "to": "engine-kit/openmontage/ref/skills/creative/animation-pipeline.md"
+    },
+    {
+      "from": "skills/creative/short-form.md",
+      "to": "engine-kit/openmontage/ref/skills/creative/short-form.md"
+    },
+    {
+      "from": "skills/creative/long-form.md",
+      "to": "engine-kit/openmontage/ref/skills/creative/long-form.md"
+    },
+    {
+      "from": "skills/creative/data-visualization.md",
+      "to": "engine-kit/openmontage/ref/skills/creative/data-visualization.md"
+    },
+    {
+      "from": "skills/creative/broll-planning.md",
+      "to": "engine-kit/openmontage/ref/skills/creative/broll-planning.md"
+    },
+    {
+      "from": "skills/creative/typography.md",
+      "to": "engine-kit/openmontage/ref/skills/creative/typography.md"
+    },
+    {
+      "from": "schemas/artifacts/brief.schema.json",
+      "to": "engine-kit/openmontage/ref/schemas/artifacts/brief.schema.json"
+    },
+    {
+      "from": "schemas/artifacts/research_brief.schema.json",
+      "to": "engine-kit/openmontage/ref/schemas/artifacts/research_brief.schema.json"
+    },
+    {
+      "from": "schemas/artifacts/proposal_packet.schema.json",
+      "to": "engine-kit/openmontage/ref/schemas/artifacts/proposal_packet.schema.json"
+    },
+    {
+      "from": "schemas/artifacts/script.schema.json",
+      "to": "engine-kit/openmontage/ref/schemas/artifacts/script.schema.json"
+    },
+    {
+      "from": "schemas/artifacts/scene_plan.schema.json",
+      "to": "engine-kit/openmontage/ref/schemas/artifacts/scene_plan.schema.json"
+    },
+    {
+      "from": "schemas/artifacts/asset_manifest.schema.json",
+      "to": "engine-kit/openmontage/ref/schemas/artifacts/asset_manifest.schema.json"
+    },
+    {
+      "from": "schemas/artifacts/edit_decisions.schema.json",
+      "to": "engine-kit/openmontage/ref/schemas/artifacts/edit_decisions.schema.json"
+    },
+    {
+      "from": "schemas/artifacts/render_report.schema.json",
+      "to": "engine-kit/openmontage/ref/schemas/artifacts/render_report.schema.json"
+    },
+    {
+      "from": "schemas/artifacts/publish_log.schema.json",
+      "to": "engine-kit/openmontage/ref/schemas/artifacts/publish_log.schema.json"
+    },
+    {
       "from": "styles/clean-professional.yaml",
-      "to": "engine-kit/openmontage/styles/clean-professional.yaml"
+      "to": "engine-kit/openmontage/ref/styles/clean-professional.yaml"
     },
     {
       "from": "styles/flat-motion-graphics.yaml",
-      "to": "engine-kit/openmontage/styles/flat-motion-graphics.yaml"
+      "to": "engine-kit/openmontage/ref/styles/flat-motion-graphics.yaml"
     },
     {
       "from": "styles/minimalist-diagram.yaml",
-      "to": "engine-kit/openmontage/styles/minimalist-diagram.yaml"
+      "to": "engine-kit/openmontage/ref/styles/minimalist-diagram.yaml"
     },
     {
       "from": "styles/premium-minimalist.yaml",
-      "to": "engine-kit/openmontage/styles/premium-minimalist.yaml"
+      "to": "engine-kit/openmontage/ref/styles/premium-minimalist.yaml"
     },
     {
       "from": "styles/anime-ghibli.yaml",
-      "to": "engine-kit/openmontage/styles/anime-ghibli.yaml"
+      "to": "engine-kit/openmontage/ref/styles/anime-ghibli.yaml"
     }
   ]
 }
