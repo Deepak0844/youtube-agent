@@ -1,0 +1,36 @@
+{
+ "input": {
+  "cuts": [
+   {
+    "id": "a",
+    "type": "text_card",
+    "in_seconds": 0,
+    "out_seconds": 12,
+    "text": "x"
+   }
+  ],
+  "audio": {
+   "narration": {
+    "src": "voice-21.wav"
+   },
+   "music": {
+    "src": "music-10.wav"
+   }
+  }
+ },
+ "files": {
+  "voice-25.wav": 25.0,
+  "voice-21.wav": 21.5,
+  "music-10.wav": 10.0,
+  "bg.png": null
+ },
+ "expected": {
+  "valid": false,
+  "errors": [
+   "Narration (21.5s) exceeds video (12s) by 9.5s \u2014 audio will be cut off"
+  ],
+  "warnings": [
+   "Music (10.0s) is shorter than video (12s) \u2014 will end early"
+  ]
+ }
+}

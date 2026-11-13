@@ -1,0 +1,38 @@
+{
+ "input": {
+  "cuts": [
+   {
+    "id": "a",
+    "type": "text_card",
+    "in_seconds": 0,
+    "out_seconds": 10.5,
+    "text": "x"
+   },
+   {
+    "id": "b",
+    "type": "text_card",
+    "in_seconds": 10.5,
+    "out_seconds": 21,
+    "text": "x"
+   }
+  ],
+  "audio": {
+   "narration": {
+    "src": "voice-21.wav"
+   }
+  }
+ },
+ "files": {
+  "voice-25.wav": 25.0,
+  "voice-21.wav": 21.5,
+  "music-10.wav": 10.0,
+  "bg.png": null
+ },
+ "expected": {
+  "valid": true,
+  "errors": [],
+  "warnings": [
+   "Narration (21.5s) slightly exceeds video (21s) by 0.5s"
+  ]
+ }
+}
