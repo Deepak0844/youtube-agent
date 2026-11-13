@@ -6,9 +6,13 @@
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --thumbnail   the 1280x720 long-video thumbnail card, composition thumbnail, ONE png at <outFile> (props.json: title, seed, optional src = a staged picture in <inDir>); no extra arguments
 //        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --tsx           one checked TSX file (video.tsx)
 //        node /opt/render/kit/render-entry.mjs <inDir> <outDir> --tsx-stills     its preflight stills (still-<n>.png)
+//        node /opt/render/kit/render-entry.mjs <inDir> <outFile> --om            an OpenMontage scene list (props.json) drawn by OpenMontage's Explainer composition (om/)
+//        node /opt/render/kit/render-entry.mjs <inDir> <outDir> --om-stills      chosen frames of it (still-<n>.png)
 // Kit mode: <inDir> (read-only) holds props.json (built and validated on the host) plus the staged narration and asset
 // files, served as the public dir. TSX modes: <inDir> holds video.tsx (statically checked and type-checked on the host),
 // props.json, meta.json ({ durationInFrames, stills }) and public/ (the staged staticFile() files, the only public dir).
+// OM modes: <inDir> holds props.json (the scene list), meta.json ({ orientation: "landscape"|"portrait", stills }) and public/.
+// Portrait overrides the composition's size to 1080x1920, as OpenMontage's own render does (--width/--height of its profile).
 // The TSX bundle's entry is tsx-index.ts, which imports nothing of the kit; the scene and the yt-kit library are reached through webpack aliases.
 // Prints "PROGRESS <0-100>" lines; the host turns them into stage log lines.
 // ESM import ignores NODE_PATH; createRequire honours it (/opt/render/node_modules in the image).
@@ -25,11 +29,13 @@ const [inDir, outArg, mode = "kit", ...extra] = process.argv.slice(2);
 const CHUNK = /^--frames=(\d{1,7})-(\d{1,7}|end)$/.exec(extra[0] ?? "");
 const chunkArgs = mode === "--landscape" && CHUNK !== null && (extra.length === 1 || (extra.length === 2 && extra[1] === "--muted"));
 const chunk = chunkArgs ? { from: Number(CHUNK[1]), to: CHUNK[2] === "end" ? "end" : Number(CHUNK[2]), muted: extra.length === 2 } : null;
-if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || (extra.length > 0 && !chunkArgs) || !["kit", "--landscape", "--thumbnail", "--tsx", "--tsx-stills"].includes(mode)) {
-  throw new Error("usage: render-entry.mjs <abs inDir> <abs out> [--tsx | --tsx-stills]");
+if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || (extra.length > 0 && !chunkArgs) || !["kit", "--landscape", "--thumbnail", "--tsx", "--tsx-stills", "--om", "--om-stills"].includes(mode)) {
+  throw new Error("usage: render-entry.mjs <abs inDir> <abs out> [--tsx | --tsx-stills | --om | --om-stills]");
 }
 // Only the two TSX modes use meta.json, video.tsx and the TSX bundle.
 const tsx = mode === "--tsx" || mode === "--tsx-stills";
+const om = mode === "--om" || mode === "--om-stills";
+const OM_MAX_FRAMES = 30 * 60 * 12; // 12 minutes
 const nodePath = (process.env.NODE_PATH ?? "").split(path.delimiter).filter(Boolean);
 const readJson = (name) => JSON.parse(readFileSync(path.join(inDir, name), "utf8"));
 
@@ -46,6 +52,11 @@ if (tsx) {
   const style = meta.style ?? "ai_studio";
   if (typeof style !== "string" || !/^[a-z_]{1,32}$/.test(style)) throw new Error("meta.json: bad style");
   inputProps = { props: readJson("props.json"), frames: n, captions: caps, style };
+} else if (om) {
+  meta = readJson("meta.json");
+  if (meta.orientation !== "landscape" && meta.orientation !== "portrait") throw new Error("meta.json: bad orientation");
+  if (!Array.isArray(meta.stills) || meta.stills.length > 8 || !meta.stills.every((f) => Number.isInteger(f) && f >= 0 && f < OM_MAX_FRAMES)) throw new Error("meta.json: bad stills");
+  inputProps = readJson("props.json");
 } else {
   inputProps = readJson("props.json");
 }
@@ -70,10 +81,10 @@ const withScene = (r) => {
   };
 };
 const serveUrl = await bundle({
-  entryPoint: path.join(import.meta.dirname, tsx ? "tsx-index.ts" : "index.ts"),
+  entryPoint: path.join(import.meta.dirname, tsx ? "tsx-index.ts" : om ? "om-index.ts" : "index.ts"),
   rootDir: "/opt/render",
   outDir: "/tmp/bundle", // the only writable places are /tmp (tmpfs) and the out dir
-  publicDir: tsx ? path.join(inDir, "public") : inDir,
+  publicDir: tsx || om ? path.join(inDir, "public") : inDir,
   enableCaching: false,
   webpackOverride: (c) => ({
     ...c,
@@ -84,7 +95,12 @@ const serveUrl = await bundle({
 
 const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE;
 const chromiumOptions = { gl: "swangle", disableWebSecurity: false, ignoreCertificateErrors: false };
-const composition = await selectComposition({ serveUrl, id: mode === "--thumbnail" ? "thumbnail" : mode === "--landscape" ? "kit-video-landscape" : tsx ? "tsx-video" : "kit-video", inputProps, browserExecutable, chromiumOptions });
+let composition = await selectComposition({ serveUrl, id: mode === "--thumbnail" ? "thumbnail" : mode === "--landscape" ? "kit-video-landscape" : tsx ? "tsx-video" : om ? "Explainer" : "kit-video", inputProps, browserExecutable, chromiumOptions });
+if (om) {
+  if (composition.fps !== 30 || composition.durationInFrames < 1 || composition.durationInFrames > OM_MAX_FRAMES) throw new Error("the OpenMontage scene list is empty or longer than 12 minutes");
+  if (!meta.stills.every((f) => f < composition.durationInFrames)) throw new Error("meta.json: a still is outside the video");
+  if (meta.orientation === "portrait") composition = { ...composition, width: 1080, height: 1920 };
+}
 if (tsx && (composition.durationInFrames !== meta.durationInFrames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) {
   throw new Error("the TSX composition does not match meta.json");
 }
@@ -94,7 +110,7 @@ if (mode === "--thumbnail") {
   if (composition.width !== 1280 || composition.height !== 720 || composition.fps !== 30 || composition.durationInFrames < 31) throw new Error("the thumbnail composition does not match 1280x720");
   await renderStill({ composition, serveUrl, frame: 30, output: outArg, imageFormat: "png", inputProps, browserExecutable, chromiumOptions, overwrite: true });
   console.log("PROGRESS 100");
-} else if (mode === "--tsx-stills") {
+} else if (mode === "--tsx-stills" || mode === "--om-stills") {
   for (const frame of meta.stills) {
     await renderStill({
       composition, serveUrl, frame, output: path.join(outArg, `still-${frame}.png`), imageFormat: "png", inputProps, browserExecutable,
