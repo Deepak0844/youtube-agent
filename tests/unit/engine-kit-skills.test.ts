@@ -20,6 +20,8 @@ describe("engine-kit seeds", () => {
     expect(readFileSync("engine-kit/skills/make-short/SKILL.md", "utf8")).toMatch(/preview_frames[\s\S]*check_code|check_code[\s\S]*preview_frames/);
   });
 
+  it.todo("every_path_a_guide_names_is_seeded_or_mapped");
+
   it("examples_are_not_under_remotion_kit (reference only, never rendered by the app)", () => {
     expect(existsSync("engine-kit/examples/short-13/composition/Short13BinSearch.tsx")).toBe(true);
     expect(existsSync("remotion/kit/examples")).toBe(false);
@@ -34,6 +36,11 @@ describe("engine-kit seeds", () => {
       expect(existsSync(path.join(ws.workDir, "ref/examples/short-14/script.md"))).toBe(true);
       expect(readFileSync(path.join(ws.workDir, "ref/lib/index.md"), "utf8")).toMatch(/## yt-old\/shorts/);
       expect(existsSync(path.join(ws.workDir, ".claude/skills/make-vox"))).toBe(false); // later skills are not seeded yet
+      // OpenMontage's guides keep their own layout, so the directors' internal paths work under ref/openmontage/
+      for (const f of ["pipeline_defs/animated-explainer.yaml", "pipeline_defs/animation.yaml", "skills/pipelines/explainer/executive-producer.md", "skills/meta/reviewer.md", "schemas/artifacts/scene_plan.schema.json", "styles/flat-motion-graphics.yaml"]) {
+        expect(existsSync(path.join(ws.workDir, "ref/openmontage", f)), f).toBe(true);
+      }
+      expect(existsSync(path.join(ws.workDir, "ref/openmontage/MANIFEST.json"))).toBe(false); // only ref/ is seeded
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

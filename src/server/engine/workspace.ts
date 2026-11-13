@@ -139,7 +139,7 @@ export function checkAfterRun(before: Snapshot, after: Snapshot): string[] {
   return problems;
 }
 
-/** The default seeds of every engine run (old-kit-import): the skills, brand rules, old shorts and library index from engine-kit/. */
+/** The default seeds of every engine run: the skills, brand rules, old shorts and library index from engine-kit/ (old-kit-import), and OpenMontage's pipelines, guides, schemas and styles (engine-kit/openmontage/ref, AGPL-3.0) as ref/openmontage. */
 export function engineKitSeeds(repoRoot: string): WorkspaceSeeds {
   const kit = path.join(repoRoot, "engine-kit");
   return {
@@ -148,6 +148,7 @@ export function engineKitSeeds(repoRoot: string): WorkspaceSeeds {
       { from: path.join(kit, "brand"), to: "brand" },
       { from: path.join(kit, "examples"), to: "examples" },
       { from: path.join(kit, "lib"), to: "lib" },
+      { from: path.join(kit, "openmontage", "ref"), to: "openmontage" },
     ],
   };
 }
