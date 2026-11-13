@@ -4,7 +4,8 @@ import path from "node:path";
 
 // The locked per-video folder of an engine run (ADR 0015). Claude Code starts in `dir` and may only read and write `work/`
 // (its own permission rules). Skills sit in `dir/.claude/skills` (outside work, so Claude cannot change them); brand files,
-// libraries and example shorts are read-only copies in `work/ref/`. `home` is an empty HOME for the process. After every run,
+// libraries and example shorts are read-only copies in `work/ref/`. (Claude Code keeps the real HOME: it needs it to find the
+// owner's login, ADR 0014; its Read rules still keep it out of the home folder.) After every run,
 // checkAfterRun compares two snapshots of the whole folder: anything changed outside `work/`, any link, any change under
 // `work/ref/`, or a work folder over the limits fails the run. Links are reported, never followed.
 
@@ -27,7 +28,6 @@ export interface Snapshot {
 export interface Workspace {
   dir: string;
   workDir: string;
-  home: string;
   snapshot(): Promise<Snapshot>;
 }
 export interface WorkspaceSeeds {
@@ -80,9 +80,7 @@ export async function prepareWorkspace(root: string, videoId: string, seeds: Wor
   const dir = path.join(root, "videos", videoId, "engine");
   await rm(dir, { recursive: true, force: true });
   const workDir = path.join(dir, "work");
-  const home = path.join(dir, "home");
   await mkdir(workDir, { recursive: true });
-  await mkdir(home, { recursive: true });
   if (seeds.skillsDir) {
     const to = path.join(dir, ".claude", "skills");
     await cp(seeds.skillsDir, to, { recursive: true, dereference: false, verbatimSymlinks: true });
@@ -94,7 +92,7 @@ export async function prepareWorkspace(root: string, videoId: string, seeds: Wor
     await cp(r.from, to, { recursive: true, dereference: false, verbatimSymlinks: true });
     await readOnlyFiles(to);
   }
-  return { dir, workDir, home, snapshot: () => takeSnapshot(dir) };
+  return { dir, workDir, snapshot: () => takeSnapshot(dir) };
 }
 
 const same = (a: Entry | undefined, b: Entry | undefined): boolean =>
