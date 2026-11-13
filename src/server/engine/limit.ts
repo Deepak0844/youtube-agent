@@ -1,3 +1,4 @@
+import { KnownFailure } from "@/server/core/paid-call";
 import { LIMIT } from "@/server/llm/claude-code";
 
 // Claude Code's usage-limit messages (ADR 0015). Two forms are known: "Claude AI usage limit reached|<epoch seconds>" and
@@ -67,4 +68,13 @@ export function istTime(d: Date, now: Date = new Date()): string {
   const day = (x: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: IST }).format(x);
   if (day(d) === day(now)) return time;
   return `${new Intl.DateTimeFormat("en-US", { timeZone: IST, weekday: "short" }).format(d)} ${time}`;
+}
+
+/** A step stopped by the Claude usage limit. A KnownFailure, so the retry sweep leaves it alone; the engine resume sweep queues
+ *  it again after `resumeAt`. */
+export class EngineLimitError extends KnownFailure {
+  constructor(readonly resumeAt: Date, now: Date = new Date()) {
+    super(`Claude limit reached. This step resumes about ${istTime(resumeAt, now)} IST by itself.`);
+    this.name = "EngineLimitError";
+  }
 }
