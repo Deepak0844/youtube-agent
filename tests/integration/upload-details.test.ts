@@ -35,7 +35,7 @@ async function session(): Promise<{ kind: "session"; sessionId: string }> {
   return { kind: "session", sessionId: id };
 }
 async function video(channel: string | null = null) {
-  const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "sky", channelId: channel });
+  const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "sky", channelId: channel });
   await addContent(db.pool, v.id, "video", { filePath: `v/${v.id}.mp4`, sha256: sha256Hex(`video-${v.id}`) });
   await addContent(db.pool, v.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("evidence") });
   await addContent(db.pool, v.id, "metadata", { body: { title: "t", visibility: "private", publish_at: null }, sha256: sha256Hex("meta") });
@@ -74,7 +74,7 @@ describe("upload details", () => {
     const root = mkdtempSync(path.join(tmpdir(), "details-"));
     try {
       await ensureChannel(db.pool, "UC-test");
-      const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "sky", channelId: "UC-test" });
+      const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "sky", channelId: "UC-test" });
       const bytes = Buffer.from(`video-${v.id}`);
       mkdirSync(path.join(root, "videos", v.id), { recursive: true });
       writeFileSync(path.join(root, "videos", v.id, "final.mp4"), bytes);
@@ -110,7 +110,7 @@ describe("upload details", () => {
 
 describe("first metadata draft after render", () => {
   async function rendered(notes?: string) {
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "sky", notes });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "sky", notes });
     await addContent(db.pool, v.id, "script", { body: { narration: "n", title: "T", beats: [], evidence: [] }, sha256: sha256Hex(`script-${v.id}`) });
     await addContent(db.pool, v.id, "beats", { body: { beats: [] }, sha256: sha256Hex(`beats-${v.id}`) });
     const s = await session();
@@ -147,7 +147,7 @@ describe("first metadata draft after render", () => {
   });
 
   it("leaves videos that have not finished rendering, and dry-run videos, alone", async () => {
-    const early = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "x" });
+    const early = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "x" });
     const dry = await rendered("dry run");
     const q = { enqueue: async () => "j" } as never;
     await autoSeoSweep(db.pool, q);

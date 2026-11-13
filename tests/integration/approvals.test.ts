@@ -130,7 +130,7 @@ describe("approvals", () => {
   it("cost_voids_when_a_plan_field_changes_even_with_the_same_stored_sha", async () => {
     const v = await seedVideo(db.pool);
     await approve(v, await live(v, "cost"), "cost");
-    const plan = { providers_models: { llm: "m2" }, path: "scene_kit", library_scene_versions: { a: 1 }, quote: { micro_usd: "5" } };
+    const plan = { providers_models: { llm: "m2" }, path: "collage", library_scene_versions: { a: 1 }, quote: { micro_usd: "5" } };
     await addContent(db.pool, v, "cost_plan", { body: plan, sha256: sha256Hex("plan-1") });
     expect(await isApproved(db.pool, v, "cost")).toBe(false);
   });

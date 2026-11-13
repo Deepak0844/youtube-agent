@@ -37,7 +37,7 @@ describe("addIdea", () => {
     expect(await listIdeas(db.pool)).toHaveLength(0);
   });
   it("rejects a topic too like an existing video topic", async () => {
-    await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Binary search in 40 seconds" });
+    await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "Binary search in 40 seconds" });
     const r = await addIdea(db.pool, actor, idea("binary search"));
     expect(r).toMatchObject({ ok: false });
   });
@@ -81,8 +81,8 @@ describe("draftIdea", () => {
   it("a second Draft now on the same idea creates no second video", async () => {
     const a = await addIdea(db.pool, actor, idea("How a hash map works"));
     if (!a.ok) throw new Error("setup");
-    await draftIdea(db.pool, queue, actor, a.id, { kind: "scene_kit", language: "en" });
-    expect(await draftIdea(db.pool, queue, actor, a.id, { kind: "scene_kit", language: "en" })).toMatchObject({ ok: false });
+    await draftIdea(db.pool, queue, actor, a.id, { kind: "collage", language: "en" });
+    expect(await draftIdea(db.pool, queue, actor, a.id, { kind: "collage", language: "en" })).toMatchObject({ ok: false });
     expect((await db.ownerPool.query("select 1 from videos")).rows).toHaveLength(1);
   });
   it("refuses a dismissed idea and a bad kind", async () => {
@@ -90,7 +90,7 @@ describe("draftIdea", () => {
     if (!a.ok) throw new Error("setup");
     expect(await draftIdea(db.pool, queue, actor, a.id, { kind: "bogus", language: "en" })).toMatchObject({ ok: false });
     await dismissIdea(db.pool, actor, a.id);
-    expect(await draftIdea(db.pool, queue, actor, a.id, { kind: "scene_kit", language: "en" })).toMatchObject({ ok: false });
+    expect(await draftIdea(db.pool, queue, actor, a.id, { kind: "collage", language: "en" })).toMatchObject({ ok: false });
     expect((await db.ownerPool.query("select 1 from videos")).rows).toHaveLength(0);
   });
 });

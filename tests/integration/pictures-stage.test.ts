@@ -41,8 +41,8 @@ const BEATS = [
   { id: "b3", text: "z" },
 ];
 
-async function seed(beats: unknown[] = BEATS, existing?: string): Promise<string> {
-  const v = existing ? { id: existing } : await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "engines" });
+async function seed(beats: unknown[] = BEATS, existing?: string, kind: "collage" | "ai" = "collage"): Promise<string> {
+  const v = existing ? { id: existing } : await createVideoRow(db.pool, { format: "short", kind, language: "en", topic: "engines" });
   const d = fakeDraft("en") as { title: string; narration: string };
   const body = { title: d.title, narration: d.narration + (existing ? ` v${Math.random()}` : "") };
   await addContent(db.pool, v.id, "script", { body, sha256: sha256Hex(canonicalJson(body)) });
@@ -280,7 +280,7 @@ describe("pictures stage for a collage video", () => {
     expect((await run(f2, v2)).linked).toBe(1);
   });
   it("other kinds never call the cut-out step", async () => {
-    const v = await seed();
+    const v = await seed(BEATS, undefined, "ai");
     const f = mk();
     let called = 0;
     f.deps.cutout = async () => (called++, null);

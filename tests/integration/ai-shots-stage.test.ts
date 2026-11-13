@@ -151,7 +151,7 @@ describe("the shot plan stage", () => {
   });
 
   it("only an AI video has a shot plan", async () => {
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "t" });
     const out = await play(v.id, "shots", shots());
     expect(out.kind).not.toBe("succeeded");
     expect(JSON.stringify(await stageRow(v.id, "shots"))).toMatch(/Only an AI video/);
@@ -269,7 +269,7 @@ describe("the clip generation stage", () => {
   });
 
   it("is only for AI videos, and needs the clip check to be set up", async () => {
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "t" });
     expect((await play(v.id, "generate", gen())).kind).not.toBe("committed");
     expect(JSON.stringify(await stageRow(v.id, "generate"))).toMatch(/Only an AI video/);
     const id = await approvedPlan();
@@ -296,7 +296,7 @@ function spy(inner: VideoProvider): VideoProvider & { quoted: ClipArgs[]; made: 
 
 describe("a locked character", () => {
   it("only an AI video has one, only a valid picture can be one, and the choice is audited and read back", async () => {
-    const sk = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t" });
+    const sk = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "t" });
     const ai = await aiVideo();
     const pic = await pictureAsset();
     await expect(setVideoCharacter(db.pool, sk.id, pic)).rejects.toThrow(/Only an AI video/);

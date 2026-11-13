@@ -26,7 +26,7 @@ function Result({ state }: { state: FormState }) {
   return state.ok ? <p role="status" className="text-body text-pill-positive-ink">Saved.</p> : <p role="status" className="sr-only" />;
 }
 
-export function LimitsForm(props: { renders: number; jobs: number; warnGb: number; longMinutes: number; renderTimeoutS: number; sceneKit: boolean; tracksLater: string[] }) {
+export function LimitsForm(props: { renders: number; jobs: number; warnGb: number; longMinutes: number; renderTimeoutS: number }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveLimitsAction, {});
   return (
     <form action={action} className="flex flex-col gap-5">
@@ -55,19 +55,6 @@ export function LimitsForm(props: { renders: number; jobs: number; warnGb: numbe
           </p>
         </div>
       </div>
-      <fieldset className="flex flex-col gap-3">
-        <legend className="text-small font-medium text-muted">Ways to make a video</legend>
-        <label className="flex min-h-11 items-center gap-3 text-body">
-          <input type="checkbox" name="scene_kit" defaultChecked={props.sceneKit} className="size-5 accent-[var(--text)]" />
-          Scene kit
-        </label>
-        {props.tracksLater.map((t) => (
-          <p key={t} className="flex min-h-11 items-center gap-3 text-body text-faint">
-            <input type="checkbox" disabled checked={false} readOnly aria-label={t} className="size-5" />
-            {t} <span className="text-small">arrives in a later phase</span>
-          </p>
-        ))}
-      </fieldset>
       <div className="flex flex-wrap items-center gap-4">
         <Button type="submit" loading={pending}>Save limits</Button>
         <Result state={state} />

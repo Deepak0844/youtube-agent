@@ -99,12 +99,6 @@ test("limits save and invalid numbers are refused", async ({ page }) => {
   await page.getByRole("button", { name: "Save limits" }).click();
 });
 
-test("later ways to make a video are disabled with their phase", async ({ page }) => {
-  await open(page);
-  await expect(page.getByText("Code scenes (Phase 4)")).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: "Collage (Phase 8)" })).toBeDisabled();
-});
-
 test("layout: no horizontal scroll, 44 px touch targets on phone, labels on every field", async ({ page }) => {
   await open(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

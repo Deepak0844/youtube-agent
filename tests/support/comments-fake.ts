@@ -68,7 +68,7 @@ export async function connectChannel(db: TestDb, f: Fake, confirm: boolean): Pro
 }
 
 export async function uploadedVideo(db: TestDb, topic = "why sky is blue"): Promise<string> {
-  const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic, channelId: "UCchan1" });
+  const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic, channelId: "UCchan1" });
   await db.ownerPool.query(
     "insert into uploads (id, video_id, status, channel_id, youtube_id, started_at, finished_at, attempt) values (gen_random_uuid(), $1, 'uploaded', 'UCchan1', $2, now(), now(), 1)",
     [v.id, YT],

@@ -1,7 +1,6 @@
 // The shape a drafted script must have before it is stored. Pure: no IO. Anything the model says about its own
 // verification (verified / verified_by) is dropped: only the system verifies evidence.
 import { z } from "zod";
-import { checkBeatRoles } from "@/shared/scene/beat-roles";
 import { LIMITS, LONG_LIMITS } from "@/shared/scene/kinds/common";
 import { speakingRate as paceOf, wordCount, wordRange, type Lang } from "./lang";
 
@@ -94,7 +93,6 @@ export function validateScript(
     const longBeats = s.beats.map((b, i) => ({ n: i + 1, w: wordCount(typeof b.text === "string" ? b.text : "") })).filter((b) => b.w > maxBeatWords);
     if (longBeats.length > 0) problems.push(`beat ${longBeats.slice(0, 3).map((b) => `${b.n} (${b.w} words)`).join(", ")} too long: split into beats of at most ${maxBeatWords} spoken words`);
   }
-  if (format === "short" && opts.kind === "scene_kit") problems.push(...checkBeatRoles(s.beats.map((b) => b.id)));
   const evidence = s.evidence;
   const cta = CTA.exec(s.narration);
   if (cta) problems.push(`engagement-CTA phrasing in the narration (${JSON.stringify(cta[0])}); end on the payoff instead`);

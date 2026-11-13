@@ -64,7 +64,7 @@ import { voiceAttempt } from "./stages/voice";
 export type StageHandlers = Partial<Record<StageName, StageHandler>>;
 export function createStageDispatcher(handlers: StageHandlers, concurrentRenders: number): StageHandler {
   const render = createSemaphore(concurrentRenders);
-  const resources = new Map([...stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }), ...stagePlan("tsx", "short", { paidGeneration: false, requireEvidence: false })].map((s) => [s.stage, s.resource]));
+  const resources = new Map([...stagePlan("collage", "short", { paidGeneration: true, requireEvidence: true }), ...stagePlan("tsx", "short", { paidGeneration: false, requireEvidence: false })].map((s) => [s.stage, s.resource]));
   return async (ctx) => {
     const name = ctx.stage.name;
     if (!(STAGE_NAMES as readonly string[]).includes(name)) throw new KnownFailure("unknown stage");

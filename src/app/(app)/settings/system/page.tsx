@@ -46,8 +46,6 @@ async function Owned() {
           warnGb={warnGb}
           longMinutes={longMinutes}
           renderTimeoutS={view.renderTimeoutS}
-          sceneKit={view.sceneKit}
-          tracksLater={["Code scenes (Phase 4)", "Collage (Phase 8)", "AI video (Phase 9)"]}
         />
       </section>
       <div className="min-w-0 xl:col-span-2"><EngineNumbersSection /></div>

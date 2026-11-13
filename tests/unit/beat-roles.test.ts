@@ -29,16 +29,10 @@ describe("checkBeatRoles", () => {
 const words = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
 const script = (ids: string[]) => ({ narration: words(wordRange("en").min), beats: ids.map((id) => ({ id })), title: "T", evidence: [{ text: "c", kind: "computed", method: "m" }] });
 describe("validateScript beat roles", () => {
-  it("only checked for scene_kit shorts", () => {
-    expect(validateScript(script(["hook"]), "en", "short", { kind: "scene_kit" }).ok).toBe(false);
-    expect(validateScript(script(["hook"]), "en", "short").ok).toBe(true); // old scripts / other kinds
-    expect(validateScript(script(["hook"]), "en", "long", { kind: "scene_kit" }).ok).toBe(true);
-    expect(validateScript(script(["hook", "reveal", "loop"]), "en", "short", { kind: "scene_kit" }).ok).toBe(true);
-  });
   it("still allows est_start/est_end", () => {
     const s = script(["hook", "reveal", "loop"]);
     const withEst = { ...s, beats: s.beats.map((b) => ({ ...b, est_start: 0, est_end: 2 })) };
-    expect(validateScript(withEst, "en", "short", { kind: "scene_kit" }).ok).toBe(true);
+    expect(validateScript(withEst, "en", "short", { kind: "collage" }).ok).toBe(true);
   });
 });
 

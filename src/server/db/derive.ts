@@ -2,15 +2,11 @@ import type pg from "pg";
 import { chapterClips, sceneBounds, type ChapterClip } from "@/server/core/derive-view";
 import { validateScenes } from "@/shared/scene";
 import { retimeScenes } from "@/shared/scene/retime";
-import { approvalReaders } from "./approval-readers";
-import { recordAudit } from "./audit";
-import { advanceVideo, createVideo, type EnqueueOnly } from "./pipeline";
+import type { EnqueueOnly } from "./pipeline";
 import { approvedOutline, approvedScript } from "./stage-content";
 import { latestContent } from "./videos";
 
 export type DeriveResult = { ok: true; videoId: string } | { ok: false; message: string };
-
-const TITLE_MAX = 200;
 
 /**
  * The owner makes a short from a run of scenes of a LONG video (zero-based, inclusive). This only creates the new short (language, channel and look
@@ -35,18 +31,9 @@ export async function createDerivedShort(db: pg.Pool, queue: EnqueueOnly, i: { s
   if (i.toScene >= count) return { ok: false, message: `The long video has ${count} scenes; pick scenes 1 to ${count}.` };
   const dup = await db.query("select 1 from videos where derived_from = $1 and derive_from_scene = $2 and derive_to_scene = $3 and status <> 'cancelled'", [i.sourceId, i.fromScene, i.toScene]);
   if (dup.rowCount) return { ok: false, message: "A short from these scenes already exists." };
-  const title = (i.title ?? "").trim().slice(0, TITLE_MAX) || src.topic.slice(0, TITLE_MAX);
-  const v = await createVideo(db, {
-    format: "short", kind: "scene_kit", language: src.language as never, topic: title, channelId: src.channel_id, style: src.style, captionStyle: src.caption_style,
-    derive: { sourceId: i.sourceId, fromScene: i.fromScene, toScene: i.toScene },
-  });
-  await recordAudit(db, "video.derived_created", { videoId: v.id, sourceId: i.sourceId, fromScene: i.fromScene, toScene: i.toScene, sessionId });
-  try {
-    await advanceVideo(db, queue, v.id, approvalReaders);
-  } catch {
-    /* best effort: the worker's sweep starts it */
-  }
-  return { ok: true, videoId: v.id };
+  // A clip was a scene-kit short, and the scene kit is removed: nothing is created.
+  void queue; void sessionId;
+  return { ok: false, message: "Clips from a long video are not available right now (they were made with the Scene kit, which is removed)." };
 }
 
 export interface DeriveTab {

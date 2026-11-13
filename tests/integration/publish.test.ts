@@ -65,7 +65,7 @@ interface Seed {
   videoBytes: Buffer;
 }
 async function seed(o: { visibility?: string; publishAt?: string | null; approveEvidence?: boolean; approveVideo?: boolean; channel?: string | null; long?: boolean } = {}): Promise<Seed> {
-  const v = await createVideoRow(db.pool, { format: o.long ? "long" : "short", kind: "scene_kit", language: "en", topic: "t", channelId: o.channel === undefined ? "UC-test" : o.channel, ...(o.long ? { lengthMinMinutes: 3, lengthMaxMinutes: 8 } : {}) });
+  const v = await createVideoRow(db.pool, { format: o.long ? "long" : "short", kind: "collage", language: "en", topic: "t", channelId: o.channel === undefined ? "UC-test" : o.channel, ...(o.long ? { lengthMinMinutes: 3, lengthMaxMinutes: 8 } : {}) });
   if (o.channel !== null) await ensureChannel(db.pool, o.channel ?? "UC-test", { allowPublic: true });
   const videoBytes = Buffer.from(`video-bytes-${v.id}`);
   const videoPath = `videos/${v.id}/final.mp4`;
@@ -235,7 +235,7 @@ describe("approvePublish", () => {
     } finally {
       rmSync(outside, { force: true });
     }
-    const t = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t", channelId: "UC-test" });
+    const t = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "t", channelId: "UC-test" });
     await addContent(db.pool, t.id, "video", { filePath: "../../etc/passwd", sha256: sha256Hex("x") });
     await addContent(db.pool, t.id, "evidence", { filePath: "e/1.pdf", sha256: sha256Hex("e") });
     await addContent(db.pool, t.id, "metadata", { body: { visibility: "private", publish_at: null }, sha256: sha256Hex("m") });

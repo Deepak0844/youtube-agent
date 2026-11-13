@@ -56,7 +56,7 @@ const partHash = (v: unknown): string => sha256Hex(canonicalJson(v));
 /** The producer-supplied sha256 is not trusted alone: the stored body and file path are part of what is approved. */
 const contentDigest = (c: StoredContent): string => partHash({ sha256: c.sha256, body: c.body ?? null, file_path: c.filePath ?? null });
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-const COST_PATHS = ["scene_kit", "tsx", "collage", "ai"];
+const COST_PATHS = ["tsx", "collage", "ai"];
 const isMicroUsd = (v: unknown): boolean => typeof v === "string" && /^[0-9]{1,18}$/.test(v); // fits a signed 64-bit amount
 const costPlanProblem = (b: unknown): string | null => {
   const pm = field(b, "providers_models");

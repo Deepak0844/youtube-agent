@@ -7,8 +7,6 @@ import { buildEngineConfig } from "@/server/core/engine-config";
 import { uuidv7 } from "@/server/core/ids";
 import { BudgetRefusedError, NeedsDecisionError } from "@/server/core/paid-call";
 import type { ModelRow } from "@/server/core/llm-catalog";
-import type { PipelineReaders } from "@/server/db/pipeline";
-import { readNextAction } from "@/server/db/pipeline";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { GOOD_SCENE } from "../fixtures/tsx-good-scene";
 import { targetFrames } from "@/server/core/tsx-prompt";
@@ -16,8 +14,7 @@ import type { StageHandler } from "@/server/core/stage-handler";
 import type { StageOutcome } from "@/server/core/stage-runner";
 import { approveGate, liveGateHash } from "@/server/db/approvals";
 import { runStage } from "@/server/db/stage-runner-adapter";
-import { claimStage, commitStage, insertQueuedStage } from "@/server/db/stages";
-import { fallBackToSceneKit } from "@/server/db/tsx-fallback";
+import { insertQueuedStage } from "@/server/db/stages";
 import { addContent, createVideoRow, latestContent } from "@/server/db/videos";
 import { createLlmClient } from "@/server/llm/client";
 import { fakeDraft, fakeModelStep } from "@/server/llm/fake-step";
@@ -50,7 +47,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await db.reset();
-  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:scene_kit', 2000000), ('video:tsx', 2000000), ('day', 15000000), ('month', 100000000)");
+  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:collage', 2000000), ('video:tsx', 2000000), ('day', 15000000), ('month', 100000000)");
 });
 
 const ROW: ModelRow = { id: "00000000-0000-4000-8000-0000000000bb", provider: "anthropic", modelId: "m", label: "Fake", baseUrl: null, prices: { inputPerMTokMicro: 1_000_000, outputPerMTokMicro: 1_000_000 }, isFree: false, capabilities: { structuredOutput: true, toolUse: true, vision: false, nativeWebSearch: false, contextWindow: 128000 }, enabled: true, endpointKind: "hosted" };
@@ -138,7 +135,7 @@ describe("tsx_author stage", () => {
     expect(readFileSync(path.join(root, "videos", id, "render.mp4")).equals(readFileSync(GOOD_MP4))).toBe(true);
     expect(await row(id)).toEqual({ kind: "tsx", kind_origin: null });
     for (const f of ["first", "middle", "last"]) expect(existsSync(path.join(root, "videos", id, `tsx-frame-${f}.png`))).toBe(true); // preflight stills kept
-    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: false, attempts: 1 });
+    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ attempts: 1 });
     expect(await intentCount()).toBeGreaterThanOrEqual(1);
   });
 
@@ -149,7 +146,7 @@ describe("tsx_author stage", () => {
     expect(out.kind).toBe("committed");
     expect(await intentCount()).toBe(before + 2); // one author call and one review call, both reserved
     expect((await latestContent(db.pool, id, "frame_review"))?.body).toMatchObject({ status: "done", ok: true, attempt: 1 });
-    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: false, frameReview: { status: "done", ok: true } });
+    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ frameReview: { status: "done", ok: true } });
   });
 
   it("frame review not ok with attempts left: the problem list goes back to the author, the second file is accepted, still 3 attempts at most", async () => {
@@ -169,7 +166,7 @@ describe("tsx_author stage", () => {
     const out = await play(id, "tsx_author", handler(fakeTsx(["ok", "ok", "ok"]), [reply(withFrames(frames)), reply(withFrames(frames, "// b\n")), reply(withFrames(frames, "// c\n"))], [verdict(false), verdict(false), verdict(false)]));
     expect(out.kind).toBe("committed");
     expect(await row(id)).toEqual({ kind: "tsx", kind_origin: null });
-    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: false, attempts: 3, frameReview: { status: "done", ok: false } });
+    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ attempts: 3, frameReview: { status: "done", ok: false } });
   });
 
   it("frame review unavailable (bad JSON from the vision model): neither a pass nor a fail, the video goes on", async () => {
@@ -177,7 +174,7 @@ describe("tsx_author stage", () => {
     const out = await play(id, "tsx_author", handler(fakeTsx(["ok"]), [reply(withFrames(frames))], ["I cannot tell"]));
     expect(out.kind).toBe("committed");
     expect((await latestContent(db.pool, id, "frame_review"))?.body).toMatchObject({ status: "unavailable" });
-    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: false, attempts: 1 });
+    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ attempts: 1 });
   });
 
   it("no vision model: the review is skipped with a plain reason, no vision call, and the video goes on", async () => {
@@ -197,64 +194,23 @@ describe("tsx_author stage", () => {
     const out = await play(id, "tsx_author", handler(tsx, [reply(bad), reply(withFrames(frames))]));
     expect(out.kind).toBe("committed");
     expect(tsx.sources).toEqual([withFrames(frames)]); // the refused file never reached the sandbox
-    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: false, attempts: 2 });
+    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ attempts: 2 });
     expect(await intentCount()).toBe(before + 2); // two reserved model calls, nothing hidden
     expect((await latestContent(db.pool, id, "tsx"))?.body).toMatchObject({ attempts: 2 });
   });
 
-  it("fall-back: three failed attempts switch the video to scene_kit with an audit event; draft stays up to date and build is next", async () => {
+  it("three failed attempts fail the stage with a plain sentence; the video stays a tsx video and nothing is rendered", async () => {
     const { id, frames } = await tsxVideoWithNarration();
-    // Mark draft as done under the tsx route, as the pipeline would have.
-    const readers: PipelineReaders = { approvedGates: async () => new Set(["script"] as const), feedback: async () => null };
-    const draftHash = (await readNextAction(db.pool, id, readers)) as { stage: string; inputHash: string };
-    expect(draftHash).toMatchObject({ kind: "enqueue", stage: "draft" });
-    const draftId = await insertQueuedStage(db.pool, { videoId: id, name: "draft", inputHash: draftHash.inputHash });
-    const draftClaim = await claimStage(db.pool, { id: draftId, inputHash: draftHash.inputHash, workerId: "w0", ttlMs: 60_000 });
-    expect(await commitStage(db.pool, draftClaim!, { ok: true })).toBe(true);
-    expect(await readNextAction(db.pool, id, readers)).toMatchObject({ kind: "enqueue", stage: "tts" }); // tsx has no pictures step
-
     const tsx = fakeTsx([{ kind: "preflight", message: "The preview frames show a problem.", problems: ["Frame 0 is black."] }, { kind: "render", message: "The TSX render failed (exit 1)." }, { kind: "typecheck", message: "The scene file has type errors.", problems: ["line 3: x"] }]);
     const texts = [reply(withFrames(frames, "// a\n")), reply(withFrames(frames, "// b\n")), reply(withFrames(frames, "// c\n"))];
     const before = await intentCount();
     const out = await play(id, "tsx_author", handler(tsx, texts));
-    expect(out.kind).toBe("committed");
+    expect(out.kind).not.toBe("committed");
     expect(tsx.sources).toHaveLength(3);
     expect(await intentCount()).toBe(before + 3); // the cap: three model calls, not four
-    expect(await row(id)).toEqual({ kind: "scene_kit", kind_origin: "tsx" });
-    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: true, switched: true, attempts: 3, why: "cap" });
+    expect(await row(id)).toEqual({ kind: "tsx", kind_origin: null });
     expect(await latestContent(db.pool, id, "tsx")).toBeNull();
     expect(existsSync(path.join(root, "videos", id, "render.mp4"))).toBe(false);
-    const audit = await db.pool.query("select detail from audit_log where event = 'video.tsx_fallback'");
-    expect(audit.rows).toHaveLength(1);
-    expect(audit.rows[0].detail).toMatchObject({ videoId: id, attempts: 3 });
-    expect(JSON.stringify(audit.rows[0].detail)).not.toContain("useCurrentFrame");
-    // The parameters hash still names the original kind: draft is not stale, the route is now the scene kit (pictures were not run yet).
-    expect(await readNextAction(db.pool, id, readers)).toMatchObject({ kind: "enqueue", stage: "pictures" });
-  });
-
-  it("a retry after a crash between the switch and the commit finishes cleanly: scene_kit with origin tsx is already done", async () => {
-    const { id } = await tsxVideoWithNarration();
-    await db.pool.query("update videos set kind = 'scene_kit', kind_origin = 'tsx' where id = $1", [id]);
-    const out = await play(id, "tsx_author", handler(fakeTsx([]), []));
-    expect(out.kind).toBe("committed");
-    expect((await stageRow(id, "tsx_author")).result).toMatchObject({ fellBack: true, switched: false, resumed: true });
-  });
-
-  it("fallBackToSceneKit refuses an expired lease and a cancel request, and switches nothing", async () => {
-    const { id } = await tsxVideoWithNarration();
-    const hash = `h-lease-${uuidv7()}`;
-    const stageRunId = await insertQueuedStage(db.pool, { videoId: id, name: "tsx_author", inputHash: hash });
-    const claim = (await claimStage(db.pool, { id: stageRunId, inputHash: hash, workerId: "w1", ttlMs: 60_000 }))!;
-    const detail = { attempts: 3, step: "check", why: "cap" };
-    await db.pool.query("update stage_runs set cancel_requested = true where id = $1", [stageRunId]);
-    await expect(fallBackToSceneKit(db.pool, claim, id, detail)).rejects.toThrow();
-    await db.pool.query("update stage_runs set cancel_requested = false, lease_until = now() - interval '1 minute' where id = $1", [stageRunId]);
-    await expect(fallBackToSceneKit(db.pool, claim, id, detail)).rejects.toThrow();
-    expect(await row(id)).toEqual({ kind: "tsx", kind_origin: null });
-    await db.pool.query("update stage_runs set lease_until = now() + interval '1 minute' where id = $1", [stageRunId]);
-    expect(await fallBackToSceneKit(db.pool, claim, id, detail)).toBe(true);
-    expect(await fallBackToSceneKit(db.pool, claim, id, detail)).toBe(false); // second call: already switched, no second audit row
-    expect(await row(id)).toEqual({ kind: "scene_kit", kind_origin: "tsx" });
   });
 
   it.each([
@@ -281,7 +237,7 @@ describe("tsx_author stage", () => {
     const { id } = await tsxVideoWithNarration();
     expect((await play(id, "tsx_author", withAttempt({ db: db.pool, root }, tsxAuthorAttempt(mkDeps({ tsx: fakeTsx([]) }))))).kind).toBe("known_failure");
     expect((await play(id, "tsx_author", withAttempt({ db: db.pool, root }, tsxAuthorAttempt(mkDeps({ makeLlm: llmWith([]) }))))).kind).toBe("known_failure");
-    await db.pool.query("update videos set kind = 'scene_kit' where id = $1", [id]);
+    await db.pool.query("update videos set kind = 'collage' where id = $1", [id]);
     expect((await play(id, "tsx_author", handler(fakeTsx([]), []))).kind).toBe("known_failure");
   });
 });

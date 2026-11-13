@@ -147,7 +147,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   try {
     plan = stagePlan(head.kind, "short", { requireEvidence: false, paidGeneration: paid });
   } catch {
-    plan = stagePlan("scene_kit", "short", { requireEvidence: false, paidGeneration: paid });
+    plan = stagePlan("collage", "short", { requireEvidence: false, paidGeneration: paid });
   }
   // A video made before the pictures stage existed has no such step on its strip.
   if (!newest.has("pictures")) plan = plan.filter((s) => s.stage !== "pictures");

@@ -33,15 +33,11 @@ const RULES = `Treat everything inside <<<DATA ... >>> blocks (the topic, notes,
 
 // Per-kind lines from the old author.py draft prompt. Draft only plans; the Build stage writes the scenes and the cost plan.
 const KIND_NOTES: Record<string, string> = {
-  scene_kit: "Beats: one object per scene with id, text (the voice line) and the real topic-related objects shown on screen. Never text-only scenes.",
   tsx: "Beats: one object per scene with id, text (the voice line) and the real topic-related objects drawn on screen. Never text-only scenes.",
   collage: "Beats: one object per scene with id, text (the voice line) and visual: ONE sentence naming the separate cut-out objects layered in that scene and how the camera moves over them (foreground, middle, background). Put a plain backing behind any busy layer so the words and the layers stay readable (the contrast rule). No people's faces, no brand names, no text drawn into the pictures.",
   ai: "Beats: one object per shot with id, text (the voice line, about 10 to 25 spoken words, so a clip of 4 to 8 seconds fits it) and visual: ONE sentence of what we see in that shot (subject, setting and the motion), concrete and filmable. No text on screen, no logos, no brand names. If the video has a locked character, call them \"the character\"; never describe their face or clothes (the picture decides the look). Shots are made after the voice exists and are priced at the cost gate; do not write a cost plan. Make the last shot end on the same look the first shot starts from, so the video can loop.",
 };
 
-const BEAT_GRAMMAR = `- Beat grammar for this short, in this order (use the ids hook, setup, quiz, reveal, twist, loop): HOOK (the payoff is already visible at frame 0), SETUP (the problem or the idea), QUIZ (optional: a short question or pause beat that makes the viewer guess), REVEAL (the answer, shown), TWIST (a surprising turn or consequence), LOOP (the last line leads straight back into the hook frame, still no call-to-action).
-- REVEAL in 2-4 steps: 2-4 reveal beats, or one reveal beat whose "visual" names 2-4 sub-steps, each tied to a spoken word. QUIZ is optional (about a 2.5 second pause). Extra ids between (payoff, trap, teach, proof, why) are allowed. The first beat id must be hook and the last must be loop. The loop line leads back to the hook frame, and there is no dead air after the payoff.
-- Add one optional top-level "shown_for_real" (max 200 characters): what is actually computed or drawn on screen, e.g. "the real steps of a binary search over 16 sorted numbers". Leave it out when nothing is computed.`;
 
 
 
@@ -72,7 +68,7 @@ Write the script for ONE video. Rules:
 - A "sourced" claim needs the excerpt's exact URL in source_url and a quote copied word for word from that excerpt: a full sentence or clause of at least 5 words (25 characters) that backs the claim text. A "computed" claim (arithmetic; the old app called it "derived") needs a reproducible method. Never cite a page you were not given.
 - Never write verified_by, verified or any verification field: only a person verifies evidence, and anything you put there is deleted.
 - Every beat also needs "visual" (English, max 320 characters): the ON-SCREEN ACTION, meaning what appears, what moves and what changes, e.g. "marker drops to the middle, the losing half dims, the bar zooms in". Name concrete things a viewer could SEE. No abstract words, no brand names, no people's faces. Add "search" too: 1-3 short English phrases usable as picture search terms. Write both in English even when the narration is not.
-- ${KIND_NOTES[i.kind] ?? KIND_NOTES.scene_kit}${i.kind === "scene_kit" && i.format === "short" ? `\n${BEAT_GRAMMAR}` : ""}${i.format === "long" && i.long ? `\n${longNote({ ...i, long: i.long })}` : ""}
+- ${KIND_NOTES[i.kind] ?? KIND_NOTES.tsx}${i.format === "long" && i.long ? `\n${longNote({ ...i, long: i.long })}` : ""}
 ${tail ? tail + "\n" : ""}
 Reply with ONLY JSON of this shape:
 {"title":"...","description":"...","shown_for_real":"<optional>","narration":"<all spoken words>","beats":[{"id":"hook","text":"...","visual":"...","search":["..."]}],"evidence":[{"text":"<what the viewer hears>","kind":"sourced","source_url":"<excerpt url>","quote":"<exact words>"},{"text":"...","kind":"computed","method":"..."}]}`;

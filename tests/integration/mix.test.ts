@@ -46,7 +46,7 @@ afterAll(async () => {
 beforeEach(() => db.reset());
 
 async function setup(plan: unknown) {
-  const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t" });
+  const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "t" });
   const dir = path.join(root, "videos", v.id);
   mkdirSync(dir, { recursive: true });
   for (const f of ["voice.wav", "render.mp4"]) writeFileSync(path.join(dir, f), readFileSync(path.join(root, f)));

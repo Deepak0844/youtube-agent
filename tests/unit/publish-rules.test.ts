@@ -102,7 +102,7 @@ describe("the publish hash refuses malformed metadata", () => {
 });
 
 describe("the cost plan hash refuses malformed fields", () => {
-  const plan = (over: Record<string, unknown>) => ({ providers_models: { llm: "m1" }, path: "scene_kit", library_scene_versions: { a: 1 }, quote: { micro_usd: "5" }, ...over });
+  const plan = (over: Record<string, unknown>) => ({ providers_models: { llm: "m1" }, path: "collage", library_scene_versions: { a: 1 }, quote: { micro_usd: "5" }, ...over });
   const hashFor = (body: unknown) => liveHash("cost", { channelId: null, content: { cost_plan: { sha256: sha256Hex("c"), body } } });
   it("accepts a valid plan", () => expect(hashFor(plan({})).ok).toBe(true));
   it("refuses a quote too large for a signed 64-bit amount, empty model names and bad scene versions", () => {

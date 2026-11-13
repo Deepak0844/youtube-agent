@@ -47,7 +47,7 @@ export function targetFrames(narrationS: number): number {
   return Math.max(1, Math.min(TSX_MAX_FRAMES, n));
 }
 
-/** True when the narration (plus the tail) needs more frames than a code scene may have. The stage falls back to the scene kit then. */
+/** True when the narration (plus the tail) needs more frames than a code scene may have. The stage fails then. */
 export function tooLongForTsx(narrationS: number): boolean {
   return Math.ceil((Math.max(0, narrationS) + TAIL_S) * TSX_META.fps - 1e-9) > TSX_MAX_FRAMES;
 }

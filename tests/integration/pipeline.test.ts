@@ -17,7 +17,7 @@ beforeEach(async () => {
   await db.reset();
 });
 
-const input = { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" } as const;
+const input = { format: "short", kind: "collage", language: "en", topic: "Why the sky is blue" } as const;
 const h = (c: string) => c.repeat(64).slice(0, 64);
 
 interface FakeQueue {

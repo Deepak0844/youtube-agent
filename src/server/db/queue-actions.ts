@@ -226,7 +226,7 @@ export async function startDryRun(db: pg.Pool, q: Queues, actor: GateActor, env:
   // Same guard the worker applies before it will use fake providers: opt-in, not production, throwaway database, no stored provider key.
   const why = await dryRunRefusal(db, env as NodeJS.ProcessEnv).catch(() => "The dry run guard could not check the database.");
   if (why) return refuse(why);
-  const v = await createVideo(db, { format: "short", kind: "scene_kit", language: "en", topic: "Dry run: why the sky is blue", notes: DRY_RUN_NOTES });
+  const v = await createVideo(db, { format: "short", kind: "collage", language: "en", topic: "Dry run: why the sky is blue", notes: DRY_RUN_NOTES });
   await recordAudit(db, "dryrun.started", { videoId: v.id, sessionId: actor.sessionId });
   await advance(db, q.stage, v.id);
   return { ok: true, message: "Dry run started." };

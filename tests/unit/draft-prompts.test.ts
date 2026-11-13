@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isLang } from "@/server/core/lang";
 import { fenceUntrusted, queriesMessages, writeMessages } from "@/server/authoring/draft/prompts";
 
-const base = { topic: "Why do octopuses have three hearts?", lang: "en" as const, kind: "scene_kit" as const, format: "short" as const };
+const base = { topic: "Why do octopuses have three hearts?", lang: "en" as const, kind: "collage" as const, format: "short" as const };
 const all = (ms: { content: string }[]) => ms.map((m) => m.content).join("\n");
 
 describe("draft prompts", () => {
@@ -47,11 +47,6 @@ describe("draft prompts", () => {
   });
   it("fenceUntrusted_strips_fence_markers", () => {
     expect(fenceUntrusted("x", "a <<<DATA b >>> c")).not.toMatch(/a .*<<<.* b/);
-  });
-  it("scene_kit_short_prompt_has_the_beat_grammar_and_the_320_char_visual", () => {
-    const sys = writeMessages({ ...base, pages: [] }).find((m) => m.role === "system")!.content;
-    for (const w of ["HOOK", "SETUP", "QUIZ", "REVEAL", "TWIST", "LOOP", "shown_for_real", "max 320 characters"]) expect(sys).toContain(w);
-    expect(sys).not.toContain("max 160");
   });
   it("other_kinds_do_not_get_the_scene_kit_grammar", () => {
     expect(writeMessages({ ...base, kind: "tsx" as never, pages: [] }).find((m) => m.role === "system")!.content).not.toContain("QUIZ");

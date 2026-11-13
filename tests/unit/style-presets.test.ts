@@ -112,7 +112,7 @@ describe("default reproduces today", () => {
 
 describe("hashes", () => {
   const view: PipelineView = {
-    kind: "scene_kit", format: "short", flags: { requireEvidence: false, paidGeneration: false }, paramsHash: "p", feedback: null,
+    kind: "collage", format: "short", flags: { requireEvidence: false, paidGeneration: false }, paramsHash: "p", feedback: null,
     content: {}, runs: {}, approved: new Set(),
   };
   it("no style: build and render hashes equal the old ones", () => {

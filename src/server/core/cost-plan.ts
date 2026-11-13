@@ -5,7 +5,7 @@
 // core/approvals.ts) plus the item list Generate works through. Changing a provider or a price changes the body, so the
 // approval is void and the gate opens again.
 
-export const COST_PATHS = ["scene_kit", "tsx", "collage", "ai"] as const;
+export const COST_PATHS = ["tsx", "collage", "ai"] as const;
 export type CostPath = (typeof COST_PATHS)[number];
 
 export const ITEM_KINDS = ["image", "clip"] as const;

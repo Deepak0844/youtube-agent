@@ -19,17 +19,16 @@ const cardTitle = "text-section font-semibold";
 
 export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], initialFormat = "short" }: { maxLongMinutes: number; aiNote: string | null; characters: Array<{ id: string; name: string }>; channels?: Array<{ id: string; title: string; language: string; style: string | null }>; initialFormat?: "short" | "long" }) {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
-  const [kind, setKind] = useState<"scene_kit" | "tsx" | "collage" | "ai">("scene_kit");
+  const [kind, setKind] = useState<"tsx" | "collage" | "ai">("tsx");
   const [format, setFormat] = useState<"short" | "long">(initialFormat);
   const [dirty, setDirty] = useState(false);
   useUnsavedWarning(dirty && !pending);
-  const long = format === "long"; // Long is offered for the Scene kit only: the other types stay Shorts for now
+  const long = format === "long"; // Long videos were Scene kit only, which is removed: no type is offered for them
   const pickFormat = (f: "short" | "long") => {
     setFormat(f);
-    if (f === "long") setKind("scene_kit");
   };
   const custom = kind === "tsx";
-  // Custom animation has no Classic look: its default card is AI Studio. Scene kit keeps Classic ("" = no style).
+  // Custom animation has no Classic look: its default card is AI Studio. The other types keep Classic ("" = no style).
   const [picked, setPicked] = useState("");
   const style = custom && picked === "" ? "ai_studio" : picked;
   const [language, setLanguage] = useState("en");
@@ -78,7 +77,7 @@ export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], ini
           <Label htmlFor="format">Format</Label>
           <select id="format" name="format" value={format} onChange={(e) => pickFormat(e.target.value === "long" ? "long" : "short")} className={selectClass}>
             <option value="short">Short (9:16)</option>
-            <option value="long">Long (16:9, Scene kit only)</option>
+            <option value="long">Long (16:9, not available now)</option>
           </select>
         </div>
       </div>
@@ -108,14 +107,13 @@ export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], ini
         <p aria-hidden className={cardTitle}>Video type</p>
         {(
           [
-            ["scene_kit", "Scene kit (default)", "Safe and fast: the app builds the scenes from a fixed set of parts."],
-            ["tsx", "Custom animation (TSX, experimental)", "Claude writes the animation code. Slower, and it may fall back to the scene kit if the code does not pass the safety checks."],
+            ["tsx", "Custom animation (TSX, experimental)", "Claude writes the animation code. Slower; if the code does not pass the safety checks, the step fails and you run it again."],
             ["collage", "Collage (cut-out layers, Shorts)", "Free pictures are found for each beat, the background is removed with the background remover, and the cut-outs are layered over the look. Free: no money. Needs the worker running; a picture whose cut-out fails is used as it is."],
             ["ai", "AI video (paid clips, Shorts)", "A video model draws a short clip for every beat, as long as that beat of narration. The voice is made first, then you see the price of every clip and approve it before anything is bought. Optionally keep one character the same in every clip."],
           ] as const
         ).map(([id, title, help]) => (
-          <label key={id} className={cn("flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-border bg-page p-3 has-checked:outline-2 has-checked:outline", long && id !== "scene_kit" && "opacity-50")}>
-            <input type="radio" name="kind" value={id} checked={kind === id} disabled={long && id !== "scene_kit"} onChange={() => setKind(id)} className="mt-1" />
+          <label key={id} className={cn("flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-border bg-page p-3 has-checked:outline-2 has-checked:outline", long && "opacity-50")}>
+            <input type="radio" name="kind" value={id} checked={kind === id} disabled={long} onChange={() => setKind(id)} className="mt-1" />
             <span className="flex min-w-0 flex-col gap-1">
               <span className="text-body font-medium">{title}</span>
               <span className="text-small text-muted">{help}</span>

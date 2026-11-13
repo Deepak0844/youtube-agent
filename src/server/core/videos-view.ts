@@ -1,14 +1,13 @@
 import { z } from "zod";
 import { CAPTION_STYLE_IDS, STYLE_IDS } from "../../../remotion/kit/presets";
 import { LANGS } from "@/server/core/lang";
-import { LONG_DEFAULT_RANGE, lengthRangeProblem } from "@/server/core/long-form";
 
 // Pure: the Library's filters and words, and the New form's input. No IO.
 
 export const PAGE_SIZE = 25;
 export const STATUSES = ["active", "waiting", "done", "failed", "cancelled"] as const;
 export const FORMATS = ["short", "long"] as const;
-export const KINDS = ["scene_kit", "tsx", "collage", "ai"] as const;
+export const KINDS = ["tsx", "collage", "ai"] as const;
 export type Status = (typeof STATUSES)[number];
 
 export const STATUS_WORDS: Record<Status, { label: string; tone: "positive" | "negative" | "warning" | "neutral" }> = {
@@ -19,7 +18,7 @@ export const STATUS_WORDS: Record<Status, { label: string; tone: "positive" | "n
   cancelled: { label: "Cancelled", tone: "neutral" },
 };
 export const FORMAT_WORDS = { short: "Short", long: "Long" } as const;
-export const KIND_WORDS = { scene_kit: "Scene kit", tsx: "Custom animation", collage: "Collage", ai: "AI" } as const;
+export const KIND_WORDS = { tsx: "Custom animation", collage: "Collage", ai: "AI" } as const;
 export const LANGUAGE_WORDS = { en: "English", hi: "Hindi", ta: "Tamil", te: "Telugu", kn: "Kannada", ml: "Malayalam" } as const;
 /** Order shown in the New form. */
 export const LANGUAGE_ORDER = ["en", "hi", "ta", "te", "kn", "ml"] as const;
@@ -66,7 +65,7 @@ export function ageLabel(then: Date, now: Date = new Date()): string {
 export const newVideoSchema = z.object({
   topic: z.string().trim().min(1, "Enter a topic.").max(200, "Keep the topic to 200 characters or fewer."),
   language: z.enum(LANGS, "Pick a narration language."),
-  kind: z.enum(["scene_kit", "tsx", "collage", "ai"], "Pick a video type."),
+  kind: z.enum(["tsx", "collage", "ai"], "Pick a video type."),
   format: z.enum(["short", "long"], "Pick Short or Long."),
   // Long only: the length range in whole minutes (blank = the default 3 to 8). Checked against the max-length setting in parseNewVideoForm.
   minMinutes: z.coerce.number().optional(),
@@ -87,25 +86,17 @@ export type NewVideoInput = Omit<z.infer<typeof newVideoSchema>, "minMinutes" | 
 };
 
 /** `maxLongMinutes` is the video.max_long_minutes setting. */
-export function parseNewVideoForm(form: FormData, maxLongMinutes = 15): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
+export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
   const g = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
-  const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "scene_kit", format: g("format") ?? "short", notes: g("notes") || undefined, character: g("character") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined, minMinutes: g("minMinutes") || undefined, maxMinutes: g("maxMinutes") || undefined });
-  if (r.success && r.data.format === "long") {
-    const { topic, language, kind, notes, style, captionStyle, minMinutes, maxMinutes } = r.data;
-    // The long route exists for the scene kit only; the other kinds stay Shorts.
-    if (kind !== "scene_kit") return { ok: false, message: "Long videos use the Scene kit for now. Pick Short for this video type." };
-    const lengthMin = minMinutes ?? LONG_DEFAULT_RANGE.min;
-    const lengthMax = maxMinutes ?? LONG_DEFAULT_RANGE.max;
-    const problem = lengthRangeProblem(lengthMin, lengthMax, maxLongMinutes);
-    if (problem) return { ok: false, message: problem };
-    return { ok: true, value: { topic, language, kind, format: "long", notes, ...(style ? { style } : {}), ...(captionStyle ? { captionStyle } : {}), lengthMin, lengthMax } };
-  }
+  const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "tsx", format: g("format") ?? "short", notes: g("notes") || undefined, character: g("character") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined, minMinutes: g("minMinutes") || undefined, maxMinutes: g("maxMinutes") || undefined });
+  // Long videos were made with the scene kit only, which is removed.
+  if (r.success && r.data.format === "long") return { ok: false, message: "Long videos are not available right now (they were made with the Scene kit, which is removed). Pick Short." };
   // Custom animation (tsx) burns its own captions: the caption picker does not apply. The style does (it shapes the TSX look).
   if (r.success && r.data.kind === "tsx") {
     const { topic, language, kind, format, notes, style } = r.data;
     return { ok: true, value: { topic, language, kind, format, notes, ...(style ? { style } : {}) } };
   }
-  // An AI video: a look and captions like the scene kit, and optionally a locked character. Shorts only.
+  // An AI video: a look and captions, and optionally a locked character. Shorts only.
   if (r.success && r.data.kind === "ai") {
     const { topic, language, kind, format, notes, style, captionStyle, character } = r.data;
     return { ok: true, value: { topic, language, kind, format, notes, ...(style ? { style } : {}), ...(captionStyle ? { captionStyle } : {}), ...(character ? { characterAssetId: character } : {}) } };
@@ -117,7 +108,7 @@ export function parseNewVideoForm(form: FormData, maxLongMinutes = 15): { ok: tr
 }
 
 /** The video types a Short can be remade as (the New form's own list for Shorts). */
-export const VERSION_KINDS = ["scene_kit", "tsx"] as const;
+export const VERSION_KINDS = ["tsx"] as const;
 
 export interface VersionSource {
   topic: string;
@@ -131,19 +122,17 @@ export interface VersionSource {
 
 /**
  * The input for a NEW Short on the same topic as `src` but another video type (the old app's "Re-draft as ..."), following the New form's rules per
- * type: the Scene kit keeps the style and caption look, a custom animation keeps the style. The new video starts from the
+ * type: a custom animation keeps the style. The new video starts from the
  * topic, notes and language only; nothing of the old video (its approvals, spend or files) is carried over. Or a plain sentence saying why not.
  */
 export function versionInput(src: VersionSource, kind: unknown): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
-  if (src.format !== "short") return { ok: false, message: "Only a Short can be remade as another type. A long video uses the Scene kit." };
+  if (src.format !== "short") return { ok: false, message: "Only a Short can be remade as another type." };
   if (typeof kind !== "string" || !(VERSION_KINDS as readonly string[]).includes(kind)) return { ok: false, message: "Pick a video type from the list." };
   if (kind === src.kind) return { ok: false, message: "That is the type this video already is. Pick a different one." };
   if (!(LANGS as readonly string[]).includes(src.language)) return { ok: false, message: "This video has an unknown language." };
   const k = kind as (typeof VERSION_KINDS)[number];
   const base = { topic: src.topic, language: src.language as (typeof LANGS)[number], kind: k, format: "short" as const, notes: src.notes ?? undefined };
   const style = src.style && (STYLE_IDS as readonly string[]).includes(src.style) ? (src.style as (typeof STYLE_IDS)[number]) : undefined;
-  const captionStyle = src.captionStyle && (CAPTION_STYLE_IDS as readonly string[]).includes(src.captionStyle) ? (src.captionStyle as (typeof CAPTION_STYLE_IDS)[number]) : undefined;
-  if (k === "scene_kit") return { ok: true, value: { ...base, ...(style ? { style } : {}), ...(captionStyle ? { captionStyle } : {}) } };
   if (k === "tsx") return { ok: true, value: { ...base, ...(style ? { style } : {}) } };
   return { ok: true, value: base };
 }

@@ -26,7 +26,7 @@ const actor = { kind: "session", sessionId: SESSION } as const;
 const queued: string[] = [];
 const queue = { enqueue: async (id: string, fence: number, seq: number) => (queued.push(id), `stage.${id}.${fence}.${seq}`) };
 const mk = (topic: string, o: Partial<{ language: "en" | "hi"; status: string }> = {}) =>
-  createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: o.language ?? "en", topic }).then(async (v) => {
+  createVideoRow(db.pool, { format: "short", kind: "collage", language: o.language ?? "en", topic }).then(async (v) => {
     if (o.status) await db.pool.query("update videos set status = $2 where id = $1", [v.id, o.status]);
     return v;
   });
@@ -104,7 +104,7 @@ describe("startNewVideo for an AI video", () => {
       const r = await startNewVideo(db.pool, queue, actor, input({ characterAssetId }));
       expect(r.ok).toBe(false);
     }
-    expect((await startNewVideo(db.pool, queue, actor, input({ kind: "scene_kit", characterAssetId: await png() }))).ok).toBe(false);
+    expect((await startNewVideo(db.pool, queue, actor, input({ kind: "collage", characterAssetId: await png() }))).ok).toBe(false);
     expect((await db.pool.query("select count(*)::int n from videos")).rows[0].n).toBe(before);
   });
 });
@@ -123,7 +123,7 @@ describe("startNewVideo (the createVideoAction data path)", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const v = (await db.pool.query("select topic, language, kind, format, notes from videos where id = $1", [r.videoId])).rows[0];
-    expect(v).toEqual({ topic: "Why is the sky blue?", language: "ta", kind: "scene_kit", format: "short", notes: "calm tone" });
+    expect(v).toEqual({ topic: "Why is the sky blue?", language: "ta", kind: "tsx", format: "short", notes: "calm tone" }); // Custom animation is the default type
     const runs = (await db.pool.query("select name, status from stage_runs where video_id = $1", [r.videoId])).rows;
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe("queued");
@@ -142,7 +142,7 @@ describe("startNewVideo (the createVideoAction data path)", () => {
 
   it("stores a connected channel picked on the form, and refuses an unknown one before anything is written", async () => {
     await ensureChannel(db.pool, "UCpicked");
-    const v = { topic: "x", language: "en", kind: "scene_kit", format: "short" } as const;
+    const v = { topic: "x", language: "en", kind: "collage", format: "short" } as const;
     const r = await startNewVideo(db.pool, queue, actor, v, "UCpicked");
     if (!r.ok) throw new Error(r.message);
     expect((await db.pool.query("select channel_id from videos where id = $1", [r.videoId])).rows[0].channel_id).toBe("UCpicked");
@@ -151,7 +151,7 @@ describe("startNewVideo (the createVideoAction data path)", () => {
   });
 
   it("a non-owner actor creates nothing", async () => {
-    const r = await startNewVideo(db.pool, queue, { kind: "session", sessionId: "nope" }, { topic: "x", language: "en", kind: "scene_kit", format: "short" });
+    const r = await startNewVideo(db.pool, queue, { kind: "session", sessionId: "nope" }, { topic: "x", language: "en", kind: "collage", format: "short" });
     expect(r.ok).toBe(false);
     expect((await db.pool.query("select count(*)::int as n from videos")).rows[0].n).toBe(0);
   });

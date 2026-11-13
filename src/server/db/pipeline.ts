@@ -71,7 +71,7 @@ interface VideoLocked {
   id: string;
   format: "short" | "long";
   kind: PipelineView["kind"];
-  /** 'tsx' when a code-scene video fell back to the scene kit: the parameters hash keeps using the kind the owner chose. */
+  /** 'tsx' on videos that once fell back from a code scene (no longer happens): the parameters hash keeps using the kind the owner chose. */
   kind_origin?: "tsx" | null;
   language: string;
   topic: string;

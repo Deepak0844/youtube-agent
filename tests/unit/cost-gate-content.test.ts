@@ -16,7 +16,7 @@ describe("costGateContent", () => {
     });
   });
   it("shows no clip list and no character for an ordinary plan, and survives a body that is not what it should be", () => {
-    const plain = costGateContent({ path: "scene_kit", quote: { micro_usd: "2500000" }, providers_models: { image: "fake" }, items: [{ kind: "image", provider: "fake", quoteMicroUsd: 2_500_000 }] });
+    const plain = costGateContent({ path: "collage", quote: { micro_usd: "2500000" }, providers_models: { image: "fake" }, items: [{ kind: "image", provider: "fake", quoteMicroUsd: 2_500_000 }] });
     expect("shots" in plain).toBe(false);
     expect("character" in plain).toBe(false);
     for (const junk of [null, undefined, 7, "x", [], { shots: "nope", items: 3, quote: 5, providers_models: [] }]) {

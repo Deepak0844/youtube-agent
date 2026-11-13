@@ -36,7 +36,7 @@ beforeEach(async () => {
   await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('g', 100000000)");
 });
 
-const input = { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" } as const;
+const input = { format: "short", kind: "collage", language: "en", topic: "Why the sky is blue" } as const;
 const config = buildEngineConfig(new Map());
 const SESSION = { kind: "session", sessionId: "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e90" } as const;
 

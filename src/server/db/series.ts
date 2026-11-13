@@ -157,7 +157,7 @@ export async function startPart(db: pg.Pool, queue: EnqueueOnly, actor: GateActo
   }
   const release = () => db.query("update series_parts set status = 'planned' where series_id = $1 and part_no = $2 and status = 'started' and video_id is null", [seriesId, partNo]);
   const notes = [`Part ${partNo} of ${s.partsPlanned} of the series "${s.title}".`, s.premise && `Series idea: ${s.premise}`, part.one_line && `This part: ${part.one_line}`].filter(Boolean).join("\n");
-  const input = newVideoSchema.safeParse({ topic: part.title, language: s.language, kind: "scene_kit", format: "short", notes, style: s.settings.style, captionStyle: s.settings.captionStyle });
+  const input = newVideoSchema.safeParse({ topic: part.title, language: s.language, kind: "tsx", format: "short", notes, style: s.settings.style });
   if (!input.success) {
     await release();
     return { ok: false, message: input.error.issues[0]?.message ?? "Check the part and try again." };

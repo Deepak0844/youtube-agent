@@ -56,7 +56,7 @@ describe("settings registry", () => {
       "assets.unused_days": 30,
       "assets.trash_days": 7,
       "video.max_long_minutes": 15,
-      "tracks.enabled": { scene_kit: true, tsx: true, collage: true, ai: true },
+      "tracks.enabled": { tsx: true, collage: true, ai: true },
       "policy.require_evidence": true,
       "policy.allow_public": false,
       "uploads.kill_switch": false,
@@ -77,7 +77,6 @@ describe("settings registry", () => {
 
   it("budget_defaults_equal_doc_02_4_5_in_micro_usd", () => {
     expect(BUDGET_DEFAULTS).toEqual({
-      "video:scene_kit": 2_000_000,
       "video:tsx": 5_000_000,
       "video:collage": 5_000_000,
       "video:ai": 15_000_000,

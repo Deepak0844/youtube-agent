@@ -85,10 +85,10 @@ const script = (title = "Why the sky is blue") => ({
   beats: [{ id: "hook", text: "hook" }],
   evidence: [{ text: "Air scatters blue light", kind: "sourced", source_url: "https://example.test/a", quote: "scatters blue light" }],
 });
-const plan = { providers_models: { llm: "m1" }, path: "scene_kit", library_scene_versions: { a: 1 }, quote: { micro_usd: "2500000" }, items: [{ kind: "image", provider: "fakeimg", quoteMicroUsd: 2_500_000 }] };
+const plan = { providers_models: { llm: "m1" }, path: "collage", library_scene_versions: { a: 1 }, quote: { micro_usd: "2500000" }, items: [{ kind: "image", provider: "fakeimg", quoteMicroUsd: 2_500_000 }] };
 
 async function seedScriptVideo(): Promise<string> {
-  const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue", channelId: "UC1" });
+  const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "Why the sky is blue", channelId: "UC1" });
   await ensureChannel(db.pool, "UC1");
   await addContent(db.pool, v.id, "script", { body: script(), sha256: sha256Hex("script-1") });
   return v.id;
@@ -244,7 +244,7 @@ describe("decideGate: publish", () => {
     const root = mkdtempSync(path.join(tmpdir(), "queue-publish-"));
     mkdirSync(path.join(root, "v"), { recursive: true });
     writeFileSync(path.join(root, "v/1.mp4"), "video-1");
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Publish me", channelId: "UC1" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "Publish me", channelId: "UC1" });
     await ensureChannel(db.pool, "UC1");
     await addContent(db.pool, v.id, "script", { body: script(), sha256: sha256Hex("script-1") });
     await addContent(db.pool, v.id, "video", { filePath: "v/1.mp4", sha256: sha256Hex("video-1") });
@@ -350,7 +350,7 @@ describe("loadQueue", () => {
       await advanceVideo(db.pool, q.stage, videoId, approvalReaders);
     }
     const { items } = await loadQueue(db.pool);
-    expect(items[0]).toMatchObject({ kind: "gate", gate: "cost", content: { kind: "cost", totalMicroUsd: 2_500_000, path: "scene_kit" } });
+    expect(items[0]).toMatchObject({ kind: "gate", gate: "cost", content: { kind: "cost", totalMicroUsd: 2_500_000, path: "collage" } });
   });
 });
 
@@ -358,7 +358,7 @@ describe("parked stages", () => {
   const RESERVE = 400_000;
   const deps = (handler: StageHandler): StageRunnerDeps => ({ provider: { call: (key) => provider.call(key) }, ttlMs: 300, workerId: "w", handler, config });
   async function park(q: FakeQueues) {
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Parked video" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "Parked video" });
     await advanceVideo(db.pool, q.stage, v.id, approvalReaders);
     const { rows } = await db.pool.query<{ id: string }>("select id from stage_runs where video_id = $1", [v.id]);
     const stageId = rows[0]!.id;
@@ -452,8 +452,8 @@ describe("dry run guard (development mode must not spend real money)", () => {
     expect((await db.pool.query("select count(*)::int as n from videos")).rows[0].n).toBe(0);
   });
   it("the production worker refuses a dry-run video before any real provider is touched", async () => {
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "dry", notes: "dry run" });
-    const real = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "real" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "dry", notes: "dry run" });
+    const real = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "real" });
     let calls = 0;
     const handler = refuseDryRunVideos(db.pool, async () => ((calls += 1), "ran"));
     const ctx = (videoId: string) => ({ stage: { id: "s", name: "draft", inputHash: "h", videoId } }) as never;
@@ -469,7 +469,7 @@ describe("a cancelled video does nothing more", () => {
     const root = mkdtempSync(path.join(tmpdir(), "queue-cancel-"));
     mkdirSync(path.join(root, "v"), { recursive: true });
     writeFileSync(path.join(root, "v/1.mp4"), "video-1");
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Cancel me", channelId: "UC1" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "Cancel me", channelId: "UC1" });
     await ensureChannel(db.pool, "UC1");
     await addContent(db.pool, v.id, "script", { body: script(), sha256: sha256Hex("script-1") });
     await addContent(db.pool, v.id, "video", { filePath: "v/1.mp4", sha256: sha256Hex("video-1") });
@@ -520,7 +520,7 @@ describe("a cancelled video does nothing more", () => {
   });
   it("cancelVideo does nothing to a finished or failed video", async () => {
     for (const status of ["done", "failed"]) {
-      const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: status });
+      const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: status });
       await db.ownerPool.query("update videos set status = $2 where id = $1", [v.id, status]);
       expect(await cancelVideo(db.pool, v.id)).toEqual({ flagged: [] });
       expect((await db.pool.query("select status from videos where id = $1", [v.id])).rows[0].status).toBe(status);

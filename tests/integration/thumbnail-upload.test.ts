@@ -39,8 +39,8 @@ function setter(answer: { ok: true } | { ok: false; reason: string } = { ok: tru
 
 async function video(format: "long" | "short", o: { card?: string; approve?: boolean } = {}) {
   const v = format === "long"
-    ? await createVideoRow(db.pool, { format: "long", kind: "scene_kit", language: "en", topic: "Why the sea is salty", lengthMinMinutes: 3, lengthMaxMinutes: 8, channelId: "UCthumb" })
-    : await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Why the sea is salty", channelId: "UCthumb" });
+    ? await createVideoRow(db.pool, { format: "long", kind: "collage", language: "en", topic: "Why the sea is salty", lengthMinMinutes: 3, lengthMaxMinutes: 8, channelId: "UCthumb" })
+    : await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "Why the sea is salty", channelId: "UCthumb" });
   const rel = `videos/${v.id}/thumb-1.png`;
   if (o.card !== undefined) {
     mkdirSync(path.join(root, "videos", v.id), { recursive: true });

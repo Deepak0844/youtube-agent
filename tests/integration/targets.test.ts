@@ -71,7 +71,7 @@ describe("pause settings", () => {
 // n uploaded videos, oldest first, each with `views` and `spendUsd` of spend (so spendUsd / (views / 1000) dollars per 1,000 views).
 async function seedShorts(n: number, views: number, spendUsd: number) {
   for (let i = 0; i < n; i++) {
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: `topic ${i}`, channelId: "UCchan1" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: `topic ${i}`, channelId: "UCchan1" });
     await db.ownerPool.query("update videos set created_at = now() - ($2 || ' hours')::interval where id = $1", [v.id, String(n - i)]);
     const yt = `yt${String(i).padStart(9, "0")}`;
     await db.ownerPool.query(

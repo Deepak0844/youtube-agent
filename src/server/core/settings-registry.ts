@@ -55,8 +55,8 @@ export const SETTINGS = {
   "video.max_long_minutes": { schema: posInt, default: 15, safety: false, label: "Max long video (minutes)" },
   // Hidden in the UI until their phases ship.
   "tracks.enabled": {
-    schema: z.object({ scene_kit: z.boolean(), tsx: z.boolean(), collage: z.boolean(), ai: z.boolean() }).strict(),
-    default: { scene_kit: true, tsx: true, collage: true, ai: true },
+    schema: z.object({ tsx: z.boolean(), collage: z.boolean(), ai: z.boolean() }).strict(),
+    default: { tsx: true, collage: true, ai: true },
     safety: false,
     label: "Enabled tracks",
   },
@@ -134,7 +134,6 @@ export const SAFETY_KEYS = (Object.keys(SETTINGS) as SettingKey[]).filter((k) =>
 
 // Default spend caps in micro-USD (Doc 02 4.5). Scope names are free-form strings in `budgets.scope`.
 export const BUDGET_DEFAULTS: Record<string, number> = {
-  "video:scene_kit": 2_000_000,
   "video:tsx": 5_000_000,
   "video:collage": 5_000_000,
   "video:ai": 15_000_000,
@@ -146,7 +145,6 @@ export const BUDGET_DEFAULTS: Record<string, number> = {
 
 /** Plain words for each template on the Budgets page. Same keys as BUDGET_DEFAULTS. */
 export const BUDGET_LABELS: Record<string, { title: string; note: string }> = {
-  "video:scene_kit": { title: "Scene-kit video", note: "The most one scene-kit video may spend." },
   "video:tsx": { title: "Code-scene video", note: "The most one code-scene video may spend." },
   "video:collage": { title: "Collage video", note: "The most one collage video may spend." },
   "video:ai": { title: "AI video", note: "The most one AI-generated video may spend." },

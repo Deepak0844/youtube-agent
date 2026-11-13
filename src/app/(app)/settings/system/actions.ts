@@ -24,7 +24,7 @@ export async function saveLimitsAction(_prev: FormState, form: FormData): Promis
   await requireOwner();
   const fields = ["concurrent_renders", "concurrent_jobs", "storage_warn_gb", "max_long_minutes", "render_timeout_s"].map((k) => [k, text(form.get(k), 8)] as const);
   if (fields.some(([, v]) => v === null)) return { error: TOO_LONG };
-  const r = await saveSystemSettings(getPool(), { ...Object.fromEntries(fields), scene_kit: form.get("scene_kit") === "on" });
+  const r = await saveSystemSettings(getPool(), { ...Object.fromEntries(fields) });
   if (r.ok) revalidatePath("/settings/system");
   return r.ok ? { ok: true } : { error: r.error };
 }

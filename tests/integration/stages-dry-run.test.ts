@@ -72,7 +72,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await db.reset();
-  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:scene_kit', 2000000), ('day', 15000000), ('month', 100000000)");
+  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:collage', 2000000), ('day', 15000000), ('month', 100000000)");
 });
 
 // --- helpers -----------------------------------------------------------------------------------------------------------
@@ -82,7 +82,7 @@ function mkDeps(over: Partial<StageDeps> = {}): StageDeps & { voice: ReturnType<
   return { db: db.pool, root, voice, voiceFor: async (a: { budgetScopes: string[] }) => ({ provider: voice.forScopes(a.budgetScopes), providerId: "fake", voice: "fake" }), image: createFakeImage(), renderer: createFakeRenderer(), ...over } as never;
 }
 
-const newVideo = (language: "en" | "hi" = "en") => createVideoRow(db.pool, { format: "short", kind: "scene_kit", language, topic: "Why do octopuses have three hearts?" });
+const newVideo = (language: "en" | "hi" = "en") => createVideoRow(db.pool, { format: "short", kind: "collage", language, topic: "Why do octopuses have three hearts?" });
 
 /** Script + beats as the Draft stage would save them, without running Draft. */
 async function seedScript(videoId: string, beats = 3, approve = true): Promise<void> {
@@ -350,7 +350,7 @@ describe("paid generation is bounded by the approved quote", () => {
     const deps = mkDeps();
     const v = await newVideo();
     await seedScript(v.id);
-    const body = costPlanBody(buildCostPlan([{ kind: "image", provider: "fake-image", quoteMicroUsd: 5000 }, { kind: "image", provider: "fake-image", quoteMicroUsd: 5000 }], "scene_kit"));
+    const body = costPlanBody(buildCostPlan([{ kind: "image", provider: "fake-image", quoteMicroUsd: 5000 }, { kind: "image", provider: "fake-image", quoteMicroUsd: 5000 }], "collage"));
     body.quote = { micro_usd: "8000" }; // hand-edited down: still a complete, approvable plan
     await addContent(db.pool, v.id, "cost_plan", { body, sha256: sha256Hex(canonicalJson(body)) });
     await approveCost(v.id);
@@ -365,7 +365,7 @@ describe("paid generation is bounded by the approved quote", () => {
     const id = await approvedVideo(deps);
     expect((await approvalState(db.pool, id, "cost")).approved).toBe(true);
     const old = (await latestContent(db.pool, id, "cost_plan"))!.body as { items: Array<{ kind: "image"; provider: string; quoteMicroUsd: number }> };
-    const changed = costPlanBody(buildCostPlan(old.items.map((i) => ({ ...i, provider: "other-image" })), "scene_kit"));
+    const changed = costPlanBody(buildCostPlan(old.items.map((i) => ({ ...i, provider: "other-image" })), "collage"));
     await addContent(db.pool, id, "cost_plan", { body: changed, sha256: sha256Hex(canonicalJson(changed)) });
 
     expect((await approvalState(db.pool, id, "cost")).approved).toBe(false); // the owner must approve the new plan
@@ -389,7 +389,7 @@ describe("paid generation is bounded by the approved quote", () => {
         const r = await inner.generate(c, a);
         if (first) {
           first = false;
-          const changed = costPlanBody(buildCostPlan(old.items.map((i) => ({ ...i, quoteMicroUsd: i.quoteMicroUsd + 1 })), "scene_kit"));
+          const changed = costPlanBody(buildCostPlan(old.items.map((i) => ({ ...i, quoteMicroUsd: i.quoteMicroUsd + 1 })), "collage"));
           await addContent(db.pool, id, "cost_plan", { body: changed, sha256: sha256Hex(canonicalJson(changed)) });
         }
         return r;
@@ -735,7 +735,7 @@ describe("crash points", () => {
     expect(deps.image.totalCalls()).toBe(3);
 
     const old = (await latestContent(db.pool, v.id, "cost_plan"))!.body as { items: Array<{ kind: "image"; provider: string; quoteMicroUsd: number }> };
-    const changed = costPlanBody(buildCostPlan(old.items.map((i) => ({ ...i, quoteMicroUsd: i.quoteMicroUsd + 1 })), "scene_kit"));
+    const changed = costPlanBody(buildCostPlan(old.items.map((i) => ({ ...i, quoteMicroUsd: i.quoteMicroUsd + 1 })), "collage"));
     await addContent(db.pool, v.id, "cost_plan", { body: changed, sha256: sha256Hex(canonicalJson(changed)) });
 
     await db.ownerPool.query("update stage_runs set status='queued', lease_owner=null, lease_until=null where id=$1", [stageId]);
@@ -778,7 +778,7 @@ describe("scripts/dry-run.ts", () => {
 describe("stage inputs", () => {
   const flags = { requireEvidence: true, paidGeneration: true };
   const view = (script: string): PipelineView => ({
-    kind: "scene_kit", format: "short", flags, paramsHash: "p", feedback: null,
+    kind: "collage", format: "short", flags, paramsHash: "p", feedback: null,
     content: { script, beats: "b", cost_plan: "c", narration: "n" }, runs: {}, approved: new Set(),
   });
   const chainHashes = (v: PipelineView): Record<string, string> => {
@@ -812,12 +812,12 @@ describe("stage inputs", () => {
 
   it("imported_projects_skip_authoring_stages", () => {
     // Placeholder flag until Phase 9: the script exists already, so no Draft, no Build and no script gate.
-    const plan = stagePlan("scene_kit", "short", { ...flags, imported: true });
+    const plan = stagePlan("collage", "short", { ...flags, imported: true });
     expect(plan.map((s) => s.stage)).toEqual(["generate", "tts", "render", "voice", "sfx", "qa"]);
     expect(plan.some((s) => s.gateAfter === "script")).toBe(false);
     const v: PipelineView = { ...view("s"), flags: { ...flags, imported: true }, approved: new Set() };
     expect(nextActions(v)).toEqual([{ kind: "wait_gate", gate: "cost" }]); // the first thing an imported project waits for is the cost gate
     expect(nextActions({ ...v, flags: { requireEvidence: true, paidGeneration: false, imported: true } })).toMatchObject([{ kind: "enqueue", stage: "tts" }]);
-    expect(stagePlan("scene_kit", "short", flags)[0]?.stage).toBe("draft"); // default plans are unchanged
+    expect(stagePlan("collage", "short", flags)[0]?.stage).toBe("draft"); // default plans are unchanged
   });
 });

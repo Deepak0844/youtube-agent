@@ -36,7 +36,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await db.reset();
-  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:scene_kit', 2000000), ('day', 15000000), ('month', 100000000)");
+  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:collage', 2000000), ('day', 15000000), ('month', 100000000)");
 });
 
 async function seed(): Promise<{ vid: string; f: ReturnType<typeof fakeGoogle> }> {

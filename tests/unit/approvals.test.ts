@@ -4,7 +4,7 @@ import { GATE_IDS } from "@/server/core/gates";
 
 const SID = "11111111-1111-4111-8111-111111111111";
 const h = (c: string) => c.repeat(64).slice(0, 64);
-const plan = { providers_models: { llm: "m1" }, path: "scene_kit", library_scene_versions: { a: 1 }, quote: { micro_usd: "5" } };
+const plan = { providers_models: { llm: "m1" }, path: "collage", library_scene_versions: { a: 1 }, quote: { micro_usd: "5" } };
 const base = (): LiveInputs => ({
   channelId: "UC1",
   content: {

@@ -27,7 +27,7 @@ export function deriveAttempt(deps: StageDeps): AttemptHandler {
     const video = await loadVideo(deps.db, ctx);
     const own = (await deps.db.query<{ topic: string; derived_from: string | null; derive_from_scene: number | null; derive_to_scene: number | null }>("select topic, derived_from, derive_from_scene, derive_to_scene from videos where id = $1", [video.id])).rows[0];
     if (!own || own.derive_from_scene === null || own.derive_to_scene === null) throw new KnownFailure("This video is not a short derived from a long video.");
-    if (video.format !== "short" || video.kind !== "scene_kit") throw new KnownFailure("Only a scene-kit short can be derived from a long video.");
+    if (video.format !== "short") throw new KnownFailure("Only a short can be derived from a long video.");
     if (!own.derived_from) throw new KnownFailure("The long video this short was cut from no longer exists.");
     const srcId = own.derived_from;
     const src = (await deps.db.query<{ format: string }>("select format from videos where id = $1", [srcId])).rows[0];

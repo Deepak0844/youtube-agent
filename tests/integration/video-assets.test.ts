@@ -22,7 +22,7 @@ const make = async (o: Partial<RegisterInput> = {}) =>
       storageRef: `assets/j${n}/main.png`, rights: { attestations: [{ at: new Date().toISOString(), text: RIGHTS_TEXT }] }, ...o,
     })
   ).asset;
-const video = async () => (await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t" })).id;
+const video = async () => (await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "t" })).id;
 
 describe("video_assets", () => {
   it("links, lists in position order with credit, and is idempotent", async () => {
