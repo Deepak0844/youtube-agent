@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type pg from "pg";
 import type { EngineConfig } from "@/server/core/engine-config";
 import { finishEngineRun, startEngineRun, type EngineUsage } from "@/server/db/engine-runs";
@@ -9,7 +11,10 @@ import { engineArgs, type EngineRunKind } from "./args";
 import { parseLimit } from "./limit";
 import { startToolsHost, type ToolsHost } from "./mcp/host";
 import type { McpTool } from "./mcp/protocol";
-import { checkAfterRun, prepareWorkspace, type Workspace, type WorkspaceSeeds } from "./workspace";
+import { checkAfterRun, engineKitSeeds, prepareWorkspace, type Workspace, type WorkspaceSeeds } from "./workspace";
+
+/** The repository the worker runs from (engine-kit/ lives at its root). */
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 // Launches one Claude Code engine run (ADR 0015): a fresh locked folder, the run kind's fixed flags, Claude started INSIDE
 // work/, the minimal environment (no secrets), the engine tools host for build runs, a time limit and cancel that kill the
@@ -24,6 +29,7 @@ export interface EngineDeps {
   command?: { cmd: string; prefix: string[] };
   /** Source of the allow-listed environment variables (default process.env). */
   env?: Record<string, string | undefined>;
+  /** Default: engine-kit/ (skills, brand rules, old shorts, library index). */
   seeds?: WorkspaceSeeds;
   /** The engine tools of a build run, made for this run's workspace. */
   tools?: (ws: Workspace) => McpTool[];
@@ -120,7 +126,7 @@ export async function runEngine(d: EngineDeps, req: EngineRequest): Promise<Engi
   const runId = started.id;
   let host: ToolsHost | null = null;
   try {
-    const ws = await prepareWorkspace(d.root, req.videoId, d.seeds);
+    const ws = await prepareWorkspace(d.root, req.videoId, d.seeds ?? engineKitSeeds(REPO_ROOT));
     if (req.kind === "build") host = await startToolsHost({ runDir: ws.dir, tools: d.tools?.(ws) ?? [] });
     const before = await ws.snapshot();
     const args = engineArgs(req.kind, { maxTurns: d.config.maxTurns, model: req.model, ...(host ? { mcpConfigPath: host.mcpConfigPath } : {}) });

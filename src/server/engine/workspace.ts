@@ -117,3 +117,16 @@ export function checkAfterRun(before: Snapshot, after: Snapshot): string[] {
   if (after.workFiles > WORK_LIMITS.maxFiles) problems.push("the work folder has more than 5000 files");
   return problems;
 }
+
+/** The default seeds of every engine run (old-kit-import): the skills, brand rules, old shorts and library index from engine-kit/. */
+export function engineKitSeeds(repoRoot: string): WorkspaceSeeds {
+  const kit = path.join(repoRoot, "engine-kit");
+  return {
+    skillsDir: path.join(kit, "skills"),
+    refDirs: [
+      { from: path.join(kit, "brand"), to: "brand" },
+      { from: path.join(kit, "examples"), to: "examples" },
+      { from: path.join(kit, "lib"), to: "lib" },
+    ],
+  };
+}

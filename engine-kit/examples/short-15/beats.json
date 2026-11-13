@@ -1,0 +1,120 @@
+{
+  "id": "short-15-internet-works-websites",
+  "title": "The Internet In Eight Round Trips",
+  "composition": "Short15Internet",
+  "format": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationSec": 42
+  },
+  "voiceStatus": "pending",
+  "vo": [
+    {
+      "beat": "hook",
+      "text": "Eight hidden trips across the internet — that's what hitting enter does.",
+      "start": 0.4,
+      "end": 4.47
+    },
+    {
+      "beat": "setup",
+      "text": "Your browser doesn't know where that is.",
+      "start": 4.9,
+      "end": 7.49
+    },
+    {
+      "beat": "setup",
+      "text": "It asks a resolver, which asks a root server, then a dot-com server, then the site's own server, for the real address.",
+      "start": 7.9,
+      "end": 16.05
+    },
+    {
+      "beat": "reveal",
+      "text": "But before any of that page arrives, the two computers shake hands three times just to connect.",
+      "start": 16.5,
+      "end": 22.8
+    },
+    {
+      "beat": "reveal",
+      "text": "Then five more times to lock it with encryption. Eight round trips, and the request still hasn't been sent.",
+      "start": 23.2,
+      "end": 30.24
+    },
+    {
+      "beat": "twist",
+      "text": "Finally, the server sends back the page's code. Your browser builds it and paints every pixel — sixty times a second.",
+      "start": 30.7,
+      "end": 38.1
+    },
+    {
+      "beat": "loop",
+      "text": "All of that, before you've finished blinking.",
+      "start": 38.6,
+      "end": 41.2
+    }
+  ],
+  "beats": [
+    {
+      "id": "hook",
+      "start": 0.0,
+      "end": 4.9,
+      "visual": "frame-0 composed: finished browser window loaded with dailybyte.com (header, hero image block, article lines); a faint already-complete route ribbon (laptop -> DNS node -> server rack) glows beneath it; stat chip '8 ROUND TRIPS'"
+    },
+    {
+      "id": "setup",
+      "start": 4.9,
+      "end": 16.5,
+      "visual": "camera pulls back from the browser into a node diagram: laptop (typed address) -> resolver node -> root-server node (chip '13 ROOT SERVER GROUPS WORLDWIDE') -> .com TLD-server node -> authoritative-server node (rack icon); packet dot travels the chain, 'IP found' label flies back to the laptop"
+    },
+    {
+      "id": "reveal",
+      "start": 16.5,
+      "end": 30.7,
+      "visual": "zoom to laptop <-> server rack; packet bounces 3x (SYN / SYN-ACK / ACK, counter 1-3), padlock assembles over 5 more bounces (counter 4-8); '8' stamp lands, kicker 'REQUEST NOT EVEN SENT YET'"
+    },
+    {
+      "id": "twist",
+      "start": 30.7,
+      "end": 38.6,
+      "visual": "server rack fires back an HTML-document-shaped packet; browser window re-forms around it; small DOM-tree nodes assemble inside the page outline, then a paint-color sweep washes left to right; readout '60 FPS - 16.67 ms/frame'"
+    },
+    {
+      "id": "loop",
+      "start": 38.6,
+      "end": 42.0,
+      "visual": "diagram overlays dissolve away, landing exactly on the hook's finished browser window (last frame == frame 0); no CTA"
+    }
+  ],
+  "network": {
+    "clientLabel": "you@laptop",
+    "siteDomain": "dailybyte.com",
+    "dns": {
+      "askAt": 7.9,
+      "resolverAt": 9.0,
+      "rootAt": 10.6,
+      "rootServerChip": "13 ROOT SERVER GROUPS WORLDWIDE",
+      "tldAt": 12.4,
+      "tldLabel": ".com",
+      "authoritativeAt": 14.2,
+      "ipReturnAt": 15.8
+    },
+    "tcp": {
+      "startAt": 16.5,
+      "syn": 17.0,
+      "synAck": 18.4,
+      "ack": 19.8
+    },
+    "tls": {
+      "startAt": 23.2,
+      "roundTrips": [23.6, 24.8, 26.0, 27.2, 28.4],
+      "padlockClosedAt": 28.6
+    },
+    "roundTripStampAt": 29.6,
+    "httpResponseAt": 30.7,
+    "domBuildAt": 33.0,
+    "cssomBuildAt": 34.2,
+    "paintSweepAt": 36.0,
+    "frameBudgetLabel": "60 FPS · 16.67 ms/frame",
+    "loopStart": 38.6
+  }
+}

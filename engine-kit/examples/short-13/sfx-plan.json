@@ -1,0 +1,304 @@
+{
+  "master": "remotion/out/Short13BinSearchV2-voiced.mp4",
+  "master_fps": 30,
+  "catalog": "media/library/sfx/catalog.json",
+  "render": {
+    "preview": "remotion/out/Short13BinSearchV2-voiced.mp4",
+    "out": "shorts/short-13-binsearch/output/short-13-sfx.mp4",
+    "end_s": 41,
+    "duck": true
+  },
+  "events": [
+    {
+      "at_s": 3.4,
+      "sfx_id": "whoosh-soft",
+      "gain_db": -3,
+      "shot": "GameScene",
+      "cue": "hook \u2192 setup reset (scene mount f102)"
+    },
+    {
+      "at_s": 8.3,
+      "sfx_id": "scan-hum",
+      "gain_db": -9,
+      "shot": "GameScene",
+      "cue": "linear scan sweeps the bar (f144)",
+      "optional": true
+    },
+    {
+      "at_s": 11.85,
+      "sfx_id": "whoosh-soft",
+      "gain_db": -5,
+      "shot": "GameScene",
+      "cue": "scan resets: 'guess the middle'",
+      "optional": true
+    },
+    {
+      "at_s": 14.03,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "guess 1 marker drops"
+    },
+    {
+      "at_s": 14.8,
+      "sfx_id": "pop-reveal",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 1 verdict pill"
+    },
+    {
+      "at_s": 15.64,
+      "sfx_id": "whoosh-soft",
+      "gain_db": -6,
+      "shot": "GameScene",
+      "cue": "guess 1 zoom into survivor",
+      "optional": true
+    },
+    {
+      "at_s": 16.03,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "guess 2 marker drops"
+    },
+    {
+      "at_s": 16.8,
+      "sfx_id": "pop-reveal",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 2 verdict pill"
+    },
+    {
+      "at_s": 17.64,
+      "sfx_id": "whoosh-soft",
+      "gain_db": -6,
+      "shot": "GameScene",
+      "cue": "guess 2 zoom into survivor",
+      "optional": true
+    },
+    {
+      "at_s": 18.03,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "guess 3 marker drops"
+    },
+    {
+      "at_s": 18.56,
+      "sfx_id": "pop-reveal",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 3 verdict pill"
+    },
+    {
+      "at_s": 19.43,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "guess 4 marker drops"
+    },
+    {
+      "at_s": 19.96,
+      "sfx_id": "pop-reveal",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 4 verdict pill"
+    },
+    {
+      "at_s": 20.83,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "guess 5 marker drops"
+    },
+    {
+      "at_s": 21.83,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "guess 6 marker drops"
+    },
+    {
+      "at_s": 22.83,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "guess 7 marker drops"
+    },
+    {
+      "at_s": 23.83,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "guess 8 marker drops"
+    },
+    {
+      "at_s": 24.83,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "guess 9 marker drops"
+    },
+    {
+      "at_s": 25.83,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "guess 10 marker drops"
+    },
+    {
+      "at_s": 26.83,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 11 marker drops",
+      "optional": true
+    },
+    {
+      "at_s": 27.33,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 12 marker drops",
+      "optional": true
+    },
+    {
+      "at_s": 27.83,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 13 marker drops",
+      "optional": true
+    },
+    {
+      "at_s": 28.33,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 14 marker drops",
+      "optional": true
+    },
+    {
+      "at_s": 28.83,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 15 marker drops",
+      "optional": true
+    },
+    {
+      "at_s": 29.33,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 16 marker drops",
+      "optional": true
+    },
+    {
+      "at_s": 29.83,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 17 marker drops",
+      "optional": true
+    },
+    {
+      "at_s": 30.33,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 18 marker drops",
+      "optional": true
+    },
+    {
+      "at_s": 30.83,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 19 marker drops",
+      "optional": true
+    },
+    {
+      "at_s": 31.33,
+      "sfx_id": "ui-click-soft",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "guess 20 marker drops",
+      "optional": true
+    },
+    {
+      "at_s": 31.5,
+      "sfx_id": "chime-reward",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "FOUND pill \u2014 guess 20",
+      "note": "HERO layer a"
+    },
+    {
+      "at_s": 31.52,
+      "sfx_id": "impact-soft",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "FOUND impact",
+      "note": "HERO layer b"
+    },
+    {
+      "at_s": 31.75,
+      "sfx_id": "sparkle-soft",
+      "gain_db": -4,
+      "shot": "GameScene",
+      "cue": "found sparkle tail",
+      "optional": true
+    },
+    {
+      "at_s": 31.9,
+      "sfx_id": "whoosh-soft",
+      "gain_db": -4,
+      "shot": "GameScene",
+      "cue": "board gives way to scale chips (f846)",
+      "optional": true
+    },
+    {
+      "at_s": 32.0,
+      "sfx_id": "pop-reveal",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "linear chip"
+    },
+    {
+      "at_s": 32.47,
+      "sfx_id": "pop-reveal",
+      "gain_db": 0,
+      "shot": "GameScene",
+      "cue": "binary 1M chip"
+    },
+    {
+      "at_s": 33.8,
+      "sfx_id": "pop-reveal",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "binary 1B chip \u2014 on 'thirty'"
+    },
+    {
+      "at_s": 35.8,
+      "sfx_id": "pop-reveal",
+      "gain_db": 2,
+      "shot": "GameScene",
+      "cue": "\u00d72 = +1 line \u2014 on 'Every doubling'"
+    },
+    {
+      "at_s": 39.6,
+      "sfx_id": "whoosh-soft",
+      "gain_db": -3,
+      "shot": "GameScene",
+      "cue": "crossfade to loop composition (f1188)"
+    },
+    {
+      "at_s": 40.8,
+      "sfx_id": "impact-soft",
+      "gain_db": -2,
+      "shot": "GameScene",
+      "cue": "loop punch \u2014 settles into hook frame"
+    }
+  ]
+}
