@@ -241,7 +241,7 @@ async function runOnce(deps: ClaudeCodeDeps, args: string[], input: string, sign
 }
 
 // Anchored to the CLI's own error sentences (the start of its `result` field, or of stderr): a stray "429" in text is not a refusal.
-const LIMIT = /^(?:Claude AI usage limit reached|You(?:'|\u2019)ve (?:hit|reached) your [\w\s-]*limit|API Error: 429\b|API Error: Rate limit)/i;
+export const LIMIT = /^(?:Claude AI usage limit reached|You(?:'|\u2019)ve (?:hit|reached) your [\w\s-]*limit|API Error: 429\b|API Error: Rate limit)/i;
 const LOGIN = /^(?:Invalid API key|Not logged in|Please run \/login|OAuth token (?:has expired|has been revoked)|API Error: 401\b)/i;
 
 const CANCELLED = "The stage was cancelled, so Claude Code was stopped.";
