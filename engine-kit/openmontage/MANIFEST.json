@@ -303,6 +303,10 @@
       "to": "engine-kit/openmontage/ref/schemas/artifacts/publish_log.schema.json"
     },
     {
+      "from": "schemas/artifacts/decision_log.schema.json",
+      "to": "engine-kit/openmontage/ref/schemas/artifacts/decision_log.schema.json"
+    },
+    {
       "from": "styles/clean-professional.yaml",
       "to": "engine-kit/openmontage/ref/styles/clean-professional.yaml"
     },
