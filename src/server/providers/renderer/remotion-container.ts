@@ -31,7 +31,7 @@ import type { Renderer, RenderArgs } from "./index";
 // container made inside /out could not be emptied by the worker on Linux; it stays in the attempt folder for the sweep.
 
 export const ASSET_EXT: ReadonlySet<string> = new Set([".png", ".jpg", ".jpeg", ".webp", ".mp4"]);
-const AUDIO_EXT = new Set([".wav", ".mp3", ".flac", ".m4a", ".aac"]);
+export const AUDIO_EXT: ReadonlySet<string> = new Set([".wav", ".mp3", ".flac", ".m4a", ".aac"]);
 const ASSET_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/; // same rule as the scene schema
 const CONTAINER_ID = /^[0-9a-f]{12,64}$/;
 const MOUNT_SAFE = /^[^:,\0\r\n]+$/;

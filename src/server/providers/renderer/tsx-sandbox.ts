@@ -35,14 +35,16 @@ export interface TsxRenderPlan {
 export type TsxRenderPlanInput = Omit<RenderArgsInput, "limits" | "extra" | "entry"> & {
   /** The kit render settings (EngineConfig.render); the TSX plan is clamped below them. */
   config: { timeoutS: number; cpus: number; memoryMb: number; pids: number };
-  /** "stills": the preflight frames as /out/still-<n>.png; "video": /out/out.mp4. Same flags and limits for both. */
-  mode: "stills" | "video";
+  /** "stills": the preflight frames as /out/still-<n>.png; "video": /out/out.mp4. The om- modes draw an OpenMontage scene list instead. Same flags and limits for all. */
+  mode: keyof typeof TSX_ENTRY;
 };
 
-/** render-entry.mjs arguments per TSX mode (/in holds video.tsx, props.json, meta.json and public/). */
+/** render-entry.mjs arguments per mode (/in holds video.tsx (TSX only), props.json, meta.json and public/). */
 export const TSX_ENTRY = {
   stills: ["/in", "/out", "--tsx-stills"],
   video: ["/in", "/out/out.mp4", "--tsx"],
+  "om-stills": ["/in", "/out", "--om-stills"],
+  "om-video": ["/in", "/out/out.mp4", "--om"],
 } as const;
 
 /** The docker args and limits of one TSX render. Throws on unusable settings (never falls back to looser ones). */
@@ -51,7 +53,7 @@ export function tsxRenderPlan(o: TsxRenderPlanInput): TsxRenderPlan {
   for (const v of [c.timeoutS, c.cpus, c.memoryMb, c.pids]) {
     if (!Number.isFinite(v) || v <= 0) throw new Error("invalid render settings");
   }
-  if (mode !== "stills" && mode !== "video") throw new Error("invalid TSX render mode");
+  if (!Object.hasOwn(TSX_ENTRY, mode)) throw new Error("invalid TSX render mode");
   const limits = {
     cpus: Math.min(c.cpus, TSX_SANDBOX.cpus),
     memoryMb: Math.min(c.memoryMb, TSX_SANDBOX.memoryMb),

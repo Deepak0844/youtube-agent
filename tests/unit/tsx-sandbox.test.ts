@@ -33,6 +33,14 @@ describe("tsxRenderPlan", () => {
     expect(stills.args.slice(0, -3)).toEqual(p.args.slice(0, -3)); // same flags and mounts for the preflight stills
     expect(stills.timeoutMs).toBe(p.timeoutMs);
     expect(() => tsxRenderPlan({ ...base, mode: "kit" as never, config: kitConfig })).toThrow();
+    // OpenMontage scene lists: the same sandbox, only the render-entry mode differs
+    for (const [mode, tail] of [["om-video", ["/in", "/out/out.mp4", "--om"]], ["om-stills", ["/in", "/out", "--om-stills"]]] as const) {
+      const om = tsxRenderPlan({ ...base, mode, config: kitConfig });
+      expect(om.args.slice(-3)).toEqual(tail);
+      expect(om.args.slice(0, -3)).toEqual(p.args.slice(0, -3));
+      expect(om.timeoutMs).toBe(p.timeoutMs);
+    }
+    expect(() => tsxRenderPlan({ ...base, mode: "toString" as never, config: kitConfig })).toThrow();
     expect(p.timeoutMs).toBe(300_000);
     expect(p.maxVideoBytes).toBe(512 * 1024 * 1024);
     expect(p.maxOutputBytes).toBe(256 * 1024);

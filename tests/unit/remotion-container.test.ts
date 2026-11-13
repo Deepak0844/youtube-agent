@@ -331,8 +331,9 @@ describe("render-entry.mjs modes", () => {
     expect(src).toContain('const tsx = mode === "--tsx" || mode === "--tsx-stills";');
     expect(src).not.toMatch(/const tsx = mode !== "kit"/);
   });
-  it("every non-TSX mode renders through the kit entry with props.json", () => {
-    expect(src).toContain('tsx ? "tsx-index.ts" : "index.ts"'); // only the two TSX modes use the TSX bundle
-    expect(src).toContain('publicDir: tsx ? path.join(inDir, "public") : inDir');
+  it("every kit mode renders through the kit entry with props.json; TSX and OpenMontage modes have their own", () => {
+    expect(src).toContain('tsx ? "tsx-index.ts" : om ? "om-index.ts" : "index.ts"'); // only the two TSX modes use the TSX bundle, only the two OM modes the OM one
+    expect(src).toContain('const om = mode === "--om" || mode === "--om-stills";');
+    expect(src).toContain('publicDir: tsx || om ? path.join(inDir, "public") : inDir');
   });
 });

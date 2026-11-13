@@ -206,21 +206,8 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
     } catch (e) {
       return failure("infra", `The TSX render folders could not be prepared (${e instanceof Error ? e.message : "unknown"}).`);
     }
-    const assets = Object.entries(input.assets ?? {});
-    if (assets.length > MAX_ASSETS) return failure("infra", `A scene may use at most ${MAX_ASSETS} files.`);
-    for (const [name, src] of assets) {
-      if (!isStaticName(name) || !ASSET_EXT.has(path.extname(name).toLowerCase()) || typeof src !== "string" || !path.isAbsolute(src)) {
-        return failure("infra", `The scene file '${echo(name)}' has an unusable name or type.`);
-      }
-      const dest = path.join(publicDir, name);
-      try {
-        await mkdir(path.dirname(dest), { recursive: true, mode: 0o755 });
-        for (let d = path.dirname(dest); d.length > publicDir.length && d.startsWith(publicDir + path.sep); d = path.dirname(d)) await chmod(d, 0o755);
-        await copyRegular(src, dest);
-      } catch {
-        return failure("infra", `The scene file '${echo(name)}' could not be staged.`);
-      }
-    }
+    const staged = await stagePublicAssets(publicDir, input.assets ?? {});
+    if (staged) return failure("infra", staged);
     try {
       await realDir(inDir, "input");
       await realDir(outDir, "output");
@@ -332,6 +319,26 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
   } finally {
     await cleanup();
   }
+}
+
+/** Copies each staticFile() name's host file into publicDir (no symlink followed). Returns a problem sentence, or null when all are staged. */
+export async function stagePublicAssets(publicDir: string, assets: Record<string, string>, exts: ReadonlySet<string> = ASSET_EXT): Promise<string | null> {
+  const list = Object.entries(assets);
+  if (list.length > MAX_ASSETS) return `A scene may use at most ${MAX_ASSETS} files.`;
+  for (const [name, src] of list) {
+    if (!isStaticName(name) || !exts.has(path.extname(name).toLowerCase()) || typeof src !== "string" || !path.isAbsolute(src)) {
+      return `The scene file '${echo(name)}' has an unusable name or type.`;
+    }
+    const dest = path.join(publicDir, name);
+    try {
+      await mkdir(path.dirname(dest), { recursive: true, mode: 0o755 });
+      for (let d = path.dirname(dest); d.length > publicDir.length && d.startsWith(publicDir + path.sep); d = path.dirname(d)) await chmod(d, 0o755);
+      await copyRegular(src, dest);
+    } catch {
+      return `The scene file '${echo(name)}' could not be staged.`;
+    }
+  }
+  return null;
 }
 
 /** Copies still-<f>.png out of the container folder (no symlink, size-capped) and decodes it in a child. A string is a problem. */

@@ -92,7 +92,7 @@ describe("render-entry.mjs landscape mode", () => {
   const src = readFileSync(path.join(process.cwd(), "remotion/kit/render-entry.mjs"), "utf8");
   it("is a kit-style mode that picks the kit-video-landscape composition", () => {
     expect(src).toContain('mode === "--landscape" ? "kit-video-landscape"');
-    expect(src).toContain('["kit", "--landscape", "--thumbnail", "--tsx", "--tsx-stills"]');
+    expect(src).toContain('["kit", "--landscape", "--thumbnail", "--tsx", "--tsx-stills", "--om", "--om-stills"]');
   });
   it("takes a chapter chunk only in landscape mode, in one exact form, and checks the range against the composition", () => {
     expect(src).toContain('const chunkArgs = mode === "--landscape" && CHUNK !== null && (extra.length === 1 || (extra.length === 2 && extra[1] === "--muted"));');
