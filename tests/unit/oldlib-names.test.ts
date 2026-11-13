@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { OLD_LIBS } from "@/server/core/oldlib-names";
-import { buildOldlibDts, NAMES_FILE, namesModule, TYPES_DIR } from "../../scripts/sync-oldlib-dts";
+import { buildOldlibDts, INDEX_FILE, indexDoc, NAMES_FILE, namesModule, TYPES_DIR } from "../../scripts/sync-oldlib-dts";
 
 // The old libraries' declarations and the allowed yt-old names are GENERATED (scripts/sync-oldlib-dts.ts); this fails when a
 // library changed without re-running the generator, so the allow-list can never drift from what the files export.
@@ -12,6 +12,7 @@ describe("yt-old declarations and names", () => {
 
   it("generated_names_match_the_libraries", () => {
     expect(readFileSync(NAMES_FILE, "utf8")).toBe(namesModule(dts));
+    expect(readFileSync(INDEX_FILE, "utf8")).toBe(indexDoc(dts));
     for (const [rel, text] of dts) expect(readFileSync(path.join(TYPES_DIR, rel), "utf8"), rel).toBe(text);
   });
 

@@ -1,0 +1,601 @@
+{
+  "id": "short-18-window-never-grows",
+  "title": "The Window Never Grows",
+  "composition": "Short18ContextWindow",
+  "format": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationSec": 41
+  },
+  "voiceStatus": "elevenlabs:TX3LPaxmHKxFdv7VOQHJ",
+  "vo": [
+    {
+      "beat": "hook",
+      "text": "Your chat window never grows, not even after ten thousand messages.",
+      "start": 0.4,
+      "end": 4.62,
+      "words": [
+        {
+          "w": "Your",
+          "start": 0.4,
+          "end": 0.621
+        },
+        {
+          "w": "chat",
+          "start": 0.679,
+          "end": 0.888
+        },
+        {
+          "w": "window",
+          "start": 0.934,
+          "end": 1.166
+        },
+        {
+          "w": "never",
+          "start": 1.236,
+          "end": 1.433
+        },
+        {
+          "w": "grows,",
+          "start": 1.491,
+          "end": 1.991
+        },
+        {
+          "w": "not",
+          "start": 2.234,
+          "end": 2.385
+        },
+        {
+          "w": "even",
+          "start": 2.432,
+          "end": 2.571
+        },
+        {
+          "w": "after",
+          "start": 2.606,
+          "end": 2.803
+        },
+        {
+          "w": "ten",
+          "start": 2.861,
+          "end": 3.012
+        },
+        {
+          "w": "thousand",
+          "start": 3.07,
+          "end": 3.372
+        },
+        {
+          "w": "messages.",
+          "start": 3.419,
+          "end": 4.626
+        }
+      ]
+    },
+    {
+      "beat": "setup",
+      "text": "Each time you hit send, the model doesn't recall the chat — it rereads the whole thing, every turn.",
+      "start": 4.77,
+      "end": 11.7,
+      "words": [
+        {
+          "w": "Each",
+          "start": 4.77,
+          "end": 5.032
+        },
+        {
+          "w": "time",
+          "start": 5.077,
+          "end": 5.271
+        },
+        {
+          "w": "you",
+          "start": 5.305,
+          "end": 5.373
+        },
+        {
+          "w": "hit",
+          "start": 5.442,
+          "end": 5.567
+        },
+        {
+          "w": "send,",
+          "start": 5.624,
+          "end": 6.022
+        },
+        {
+          "w": "the",
+          "start": 6.192,
+          "end": 6.295
+        },
+        {
+          "w": "model",
+          "start": 6.363,
+          "end": 6.614
+        },
+        {
+          "w": "doesn't",
+          "start": 6.682,
+          "end": 6.955
+        },
+        {
+          "w": "recall",
+          "start": 7.001,
+          "end": 7.342
+        },
+        {
+          "w": "the",
+          "start": 7.399,
+          "end": 7.468
+        },
+        {
+          "w": "chat",
+          "start": 7.525,
+          "end": 7.82
+        },
+        {
+          "w": "—",
+          "start": 7.968,
+          "end": 8.014
+        },
+        {
+          "w": "it",
+          "start": 8.446,
+          "end": 8.572
+        },
+        {
+          "w": "rereads",
+          "start": 8.639,
+          "end": 9.083
+        },
+        {
+          "w": "the",
+          "start": 9.13,
+          "end": 9.209
+        },
+        {
+          "w": "whole",
+          "start": 9.266,
+          "end": 9.505
+        },
+        {
+          "w": "thing,",
+          "start": 9.539,
+          "end": 9.96
+        },
+        {
+          "w": "every",
+          "start": 10.278,
+          "end": 10.563
+        },
+        {
+          "w": "turn.",
+          "start": 10.609,
+          "end": 11.69
+        }
+      ]
+    },
+    {
+      "beat": "setup",
+      "text": "That reread has a hard limit: a context window, measured in tokens.",
+      "start": 11.74,
+      "end": 16.43,
+      "words": [
+        {
+          "w": "That",
+          "start": 11.74,
+          "end": 11.985
+        },
+        {
+          "w": "reread",
+          "start": 12.053,
+          "end": 12.355
+        },
+        {
+          "w": "has",
+          "start": 12.399,
+          "end": 12.499
+        },
+        {
+          "w": "a",
+          "start": 12.544,
+          "end": 12.566
+        },
+        {
+          "w": "hard",
+          "start": 12.622,
+          "end": 12.779
+        },
+        {
+          "w": "limit:",
+          "start": 12.835,
+          "end": 13.214
+        },
+        {
+          "w": "a",
+          "start": 13.527,
+          "end": 13.583
+        },
+        {
+          "w": "context",
+          "start": 13.672,
+          "end": 14.152
+        },
+        {
+          "w": "window,",
+          "start": 14.208,
+          "end": 14.632
+        },
+        {
+          "w": "measured",
+          "start": 14.744,
+          "end": 15.034
+        },
+        {
+          "w": "in",
+          "start": 15.068,
+          "end": 15.112
+        },
+        {
+          "w": "tokens.",
+          "start": 15.168,
+          "end": 16.43
+        }
+      ]
+    },
+    {
+      "beat": "reveal",
+      "text": "Once it's full, the oldest messages get pushed out automatically — gone, not faded, to make room for new ones.",
+      "start": 16.48,
+      "end": 23.78,
+      "words": [
+        {
+          "w": "Once",
+          "start": 16.48,
+          "end": 16.78
+        },
+        {
+          "w": "it's",
+          "start": 16.813,
+          "end": 16.936
+        },
+        {
+          "w": "full,",
+          "start": 16.98,
+          "end": 17.403
+        },
+        {
+          "w": "the",
+          "start": 17.635,
+          "end": 17.747
+        },
+        {
+          "w": "oldest",
+          "start": 17.813,
+          "end": 18.114
+        },
+        {
+          "w": "messages",
+          "start": 18.169,
+          "end": 18.547
+        },
+        {
+          "w": "get",
+          "start": 18.592,
+          "end": 18.714
+        },
+        {
+          "w": "pushed",
+          "start": 18.758,
+          "end": 19.025
+        },
+        {
+          "w": "out",
+          "start": 19.069,
+          "end": 19.192
+        },
+        {
+          "w": "automatically",
+          "start": 19.236,
+          "end": 19.869
+        },
+        {
+          "w": "—",
+          "start": 20.036,
+          "end": 20.103
+        },
+        {
+          "w": "gone,",
+          "start": 20.336,
+          "end": 20.769
+        },
+        {
+          "w": "not",
+          "start": 20.969,
+          "end": 21.147
+        },
+        {
+          "w": "faded,",
+          "start": 21.214,
+          "end": 21.658
+        },
+        {
+          "w": "to",
+          "start": 21.825,
+          "end": 21.914
+        },
+        {
+          "w": "make",
+          "start": 21.969,
+          "end": 22.125
+        },
+        {
+          "w": "room",
+          "start": 22.169,
+          "end": 22.347
+        },
+        {
+          "w": "for",
+          "start": 22.403,
+          "end": 22.504
+        },
+        {
+          "w": "new",
+          "start": 22.559,
+          "end": 22.681
+        },
+        {
+          "w": "ones.",
+          "start": 22.736,
+          "end": 23.77
+        }
+      ]
+    },
+    {
+      "beat": "reveal",
+      "text": "But even messages still inside that window quietly get less reliable, the further back they sit.",
+      "start": 23.82,
+      "end": 29.62,
+      "words": [
+        {
+          "w": "But",
+          "start": 23.82,
+          "end": 24.017
+        },
+        {
+          "w": "even",
+          "start": 24.064,
+          "end": 24.226
+        },
+        {
+          "w": "messages",
+          "start": 24.296,
+          "end": 24.749
+        },
+        {
+          "w": "still",
+          "start": 24.807,
+          "end": 25.085
+        },
+        {
+          "w": "inside",
+          "start": 25.167,
+          "end": 25.55
+        },
+        {
+          "w": "that",
+          "start": 25.573,
+          "end": 25.701
+        },
+        {
+          "w": "window",
+          "start": 25.759,
+          "end": 26.026
+        },
+        {
+          "w": "quietly",
+          "start": 26.096,
+          "end": 26.467
+        },
+        {
+          "w": "get",
+          "start": 26.514,
+          "end": 26.641
+        },
+        {
+          "w": "less",
+          "start": 26.688,
+          "end": 26.862
+        },
+        {
+          "w": "reliable,",
+          "start": 26.908,
+          "end": 27.57
+        },
+        {
+          "w": "the",
+          "start": 27.744,
+          "end": 27.837
+        },
+        {
+          "w": "further",
+          "start": 27.883,
+          "end": 28.127
+        },
+        {
+          "w": "back",
+          "start": 28.162,
+          "end": 28.313
+        },
+        {
+          "w": "they",
+          "start": 28.348,
+          "end": 28.464
+        },
+        {
+          "w": "sit.",
+          "start": 28.522,
+          "end": 29.625
+        }
+      ]
+    },
+    {
+      "beat": "twist",
+      "text": "Your screen still shows everything. The model already forgot some of it, and barely trusts the rest.",
+      "start": 30.05,
+      "end": 35.06,
+      "words": [
+        {
+          "w": "Your",
+          "start": 30.05,
+          "end": 30.236
+        },
+        {
+          "w": "screen",
+          "start": 30.271,
+          "end": 30.549
+        },
+        {
+          "w": "still",
+          "start": 30.584,
+          "end": 30.758
+        },
+        {
+          "w": "shows",
+          "start": 30.805,
+          "end": 31.002
+        },
+        {
+          "w": "everything.",
+          "start": 31.048,
+          "end": 31.571
+        },
+        {
+          "w": "The",
+          "start": 31.896,
+          "end": 32.012
+        },
+        {
+          "w": "model",
+          "start": 32.07,
+          "end": 32.326
+        },
+        {
+          "w": "already",
+          "start": 32.395,
+          "end": 32.639
+        },
+        {
+          "w": "forgot",
+          "start": 32.697,
+          "end": 33.011
+        },
+        {
+          "w": "some",
+          "start": 33.057,
+          "end": 33.208
+        },
+        {
+          "w": "of",
+          "start": 33.243,
+          "end": 33.289
+        },
+        {
+          "w": "it,",
+          "start": 33.336,
+          "end": 33.417
+        },
+        {
+          "w": "and",
+          "start": 33.44,
+          "end": 33.533
+        },
+        {
+          "w": "barely",
+          "start": 33.591,
+          "end": 33.858
+        },
+        {
+          "w": "trusts",
+          "start": 33.893,
+          "end": 34.148
+        },
+        {
+          "w": "the",
+          "start": 34.183,
+          "end": 34.253
+        },
+        {
+          "w": "rest.",
+          "start": 34.299,
+          "end": 35.066
+        }
+      ]
+    },
+    {
+      "beat": "loop",
+      "text": "The window never grows. That's why it forgets.",
+      "start": 36.65,
+      "end": 39.62,
+      "words": [
+        {
+          "w": "The",
+          "start": 36.65,
+          "end": 36.824
+        },
+        {
+          "w": "window",
+          "start": 36.871,
+          "end": 37.126
+        },
+        {
+          "w": "never",
+          "start": 37.196,
+          "end": 37.405
+        },
+        {
+          "w": "grows.",
+          "start": 37.463,
+          "end": 37.985
+        },
+        {
+          "w": "That's",
+          "start": 38.368,
+          "end": 38.6
+        },
+        {
+          "w": "why",
+          "start": 38.624,
+          "end": 38.717
+        },
+        {
+          "w": "it",
+          "start": 38.775,
+          "end": 38.833
+        },
+        {
+          "w": "forgets.",
+          "start": 38.879,
+          "end": 39.622
+        }
+      ]
+    }
+  ],
+  "timeline": {
+    "hookEnd": 4.47,
+    "setupStart": 4.77,
+    "windowFrameAppearAt": 11.74,
+    "tokenStripRevealAt": 16.48,
+    "fifoEvictTicks": [
+      17.5,
+      19.0,
+      20.6,
+      22.1
+    ],
+    "contextRotDimAt": 23.82,
+    "twistSplitAt": 30.05,
+    "loopStart": 36.65
+  },
+  "language": "en"
+}

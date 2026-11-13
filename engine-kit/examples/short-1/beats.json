@@ -1,0 +1,825 @@
+{
+  "id": "short-1-chess",
+  "title": "The 4-Move Checkmate — Punished",
+  "composition": "Short1Chess",
+  "format": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationSec": 42
+  },
+  "voiceStatus": "elevenlabs:TX3LPaxmHKxFdv7VOQHJ",
+  "vo": [
+    {
+      "beat": "hook",
+      "text": "This trap wins millions of games — in just four moves.",
+      "start": 0.4,
+      "end": 3.92,
+      "words": [
+        {
+          "w": "This",
+          "start": 0.4,
+          "end": 0.632
+        },
+        {
+          "w": "trap",
+          "start": 0.69,
+          "end": 0.957
+        },
+        {
+          "w": "wins",
+          "start": 1.027,
+          "end": 1.248
+        },
+        {
+          "w": "millions",
+          "start": 1.364,
+          "end": 1.747
+        },
+        {
+          "w": "of",
+          "start": 1.782,
+          "end": 1.84
+        },
+        {
+          "w": "games",
+          "start": 1.909,
+          "end": 2.258
+        },
+        {
+          "w": "—",
+          "start": 2.374,
+          "end": 2.443
+        },
+        {
+          "w": "in",
+          "start": 2.571,
+          "end": 2.687
+        },
+        {
+          "w": "just",
+          "start": 2.745,
+          "end": 2.919
+        },
+        {
+          "w": "four",
+          "start": 2.977,
+          "end": 3.198
+        },
+        {
+          "w": "moves.",
+          "start": 3.256,
+          "end": 3.929
+        }
+      ]
+    },
+    {
+      "beat": "trap",
+      "text": "Pawn to e4.",
+      "start": 4.1,
+      "end": 5.63,
+      "words": [
+        {
+          "w": "Pawn",
+          "start": 4.1,
+          "end": 4.402
+        },
+        {
+          "w": "to",
+          "start": 4.46,
+          "end": 4.518
+        },
+        {
+          "w": "e4.",
+          "start": 4.588,
+          "end": 5.633
+        }
+      ]
+    },
+    {
+      "beat": "trap",
+      "text": "Bishop c4 — aiming at f7, the weakest square in Black's camp.",
+      "start": 5.7,
+      "end": 9.6,
+      "words": [
+        {
+          "w": "Bishop",
+          "start": 5.7,
+          "end": 5.977
+        },
+        {
+          "w": "c4",
+          "start": 6.031,
+          "end": 6.325
+        },
+        {
+          "w": "—",
+          "start": 6.442,
+          "end": 6.513
+        },
+        {
+          "w": "aiming",
+          "start": 6.647,
+          "end": 6.861
+        },
+        {
+          "w": "at",
+          "start": 6.897,
+          "end": 6.977
+        },
+        {
+          "w": "f7,",
+          "start": 7.031,
+          "end": 7.495
+        },
+        {
+          "w": "the",
+          "start": 7.585,
+          "end": 7.692
+        },
+        {
+          "w": "weakest",
+          "start": 7.736,
+          "end": 7.978
+        },
+        {
+          "w": "square",
+          "start": 8.004,
+          "end": 8.245
+        },
+        {
+          "w": "in",
+          "start": 8.29,
+          "end": 8.37
+        },
+        {
+          "w": "Black's",
+          "start": 8.424,
+          "end": 8.674
+        },
+        {
+          "w": "camp.",
+          "start": 8.71,
+          "end": 9.594
+        }
+      ]
+    },
+    {
+      "beat": "trap",
+      "text": "Queen h5.",
+      "start": 9.4,
+      "end": 10.56,
+      "words": [
+        {
+          "w": "Queen",
+          "start": 9.4,
+          "end": 9.649
+        },
+        {
+          "w": "h5.",
+          "start": 9.687,
+          "end": 10.55
+        }
+      ]
+    },
+    {
+      "beat": "trap",
+      "text": "If Black plays the natural move —",
+      "start": 10.6,
+      "end": 12.5,
+      "words": [
+        {
+          "w": "If",
+          "start": 10.6,
+          "end": 10.786
+        },
+        {
+          "w": "Black",
+          "start": 10.855,
+          "end": 11.111
+        },
+        {
+          "w": "plays",
+          "start": 11.169,
+          "end": 11.436
+        },
+        {
+          "w": "the",
+          "start": 11.471,
+          "end": 11.54
+        },
+        {
+          "w": "natural",
+          "start": 11.575,
+          "end": 11.889
+        },
+        {
+          "w": "move",
+          "start": 11.947,
+          "end": 12.225
+        },
+        {
+          "w": "—",
+          "start": 12.249,
+          "end": 12.504
+        }
+      ]
+    },
+    {
+      "beat": "trap",
+      "text": "checkmate. Four moves. Game over.",
+      "start": 12.6,
+      "end": 14.85,
+      "words": [
+        {
+          "w": "checkmate.",
+          "start": 12.6,
+          "end": 13.073
+        },
+        {
+          "w": "Four",
+          "start": 13.234,
+          "end": 13.413
+        },
+        {
+          "w": "moves.",
+          "start": 13.448,
+          "end": 13.752
+        },
+        {
+          "w": "Game",
+          "start": 13.886,
+          "end": 14.065
+        },
+        {
+          "w": "over.",
+          "start": 14.092,
+          "end": 14.851
+        }
+      ]
+    },
+    {
+      "beat": "quiz",
+      "text": "But right here, Black has one move that stops everything.",
+      "start": 14.9,
+      "end": 17.86,
+      "words": [
+        {
+          "w": "But",
+          "start": 14.9,
+          "end": 15.064
+        },
+        {
+          "w": "right",
+          "start": 15.109,
+          "end": 15.255
+        },
+        {
+          "w": "here,",
+          "start": 15.291,
+          "end": 15.483
+        },
+        {
+          "w": "Black",
+          "start": 15.51,
+          "end": 15.71
+        },
+        {
+          "w": "has",
+          "start": 15.747,
+          "end": 15.847
+        },
+        {
+          "w": "one",
+          "start": 15.938,
+          "end": 16.12
+        },
+        {
+          "w": "move",
+          "start": 16.156,
+          "end": 16.33
+        },
+        {
+          "w": "that",
+          "start": 16.357,
+          "end": 16.448
+        },
+        {
+          "w": "stops",
+          "start": 16.476,
+          "end": 16.757
+        },
+        {
+          "w": "everything.",
+          "start": 16.821,
+          "end": 17.85
+        }
+      ]
+    },
+    {
+      "beat": "quiz",
+      "text": "Pause. Find it.",
+      "start": 17.9,
+      "end": 19.89,
+      "words": [
+        {
+          "w": "Pause.",
+          "start": 17.9,
+          "end": 18.376
+        },
+        {
+          "w": "Find",
+          "start": 18.759,
+          "end": 19.015
+        },
+        {
+          "w": "it.",
+          "start": 19.061,
+          "end": 19.897
+        }
+      ]
+    },
+    {
+      "beat": "punish",
+      "text": "Pawn g6. It hits the queen — and kills the mate.",
+      "start": 20.1,
+      "end": 23.46,
+      "words": [
+        {
+          "w": "Pawn",
+          "start": 20.1,
+          "end": 20.379
+        },
+        {
+          "w": "g6.",
+          "start": 20.434,
+          "end": 20.991
+        },
+        {
+          "w": "It",
+          "start": 21.243,
+          "end": 21.352
+        },
+        {
+          "w": "hits",
+          "start": 21.379,
+          "end": 21.523
+        },
+        {
+          "w": "the",
+          "start": 21.55,
+          "end": 21.604
+        },
+        {
+          "w": "queen",
+          "start": 21.64,
+          "end": 21.865
+        },
+        {
+          "w": "—",
+          "start": 21.937,
+          "end": 21.973
+        },
+        {
+          "w": "and",
+          "start": 22.063,
+          "end": 22.162
+        },
+        {
+          "w": "kills",
+          "start": 22.216,
+          "end": 22.415
+        },
+        {
+          "w": "the",
+          "start": 22.45,
+          "end": 22.505
+        },
+        {
+          "w": "mate.",
+          "start": 22.532,
+          "end": 23.45
+        }
+      ]
+    },
+    {
+      "beat": "punish",
+      "text": "The queen runs to f3, eyeing f7 again —",
+      "start": 23.5,
+      "end": 26.19,
+      "words": [
+        {
+          "w": "The",
+          "start": 23.5,
+          "end": 23.628
+        },
+        {
+          "w": "queen",
+          "start": 23.674,
+          "end": 23.86
+        },
+        {
+          "w": "runs",
+          "start": 23.906,
+          "end": 24.104
+        },
+        {
+          "w": "to",
+          "start": 24.139,
+          "end": 24.208
+        },
+        {
+          "w": "f3,",
+          "start": 24.289,
+          "end": 24.719
+        },
+        {
+          "w": "eyeing",
+          "start": 24.754,
+          "end": 24.986
+        },
+        {
+          "w": "f7",
+          "start": 25.067,
+          "end": 25.462
+        },
+        {
+          "w": "again",
+          "start": 25.532,
+          "end": 25.81
+        },
+        {
+          "w": "—",
+          "start": 25.868,
+          "end": 26.194
+        }
+      ]
+    },
+    {
+      "beat": "punish",
+      "text": "but knight f6 slams the door.",
+      "start": 26.4,
+      "end": 28.66,
+      "words": [
+        {
+          "w": "but",
+          "start": 26.4,
+          "end": 26.591
+        },
+        {
+          "w": "knight",
+          "start": 26.641,
+          "end": 26.832
+        },
+        {
+          "w": "f6",
+          "start": 26.882,
+          "end": 27.224
+        },
+        {
+          "w": "slams",
+          "start": 27.274,
+          "end": 27.565
+        },
+        {
+          "w": "the",
+          "start": 27.596,
+          "end": 27.655
+        },
+        {
+          "w": "door.",
+          "start": 27.686,
+          "end": 28.65
+        }
+      ]
+    },
+    {
+      "beat": "punish",
+      "text": "f7 is safe. Forever.",
+      "start": 28.7,
+      "end": 31.1,
+      "words": [
+        {
+          "w": "f7",
+          "start": 28.7,
+          "end": 29.039
+        },
+        {
+          "w": "is",
+          "start": 29.102,
+          "end": 29.165
+        },
+        {
+          "w": "safe.",
+          "start": 29.2,
+          "end": 29.575
+        },
+        {
+          "w": "Forever.",
+          "start": 30.039,
+          "end": 31.093
+        }
+      ]
+    },
+    {
+      "beat": "damage",
+      "text": "Now count the moves.",
+      "start": 30.7,
+      "end": 32.26,
+      "words": [
+        {
+          "w": "Now",
+          "start": 30.7,
+          "end": 30.905
+        },
+        {
+          "w": "count",
+          "start": 30.98,
+          "end": 31.163
+        },
+        {
+          "w": "the",
+          "start": 31.195,
+          "end": 31.26
+        },
+        {
+          "w": "moves.",
+          "start": 31.292,
+          "end": 32.25
+        }
+      ]
+    },
+    {
+      "beat": "damage",
+      "text": "White's queen danced around for nothing.",
+      "start": 32.3,
+      "end": 34.36,
+      "words": [
+        {
+          "w": "White's",
+          "start": 32.3,
+          "end": 32.606
+        },
+        {
+          "w": "queen",
+          "start": 32.645,
+          "end": 32.852
+        },
+        {
+          "w": "danced",
+          "start": 32.911,
+          "end": 33.168
+        },
+        {
+          "w": "around",
+          "start": 33.197,
+          "end": 33.404
+        },
+        {
+          "w": "for",
+          "start": 33.443,
+          "end": 33.532
+        },
+        {
+          "w": "nothing.",
+          "start": 33.581,
+          "end": 34.35
+        }
+      ]
+    },
+    {
+      "beat": "damage",
+      "text": "Black built an army — every move with tempo.",
+      "start": 34.4,
+      "end": 37.23,
+      "words": [
+        {
+          "w": "Black",
+          "start": 34.4,
+          "end": 34.667
+        },
+        {
+          "w": "built",
+          "start": 34.713,
+          "end": 34.888
+        },
+        {
+          "w": "an",
+          "start": 34.934,
+          "end": 34.992
+        },
+        {
+          "w": "army",
+          "start": 35.039,
+          "end": 35.294
+        },
+        {
+          "w": "—",
+          "start": 35.468,
+          "end": 35.596
+        },
+        {
+          "w": "every",
+          "start": 35.77,
+          "end": 35.979
+        },
+        {
+          "w": "move",
+          "start": 36.037,
+          "end": 36.234
+        },
+        {
+          "w": "with",
+          "start": 36.258,
+          "end": 36.374
+        },
+        {
+          "w": "tempo.",
+          "start": 36.42,
+          "end": 37.233
+        }
+      ]
+    },
+    {
+      "beat": "loop",
+      "text": "Strong players never fear the four-move mate…",
+      "start": 37.3,
+      "end": 39.81,
+      "words": [
+        {
+          "w": "Strong",
+          "start": 37.3,
+          "end": 37.683
+        },
+        {
+          "w": "players",
+          "start": 37.73,
+          "end": 38.043
+        },
+        {
+          "w": "never",
+          "start": 38.101,
+          "end": 38.275
+        },
+        {
+          "w": "fear",
+          "start": 38.333,
+          "end": 38.496
+        },
+        {
+          "w": "the",
+          "start": 38.542,
+          "end": 38.612
+        },
+        {
+          "w": "four-move",
+          "start": 38.658,
+          "end": 39.1
+        },
+        {
+          "w": "mate…",
+          "start": 39.134,
+          "end": 39.808
+        }
+      ]
+    },
+    {
+      "beat": "loop",
+      "text": "they feed on it.",
+      "start": 40.2,
+      "end": 41.26,
+      "words": [
+        {
+          "w": "they",
+          "start": 40.2,
+          "end": 40.386
+        },
+        {
+          "w": "feed",
+          "start": 40.455,
+          "end": 40.641
+        },
+        {
+          "w": "on",
+          "start": 40.699,
+          "end": 40.769
+        },
+        {
+          "w": "it.",
+          "start": 40.815,
+          "end": 41.268
+        }
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "id": "hook",
+      "start": 0.0,
+      "end": 3.2,
+      "visual": "title + mate-position board + CHECKMATE stamp, punch-in"
+    },
+    {
+      "id": "trap",
+      "start": 3.2,
+      "end": 14.4,
+      "visual": "persistent board plays 1.e4 e5 2.Bc4 Nc6 3.Qh5 Nf6?? 4.Qxf7# with threat arrows"
+    },
+    {
+      "id": "quiz",
+      "start": 14.4,
+      "end": 19.8,
+      "visual": "board rewinds to after 3.Qh5; pause card with countdown ring"
+    },
+    {
+      "id": "punish",
+      "start": 19.8,
+      "end": 30.0,
+      "visual": "g6! → Qf3 → Nf6! blocks; f7 turns green"
+    },
+    {
+      "id": "damage",
+      "start": 30.0,
+      "end": 37.4,
+      "visual": "queen path trace d1→h5→f3 dashed; green c6/f6/g6; two stat chips"
+    },
+    {
+      "id": "loop",
+      "start": 37.4,
+      "end": 42.0,
+      "visual": "crossfade to hook composition; last frame ≈ frame 0"
+    }
+  ],
+  "board": {
+    "hookFen": "r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR",
+    "movesGlobalSec": [
+      {
+        "from": "e2",
+        "to": "e4",
+        "at": 4.5
+      },
+      {
+        "from": "e7",
+        "to": "e5",
+        "at": 5.4
+      },
+      {
+        "from": "f1",
+        "to": "c4",
+        "at": 6.3
+      },
+      {
+        "from": "b8",
+        "to": "c6",
+        "at": 8.5
+      },
+      {
+        "from": "d1",
+        "to": "h5",
+        "at": 9.3
+      },
+      {
+        "from": "g8",
+        "to": "f6",
+        "at": 11.0
+      },
+      {
+        "from": "h5",
+        "to": "f7",
+        "at": 12.1,
+        "capture": true
+      },
+      {
+        "from": "f7",
+        "to": "h5",
+        "at": 15.2,
+        "restore": {
+          "sq": "f7",
+          "code": "bP"
+        },
+        "rewind": true
+      },
+      {
+        "from": "f6",
+        "to": "g8",
+        "at": 15.2,
+        "rewind": true
+      },
+      {
+        "from": "g7",
+        "to": "g6",
+        "at": 20.2
+      },
+      {
+        "from": "h5",
+        "to": "f3",
+        "at": 22.8
+      },
+      {
+        "from": "g8",
+        "to": "f6",
+        "at": 26.6
+      }
+    ]
+  }
+}

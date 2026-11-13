@@ -1,0 +1,575 @@
+{
+  "id": "short-2-math",
+  "title": "The ×11 Trick",
+  "composition": "Short2Math",
+  "format": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationSec": 42
+  },
+  "voiceStatus": "elevenlabs:TX3LPaxmHKxFdv7VOQHJ",
+  "vo": [
+    {
+      "beat": "hook",
+      "text": "Seventy-two times eleven. Two seconds. No calculator.",
+      "start": 0.4,
+      "end": 3.96,
+      "words": [
+        {
+          "w": "Seventy-two",
+          "start": 0.4,
+          "end": 0.883
+        },
+        {
+          "w": "times",
+          "start": 0.943,
+          "end": 1.159
+        },
+        {
+          "w": "eleven.",
+          "start": 1.209,
+          "end": 1.593
+        },
+        {
+          "w": "Two",
+          "start": 1.869,
+          "end": 2.017
+        },
+        {
+          "w": "seconds.",
+          "start": 2.077,
+          "end": 2.52
+        },
+        {
+          "w": "No",
+          "start": 2.845,
+          "end": 2.974
+        },
+        {
+          "w": "calculator.",
+          "start": 3.033,
+          "end": 3.95
+        }
+      ]
+    },
+    {
+      "beat": "teach",
+      "text": "Here's the trick school never taught you.",
+      "start": 4.0,
+      "end": 6.26,
+      "words": [
+        {
+          "w": "Here's",
+          "start": 4.0,
+          "end": 4.302
+        },
+        {
+          "w": "the",
+          "start": 4.337,
+          "end": 4.406
+        },
+        {
+          "w": "trick",
+          "start": 4.441,
+          "end": 4.639
+        },
+        {
+          "w": "school",
+          "start": 4.685,
+          "end": 4.952
+        },
+        {
+          "w": "never",
+          "start": 5.033,
+          "end": 5.231
+        },
+        {
+          "w": "taught",
+          "start": 5.277,
+          "end": 5.498
+        },
+        {
+          "w": "you.",
+          "start": 5.533,
+          "end": 6.276
+        }
+      ]
+    },
+    {
+      "beat": "teach",
+      "text": "Split the seven and the two.",
+      "start": 7.4,
+      "end": 9.06,
+      "words": [
+        {
+          "w": "Split",
+          "start": 7.4,
+          "end": 7.713
+        },
+        {
+          "w": "the",
+          "start": 7.748,
+          "end": 7.818
+        },
+        {
+          "w": "seven",
+          "start": 7.864,
+          "end": 8.108
+        },
+        {
+          "w": "and",
+          "start": 8.131,
+          "end": 8.201
+        },
+        {
+          "w": "the",
+          "start": 8.236,
+          "end": 8.306
+        },
+        {
+          "w": "two.",
+          "start": 8.329,
+          "end": 9.072
+        }
+      ]
+    },
+    {
+      "beat": "teach",
+      "text": "Add them — nine. Drop it in the middle.",
+      "start": 10.5,
+      "end": 13.66,
+      "words": [
+        {
+          "w": "Add",
+          "start": 10.5,
+          "end": 10.774
+        },
+        {
+          "w": "them",
+          "start": 10.808,
+          "end": 10.968
+        },
+        {
+          "w": "—",
+          "start": 11.082,
+          "end": 11.242
+        },
+        {
+          "w": "nine.",
+          "start": 11.515,
+          "end": 11.904
+        },
+        {
+          "w": "Drop",
+          "start": 12.28,
+          "end": 12.498
+        },
+        {
+          "w": "it",
+          "start": 12.543,
+          "end": 12.589
+        },
+        {
+          "w": "in",
+          "start": 12.612,
+          "end": 12.657
+        },
+        {
+          "w": "the",
+          "start": 12.691,
+          "end": 12.76
+        },
+        {
+          "w": "middle.",
+          "start": 12.783,
+          "end": 13.65
+        }
+      ]
+    },
+    {
+      "beat": "teach",
+      "text": "Seven ninety-two. Done.",
+      "start": 13.7,
+      "end": 15.99,
+      "words": [
+        {
+          "w": "Seven",
+          "start": 13.7,
+          "end": 13.959
+        },
+        {
+          "w": "ninety-two.",
+          "start": 14.004,
+          "end": 14.575
+        },
+        {
+          "w": "Done.",
+          "start": 15.111,
+          "end": 15.986
+        }
+      ]
+    },
+    {
+      "beat": "quiz",
+      "text": "Your turn. Forty-five times eleven. Pause.",
+      "start": 15.9,
+      "end": 19.76,
+      "words": [
+        {
+          "w": "Your",
+          "start": 15.9,
+          "end": 16.076
+        },
+        {
+          "w": "turn.",
+          "start": 16.107,
+          "end": 16.407
+        },
+        {
+          "w": "Forty-five",
+          "start": 16.863,
+          "end": 17.359
+        },
+        {
+          "w": "times",
+          "start": 17.39,
+          "end": 17.608
+        },
+        {
+          "w": "eleven.",
+          "start": 17.66,
+          "end": 18.063
+        },
+        {
+          "w": "Pause.",
+          "start": 18.684,
+          "end": 19.75
+        }
+      ]
+    },
+    {
+      "beat": "answer",
+      "text": "Four plus five is nine — four ninety-five. You just did it.",
+      "start": 19.8,
+      "end": 24.36,
+      "words": [
+        {
+          "w": "Four",
+          "start": 19.8,
+          "end": 20.001
+        },
+        {
+          "w": "plus",
+          "start": 20.049,
+          "end": 20.221
+        },
+        {
+          "w": "five",
+          "start": 20.268,
+          "end": 20.507
+        },
+        {
+          "w": "is",
+          "start": 20.536,
+          "end": 20.613
+        },
+        {
+          "w": "nine",
+          "start": 20.679,
+          "end": 20.976
+        },
+        {
+          "w": "—",
+          "start": 21.042,
+          "end": 21.081
+        },
+        {
+          "w": "four",
+          "start": 21.578,
+          "end": 21.817
+        },
+        {
+          "w": "ninety-five.",
+          "start": 21.96,
+          "end": 22.562
+        },
+        {
+          "w": "You",
+          "start": 23.06,
+          "end": 23.165
+        },
+        {
+          "w": "just",
+          "start": 23.222,
+          "end": 23.346
+        },
+        {
+          "w": "did",
+          "start": 23.385,
+          "end": 23.518
+        },
+        {
+          "w": "it.",
+          "start": 23.557,
+          "end": 24.35
+        }
+      ]
+    },
+    {
+      "beat": "carry",
+      "text": "But what if the digits pass nine?",
+      "start": 24.4,
+      "end": 27.14,
+      "words": [
+        {
+          "w": "But",
+          "start": 24.4,
+          "end": 24.597
+        },
+        {
+          "w": "what",
+          "start": 24.632,
+          "end": 24.76
+        },
+        {
+          "w": "if",
+          "start": 24.795,
+          "end": 24.853
+        },
+        {
+          "w": "the",
+          "start": 24.899,
+          "end": 24.969
+        },
+        {
+          "w": "digits",
+          "start": 25.027,
+          "end": 25.34
+        },
+        {
+          "w": "pass",
+          "start": 25.375,
+          "end": 25.631
+        },
+        {
+          "w": "nine?",
+          "start": 25.7,
+          "end": 27.14
+        }
+      ]
+    },
+    {
+      "beat": "carry",
+      "text": "Eighty-five times eleven. Eight plus five — thirteen. Drop the three… carry the one.",
+      "start": 27.4,
+      "end": 33.89,
+      "words": [
+        {
+          "w": "Eighty-five",
+          "start": 27.4,
+          "end": 27.934
+        },
+        {
+          "w": "times",
+          "start": 27.969,
+          "end": 28.201
+        },
+        {
+          "w": "eleven.",
+          "start": 28.259,
+          "end": 28.724
+        },
+        {
+          "w": "Eight",
+          "start": 28.967,
+          "end": 29.165
+        },
+        {
+          "w": "plus",
+          "start": 29.2,
+          "end": 29.409
+        },
+        {
+          "w": "five",
+          "start": 29.467,
+          "end": 29.85
+        },
+        {
+          "w": "—",
+          "start": 29.966,
+          "end": 30.035
+        },
+        {
+          "w": "thirteen.",
+          "start": 30.279,
+          "end": 30.941
+        },
+        {
+          "w": "Drop",
+          "start": 31.324,
+          "end": 31.556
+        },
+        {
+          "w": "the",
+          "start": 31.603,
+          "end": 31.672
+        },
+        {
+          "w": "three…",
+          "start": 31.707,
+          "end": 32.079
+        },
+        {
+          "w": "carry",
+          "start": 32.462,
+          "end": 32.729
+        },
+        {
+          "w": "the",
+          "start": 32.787,
+          "end": 32.857
+        },
+        {
+          "w": "one.",
+          "start": 32.926,
+          "end": 33.902
+        }
+      ]
+    },
+    {
+      "beat": "carry",
+      "text": "Nine thirty-five. Effortless.",
+      "start": 34.2,
+      "end": 36.51,
+      "words": [
+        {
+          "w": "Nine",
+          "start": 34.2,
+          "end": 34.455
+        },
+        {
+          "w": "thirty-five.",
+          "start": 34.49,
+          "end": 35.21
+        },
+        {
+          "w": "Effortless.",
+          "start": 35.489,
+          "end": 36.522
+        }
+      ]
+    },
+    {
+      "beat": "loop",
+      "text": "You're faster than a calculator now. Prove it — sixty-three times eleven. Go.",
+      "start": 37.0,
+      "end": 41.65,
+      "words": [
+        {
+          "w": "You're",
+          "start": 37.0,
+          "end": 37.223
+        },
+        {
+          "w": "faster",
+          "start": 37.246,
+          "end": 37.48
+        },
+        {
+          "w": "than",
+          "start": 37.503,
+          "end": 37.604
+        },
+        {
+          "w": "a",
+          "start": 37.626,
+          "end": 37.648
+        },
+        {
+          "w": "calculator",
+          "start": 37.693,
+          "end": 38.151
+        },
+        {
+          "w": "now.",
+          "start": 38.196,
+          "end": 38.453
+        },
+        {
+          "w": "Prove",
+          "start": 38.62,
+          "end": 38.877
+        },
+        {
+          "w": "it",
+          "start": 38.911,
+          "end": 39.012
+        },
+        {
+          "w": "—",
+          "start": 39.135,
+          "end": 39.202
+        },
+        {
+          "w": "sixty-three",
+          "start": 39.694,
+          "end": 40.186
+        },
+        {
+          "w": "times",
+          "start": 40.22,
+          "end": 40.421
+        },
+        {
+          "w": "eleven.",
+          "start": 40.465,
+          "end": 40.879
+        },
+        {
+          "w": "Go.",
+          "start": 41.113,
+          "end": 41.65
+        }
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "id": "hook",
+      "start": 0.0,
+      "end": 3.4,
+      "visual": "72 × 11 = ? giant + 2-seconds chip + title, punch-in settle"
+    },
+    {
+      "id": "teach",
+      "start": 3.4,
+      "end": 15.4,
+      "visual": "TimesElevenDemo(7,2): split → sum 9 → drop → 792 green"
+    },
+    {
+      "id": "quiz",
+      "start": 15.4,
+      "end": 19.6,
+      "visual": "45 × 11 = ? + pause card countdown"
+    },
+    {
+      "id": "answer",
+      "start": 19.6,
+      "end": 24.2,
+      "visual": "fast TimesElevenDemo(4,5) → 495"
+    },
+    {
+      "id": "carry",
+      "start": 24.2,
+      "end": 36.6,
+      "visual": "TimesElevenDemo(8,5): sum 13 → 3 drops, 1 carries onto 8→9 → 935"
+    },
+    {
+      "id": "loop",
+      "start": 36.6,
+      "end": 42.0,
+      "visual": "63 × 11 = ? + GO — rhymes with frame 0"
+    }
+  ]
+}

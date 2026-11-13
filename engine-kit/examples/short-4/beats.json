@@ -1,0 +1,738 @@
+{
+  "id": "short-4-git",
+  "title": "Undo Any Git Mistake (git reflog)",
+  "composition": "Short4Reflog",
+  "format": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationSec": 34
+  },
+  "voiceStatus": "elevenlabs:TX3LPaxmHKxFdv7VOQHJ",
+  "voicePlan": "elevenlabs:TX3LPaxmHKxFdv7VOQHJ",
+  "vo": [
+    {
+      "beat": "hook",
+      "text": "You just ran git reset --hard. Three commits — gone.",
+      "start": 0.4,
+      "end": 4.4,
+      "words": [
+        {
+          "w": "You",
+          "start": 0.4,
+          "end": 0.545
+        },
+        {
+          "w": "just",
+          "start": 0.606,
+          "end": 0.74
+        },
+        {
+          "w": "ran",
+          "start": 0.802,
+          "end": 0.988
+        },
+        {
+          "w": "git",
+          "start": 1.07,
+          "end": 1.225
+        },
+        {
+          "w": "reset",
+          "start": 1.286,
+          "end": 1.699
+        },
+        {
+          "w": "--hard.",
+          "start": 1.771,
+          "end": 2.297
+        },
+        {
+          "w": "Three",
+          "start": 2.513,
+          "end": 2.75
+        },
+        {
+          "w": "commits",
+          "start": 2.782,
+          "end": 3.111
+        },
+        {
+          "w": "—",
+          "start": 3.184,
+          "end": 3.235
+        },
+        {
+          "w": "gone.",
+          "start": 3.338,
+          "end": 4.4
+        }
+      ]
+    },
+    {
+      "beat": "setup",
+      "text": "git log only shows the very first commit.",
+      "start": 4.45,
+      "end": 7.31,
+      "words": [
+        {
+          "w": "git",
+          "start": 4.45,
+          "end": 4.669
+        },
+        {
+          "w": "log",
+          "start": 4.726,
+          "end": 4.944
+        },
+        {
+          "w": "only",
+          "start": 5.001,
+          "end": 5.163
+        },
+        {
+          "w": "shows",
+          "start": 5.208,
+          "end": 5.472
+        },
+        {
+          "w": "the",
+          "start": 5.519,
+          "end": 5.587
+        },
+        {
+          "w": "very",
+          "start": 5.634,
+          "end": 5.829
+        },
+        {
+          "w": "first",
+          "start": 5.898,
+          "end": 6.14
+        },
+        {
+          "w": "commit.",
+          "start": 6.197,
+          "end": 7.3
+        }
+      ]
+    },
+    {
+      "beat": "setup",
+      "text": "An hour of work — completely wiped.",
+      "start": 7.35,
+      "end": 10.18,
+      "words": [
+        {
+          "w": "An",
+          "start": 7.35,
+          "end": 7.547
+        },
+        {
+          "w": "hour",
+          "start": 7.629,
+          "end": 7.942
+        },
+        {
+          "w": "of",
+          "start": 8.012,
+          "end": 8.081
+        },
+        {
+          "w": "work",
+          "start": 8.163,
+          "end": 8.407
+        },
+        {
+          "w": "—",
+          "start": 8.523,
+          "end": 8.592
+        },
+        {
+          "w": "completely",
+          "start": 8.708,
+          "end": 9.324
+        },
+        {
+          "w": "wiped.",
+          "start": 9.382,
+          "end": 10.183
+        }
+      ]
+    },
+    {
+      "beat": "turn",
+      "text": "But git kept a hidden log of everything.",
+      "start": 10.25,
+      "end": 12.29,
+      "words": [
+        {
+          "w": "But",
+          "start": 10.25,
+          "end": 10.447
+        },
+        {
+          "w": "git",
+          "start": 10.482,
+          "end": 10.622
+        },
+        {
+          "w": "kept",
+          "start": 10.668,
+          "end": 10.854
+        },
+        {
+          "w": "a",
+          "start": 10.889,
+          "end": 10.912
+        },
+        {
+          "w": "hidden",
+          "start": 10.958,
+          "end": 11.144
+        },
+        {
+          "w": "log",
+          "start": 11.19,
+          "end": 11.388
+        },
+        {
+          "w": "of",
+          "start": 11.423,
+          "end": 11.469
+        },
+        {
+          "w": "everything.",
+          "start": 11.527,
+          "end": 12.293
+        }
+      ]
+    },
+    {
+      "beat": "reveal",
+      "text": "Here it is — git reflog.",
+      "start": 12.8,
+      "end": 15.36,
+      "words": [
+        {
+          "w": "Here",
+          "start": 12.8,
+          "end": 12.979
+        },
+        {
+          "w": "it",
+          "start": 13.013,
+          "end": 13.069
+        },
+        {
+          "w": "is",
+          "start": 13.113,
+          "end": 13.236
+        },
+        {
+          "w": "—",
+          "start": 13.404,
+          "end": 13.504
+        },
+        {
+          "w": "git",
+          "start": 13.818,
+          "end": 13.963
+        },
+        {
+          "w": "reflog.",
+          "start": 14.019,
+          "end": 15.35
+        }
+      ]
+    },
+    {
+      "beat": "reveal",
+      "text": "Every move HEAD ever made is right here.",
+      "start": 15.4,
+      "end": 17.81,
+      "words": [
+        {
+          "w": "Every",
+          "start": 15.4,
+          "end": 15.725
+        },
+        {
+          "w": "move",
+          "start": 15.772,
+          "end": 15.98
+        },
+        {
+          "w": "HEAD",
+          "start": 16.015,
+          "end": 16.178
+        },
+        {
+          "w": "ever",
+          "start": 16.224,
+          "end": 16.398
+        },
+        {
+          "w": "made",
+          "start": 16.457,
+          "end": 16.631
+        },
+        {
+          "w": "is",
+          "start": 16.665,
+          "end": 16.747
+        },
+        {
+          "w": "right",
+          "start": 16.828,
+          "end": 17.037
+        },
+        {
+          "w": "here.",
+          "start": 17.095,
+          "end": 17.815
+        }
+      ]
+    },
+    {
+      "beat": "reveal",
+      "text": "There's your lost commit. Grab its hash.",
+      "start": 18.35,
+      "end": 20.9,
+      "words": [
+        {
+          "w": "There's",
+          "start": 18.35,
+          "end": 18.663
+        },
+        {
+          "w": "your",
+          "start": 18.698,
+          "end": 18.803
+        },
+        {
+          "w": "lost",
+          "start": 18.849,
+          "end": 19.093
+        },
+        {
+          "w": "commit.",
+          "start": 19.139,
+          "end": 19.569
+        },
+        {
+          "w": "Grab",
+          "start": 19.743,
+          "end": 19.987
+        },
+        {
+          "w": "its",
+          "start": 20.033,
+          "end": 20.15
+        },
+        {
+          "w": "hash.",
+          "start": 20.184,
+          "end": 20.904
+        }
+      ]
+    },
+    {
+      "beat": "reveal",
+      "text": "Then reset hard, straight back to it.",
+      "start": 21.25,
+      "end": 23.84,
+      "words": [
+        {
+          "w": "Then",
+          "start": 21.25,
+          "end": 21.459
+        },
+        {
+          "w": "reset",
+          "start": 21.54,
+          "end": 21.912
+        },
+        {
+          "w": "hard,",
+          "start": 21.97,
+          "end": 22.318
+        },
+        {
+          "w": "straight",
+          "start": 22.434,
+          "end": 22.759
+        },
+        {
+          "w": "back",
+          "start": 22.806,
+          "end": 22.968
+        },
+        {
+          "w": "to",
+          "start": 23.026,
+          "end": 23.108
+        },
+        {
+          "w": "it.",
+          "start": 23.2,
+          "end": 23.851
+        }
+      ]
+    },
+    {
+      "beat": "payoff",
+      "text": "And every single commit is back.",
+      "start": 24.2,
+      "end": 26.52,
+      "words": [
+        {
+          "w": "And",
+          "start": 24.2,
+          "end": 24.409
+        },
+        {
+          "w": "every",
+          "start": 24.49,
+          "end": 24.699
+        },
+        {
+          "w": "single",
+          "start": 24.746,
+          "end": 25.036
+        },
+        {
+          "w": "commit",
+          "start": 25.071,
+          "end": 25.28
+        },
+        {
+          "w": "is",
+          "start": 25.326,
+          "end": 25.396
+        },
+        {
+          "w": "back.",
+          "start": 25.454,
+          "end": 26.522
+        }
+      ]
+    },
+    {
+      "beat": "twist",
+      "text": "Bad rebase, deleted branch, hard reset — all logged.",
+      "start": 27.35,
+      "end": 31.17,
+      "words": [
+        {
+          "w": "Bad",
+          "start": 27.35,
+          "end": 27.573
+        },
+        {
+          "w": "rebase,",
+          "start": 27.636,
+          "end": 28.028
+        },
+        {
+          "w": "deleted",
+          "start": 28.055,
+          "end": 28.323
+        },
+        {
+          "w": "branch,",
+          "start": 28.35,
+          "end": 28.77
+        },
+        {
+          "w": "hard",
+          "start": 28.904,
+          "end": 29.082
+        },
+        {
+          "w": "reset",
+          "start": 29.127,
+          "end": 29.44
+        },
+        {
+          "w": "—",
+          "start": 29.574,
+          "end": 29.618
+        },
+        {
+          "w": "all",
+          "start": 29.752,
+          "end": 29.904
+        },
+        {
+          "w": "logged.",
+          "start": 29.949,
+          "end": 31.172
+        }
+      ]
+    },
+    {
+      "beat": "close",
+      "text": "git reflog is your undo button for everything.",
+      "start": 30.7,
+      "end": 33.34,
+      "words": [
+        {
+          "w": "git",
+          "start": 30.7,
+          "end": 30.897
+        },
+        {
+          "w": "reflog",
+          "start": 30.944,
+          "end": 31.385
+        },
+        {
+          "w": "is",
+          "start": 31.443,
+          "end": 31.513
+        },
+        {
+          "w": "your",
+          "start": 31.571,
+          "end": 31.745
+        },
+        {
+          "w": "undo",
+          "start": 31.826,
+          "end": 32.105
+        },
+        {
+          "w": "button",
+          "start": 32.163,
+          "end": 32.395
+        },
+        {
+          "w": "for",
+          "start": 32.441,
+          "end": 32.546
+        },
+        {
+          "w": "everything.",
+          "start": 32.604,
+          "end": 33.347
+        }
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "id": "hook",
+      "start": 0.0,
+      "end": 4.45,
+      "visual": "frame-0 composed: title UNDO ANY / GIT MISTAKE over frozen disaster terminal (git reset --hard done, red HEAD is now at 3f9a1c2 init); punch-in settle"
+    },
+    {
+      "id": "setup",
+      "start": 4.45,
+      "end": 10.25,
+      "visual": "terminal types git log --oneline -> prints only 3f9a1c2 init; pink GONE? stamp"
+    },
+    {
+      "id": "turn",
+      "start": 10.25,
+      "end": 12.8,
+      "visual": "beat of hope; kicker flips THE DISASTER -> THE FIX"
+    },
+    {
+      "id": "reveal",
+      "start": 12.8,
+      "end": 24.2,
+      "visual": "type git reflog -> 5 lines cascade -> gold highlight lands on e5c07d3 HEAD@{1} -> type git reset --hard e5c07d3"
+    },
+    {
+      "id": "payoff",
+      "start": 24.2,
+      "end": 27.35,
+      "visual": "git log --oneline prints all 4 commits, green flash + RESTORED stamp"
+    },
+    {
+      "id": "twist",
+      "start": 27.35,
+      "end": 30.7,
+      "visual": "dim terminal comment: # resets · rebases · deleted branches"
+    },
+    {
+      "id": "loop",
+      "start": 30.7,
+      "end": 34.0,
+      "visual": "dissolve back to frozen disaster terminal + title (grow) -> last frame == frame 0; NO comment-bait CTA"
+    }
+  ],
+  "terminal": {
+    "theme": "github-dark",
+    "title": "my-app — zsh",
+    "promptPath": "my-app",
+    "repo": [
+      {
+        "hash": "e5c07d3",
+        "msg": "add payments"
+      },
+      {
+        "hash": "b21f6a9",
+        "msg": "add cart"
+      },
+      {
+        "hash": "7d4e8b0",
+        "msg": "add auth"
+      },
+      {
+        "hash": "3f9a1c2",
+        "msg": "init"
+      }
+    ],
+    "resetTo": "3f9a1c2",
+    "restoreTo": "e5c07d3",
+    "lines": [
+      {
+        "i": 0,
+        "kind": "cmd",
+        "text": "git reset --hard HEAD~3",
+        "at": -5,
+        "note": "disaster — pre-revealed at frame 0"
+      },
+      {
+        "i": 1,
+        "kind": "err",
+        "text": "HEAD is now at 3f9a1c2 init",
+        "at": -5
+      },
+      {
+        "i": 2,
+        "kind": "cmd",
+        "text": "git log --oneline",
+        "type": true,
+        "at": 134
+      },
+      {
+        "i": 3,
+        "kind": "out",
+        "text": "3f9a1c2 init",
+        "at": 160
+      },
+      {
+        "i": 4,
+        "kind": "cmd",
+        "text": "git reflog",
+        "type": true,
+        "at": 384
+      },
+      {
+        "i": 5,
+        "kind": "out",
+        "text": "3f9a1c2 HEAD@{0}: reset: moving to HEAD~3",
+        "at": 414
+      },
+      {
+        "i": 6,
+        "kind": "out",
+        "text": "e5c07d3 HEAD@{1}: commit: add payments",
+        "at": 426,
+        "hl": "#f5d76e",
+        "hlAt": 560,
+        "note": "hero — the lost commit"
+      },
+      {
+        "i": 7,
+        "kind": "out",
+        "text": "b21f6a9 HEAD@{2}: commit: add cart",
+        "at": 438
+      },
+      {
+        "i": 8,
+        "kind": "out",
+        "text": "7d4e8b0 HEAD@{3}: commit: add auth",
+        "at": 450
+      },
+      {
+        "i": 9,
+        "kind": "out",
+        "text": "3f9a1c2 HEAD@{4}: commit (initial): init",
+        "at": 462
+      },
+      {
+        "i": 10,
+        "kind": "cmd",
+        "text": "git reset --hard e5c07d3",
+        "type": true,
+        "at": 637
+      },
+      {
+        "i": 11,
+        "kind": "ok",
+        "text": "HEAD is now at e5c07d3 add payments",
+        "at": 690
+      },
+      {
+        "i": 12,
+        "kind": "cmd",
+        "text": "git log --oneline",
+        "type": true,
+        "at": 726
+      },
+      {
+        "i": 13,
+        "kind": "ok",
+        "text": "e5c07d3 add payments",
+        "at": 746
+      },
+      {
+        "i": 14,
+        "kind": "ok",
+        "text": "b21f6a9 add cart",
+        "at": 758
+      },
+      {
+        "i": 15,
+        "kind": "ok",
+        "text": "7d4e8b0 add auth",
+        "at": 770
+      },
+      {
+        "i": 16,
+        "kind": "ok",
+        "text": "3f9a1c2 init",
+        "at": 782
+      },
+      {
+        "i": 17,
+        "kind": "dim",
+        "text": "# reflog logs every move: resets · rebases · deleted branches",
+        "at": 820
+      }
+    ],
+    "stamps": [
+      {
+        "text": "GONE?",
+        "color": "#e8879f",
+        "at": 165,
+        "until": 300
+      },
+      {
+        "text": "RESTORED",
+        "color": "#54c982",
+        "at": 775,
+        "until": 858
+      }
+    ],
+    "kickers": [
+      {
+        "text": "THE DISASTER",
+        "color": "#e8879f",
+        "at": 138,
+        "until": 372
+      },
+      {
+        "text": "THE FIX",
+        "color": "#54c982",
+        "at": 384,
+        "until": 812
+      }
+    ]
+  }
+}

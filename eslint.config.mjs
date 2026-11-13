@@ -50,6 +50,10 @@ const eslintConfig = defineConfig([
     ".claude/**",
     // Plan docs and the frozen old-app snapshot (gitignored, not app code).
     "docs/**",
+    // The old app's shorts and skills, copied as read-only references for engine runs (old-kit-import); never built by the app.
+    "engine-kit/**",
+    // The old app's drawing libraries and their generated declarations: copied as written (old style), bundled only in the render box.
+    "remotion/kit/oldlib/**",
     // Remotion fixture: bundled by Remotion inside the render container, not by Next/tsc.
     "tests/fixtures/remotion-spike/**",
     "tests/fixtures/remotion-tsx/**",

@@ -1,0 +1,790 @@
+{
+  "id": "short-14-we-need-docker",
+  "title": "Why We Need Docker",
+  "composition": "Short14Docker",
+  "format": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationSec": 42
+  },
+  "voiceStatus": "elevenlabs:TX3LPaxmHKxFdv7VOQHJ",
+  "vo": [
+    {
+      "beat": "hook",
+      "text": "One command. The same app. Any machine, every time.",
+      "start": 0.4,
+      "end": 3.99,
+      "words": [
+        {
+          "w": "One",
+          "start": 0.4,
+          "end": 0.549
+        },
+        {
+          "w": "command.",
+          "start": 0.586,
+          "end": 0.978
+        },
+        {
+          "w": "The",
+          "start": 1.099,
+          "end": 1.193
+        },
+        {
+          "w": "same",
+          "start": 1.23,
+          "end": 1.435
+        },
+        {
+          "w": "app.",
+          "start": 1.472,
+          "end": 1.743
+        },
+        {
+          "w": "Any",
+          "start": 2.05,
+          "end": 2.228
+        },
+        {
+          "w": "machine,",
+          "start": 2.274,
+          "end": 2.73
+        },
+        {
+          "w": "every",
+          "start": 2.871,
+          "end": 3.076
+        },
+        {
+          "w": "time.",
+          "start": 3.113,
+          "end": 3.98
+        }
+      ]
+    },
+    {
+      "beat": "setup",
+      "text": "On my laptop, this runs perfectly.",
+      "start": 4.03,
+      "end": 6.51,
+      "words": [
+        {
+          "w": "On",
+          "start": 4.03,
+          "end": 4.19
+        },
+        {
+          "w": "my",
+          "start": 4.239,
+          "end": 4.309
+        },
+        {
+          "w": "laptop,",
+          "start": 4.378,
+          "end": 4.836
+        },
+        {
+          "w": "this",
+          "start": 4.857,
+          "end": 4.987
+        },
+        {
+          "w": "runs",
+          "start": 5.046,
+          "end": 5.235
+        },
+        {
+          "w": "perfectly.",
+          "start": 5.294,
+          "end": 6.5
+        }
+      ]
+    },
+    {
+      "beat": "setup",
+      "text": "I push the same code to the server. It crashes.",
+      "start": 6.55,
+      "end": 9.75,
+      "words": [
+        {
+          "w": "I",
+          "start": 6.55,
+          "end": 6.608
+        },
+        {
+          "w": "push",
+          "start": 6.701,
+          "end": 6.887
+        },
+        {
+          "w": "the",
+          "start": 6.933,
+          "end": 7.003
+        },
+        {
+          "w": "same",
+          "start": 7.038,
+          "end": 7.235
+        },
+        {
+          "w": "code",
+          "start": 7.281,
+          "end": 7.479
+        },
+        {
+          "w": "to",
+          "start": 7.502,
+          "end": 7.548
+        },
+        {
+          "w": "the",
+          "start": 7.595,
+          "end": 7.665
+        },
+        {
+          "w": "server.",
+          "start": 7.711,
+          "end": 8.187
+        },
+        {
+          "w": "It",
+          "start": 8.396,
+          "end": 8.535
+        },
+        {
+          "w": "crashes.",
+          "start": 8.582,
+          "end": 9.754
+        }
+      ]
+    },
+    {
+      "beat": "setup",
+      "text": "Wrong Python version. A missing package.",
+      "start": 10.55,
+      "end": 13.32,
+      "words": [
+        {
+          "w": "Wrong",
+          "start": 10.55,
+          "end": 10.875
+        },
+        {
+          "w": "Python",
+          "start": 10.945,
+          "end": 11.316
+        },
+        {
+          "w": "version.",
+          "start": 11.374,
+          "end": 11.815
+        },
+        {
+          "w": "A",
+          "start": 12.024,
+          "end": 12.106
+        },
+        {
+          "w": "missing",
+          "start": 12.175,
+          "end": 12.442
+        },
+        {
+          "w": "package.",
+          "start": 12.5,
+          "end": 13.336
+        }
+      ]
+    },
+    {
+      "beat": "reveal",
+      "text": "So we write a Dockerfile — exact versions, exact dependencies.",
+      "start": 13.77,
+      "end": 17.73,
+      "words": [
+        {
+          "w": "So",
+          "start": 13.77,
+          "end": 13.951
+        },
+        {
+          "w": "we",
+          "start": 14.017,
+          "end": 14.14
+        },
+        {
+          "w": "write",
+          "start": 14.188,
+          "end": 14.368
+        },
+        {
+          "w": "a",
+          "start": 14.387,
+          "end": 14.406
+        },
+        {
+          "w": "Dockerfile",
+          "start": 14.454,
+          "end": 15.004
+        },
+        {
+          "w": "—",
+          "start": 15.033,
+          "end": 15.109
+        },
+        {
+          "w": "exact",
+          "start": 15.469,
+          "end": 15.745
+        },
+        {
+          "w": "versions,",
+          "start": 15.793,
+          "end": 16.296
+        },
+        {
+          "w": "exact",
+          "start": 16.495,
+          "end": 16.789
+        },
+        {
+          "w": "dependencies.",
+          "start": 16.818,
+          "end": 17.72
+        }
+      ]
+    },
+    {
+      "beat": "reveal",
+      "text": "Docker builds an image, and runs it in a container.",
+      "start": 17.77,
+      "end": 21.57,
+      "words": [
+        {
+          "w": "Docker",
+          "start": 17.77,
+          "end": 18.2
+        },
+        {
+          "w": "builds",
+          "start": 18.292,
+          "end": 18.618
+        },
+        {
+          "w": "an",
+          "start": 18.652,
+          "end": 18.722
+        },
+        {
+          "w": "image,",
+          "start": 18.792,
+          "end": 19.256
+        },
+        {
+          "w": "and",
+          "start": 19.43,
+          "end": 19.581
+        },
+        {
+          "w": "runs",
+          "start": 19.662,
+          "end": 19.906
+        },
+        {
+          "w": "it",
+          "start": 19.953,
+          "end": 20.022
+        },
+        {
+          "w": "in",
+          "start": 20.069,
+          "end": 20.138
+        },
+        {
+          "w": "a",
+          "start": 20.173,
+          "end": 20.196
+        },
+        {
+          "w": "container.",
+          "start": 20.243,
+          "end": 21.578
+        }
+      ]
+    },
+    {
+      "beat": "reveal",
+      "text": "A container shares the host's kernel, not a whole OS.",
+      "start": 21.77,
+      "end": 25.73,
+      "words": [
+        {
+          "w": "A",
+          "start": 21.77,
+          "end": 21.865
+        },
+        {
+          "w": "container",
+          "start": 21.929,
+          "end": 22.279
+        },
+        {
+          "w": "shares",
+          "start": 22.332,
+          "end": 22.577
+        },
+        {
+          "w": "the",
+          "start": 22.62,
+          "end": 22.683
+        },
+        {
+          "w": "host's",
+          "start": 22.726,
+          "end": 23.012
+        },
+        {
+          "w": "kernel,",
+          "start": 23.065,
+          "end": 23.543
+        },
+        {
+          "w": "not",
+          "start": 23.735,
+          "end": 23.862
+        },
+        {
+          "w": "a",
+          "start": 23.905,
+          "end": 23.926
+        },
+        {
+          "w": "whole",
+          "start": 23.958,
+          "end": 24.159
+        },
+        {
+          "w": "OS.",
+          "start": 24.212,
+          "end": 25.72
+        }
+      ]
+    },
+    {
+      "beat": "reveal",
+      "text": "That's why it starts in milliseconds, not minutes.",
+      "start": 25.77,
+      "end": 28.74,
+      "words": [
+        {
+          "w": "That's",
+          "start": 25.77,
+          "end": 26.014
+        },
+        {
+          "w": "why",
+          "start": 26.049,
+          "end": 26.176
+        },
+        {
+          "w": "it",
+          "start": 26.234,
+          "end": 26.304
+        },
+        {
+          "w": "starts",
+          "start": 26.35,
+          "end": 26.629
+        },
+        {
+          "w": "in",
+          "start": 26.676,
+          "end": 26.745
+        },
+        {
+          "w": "milliseconds,",
+          "start": 26.827,
+          "end": 27.442
+        },
+        {
+          "w": "not",
+          "start": 27.477,
+          "end": 27.616
+        },
+        {
+          "w": "minutes.",
+          "start": 27.662,
+          "end": 28.742
+        }
+      ]
+    },
+    {
+      "beat": "twist",
+      "text": "A virtual machine packs a whole OS. Tens of gigabytes.",
+      "start": 29.73,
+      "end": 33.69,
+      "words": [
+        {
+          "w": "A",
+          "start": 29.73,
+          "end": 29.836
+        },
+        {
+          "w": "virtual",
+          "start": 29.91,
+          "end": 30.26
+        },
+        {
+          "w": "machine",
+          "start": 30.314,
+          "end": 30.643
+        },
+        {
+          "w": "packs",
+          "start": 30.686,
+          "end": 30.93
+        },
+        {
+          "w": "a",
+          "start": 30.972,
+          "end": 31.004
+        },
+        {
+          "w": "whole",
+          "start": 31.068,
+          "end": 31.322
+        },
+        {
+          "w": "OS.",
+          "start": 31.376,
+          "end": 31.949
+        },
+        {
+          "w": "Tens",
+          "start": 32.247,
+          "end": 32.586
+        },
+        {
+          "w": "of",
+          "start": 32.629,
+          "end": 32.682
+        },
+        {
+          "w": "gigabytes.",
+          "start": 32.735,
+          "end": 33.68
+        }
+      ]
+    },
+    {
+      "beat": "twist",
+      "text": "A container packs just the app. Tens of megabytes.",
+      "start": 33.73,
+      "end": 37.06,
+      "words": [
+        {
+          "w": "A",
+          "start": 33.73,
+          "end": 33.846
+        },
+        {
+          "w": "container",
+          "start": 33.904,
+          "end": 34.252
+        },
+        {
+          "w": "packs",
+          "start": 34.31,
+          "end": 34.554
+        },
+        {
+          "w": "just",
+          "start": 34.624,
+          "end": 34.833
+        },
+        {
+          "w": "the",
+          "start": 34.868,
+          "end": 34.937
+        },
+        {
+          "w": "app.",
+          "start": 35.007,
+          "end": 35.332
+        },
+        {
+          "w": "Tens",
+          "start": 35.506,
+          "end": 35.785
+        },
+        {
+          "w": "of",
+          "start": 35.831,
+          "end": 35.878
+        },
+        {
+          "w": "megabytes.",
+          "start": 35.948,
+          "end": 37.074
+        }
+      ]
+    },
+    {
+      "beat": "loop",
+      "text": "Same image, same result, anywhere. That's why we need Docker.",
+      "start": 37.86,
+      "end": 41.52,
+      "words": [
+        {
+          "w": "Same",
+          "start": 37.86,
+          "end": 38.173
+        },
+        {
+          "w": "image,",
+          "start": 38.208,
+          "end": 38.533
+        },
+        {
+          "w": "same",
+          "start": 38.557,
+          "end": 38.777
+        },
+        {
+          "w": "result,",
+          "start": 38.812,
+          "end": 39.3
+        },
+        {
+          "w": "anywhere.",
+          "start": 39.427,
+          "end": 39.961
+        },
+        {
+          "w": "That's",
+          "start": 40.205,
+          "end": 40.403
+        },
+        {
+          "w": "why",
+          "start": 40.426,
+          "end": 40.507
+        },
+        {
+          "w": "we",
+          "start": 40.565,
+          "end": 40.623
+        },
+        {
+          "w": "need",
+          "start": 40.67,
+          "end": 40.809
+        },
+        {
+          "w": "Docker.",
+          "start": 40.844,
+          "end": 41.529
+        }
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "id": "hook",
+      "start": 0.0,
+      "end": 4.03,
+      "visual": "frame-0 composed: ops@prod-server terminal frozen just after docker run myapp succeeded (green Server running on :5000), stamp RUNS THE SAME EVERYWHERE; punch-in settle"
+    },
+    {
+      "id": "setup",
+      "start": 4.03,
+      "end": 13.77,
+      "visual": "prompt you@laptop types python app.py -> green success; prompt flips to ops@prod-server, same command -> red ModuleNotFoundError: No module named 'flask'; kicker IT WORKS ON MY MACHINE flips red ...NOT ON THIS ONE"
+    },
+    {
+      "id": "reveal",
+      "start": 13.77,
+      "end": 29.73,
+      "visual": "Dockerfile cascades line by line (FROM python:3.11 / COPY . . / RUN pip install -r requirements.txt / CMD [\"python\",\"app.py\"]); docker build -t myapp . runs; docker run myapp on ops@prod-server now prints the same green success; kicker THE FIX: A DOCKERFILE"
+    },
+    {
+      "id": "twist",
+      "start": 29.73,
+      "end": 37.86,
+      "visual": "two stat chips stack: VIRTUAL MACHINE (full OS, tens of GBs, slow boot) vs CONTAINER (just the app, tens of MBs, instant)"
+    },
+    {
+      "id": "loop",
+      "start": 37.86,
+      "end": 42.0,
+      "visual": "dissolve back to the frozen hook terminal + RUNS THE SAME EVERYWHERE stamp (grow 1->1.06 == hook's settle start); no CTA"
+    }
+  ],
+  "terminal": {
+    "theme": "github-dark",
+    "title": "myapp — zsh",
+    "prompts": [
+      {
+        "path": "you@laptop",
+        "at": -5
+      },
+      {
+        "path": "ops@prod-server",
+        "at": 121
+      },
+      {
+        "path": "you@laptop",
+        "at": 200
+      },
+      {
+        "path": "ops@prod-server",
+        "at": 260
+      }
+    ],
+    "lines": [
+      {
+        "i": 0,
+        "kind": "cmd",
+        "text": "docker run myapp",
+        "at": -5,
+        "note": "hook — pre-revealed success at frame 0"
+      },
+      {
+        "i": 1,
+        "kind": "ok",
+        "text": "Server running on :5000",
+        "at": -5
+      },
+      {
+        "i": 2,
+        "kind": "cmd",
+        "text": "python app.py",
+        "type": true,
+        "at": 121,
+        "note": "laptop, works"
+      },
+      {
+        "i": 3,
+        "kind": "ok",
+        "text": "Server running on :5000",
+        "at": 150
+      },
+      {
+        "i": 4,
+        "kind": "cmd",
+        "text": "python app.py",
+        "type": true,
+        "at": 200,
+        "note": "server, same command"
+      },
+      {
+        "i": 5,
+        "kind": "err",
+        "text": "ModuleNotFoundError: No module named 'flask'",
+        "at": 230,
+        "note": "the crash"
+      },
+      {
+        "i": 6,
+        "kind": "out",
+        "text": "FROM python:3.11",
+        "at": 420
+      },
+      {
+        "i": 7,
+        "kind": "out",
+        "text": "COPY . .",
+        "at": 440
+      },
+      {
+        "i": 8,
+        "kind": "out",
+        "text": "RUN pip install -r requirements.txt",
+        "at": 460
+      },
+      {
+        "i": 9,
+        "kind": "out",
+        "text": "CMD [\"python\", \"app.py\"]",
+        "at": 480
+      },
+      {
+        "i": 10,
+        "kind": "cmd",
+        "text": "docker build -t myapp .",
+        "type": true,
+        "at": 540
+      },
+      {
+        "i": 11,
+        "kind": "ok",
+        "text": "Successfully built myapp",
+        "at": 600
+      },
+      {
+        "i": 12,
+        "kind": "cmd",
+        "text": "docker run myapp",
+        "type": true,
+        "at": 660
+      },
+      {
+        "i": 13,
+        "kind": "ok",
+        "text": "Server running on :5000",
+        "at": 700,
+        "hl": "#4db8a8",
+        "note": "hero — same success, on the server"
+      }
+    ],
+    "stamps": [
+      {
+        "text": "RUNS THE SAME EVERYWHERE",
+        "color": "#4db8a8",
+        "at": -5,
+        "until": 110
+      },
+      {
+        "text": "RUNS THE SAME EVERYWHERE",
+        "color": "#4db8a8",
+        "at": 700,
+        "until": 42000
+      }
+    ],
+    "kickers": [
+      {
+        "text": "IT WORKS ON MY MACHINE",
+        "color": "#6b6b7b",
+        "at": 121,
+        "until": 229
+      },
+      {
+        "text": "...NOT ON THIS ONE",
+        "color": "#e8879f",
+        "at": 230,
+        "until": 413
+      },
+      {
+        "text": "THE FIX: A DOCKERFILE",
+        "color": "#6366F1",
+        "at": 413,
+        "until": 892
+      }
+    ],
+    "statChips": [
+      {
+        "label": "VIRTUAL MACHINE",
+        "value": "full OS · tens of GBs · slow boot",
+        "color": "#e8879f",
+        "at": 892
+      },
+      {
+        "label": "CONTAINER",
+        "value": "just the app · tens of MBs · instant",
+        "color": "#4db8a8",
+        "at": 1012
+      }
+    ]
+  }
+}
