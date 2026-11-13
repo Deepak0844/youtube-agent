@@ -82,6 +82,31 @@ describe("OpenMontage scene lists through the locked renderer", () => {
     expect(red(1040, 1080)).toBe(0); // and none reaches the right margin
   }, 600_000);
 
+  it("draws charts full width in a portrait frame", async () => {
+    // OpenMontage's charts draw on a fixed 1920x1080 canvas, so a short showed them at 56% size; portrait now uses a 1080x1350 canvas
+    const c = ctx("charts-portrait");
+    const red = ["#FF0000"];
+    const props = { theme: "flat-motion-graphics", cuts: [
+      { id: "b", type: "bar_chart", in_seconds: 0, out_seconds: 3, chartColors: red, chartData: [{ label: "A", value: 5 }, { label: "B", value: 9 }] },
+      { id: "p", type: "pie_chart", in_seconds: 3, out_seconds: 6, chartColors: ["#FF0000", "#0000FF"], chartData: [{ label: "Half", value: 1 }, { label: "Other", value: 1 }] },
+    ] };
+    const r = await renderOm(deps, c, { props, orientation: "portrait", outFile: "x.mp4", stills: [75, 165] });
+    if (!r.ok) throw new Error(`${r.message} ${r.problems.join(" | ")}`);
+    const box = (file: string) => {
+      const p = png(path.join(c.attemptDir, file));
+      let [x0, y0, x1, y1] = [p.width, p.height, -1, -1];
+      for (let y = 0; y < p.height; y++) for (let x = 0; x < p.width; x++) {
+        const i = (y * p.width + x) * 4;
+        if (p.data[i]! > 200 && p.data[i + 1]! < 60 && p.data[i + 2]! < 60) [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)];
+      }
+      return { w: x1 - x0, h: y1 - y0, right: x1 };
+    };
+    expect(box(r.stills[0]!).h).toBeGreaterThan(800); // the tallest bar (was about 430 px)
+    const pie = box(r.stills[1]!);
+    expect(pie.w).toBeGreaterThan(250); // a red half disc, 300 px across (was about 170)
+    expect(pie.right).toBeLessThan(1080);
+  }, 600_000);
+
   it("refuses a remote asset inside the box", async () => {
     const c = ctx("remote");
     const props = { ...reel, cuts: [{ id: "a", source: "https://example.com/a.png", in_seconds: 0, out_seconds: 1 }] };

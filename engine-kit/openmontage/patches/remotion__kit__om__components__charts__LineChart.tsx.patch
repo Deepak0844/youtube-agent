@@ -1,0 +1,63 @@
+--- a/remotion/kit/om/components/charts/LineChart.tsx
++++ b/remotion/kit/om/components/charts/LineChart.tsx
+@@ -53,13 +53,17 @@
+   strokeWidth = 3,
+ }) => {
+   const frame = useCurrentFrame();
+-  const { fps, durationInFrames } = useVideoConfig();
++  const { fps, durationInFrames, width, height } = useVideoConfig();
+ 
++  // ytstudio: OpenMontage draws on a fixed 1920x1080 canvas, which a portrait frame shrinks to 56%. Portrait draws on a
++  // full-width 1080x1350 canvas instead; landscape keeps exactly 1920x1080.
++  const W = width >= height ? 1920 : 1080;
++  const H = width >= height ? 1080 : 1350;
+   // Chart layout
+   const chartLeft = 160;
+-  const chartRight = 1760;
++  const chartRight = W - 160;
+   const chartTop = title ? 160 : 100;
+-  const chartBottom = showLegend ? 880 : 940;
++  const chartBottom = showLegend ? H - 200 : H - 140;
+   const chartWidth = chartRight - chartLeft;
+   const chartHeight = chartBottom - chartTop;
+ 
+@@ -108,13 +112,13 @@
+       }}
+     >
+       <svg
+-        viewBox="0 0 1920 1080"
++        viewBox={`0 0 ${W} ${H}`}
+         style={{ width: "100%", height: "100%" }}
+       >
+         {/* Title */}
+         {title && (
+           <text
+-            x={960}
++            x={W / 2}
+             y={80}
+             textAnchor="middle"
+             fill={textColor}
+@@ -348,12 +352,12 @@
+           >
+             {series.map((s, i) => {
+               const color = s.color || colors[i % colors.length];
+-              const legendX = 960 - (series.length * 160) / 2 + i * 160;
++              const legendX = W / 2 - (series.length * 160) / 2 + i * 160;
+               return (
+                 <g key={`legend-${i}`}>
+                   <rect
+                     x={legendX}
+-                    y={960}
++                    y={H - 120}
+                     width={24}
+                     height={4}
+                     rx={2}
+@@ -361,7 +365,7 @@
+                   />
+                   <text
+                     x={legendX + 32}
+-                    y={966}
++                    y={H - 114}
+                     fill={textColor}
+                     fontFamily={fontFamily}
+                     fontSize={20}

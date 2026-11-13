@@ -41,15 +41,19 @@ export const BarChart: React.FC<BarChartProps> = ({
   barGap = 12,
 }) => {
   const frame = useCurrentFrame();
-  const { fps, durationInFrames } = useVideoConfig();
+  const { fps, durationInFrames, width, height } = useVideoConfig();
 
   const maxValue = Math.max(...data.map((d) => d.value), 1);
 
-  // Chart layout constants (within 1920x1080 canvas)
+  // ytstudio: OpenMontage draws on a fixed 1920x1080 canvas, which a portrait frame shrinks to 56%. Portrait draws on a
+  // full-width 1080x1350 canvas instead; landscape keeps exactly 1920x1080.
+  const W = width >= height ? 1920 : 1080;
+  const H = width >= height ? 1080 : 1350;
+  // Chart layout constants (within the W x H canvas)
   const chartLeft = 140;
-  const chartRight = 1780;
+  const chartRight = W - 140;
   const chartTop = title ? 160 : 80;
-  const chartBottom = 920;
+  const chartBottom = H - 160;
   const chartWidth = chartRight - chartLeft;
   const chartHeight = chartBottom - chartTop;
 
@@ -80,13 +84,13 @@ export const BarChart: React.FC<BarChartProps> = ({
       }}
     >
       <svg
-        viewBox="0 0 1920 1080"
+        viewBox={`0 0 ${W} ${H}`}
         style={{ width: "100%", height: "100%" }}
       >
         {/* Title */}
         {title && (
           <text
-            x={960}
+            x={W / 2}
             y={80}
             textAnchor="middle"
             fill={textColor}
