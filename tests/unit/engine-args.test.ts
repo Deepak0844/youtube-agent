@@ -43,7 +43,7 @@ describe("engineArgs", () => {
       expect(flag(a, "--permission-mode")).toBe("dontAsk");
       expect(a).toContain("--no-session-persistence");
       expect(flag(a, "--setting-sources")).toBe("project");
-      expect(a).toContain("--disable-slash-commands");
+      expect(a).not.toContain("--disable-slash-commands"); // it would switch the skills off too (probed)
     }
     expect(flag(engineArgs("build", { maxTurns: 80, mcpConfigPath: "/m.json" }), "--max-turns")).toBe("80");
   });

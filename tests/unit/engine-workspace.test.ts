@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile, chmod } from "n
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { checkAfterRun, prepareWorkspace, WORK_LIMITS } from "@/server/engine/workspace";
+import { checkAfterRun, claudeProjectAbove, defaultEngineRoot, prepareWorkspace, WORK_LIMITS } from "@/server/engine/workspace";
 
 // The locked per-video folder of an engine run (ADR 0015) and the after-run check: the last wall when Claude Code's own
 // permission rules let something through.
@@ -35,6 +35,21 @@ describe("prepareWorkspace", () => {
     const ref = path.join(ws.workDir, "ref", "brand", "brand.md");
     expect(await readFile(ref, "utf8")).toBe("colours");
     expect((await stat(ref)).mode & 0o222).toBe(0); // no write bits
+  });
+
+  it("refuses a run folder inside a project with Claude Code settings (they would leak into the run)", async () => {
+    for (const marker of [".claude", "CLAUDE.md"]) {
+      const proj = await mkdtemp(path.join(tmpdir(), "proj-"));
+      try {
+        if (marker === ".claude") await mkdir(path.join(proj, ".claude"));
+        else await writeFile(path.join(proj, marker), "rules");
+        await expect(prepareWorkspace(path.join(proj, "data"), VID, seeds()), marker).rejects.toThrow(/Claude Code project settings/);
+      } finally {
+        await rm(proj, { recursive: true, force: true });
+      }
+    }
+    expect(claudeProjectAbove(defaultEngineRoot())).toBeNull(); // the default lives under the system temp folder
+    expect(claudeProjectAbove(process.cwd())).toBe(process.cwd()); // this repo has .claude: never a run folder here
   });
 
   it("refuses a video id that is not a uuid", async () => {

@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { chmod, cp, lstat, mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { existsSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 // The locked per-video folder of an engine run (ADR 0015). Claude Code starts INSIDE `work/` (its starting folder is the only
@@ -74,9 +76,28 @@ async function takeSnapshot(dir: string): Promise<Snapshot> {
   return { entries, workBytes, workFiles };
 }
 
+/**
+ * The nearest folder at or above `dir` holding Claude Code project settings (`.claude/`, `CLAUDE.md`, `CLAUDE.local.md`), or null.
+ * Claude Code loads those from every parent folder, so a run folder inside such a project (like this repo's .data/) would inherit
+ * its skills and instructions (probed 2026-11-13). Engine runs must live where no parent has any.
+ */
+export function claudeProjectAbove(dir: string): string | null {
+  for (let d = path.resolve(dir); ; d = path.dirname(d)) {
+    for (const n of [".claude", "CLAUDE.md", "CLAUDE.local.md"]) if (existsSync(path.join(d, n))) return d;
+    if (path.dirname(d) === d) return null;
+  }
+}
+
+/** Where engine run folders live by default: the system temp folder (no Claude project above it), never inside the repo. */
+export function defaultEngineRoot(): string {
+  return path.join(realpathSync(tmpdir()), "ytstudio-engine");
+}
+
 /** Creates (or re-creates, empty) the run folder of one video and copies the seeds in, read-only. */
 export async function prepareWorkspace(root: string, videoId: string, seeds: WorkspaceSeeds = {}): Promise<Workspace> {
   if (!UUID.test(videoId)) throw new Error("engine workspace: bad video id");
+  const above = claudeProjectAbove(root);
+  if (above) throw new Error(`engine workspace: ${above} holds Claude Code project settings; engine runs must not live inside it`);
   const dir = path.join(root, "videos", videoId, "engine");
   await rm(dir, { recursive: true, force: true });
   const workDir = path.join(dir, "work");

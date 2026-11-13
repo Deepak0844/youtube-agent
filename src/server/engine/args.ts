@@ -4,7 +4,9 @@
 // Writes follow Edit(...) rules: allowed in ./** (build) or ./draft/** (research), denied for the read-only ./.claude (skills)
 // and ./ref (brand, libraries, examples), with the after-run check as the backstop. No shell is
 // offered or allowed in either kind; only a build run gets the app's engine tools (MCP server "engine"), and only a research
-// run gets the web. Both get the Skill tool so the read-only skills in .claude/skills load (probed). Prompts go through stdin, never through these arguments.
+// run gets the web. Both get the Skill tool so the read-only skills in .claude/skills load (probed). No --disable-slash-commands:
+// it also switches skills off (probed). Claude Code's own bundled skills then appear too; they are instructions only, and
+// everything they could do still goes through this run's tool list (no shell, no web in a build run, writes only in work/). Prompts go through stdin, never through these arguments.
 
 export type EngineRunKind = "research" | "build";
 
@@ -12,7 +14,7 @@ const READ_ONLY = ["Edit(./.claude/**)", "Edit(./ref/**)"];
 const NEVER = ["Bash", "BashOutput", "KillShell", "Agent", "Task", "NotebookEdit", "SlashCommand", "TodoWrite"];
 
 export function engineArgs(kind: EngineRunKind, o: { mcpConfigPath?: string; maxTurns: number; model?: string }): string[] {
-  const base = ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk", "--no-session-persistence", "--setting-sources", "project", "--disable-slash-commands", "--max-turns", String(o.maxTurns)];
+  const base = ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk", "--no-session-persistence", "--setting-sources", "project", "--max-turns", String(o.maxTurns)];
   const model = o.model && o.model !== "default" ? ["--model", o.model] : [];
   if (kind === "research") {
     return [

@@ -23,6 +23,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 
 export interface EngineDeps {
   db: pg.Pool;
+  /** Where run folders live: defaultEngineRoot() in production. Must not sit inside a folder with Claude Code project settings. */
   root: string;
   config: EngineConfig["engine"];
   /** Default: the `claude` program. Tests run a scripted fake. */

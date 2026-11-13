@@ -12,6 +12,7 @@ import { getPool } from "@/server/db/pool";
 import { createVideoRow } from "@/server/db/videos";
 import { engineTools } from "@/server/engine/mcp/tools";
 import { runEngine } from "@/server/engine/run";
+import { defaultEngineRoot } from "@/server/engine/workspace";
 import { probeVideo } from "@/server/render/probe";
 import { runChild } from "@/server/render/child";
 import { renderTsxStills, typeCheckInThread, type TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
@@ -37,6 +38,7 @@ async function main(): Promise<void> {
       "2. Call check_code on scene/video.tsx.",
       "3. Call preview_frames on scene/video.tsx with frames [0, 135].",
       "4. Answer with one sentence per frame saying what you see.",
+      "5. Then name the skills you have, list the folders in ref/examples, and name three libraries from ref/lib/index.md.",
       "",
       "```tsx",
       GOOD_SCENE,
@@ -45,7 +47,7 @@ async function main(): Promise<void> {
     const started = Date.now();
     const r = await runEngine(
       {
-        db, root, config: { ...config.engine, enabled: true },
+        db, root: defaultEngineRoot(), config: { ...config.engine, enabled: true },
         tools: (ws) => engineTools({
           workDir: ws.workDir,
           check: async (src) => { const c = checkTsx(src); return c.ok ? typeCheckInThread(src, 60_000) : c; },
@@ -61,6 +63,7 @@ async function main(): Promise<void> {
   } finally {
     await db.query("delete from videos where id = $1", [video.id]).catch(() => undefined);
     await rm(path.join(root, "videos", video.id), { recursive: true, force: true });
+    await rm(path.join(defaultEngineRoot(), "videos", video.id), { recursive: true, force: true });
     await rm(attemptDir, { recursive: true, force: true });
     await db.end();
   }
