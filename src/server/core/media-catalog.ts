@@ -27,7 +27,6 @@ export const SCOPE_LABELS: Record<string, string> = {
   default: "Everything",
   "format:short": "Shorts",
   "format:long": "Long videos",
-  "kind:scene_kit": "Scene-kit videos",
   "kind:tsx": "Code-scene videos",
   "kind:collage": "Collage videos",
   "kind:ai": "AI videos",

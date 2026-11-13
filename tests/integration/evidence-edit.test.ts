@@ -47,7 +47,7 @@ async function session(): Promise<{ kind: "session"; sessionId: string }> {
 /** A video with a real file, claim-based UNVERIFIED evidence (like Draft saves it) and a video approval. */
 async function seed() {
   await ensureChannel(db.pool, "UC-test");
-  const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "sky", channelId: "UC-test" });
+  const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "sky", channelId: "UC-test" });
   const bytes = Buffer.from(`video-${v.id}`);
   mkdirSync(path.join(root, "videos", v.id), { recursive: true });
   writeFileSync(path.join(root, "videos", v.id, "final.mp4"), bytes);

@@ -43,7 +43,7 @@ describe("production handlers", () => {
   });
 
   it("a dry-run video is refused by the production tts handler", async () => {
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "dry", notes: DRY_RUN_NOTES });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "dry", notes: DRY_RUN_NOTES });
     const ctx = { stage: { id: "s", name: "tts", inputHash: "h", videoId: v.id } } as never;
     await expect(productionHandlers(db.pool).tts!(ctx)).rejects.toThrow(/dry-run video/);
   });

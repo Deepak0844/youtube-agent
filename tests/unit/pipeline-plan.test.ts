@@ -17,7 +17,7 @@ import {
 
 const flags = { requireEvidence: true, paidGeneration: true };
 const base = (over: Partial<PipelineView> = {}): PipelineView => ({
-  kind: "scene_kit",
+  kind: "collage",
   format: "short",
   flags,
   paramsHash: "p",
@@ -91,7 +91,7 @@ describe("pictures stage", () => {
 
 describe("stagePlan", () => {
   it("has_the_documented_stages_and_gates_in_order", () => {
-    const p = stagePlan("scene_kit", "short", flags);
+    const p = stagePlan("collage", "short", flags);
     expect(p.map((s) => s.stage)).toEqual(["draft", "pictures", "build", "generate", "tts", "render", "voice", "sfx", "qa"]);
     expect(p.find((s) => s.stage === "draft")?.gateAfter).toBe("script");
     expect(p.find((s) => s.stage === "generate")?.gateBefore).toBe("cost");
@@ -100,14 +100,16 @@ describe("stagePlan", () => {
   });
   it("generate_and_cost_gate_exist_only_with_paid_items", () => {
     const f = { requireEvidence: false, paidGeneration: false };
-    const p = stagePlan("scene_kit", "short", f);
+    const p = stagePlan("collage", "short", f);
     expect(p.map((s) => s.stage)).not.toContain("generate");
     expect(p.some((s) => s.gateBefore === "cost")).toBe(false);
     expect(postStageGates(p, f)).toEqual(["video", "publish"]);
   });
-  it("long_format_is_refused_for_every_kind_but_the_scene_kit", () => {
-    for (const k of ["tsx", "collage", "ai"] as const) expect(() => stagePlan(k, "long", flags), k).toThrow(/only available for the scene kit/);
-    expect(() => stagePlan("scene_kit", "long", flags)).not.toThrow();
+  it("long_format_and_derived_shorts_are_refused_for_every_kind", () => {
+    for (const k of ["tsx", "collage", "ai"] as const) {
+      expect(() => stagePlan(k, "long", flags), k).toThrow(/long videos are not available/);
+      expect(() => stagePlan(k, "short", { ...flags, derived: true }), k).toThrow(/clips from a long video are not available/);
+    }
   });
 });
 
@@ -181,7 +183,7 @@ describe("nextActions", () => {
     expect(nextActions(onlyPublishOpen)).toEqual([{ kind: "wait_gate", gate: "publish" }]);
   });
   it("register_validation_runs_for_unknown_stage_names_are_ignored", () => {
-    const names = stagePlan("scene_kit", "short", flags).map((s) => s.stage);
+    const names = stagePlan("collage", "short", flags).map((s) => s.stage);
     expect(new Set(names).size).toBe(names.length);
     const bad = base({ runs: { bogus: { status: "succeeded", inputHash: "x" } } as unknown as PipelineView["runs"] });
     expect(nextActions(bad)).toEqual([{ kind: "enqueue", stage: "draft" as StageName, inputHash: expectedInputHash(bad, "draft", null) }]);
@@ -253,8 +255,8 @@ describe("forcing narration (tts) only for a free voice", () => {
 describe("tsx route (slice 3)", () => {
   const f = { requireEvidence: false, paidGeneration: false };
   it("scene_kit route is exactly what it was; tsx replaces build and render by tsx_author after tts", () => {
-    expect(stagePlan("scene_kit", "short", { requireEvidence: false, paidGeneration: true }).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "generate", "tts", "render", "voice", "sfx", "qa"]);
-    expect(stagePlan("scene_kit", "short", f).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
+    expect(stagePlan("collage", "short", { requireEvidence: false, paidGeneration: true }).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "generate", "tts", "render", "voice", "sfx", "qa"]);
+    expect(stagePlan("collage", "short", f).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
     expect(stagePlan("tsx", "short", f).map((s) => s.stage)).toEqual(["draft", "tts", "tsx_author", "voice", "sfx", "qa"]);
     expect(stagePlan("tsx", "short", f).find((s) => s.stage === "draft")?.gateAfter).toBe("script");
     expect(stagePlan("tsx", "short", f).find((s) => s.stage === "tsx_author")?.resource).toBe("render");
@@ -270,7 +272,7 @@ describe("tsx route (slice 3)", () => {
     const stages = trail.filter((t) => !t.startsWith("gate:"));
     expect(stages.slice(0, 6)).toEqual(["draft", "tts", "tsx_author", "voice", "sfx", "qa"]);
     expect(stages).not.toContain("pictures");
-    const switched: PipelineView = { ...v, kind: "scene_kit", runs: { draft: v.runs.draft!, tts: v.runs.tts!, tsx_author: v.runs.tsx_author! } };
+    const switched: PipelineView = { ...v, kind: "collage", runs: { draft: v.runs.draft!, tts: v.runs.tts!, tsx_author: v.runs.tsx_author! } };
     // fall-back before build started: pictures is queued first, then build
     expect(nextActions(switched)[0]).toMatchObject({ kind: "enqueue", stage: "pictures" });
     const withPics: PipelineView = { ...switched, runs: { ...switched.runs, pictures: { status: "succeeded", inputHash: expectedInputHash(switched, "pictures", v.runs.draft!.inputHash) } } };
@@ -294,6 +296,6 @@ describe("existing kinds", () => {
     expect(expectedInputHash(sk, "tts", "b")).toBe(stageInputHash("tts", { prev: "b", script: "s" }, {}));
     expect(expectedInputHash(sk, "render", "t")).toBe(stageInputHash("render", { prev: "t", beats: "b", narration: "n", scenes: "sc" }, {}));
     expect(stagePlan("tsx", "short", f).map((s) => s.stage)).toEqual(["draft", "tts", "tsx_author", "voice", "sfx", "qa"]);
-    expect(stagePlan("scene_kit", "short", f).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
+    expect(stagePlan("collage", "short", f).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
   });
 });

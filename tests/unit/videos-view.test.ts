@@ -9,7 +9,7 @@ const form = (o: Record<string, string>) => {
 
 describe("parseLibraryQuery", () => {
   it("reads known filters and the page", () => {
-    expect(parseLibraryQuery({ format: "short", status: "waiting", language: "ta", kind: "scene_kit", page: "3" })).toEqual({ format: "short", status: "waiting", language: "ta", kind: "scene_kit", page: 3 });
+    expect(parseLibraryQuery({ format: "short", status: "waiting", language: "ta", kind: "collage", page: "3" })).toEqual({ format: "short", status: "waiting", language: "ta", kind: "collage", page: 3 });
   });
   it("ignores unknown values, arrays take the first, bad pages become 1", () => {
     expect(parseLibraryQuery({ status: "nope", language: ["hi", "en"], page: "-2" })).toEqual({ format: undefined, status: undefined, language: "hi", kind: undefined, page: 1 });
@@ -56,7 +56,7 @@ describe("parseNewVideoForm: AI videos", () => {
   it("refuses a character that is not an id, and a long AI video; other kinds never carry a character", () => {
     expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "ai", character: "../../etc" }))).toMatchObject({ ok: false });
     expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "ai", format: "long", minMinutes: "3", maxMinutes: "8" }))).toMatchObject({ ok: false, message: expect.stringMatching(/Scene kit/) });
-    const sk = parseNewVideoForm(form({ topic: "x", language: "en", kind: "scene_kit", character: id }));
+    const sk = parseNewVideoForm(form({ topic: "x", language: "en", kind: "collage", character: id }));
     expect(sk.ok && "characterAssetId" in sk.value).toBe(false);
   });
 });
@@ -65,10 +65,10 @@ describe("parseNewVideoForm", () => {
   it("accepts a topic and each of the six languages, trimming the topic", () => {
     for (const language of ["en", "hi", "ta", "te", "kn", "ml"]) {
       const r = parseNewVideoForm(form({ topic: "  Why the sky is blue ", language }));
-      expect(r).toEqual({ ok: true, value: { topic: "Why the sky is blue", language, kind: "scene_kit", format: "short", notes: undefined } });
+      expect(r).toEqual({ ok: true, value: { topic: "Why the sky is blue", language, kind: "tsx", format: "short", notes: undefined } }); // Custom animation is the default type
     }
   });
-  it("custom animation (tsx) is accepted; the caption style is dropped, the style is kept (for tsx and the scene kit)", () => {
+  it("custom animation (tsx) is accepted; the caption style is dropped, the style is kept", () => {
     const tsx = parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", style: "flat_motion", captionStyle: "punchy_captions" }));
     expect(tsx).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "tsx", format: "short", notes: undefined, style: "flat_motion" } });
     const plain = parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx" }));
@@ -86,20 +86,12 @@ describe("parseNewVideoForm", () => {
     expect(parseNewVideoForm(form({ topic: "x", language: "en", format: "wide" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ language: "en" })).ok).toBe(false);
   });
-  it("long: scene kit only, default 3 to 8 minutes, checked against the max-length setting", () => {
-    const long = (extra: Record<string, string> = {}) => form({ topic: "x", language: "en", kind: "scene_kit", format: "long", ...extra });
-    expect(parseNewVideoForm(long())).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "scene_kit", format: "long", notes: undefined, lengthMin: 3, lengthMax: 8 } });
-    const r = parseNewVideoForm(long({ minMinutes: "5", maxMinutes: "12" }), 15);
-    expect(r.ok && [r.value.lengthMin, r.value.lengthMax]).toEqual([5, 12]);
-    expect(parseNewVideoForm(long({ maxMinutes: "16" }), 15)).toMatchObject({ ok: false });
-    expect(parseNewVideoForm(long({ minMinutes: "9", maxMinutes: "8" }), 15)).toMatchObject({ ok: false });
-    expect(parseNewVideoForm(long({ minMinutes: "2" }), 15)).toMatchObject({ ok: false });
-    expect(parseNewVideoForm(long({ maxMinutes: "20" }), 20).ok).toBe(true); // the setting raises the ceiling
-    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", format: "long" }))).toMatchObject({ ok: false, message: expect.stringContaining("Scene kit") });
+  it("long videos are refused for every type (they were made with the scene kit)", () => {
+    for (const kind of ["tsx", "collage", "ai"]) expect(parseNewVideoForm(form({ topic: "x", language: "en", kind, format: "long" }))).toMatchObject({ ok: false, message: expect.stringContaining("Scene kit") });
   });
   it("a Short never carries a length range", () => {
     const r = parseNewVideoForm(form({ topic: "x", language: "en", minMinutes: "5", maxMinutes: "9" }));
-    expect(r.ok && Object.keys(r.value).sort()).toEqual(["captionStyle", "format", "kind", "language", "notes", "style", "topic"]);
+    expect(r.ok && Object.keys(r.value).sort()).toEqual(["format", "kind", "language", "notes", "topic"]);
     expect(r.ok && r.value.lengthMin).toBeUndefined();
   });
   it("keeps notes up to 2000 characters", () => {

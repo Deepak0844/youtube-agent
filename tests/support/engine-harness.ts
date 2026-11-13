@@ -86,7 +86,7 @@ export async function prepareEngineTables(db: TestDb): Promise<void> {
 
 /** Run before every test (after db.reset()): caps, an owner session, a fresh storage folder and queues. */
 export async function openWorld(db: TestDb): Promise<World> {
-  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:scene_kit', 2000000), ('day', 15000000), ('month', 100000000)");
+  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:collage', 2000000), ('day', 15000000), ('month', 100000000)");
   const sessionId = uuidv7();
   await db.pool.query(
     "insert into sessions (id, token_hash, expires_at, absolute_expires_at) values ($1, $2, clock_timestamp() + interval '1 day', clock_timestamp() + interval '7 days')",
@@ -143,7 +143,7 @@ export async function openWorld(db: TestDb): Promise<World> {
       try { await r.flushall(); } finally { r.disconnect(); }
     },
     async newVideo(topic = "Why do octopuses have three hearts?") {
-      const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic });
+      const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic });
       return v.id;
     },
     async close() {

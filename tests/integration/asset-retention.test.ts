@@ -46,7 +46,7 @@ async function asset(o: { keep?: boolean } = {}): Promise<string> {
 
 /** A video uploaded `daysAgo` days ago with a final file, a narration file and a scratch folder. */
 async function uploaded(daysAgo: number) {
-  const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: `t-${daysAgo}`, channelId: "UCx" });
+  const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: `t-${daysAgo}`, channelId: "UCx" });
   await db.ownerPool.query(
     "insert into uploads (id, video_id, status, channel_id, youtube_id, started_at, finished_at, attempt) values (gen_random_uuid(), $1, 'uploaded', 'UCx', 'abc', now(), now() - make_interval(days => $2), 1)",
     [v.id, daysAgo],

@@ -7,7 +7,7 @@ import type { GateId } from "@/server/core/gates";
 // covers the hash of the stage before it, so rerunning an early stage makes every later one stale automatically.
 
 export type VideoFormat = "short" | "long";
-export type VideoKind = "scene_kit" | "tsx" | "collage" | "ai";
+export type VideoKind = "tsx" | "collage" | "ai";
 export type ContentKindName = "outline" | "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "thumbnail" | "clips";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
@@ -40,8 +40,7 @@ export interface PlanFlags {
 export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags): PlanStep[] {
   // Derived short (Phase 6b.4): scene kit only, and never imported. Nothing is drafted, built or narrated: `derive` writes all of it from the long video.
   if (flags.derived) {
-    if (kind !== "scene_kit" || format !== "short") throw new Error("only a scene-kit short can be derived from a long video");
-    if (flags.imported) throw new Error("imported derived videos are not supported");
+    throw new Error("clips from a long video are not available: they were made with the scene kit, which is removed");
     return [
       { stage: "derive", gateAfter: "script", resource: "cpu" },
       { stage: "render", resource: "render" },
@@ -53,14 +52,13 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
   // Long (Phase 6b.2): scene kit only. The short route with the outline step (and its gate) in front; the render stage picks the
   // landscape composition. Every other kind keeps refusing until its own slice ships.
   if (format === "long") {
-    if (kind !== "scene_kit") throw new Error("long videos are only available for the scene kit for now");
+    throw new Error("long videos are not available: they were made with the scene kit, which is removed");
     // An imported project has no outline to approve, and Draft and Render both need one: refuse instead of building a video that cannot render.
     if (flags.imported) throw new Error("imported long videos are not supported");
     return [{ stage: "outline", gateAfter: "outline", resource: "net" }, ...stagePlan(kind, "short", flags)];
   }
   // tsx: the model writes one Remotion file after narration exists (word times), then it is checked, previewed and rendered
-  // in one stage that replaces build + render. It never uses pictures, so tsx has no pictures step (a fall-back to the scene kit gets it
-  // from the scene_kit route). Every other kind keeps the route below exactly as it was.
+  // in one stage that replaces build + render. It never uses pictures, so tsx has no pictures step. Every other kind keeps the route below exactly as it was.
   if (kind === "tsx") {
     const head: PlanStep[] = flags.imported ? [] : [{ stage: "draft", gateAfter: "script", resource: "net" }];
     return [

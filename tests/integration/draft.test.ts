@@ -49,7 +49,7 @@ const QUOTE = "two pump blood to the gills while one serves the body";
 
 beforeEach(async () => {
   await db.reset();
-  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('s', 1000000000), ('draft_run', 3000000), ('video:scene_kit', 2000000), ('day', 15000000), ('month', 100000000)");
+  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('s', 1000000000), ('draft_run', 3000000), ('video:collage', 2000000), ('day', 15000000), ('month', 100000000)");
   const m = await createModel(db.pool, model, session);
   await setRoute(db.pool, "draft", m.id, session);
 });
@@ -86,7 +86,7 @@ interface Env {
 }
 
 async function env(script: Array<StepResult | Error | ((m: Message[]) => StepResult)>, opts: { pages?: Record<string, string>; onFetch?: () => void; onSearch?: () => void } = {}): Promise<Env> {
-  const video = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Why do octopuses have three hearts?" });
+  const video = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "Why do octopuses have three hearts?" });
   const stageId = await insertQueuedStage(db.pool, { videoId: video.id, name: "draft", inputHash: "h" });
   const claim = (await claimStage(db.pool, { id: stageId, inputHash: "h", workerId: "w1", ttlMs: 600_000 }))!;
   const stats: Env["stats"] = { model: 0, search: 0, fetch: 0, decls: [], seen: [] };
@@ -126,7 +126,7 @@ async function env(script: Array<StepResult | Error | ((m: Message[]) => StepRes
     llm, web, stats, claim, stageId, videoId: video.id, abort: () => controller.abort(),
   };
 }
-const input = { topic: "Why do octopuses have three hearts?", lang: "en" as const, kind: "scene_kit" as const };
+const input = { topic: "Why do octopuses have three hearts?", lang: "en" as const, kind: "collage" as const };
 const deps = (e: Env) => ({ llm: e.llm, web: e.web, db: db.pool });
 const setMode = (mode: "agent" | "search_then_write") => db.ownerPool.query("update llm_models set draft_mode = $1", [mode]);
 const spend = async () => (await db.pool.query("select count(*)::int n, coalesce(sum(actual_micro_usd),0)::bigint a from spend_intents where status = 'done'")).rows[0] as { n: number; a: string };
@@ -145,7 +145,7 @@ describe("Draft: search-then-write", () => {
     const ev = await latestContent(db.pool, e.videoId, "evidence");
     expect(JSON.stringify(ev!.body)).not.toMatch(/verified/);
     expect((await latestContent(db.pool, e.videoId, "script"))!.body).toMatchObject({ title: "Three hearts" });
-    expect(stagePlan("scene_kit", "short", { requireEvidence: true, paidGeneration: false })[0]).toMatchObject({ stage: "draft", gateAfter: "script" });
+    expect(stagePlan("collage", "short", { requireEvidence: true, paidGeneration: false })[0]).toMatchObject({ stage: "draft", gateAfter: "script" });
   });
 
   it("handler_reserves_against_its_own_run_video_day_and_month_copies_of_the_caps", async () => {
@@ -437,7 +437,7 @@ describe("Draft review fixes", () => {
 
   it("budget_copies_follow_a_lowered_template_and_long_videos_use_the_long_cap", async () => {
     await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('video:long', 8000000)");
-    const a = { stageRunId: uuidv7(), videoId: uuidv7(), kind: "scene_kit" as const, format: "short" as const };
+    const a = { stageRunId: uuidv7(), videoId: uuidv7(), kind: "collage" as const, format: "short" as const };
     const scopes = await ensureDraftScopes(db.pool, a);
     await db.pool.query("update budgets set cap_micro_usd = 1000 where scope = 'draft_run'");
     await db.pool.query("update budgets set cap_micro_usd = 7000000 where scope = 'day'");

@@ -13,7 +13,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.reset();
 });
-const mk = (topic: string) => createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic });
+const mk = (topic: string) => createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic });
 
 describe("searchVideoTitles (⌘K jump-to)", () => {
   it("matches titles case-insensitively, newest first", async () => {

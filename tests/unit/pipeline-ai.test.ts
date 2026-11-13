@@ -64,10 +64,10 @@ describe("the shot plan's hash", () => {
     const b = (v: PipelineView) => expectedInputHash(v, "build", "p");
     expect(b(view({ content: { clips: "x" } }))).not.toBe(b(view({ content: { clips: "y" } })));
     // a scene-kit video's Build hash ignores clips entirely
-    expect(b(view({ kind: "scene_kit", content: { clips: "x" } }))).toBe(b(view({ kind: "scene_kit", content: { clips: "y" } })));
+    expect(b(view({ kind: "collage", content: { clips: "x" } }))).toBe(b(view({ kind: "collage", content: { clips: "y" } })));
   });
   it("leaves the hashes of other videos exactly as they were (the new fields are ignored unless set)", () => {
-    const sk = (o: Partial<PipelineView> = {}) => view({ kind: "scene_kit", ...o });
+    const sk = (o: Partial<PipelineView> = {}) => view({ kind: "collage", ...o });
     for (const stage of ["draft", "build", "render", "tts"] as const) expect(expectedInputHash(sk({ clipRoute: "x/y", characterAsset: "z" }), stage, "p")).toBe(expectedInputHash(sk(), stage, "p"));
   });
 });

@@ -35,9 +35,9 @@ describe("names and skip rules", () => {
     expect(isReframeFormat(undefined)).toBe(false);
   });
   it("skips collage videos and collage scenes, allows the normal case", () => {
-    expect(reframeProblem("scene_kit", ["chess", "chart"])).toBeNull();
-    expect(reframeProblem("scene_kit", [])).toBeNull();
+    expect(reframeProblem("ai", ["chess", "chart"])).toBeNull();
+    expect(reframeProblem("ai", [])).toBeNull();
     expect(reframeProblem("collage", [])).toMatch(/collage/);
-    expect(reframeProblem("scene_kit", ["chess", "collage"])).toMatch(/collage/);
+    expect(reframeProblem("collage", ["chess", "collage"])).toMatch(/collage/);
   });
 });

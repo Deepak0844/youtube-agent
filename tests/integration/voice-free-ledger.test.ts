@@ -49,7 +49,7 @@ beforeEach(async () => {
 
 describe("free voice through the real ledger", () => {
   it("VoiceStudio synth creates a settled amount-0 spend_intent and does not throw", async () => {
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "t" });
     const stageId = await insertQueuedStage(db.pool, { videoId: v.id, name: "tts", inputHash: "h" });
     const claim = (await claimStage(db.pool, { id: stageId, inputHash: "h", workerId: "w1", ttlMs: 600_000 }))!;
     const made = createStageContext({ stage: { id: stageId, name: "tts", inputHash: "h", videoId: v.id }, claim, config: buildEngineConfig(new Map()), signal: new AbortController().signal, paid: createPgPaidCallPorts(db.pool) }).ctx;

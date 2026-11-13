@@ -13,7 +13,7 @@ beforeEach(async () => {
   await db.ownerPool.query("truncate videos, video_content cascade");
 });
 
-const input = { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" } as const;
+const input = { format: "short", kind: "collage", language: "en", topic: "Why the sky is blue" } as const;
 const h = (c: string) => c.repeat(64).slice(0, 64);
 
 describe("videos", () => {

@@ -33,7 +33,7 @@ beforeEach(async () => {
   await db.pool.query("insert into sessions (id, token_hash, expires_at, absolute_expires_at) values ($1, 'thumb', clock_timestamp() + interval '1 day', clock_timestamp() + interval '7 days') on conflict (id) do nothing", [SESSION.sessionId]);
 });
 
-const long = (over: { topic?: string } = {}) => createVideoRow(db.pool, { format: "long", kind: "scene_kit", language: "en", topic: over.topic ?? "Why the sea is salty", lengthMinMinutes: 3, lengthMaxMinutes: 8 });
+const long = (over: { topic?: string } = {}) => createVideoRow(db.pool, { format: "long", kind: "collage", language: "en", topic: over.topic ?? "Why the sea is salty", lengthMinMinutes: 3, lengthMaxMinutes: 8 });
 const asset = async (kind: "image" | "audio" = "image", deleted = false) =>
   (await db.pool.query<{ id: string }>(
     `insert into assets (kind, original_name, mime, bytes, sha256, storage_ref, source, rights, deleted_at) values ($1, 'pic.png', 'image/png', 1, $2, 'assets/a1/main.png', 'upload', '{"attestations":["x"]}', ${deleted ? "now()" : "null"}) returning id`,
@@ -75,7 +75,7 @@ describe("requestThumbnail", () => {
     expect((await db.pool.query("select detail from audit_log where event = 'video.thumbnail_requested'")).rows[0].detail).toMatchObject({ videoId: v.id, ownPicture: true });
   });
   it("refuses a short video, a cancelled one, an unknown video, a missing, deleted or non-image picture, and a second request while one is queued", async () => {
-    const s = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t" });
+    const s = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "t" });
     expect(await requestThumbnail(db.pool, queue, s.id)).toMatchObject({ ok: false, message: expect.stringMatching(/long video/) });
     const c = await long();
     await db.pool.query("update videos set status = 'cancelled' where id = $1", [c.id]);

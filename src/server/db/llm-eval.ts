@@ -40,8 +40,8 @@ export class EvalRefusal extends Error {
   }
 }
 
-const topicSchema = z.array(z.strictObject({ id: z.string().min(1), topic: z.string().min(1), lang: z.string(), kind: z.enum(["scene_kit", "tsx", "collage", "ai"]) })).length(FULL_TOPIC_SET);
-export type EvalTopic = { id: string; topic: string; lang: "en" | "hi" | "ta" | "te" | "ml" | "kn"; kind: "scene_kit" | "tsx" | "collage" | "ai" };
+const topicSchema = z.array(z.strictObject({ id: z.string().min(1), topic: z.string().min(1), lang: z.string(), kind: z.enum(["tsx", "collage", "ai"]) })).length(FULL_TOPIC_SET);
+export type EvalTopic = { id: string; topic: string; lang: "en" | "hi" | "ta" | "te" | "ml" | "kn"; kind: "tsx" | "collage" | "ai" };
 
 export function fixedTopics(): EvalTopic[] {
   return topicSchema.parse(topicsJson).map((t) => {

@@ -84,8 +84,7 @@ export function IdeaCard({ idea }: { idea: IdeaRow }) {
             <input type="hidden" name="id" value={idea.id} />
             <div className="flex flex-col gap-1">
               <Label htmlFor={`kind-${idea.id}`}>Video type</Label>
-              <select id={`kind-${idea.id}`} name="kind" defaultValue="scene_kit" className={selectClass}>
-                <option value="scene_kit">Scene kit</option>
+              <select id={`kind-${idea.id}`} name="kind" defaultValue="tsx" className={selectClass}>
                 <option value="tsx">Custom animation (TSX)</option>
               </select>
             </div>

@@ -119,7 +119,7 @@ describe("local service list (app role)", () => {
 });
 
 describe("system settings form (app role)", () => {
-  const good = { concurrent_renders: 2, concurrent_jobs: 3, storage_warn_gb: 80, max_long_minutes: 20, render_timeout_s: 900, scene_kit: false };
+  const good = { concurrent_renders: 2, concurrent_jobs: 3, storage_warn_gb: 80, max_long_minutes: 20, render_timeout_s: 900 };
 
   it("saves each changed value and audits each", async () => {
     const r = await saveSystemSettings(db.pool, good);
@@ -128,9 +128,8 @@ describe("system settings form (app role)", () => {
     expect(await getSetting(db.pool, "jobs.concurrent_jobs")).toBe(3);
     expect(await getSetting(db.pool, "storage.warn_gb")).toBe(80);
     expect(await getSetting(db.pool, "video.max_long_minutes")).toBe(20);
-    expect(await getSetting(db.pool, "tracks.enabled")).toEqual({ scene_kit: false, tsx: true, collage: true, ai: true });
     const rows = await audit();
-    expect(rows.map(settingOf).sort()).toEqual(["jobs.concurrent_jobs", "jobs.concurrent_renders", "render.timeout_s", "storage.warn_gb", "tracks.enabled", "video.max_long_minutes"]);
+    expect(rows.map(settingOf).sort()).toEqual(["jobs.concurrent_jobs", "jobs.concurrent_renders", "render.timeout_s", "storage.warn_gb", "video.max_long_minutes"]);
     expect(rows.find((x) => settingOf(x) === "storage.warn_gb")!.detail).toMatchObject({ from: 50, to: 80 });
   });
 
@@ -152,7 +151,7 @@ describe("system settings form (app role)", () => {
 
   it("loadSystemSettings reads back what was saved", async () => {
     await saveSystemSettings(db.pool, good);
-    expect(await loadSystemSettings(db.pool)).toMatchObject({ renders: 2, jobs: 3, warnGb: 80, longMinutes: 20, renderTimeoutS: 900, sceneKit: false });
+    expect(await loadSystemSettings(db.pool)).toMatchObject({ renders: 2, jobs: 3, warnGb: 80, longMinutes: 20, renderTimeoutS: 900 });
   });
 
   it.each([
@@ -191,26 +190,18 @@ describe("system settings form (app role)", () => {
     expect(await getSetting(db.pool, "jobs.concurrent_renders")).toBe(1);
     expect(await getSetting(db.pool, "jobs.concurrent_jobs")).toBe(2);
     expect(await getSetting(db.pool, "storage.warn_gb")).toBe(50);
-    expect(await getSetting(db.pool, "tracks.enabled")).toEqual({ scene_kit: true, tsx: true, collage: true, ai: true });
     expect(await audit()).toHaveLength(0);
   });
 
   it("N4: two saves at once leave one whole form, never a mixture", async () => {
-    const a = { concurrent_renders: 2, concurrent_jobs: 4, storage_warn_gb: 60, max_long_minutes: 30, render_timeout_s: 900, scene_kit: true };
-    const b = { concurrent_renders: 3, concurrent_jobs: 5, storage_warn_gb: 70, max_long_minutes: 40, render_timeout_s: 1200, scene_kit: false };
+    const a = { concurrent_renders: 2, concurrent_jobs: 4, storage_warn_gb: 60, max_long_minutes: 30, render_timeout_s: 900 };
+    const b = { concurrent_renders: 3, concurrent_jobs: 5, storage_warn_gb: 70, max_long_minutes: 40, render_timeout_s: 1200 };
     for (let i = 0; i < 5; i++) {
       await Promise.all([saveSystemSettings(db.pool, a), saveSystemSettings(db.pool, b)]);
       const s = await loadSystemSettings(db.pool);
-      const got = { concurrent_renders: s.renders, concurrent_jobs: s.jobs, storage_warn_gb: s.warnGb, max_long_minutes: s.longMinutes, render_timeout_s: s.renderTimeoutS, scene_kit: s.sceneKit };
+      const got = { concurrent_renders: s.renders, concurrent_jobs: s.jobs, storage_warn_gb: s.warnGb, max_long_minutes: s.longMinutes, render_timeout_s: s.renderTimeoutS };
       expect([a, b]).toContainEqual(got);
     }
-  });
-
-  it("tracks other than scene kit are kept as they were", async () => {
-    await db.ownerPool.query(`insert into settings (key, value, updated_by) values ('tracks.enabled', '{"scene_kit":true,"tsx":false,"collage":true,"ai":false}'::jsonb, 'system')
-       on conflict (key) do update set value = excluded.value`);
-    await saveSystemSettings(db.pool, { ...good, scene_kit: false });
-    expect(await getSetting(db.pool, "tracks.enabled")).toEqual({ scene_kit: false, tsx: false, collage: true, ai: false });
   });
 });
 

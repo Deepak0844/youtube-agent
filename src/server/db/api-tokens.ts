@@ -87,7 +87,7 @@ export async function createDraftForToken(db: pg.Pool, token: AuthedToken, draft
       await c.query("rollback");
       return { ok: false, reason: "cap_reached" };
     }
-    const video = await createVideoRow(c, { format: "short", kind: "scene_kit", language: "en", topic: draft.topic, notes: draft.notes ?? null });
+    const video = await createVideoRow(c, { format: "short", kind: "tsx", language: "en", topic: draft.topic, notes: draft.notes ?? null });
     await c.query("commit");
     return { ok: true, video };
   } catch (e) {

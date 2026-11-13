@@ -25,7 +25,7 @@ const SESSION = "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91";
 const actor = { kind: "session", sessionId: SESSION } as const;
 const queued: string[] = [];
 const queue = { enqueue: async (id: string, fence: number, seq: number) => (queued.push(id), `stage.${id}.${fence}.${seq}`) };
-const mk = (topic = "t") => createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic });
+const mk = (topic = "t") => createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic });
 let n = 0;
 const run = async (videoId: string, name: string, status: string, seconds = 10) => {
   const id = `0190f3a2-7c1e-7a55-9d3b-${(0x4000 + n++).toString(16).padStart(12, "0")}`;

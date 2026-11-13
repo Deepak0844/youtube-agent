@@ -10,13 +10,13 @@ const items = [
 
 describe("cost plan", () => {
   it("an empty plan (no paid images) is valid, costs nothing and reads back", () => {
-    const plan = buildCostPlan([], "scene_kit");
-    expect(plan).toEqual({ items: [], path: "scene_kit", totalMicroUsd: 0 });
+    const plan = buildCostPlan([], "collage");
+    expect(plan).toEqual({ items: [], path: "collage", totalMicroUsd: 0 });
     expect(parseCostPlan(costPlanBody(plan))).toMatchObject({ ok: true, quoteMicroUsd: 0 });
   });
 
   it("cost_plan_totals_and_quote_math_are_integer_micro_usd", () => {
-    const plan = buildCostPlan(items, "scene_kit");
+    const plan = buildCostPlan(items, "collage");
     expect(plan.totalMicroUsd).toBe(8501);
     const body = costPlanBody(plan);
     expect(body.quote).toEqual({ micro_usd: "8501" }); // a string, so it never passes through a float
@@ -29,13 +29,13 @@ describe("cost plan", () => {
     // Never a fraction, a negative, NaN or a number past 2^53: refused, not rounded.
     for (const bad of [0.5, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
       expect(() => sumMicroUsd([bad])).toThrow(RangeError);
-      expect(() => buildCostPlan([{ ...items[0]!, quoteMicroUsd: bad }], "scene_kit")).toThrow(RangeError);
+      expect(() => buildCostPlan([{ ...items[0]!, quoteMicroUsd: bad }], "collage")).toThrow(RangeError);
     }
     expect(() => sumMicroUsd([Number.MAX_SAFE_INTEGER, 1])).toThrow(RangeError);
   });
 
   it("the body passes the cost gate's own completeness check and names the providers", () => {
-    const body = costPlanBody(buildCostPlan(items, "scene_kit"));
+    const body = costPlanBody(buildCostPlan(items, "collage"));
     expect(body.providers_models).toEqual({ clip: "fake-clip", image: "fake-image" });
     const r = liveHash("cost", { channelId: null, content: { cost_plan: { sha256: "a".repeat(64), body } } });
     expect(r.ok).toBe(true);
@@ -43,7 +43,7 @@ describe("cost plan", () => {
 
   it("a different provider changes the cost hash", () => {
     const hash = (provider: string) => {
-      const body = costPlanBody(buildCostPlan([{ kind: "image", provider, quoteMicroUsd: 1 }], "scene_kit"));
+      const body = costPlanBody(buildCostPlan([{ kind: "image", provider, quoteMicroUsd: 1 }], "collage"));
       const r = liveHash("cost", { channelId: null, content: { cost_plan: { sha256: "a".repeat(64), body } } });
       return r.ok ? r.hash : "";
     };
@@ -51,7 +51,7 @@ describe("cost plan", () => {
   });
 
   it("parse refuses a plan whose items cost more than its quote, or whose figures disagree", () => {
-    const good = costPlanBody(buildCostPlan(items, "scene_kit"));
+    const good = costPlanBody(buildCostPlan(items, "collage"));
     expect(parseCostPlan({ ...good, quote: { micro_usd: "8500" } }).ok).toBe(false); // items exceed the quote
     expect(parseCostPlan({ ...good, totalMicroUsd: 1 }).ok).toBe(false);
     expect(parseCostPlan({ ...good, quote: { micro_usd: "85.01" } }).ok).toBe(false);

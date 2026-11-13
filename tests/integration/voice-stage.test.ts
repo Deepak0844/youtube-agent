@@ -40,7 +40,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await db.reset();
-  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:scene_kit', 2000000), ('day', 15000000), ('month', 100000000)");
+  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:collage', 2000000), ('day', 15000000), ('month', 100000000)");
 });
 
 type Fake = ReturnType<typeof createFakeVoice>;
@@ -53,7 +53,7 @@ function deps(fake: Fake, over: Partial<StageDeps> = {}): StageDeps {
 }
 
 async function video(lang: "en" | "te" = "en", narration = "One fine line. Two fine lines. Three fine lines. Four fine lines.") {
-  const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: lang, topic: "t" });
+  const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: lang, topic: "t" });
   await setScript(v.id, narration);
   return v;
 }

@@ -69,7 +69,7 @@ afterAll(async () => {
 beforeEach(async () => {
   rmSync(path.join(audioRoot, "generated"), { recursive: true, force: true }); // a raw clip left by an earlier test would hide a lost paid clip
   await db.reset();
-  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:scene_kit', 2000000), ('day', 15000000), ('month', 100000000)");
+  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:collage', 2000000), ('day', 15000000), ('month', 100000000)");
 });
 
 // --- helpers -------------------------------------------------------------------------------------------------------------
@@ -89,7 +89,7 @@ async function setScript(id: string, b: Beats) {
   if (!r.ok) throw new Error(r.reason);
 }
 async function video(lang: Lang, b: Beats = beatsOf(lang)) {
-  const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: lang, topic: "t" });
+  const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: lang, topic: "t" });
   await setScript(v.id, b);
   return v;
 }
@@ -305,26 +305,26 @@ describe.skipIf(!process.env.WHISPER_MODEL)("real whisper (WHISPER_MODEL is set)
 describe("spending caps on the voice stage", () => {
   const setCap = (scope: string, cap: number | null) => db.ownerPool.query("update budgets set cap_micro_usd = $2 where scope = $1", [scope, cap]);
   it("no_limit_pays_every_line", async () => {
-    await setCap("video:scene_kit", null);
+    await setCap("video:collage", null);
     const fake = createFakeVoice(opts());
     const v = await video("en");
     expect((await runTts(v.id, deps(fake))).kind).toBe("committed");
     expect([fake.totalCalls(), await spent(v.id)]).toEqual([4, 4000]);
   });
   it("a_number_stops_before_the_line_that_would_pass_it_and_a_raised_cap_pays_only_the_rest", async () => {
-    await setCap("video:scene_kit", 2500);
+    await setCap("video:collage", 2500);
     const fake = createFakeVoice(opts());
     const v = await video("en");
     expect((await runTts(v.id, deps(fake))).kind).toBe("budget_refused");
     expect([fake.totalCalls(), await spent(v.id)]).toEqual([2, 2000]);
     expect(Number((await db.pool.query("select count(*) n from voice_lines")).rows[0].n)).toBe(2); // the paid lines were kept
-    await setCap("video:scene_kit", 100_000); // a copy follows its template down, never up: raise both
+    await setCap("video:collage", 100_000); // a copy follows its template down, never up: raise both
     await setCap(`video:${v.id}`, 100_000);
     expect((await runTts(v.id, deps(fake))).kind).toBe("committed");
     expect([fake.totalCalls(), await spent(v.id)]).toEqual([4, 4000]);
   });
   it("a_cap_of_zero_is_not_no_limit", async () => {
-    await setCap("video:scene_kit", 0);
+    await setCap("video:collage", 0);
     const fake = createFakeVoice(opts());
     const v = await video("en");
     expect((await runTts(v.id, deps(fake))).kind).toBe("budget_refused");

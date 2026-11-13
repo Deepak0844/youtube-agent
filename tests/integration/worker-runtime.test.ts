@@ -80,7 +80,7 @@ describe("worker runtime with Postgres and Redis", () => {
   });
 
   it("a_confirmed_provider_rejection_schedules_a_delayed_retry_row_and_stays_quiet_until_retries_run_out", async () => {
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "Why the sky is blue" });
     await advanceVideo(db.pool, queue, v.id);
     const worker = boot({ handlers: { draft: async () => { throw new NotProcessedError("provider said 429", { status: 429 }); } } }); await worker.ready;
     const rows = async () => (await db.pool.query("select id, status, retry_of, not_before, input_hash, result from stage_runs where video_id = $1 order by created_at, id", [v.id])).rows;
@@ -98,7 +98,7 @@ describe("worker runtime with Postgres and Redis", () => {
 
   it("a_retry_held_by_the_breaker_is_not_reported_as_a_failed_video", async () => {
     await setSetting(db.pool, "breaker.threshold", 1, { actor: "session" });
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "Why the sky is blue" });
     await advanceVideo(db.pool, queue, v.id);
     const worker = boot({ handlers: { draft: async () => { throw new NotProcessedError("slow down", { status: 429 }); } } }); await worker.ready;
     await waitFor(async () => (await db.pool.query("select 1 from notifications where event = 'spend_cap_hit'")).rowCount === 1, "breaker notified");
@@ -122,13 +122,13 @@ describe("worker runtime with Postgres and Redis", () => {
 
   it("an_opening_breaker_tells_the_owner_once", async () => {
     await setSetting(db.pool, "breaker.threshold", 1, { actor: "session" });
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "Why the sky is blue" });
     await advanceVideo(db.pool, queue, v.id);
     const worker = boot({ handlers: { draft: async () => { throw new NotProcessedError("bad request", { status: 400 }); } } }); await worker.ready;
     await waitFor(async () => (await db.pool.query("select 1 from notifications where event = 'spend_cap_hit'")).rowCount === 1, "breaker notified");
     await waitFor(async () => (await db.pool.query("select 1 from notifications where event = 'video_failed'")).rowCount === 1, "failure notified");
     expect((await db.pool.query("select 1 from notifications where event = 'spend_cap_hit'")).rowCount).toBe(1);
-    expect((await advanceVideo(db.pool, queue, (await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "Another" })).id)).held).toMatchObject({ stage: "draft" });
+    expect((await advanceVideo(db.pool, queue, (await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "Another" })).id)).held).toMatchObject({ stage: "draft" });
   });
 
   it("worker_without_handlers_leaves_rows_queued_and_does_not_advance", async () => {

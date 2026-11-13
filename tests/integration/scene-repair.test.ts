@@ -23,7 +23,7 @@ const badDoc = { version: 1, scenes: [sc("s1", "b1", 0, "ls"), sc("s2", "b2", 30
 const reply = (scene: object) => JSON.stringify({ version: 1, scenes: [scene] });
 
 async function setup(...bodies: object[]) {
-  const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t" });
+  const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "t" });
   await addContent(db.pool, v.id, "beats", { body: { beats: [{ id: "b1", text: "a" }, { id: "b2", text: "b" }] }, sha256: sha256Hex("beats") });
   for (const b of bodies) await addContent(db.pool, v.id, "scenes", { body: b, sha256: sha256Hex(canonicalJson(b)) });
   return v.id;
@@ -94,7 +94,7 @@ describe("undoScenes", () => {
   });
   it("changes the render's wanted input hash (render goes stale)", async () => {
     const id = await setup(good, badDoc);
-    const view = (sha: string): PipelineView => ({ kind: "scene_kit", format: "short", flags: {}, paramsHash: "p", feedback: null, content: { scenes: sha }, runs: {}, approved: new Set() }) as unknown as PipelineView;
+    const view = (sha: string): PipelineView => ({ kind: "collage", format: "short", flags: {}, paramsHash: "p", feedback: null, content: { scenes: sha }, runs: {}, approved: new Set() }) as unknown as PipelineView;
     const before = expectedInputHash(view((await currentScenes(db.pool, id))!.body ? sha256Hex(canonicalJson(badDoc)) : ""), "render", "prev");
     await undoScenes(db.pool, id);
     const row = (await db.pool.query("select sha256 from video_content where video_id=$1 and kind='scenes' order by version desc limit 1", [id])).rows[0];

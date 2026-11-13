@@ -16,8 +16,8 @@ test("New short -> the video page -> it shows in Videos with its language", asyn
   await page.goto("/videos/new");
   await page.waitForLoadState("networkidle"); // client form: act only after hydration
   await expect(page.getByRole("heading", { level: 1, name: "New video" })).toBeVisible();
-  await expect(page.getByRole("radio", { name: /Scene kit/ })).toBeChecked();
-  await expect(page.getByRole("radio", { name: /Custom animation/ })).not.toBeChecked();
+  await expect(page.getByRole("radio", { name: /Scene kit/ })).toHaveCount(0);
+  await expect(page.getByRole("radio", { name: /Custom animation/ })).toBeChecked();
   await expect(page.getByLabel("Format").locator("option:disabled")).toHaveCount(0); // Long is selectable since Phase 6b.2
   await noPageScroll(page);
   await page.getByLabel("Topic").fill(topic);
@@ -90,7 +90,7 @@ test("the New form offers the AI video type with its character picker and says w
   await expect(page.getByLabel("Character picture")).toHaveValue("");
   await expect(page.getByTestId("ai-route-note")).toContainText("No AI video provider and model are chosen yet");
   await page.getByLabel("Format").selectOption("long");
-  await expect(ai).toBeDisabled(); // Long is the Scene kit only
+  await expect(ai).toBeDisabled(); // no type makes long videos now
   await noPageScroll(page);
 });
 

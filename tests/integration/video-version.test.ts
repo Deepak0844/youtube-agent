@@ -21,8 +21,8 @@ const SESSION = "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91";
 const actor = { kind: "session", sessionId: SESSION } as const;
 const queued: string[] = [];
 const queue = { enqueue: async (id: string, fence: number, seq: number) => (queued.push(id), `stage.${id}.${fence}.${seq}`) };
-const short = (o: Partial<{ kind: "scene_kit" | "tsx"; channelId: string | null; notes: string; style: string; language: "en" | "ta" }> = {}) =>
-  createVideoRow(db.pool, { format: "short", kind: o.kind ?? "scene_kit", language: o.language ?? "ta", topic: "Why the sea is salty", notes: o.notes ?? "calm tone", channelId: o.channelId ?? null, style: o.style ?? "ai_studio", captionStyle: null });
+const short = (o: Partial<{ kind: "collage" | "tsx"; channelId: string | null; notes: string; style: string; language: "en" | "ta" }> = {}) =>
+  createVideoRow(db.pool, { format: "short", kind: o.kind ?? "collage", language: o.language ?? "ta", topic: "Why the sea is salty", notes: o.notes ?? "calm tone", channelId: o.channelId ?? null, style: o.style ?? "ai_studio", captionStyle: null });
 
 describe("startVersion (remake a Short as another type)", () => {
   it("starts a NEW video on the same topic, notes, language and channel, audits it, and starts its route like any new video", async () => {
@@ -54,13 +54,14 @@ describe("startVersion (remake a Short as another type)", () => {
   });
   it("refuses a long video, the same type, a bad type, an unknown video, and a caller who is not the signed-in owner, creating nothing", async () => {
     const src = await short();
-    const long = await createVideoRow(db.pool, { format: "long", kind: "scene_kit", language: "en", topic: "t", lengthMinMinutes: 3, lengthMaxMinutes: 8 });
+    const long = await createVideoRow(db.pool, { format: "long", kind: "collage", language: "en", topic: "t", lengthMinMinutes: 3, lengthMaxMinutes: 8 });
     expect(await startVersion(db.pool, queue, actor, long.id, "tsx")).toMatchObject({ ok: false, message: expect.stringMatching(/Only a Short/) });
-    expect(await startVersion(db.pool, queue, actor, src.id, "scene_kit")).toMatchObject({ ok: false, message: expect.stringMatching(/already is/) });
+    const tsxSrc = await short({ kind: "tsx" });
+    expect(await startVersion(db.pool, queue, actor, tsxSrc.id, "tsx")).toMatchObject({ ok: false, message: expect.stringMatching(/already is/) });
     expect(await startVersion(db.pool, queue, actor, src.id, "collage")).toMatchObject({ ok: false });
     for (const id of ["00000000-0000-4000-8000-000000000000", "not-a-uuid"]) expect(await startVersion(db.pool, queue, actor, id, "tsx"), id).toMatchObject({ ok: false, message: expect.stringMatching(/not found/) });
     for (const a of [undefined, null, {}, { kind: "token", sessionId: SESSION }, { kind: "session" }]) expect(await startVersion(db.pool, queue, a as never, src.id, "tsx")).toMatchObject({ ok: false });
-    expect((await db.pool.query("select count(*)::int n from videos")).rows[0].n).toBe(2); // only the two seeded ones
+    expect((await db.pool.query("select count(*)::int n from videos")).rows[0].n).toBe(3); // only the three seeded ones
     expect(queued).toHaveLength(0);
   });
 });

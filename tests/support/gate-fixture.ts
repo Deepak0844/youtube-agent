@@ -13,10 +13,10 @@ import type { GateAct, GateAttempt, GateResult } from "./gate-invariants";
 
 // Real-database fixture shared by the per-gate suites in tests/integration/gates/. One fresh video per call.
 const meta = metaBody();
-const plan = { providers_models: { llm: "m1" }, path: "scene_kit", library_scene_versions: { a: 1 }, quote: { micro_usd: "5" } };
+const plan = { providers_models: { llm: "m1" }, path: "collage", library_scene_versions: { a: 1 }, quote: { micro_usd: "5" } };
 
 export async function seedVideo(db: pg.Pool): Promise<string> {
-  const v = await createVideoRow(db, { format: "short", kind: "scene_kit", language: "en", topic: "topic", channelId: "UC1" });
+  const v = await createVideoRow(db, { format: "short", kind: "collage", language: "en", topic: "topic", channelId: "UC1" });
   await addContent(db, v.id, "script", { body: { text: "v1" }, sha256: sha256Hex("script-1") });
   await addContent(db, v.id, "cost_plan", { body: plan, sha256: sha256Hex("plan-1") });
   await addContent(db, v.id, "video", { filePath: "v/1.mp4", sha256: sha256Hex("video-1") });

@@ -110,7 +110,7 @@ async function plan(lang: string): Promise<number> {
     const { plan: models } = await modelFacts(db);
     if (models.length < STAGES.length) out("Note: a model for draft or build_scene_kit is not routed and priced yet; run --preflight.\n\n");
     const videoCap = (await listBudgetTemplates(db)).templates.find((x) => x.scope === "video:scene_kit")?.capMicroUsd ?? BUDGET_DEFAULTS["video:scene_kit"]!;
-    out(formatPlan({ lang, steps: stagePlan("scene_kit", "short", { requireEvidence: false, paidGeneration: false }), models, videoCapMicro: videoCap }));
+    out(formatPlan({ lang, steps: stagePlan("collage", "short", { requireEvidence: false, paidGeneration: false }), models, videoCapMicro: videoCap }));
   } finally { await db.end().catch(() => undefined); }
   return 0;
 }

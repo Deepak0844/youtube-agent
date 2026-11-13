@@ -59,7 +59,7 @@ describe("backup, then restore (real pg_dump and pg_restore)", () => {
   let videoId: string;
 
   it("makes real backups of a database with a video and a file in it", async () => {
-    videoId = (await db.ownerPool.query("insert into videos (format, kind, language, topic) values ('short','scene_kit','en','Why the sea is salty') returning id")).rows[0].id;
+    videoId = (await db.ownerPool.query("insert into videos (format, kind, language, topic) values ('short','collage','en','Why the sea is salty') returning id")).rows[0].id;
     mkdirSync(storageFile("videos", videoId), { recursive: true });
     writeFileSync(storageFile("videos", videoId, "scenes.json"), '{"scenes":"before"}');
 

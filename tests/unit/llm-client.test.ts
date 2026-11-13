@@ -74,7 +74,7 @@ function setup(opts: { models?: ModelRow[]; routes?: Record<string, string>; scr
       built.push(row.id);
       return {} as LanguageModel;
     },
-    budgetScopes: () => ["video:scene_kit", "day", "month", "draft_run"],
+    budgetScopes: () => ["video:collage", "day", "month", "draft_run"],
     makeStep,
   });
   return { client, seen, built, models };
@@ -172,7 +172,7 @@ describe("LlmClient.generate paid steps", () => {
     expect(r.spentMicroUsd).toBe(cost(mk(), 120, 30));
     expect(l.spent).toBe(cost(mk(), 120, 30));
     expect(l.reserves).toEqual([
-      { step: 0, reserveMicroUsd: cost(mk(), estimateInputTokens(msgs), 500), budgetScopes: ["video:scene_kit", "day", "month", "draft_run"] },
+      { step: 0, reserveMicroUsd: cost(mk(), estimateInputTokens(msgs), 500), budgetScopes: ["video:collage", "day", "month", "draft_run"] },
     ]);
     expect(l.reserves[0]!.reserveMicroUsd).toBeGreaterThan(r.spentMicroUsd);
   });

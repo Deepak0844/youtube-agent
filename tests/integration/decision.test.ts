@@ -38,7 +38,7 @@ beforeEach(async () => {
 
 const SESSION_ID = "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e90";
 const SESSION = { kind: "session", sessionId: SESSION_ID } as const;
-const input = { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" } as const;
+const input = { format: "short", kind: "collage", language: "en", topic: "Why the sky is blue" } as const;
 const config = buildEngineConfig(new Map());
 const RESERVE = 400_000;
 

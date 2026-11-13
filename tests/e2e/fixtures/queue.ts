@@ -34,7 +34,7 @@ export const script = (title: string) => ({
   beats: [{ id: "hook", text: "hook" }, { id: "why", text: "why" }],
   evidence: [{ text: "Air scatters blue light", kind: "sourced", source_url: "https://example.test/rayleigh", quote: "scatters blue light" }],
 });
-export const costPlan = { providers_models: { llm: "claude-test" }, path: "scene_kit", library_scene_versions: { intro: 1 }, quote: { micro_usd: "2500000" }, items: [{ kind: "image", provider: "fakeimg", quoteMicroUsd: 2_500_000 }] };
+export const costPlan = { providers_models: { llm: "claude-test" }, path: "collage", library_scene_versions: { intro: 1 }, quote: { micro_usd: "2500000" }, items: [{ kind: "image", provider: "fakeimg", quoteMicroUsd: 2_500_000 }] };
 
 /** Runs the queued stage row of a video the way a worker would: claim it, commit it. Returns false when none is queued. */
 export async function workerFinishes(videoId: string, stage: string): Promise<boolean> {
@@ -52,7 +52,7 @@ export async function advance(videoId: string): Promise<void> {
 
 /** A video whose draft finished: the pipeline waits at the script gate. `withCost` adds a paid cost plan so the cost gate follows. */
 export async function seedScriptGate(topic: string, opts: { withCost?: boolean } = {}): Promise<{ videoId: string }> {
-  const v = await createVideoRow(db(), { format: "short", kind: "scene_kit", language: "en", topic, channelId: "UC-e2e" });
+  const v = await createVideoRow(db(), { format: "short", kind: "collage", language: "en", topic, channelId: "UC-e2e" });
   await ensureChannel(db(), "UC-e2e");
   await addContent(db(), v.id, "script", { body: script(topic), sha256: sha256Hex(`script-${v.id}`) });
   if (opts.withCost) await addContent(db(), v.id, "cost_plan", { body: costPlan, sha256: sha256Hex(`plan-${v.id}`) });
@@ -64,7 +64,7 @@ export async function seedScriptGate(topic: string, opts: { withCost?: boolean }
 
 /** The draft stage ran, an unclear paid call is open: the stage is parked with a $0.25 reservation. */
 export async function seedParked(topic: string): Promise<{ videoId: string; stageId: string }> {
-  const v = await createVideoRow(db(), { format: "short", kind: "scene_kit", language: "en", topic });
+  const v = await createVideoRow(db(), { format: "short", kind: "collage", language: "en", topic });
   const stageId = uuidv7();
   await db().query("insert into stage_runs (id, video_id, name, status, input_hash) values ($1, $2, 'draft', 'needs_decision', $3)", [stageId, v.id, sha256Hex(`parked-${stageId}`)]);
   await db().query(
@@ -82,7 +82,7 @@ export async function liveFields(videoId: string, gate: "script" | "cost" | "vid
 /** A video at the publish gate: real file under the e2e storage root, video and evidence signed off by a real session. */
 export async function seedPublishGate(topic: string, visibility: "private" | "unlisted" | "public" = "private"): Promise<{ videoId: string }> {
   const root = process.env.E2E_STORAGE_ROOT!;
-  const v = await createVideoRow(db(), { format: "short", kind: "scene_kit", language: "en", topic, channelId: "UC-e2e" });
+  const v = await createVideoRow(db(), { format: "short", kind: "collage", language: "en", topic, channelId: "UC-e2e" });
   await ensureChannel(db(), "UC-e2e", { allowPublic: visibility === "public" });
   const rel = `queue-e2e/${v.id}.mp4`;
   mkdirSync(path.join(root, "queue-e2e"), { recursive: true });

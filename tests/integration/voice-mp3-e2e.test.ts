@@ -49,7 +49,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await db.reset();
-  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:scene_kit', 2000000), ('day', 15000000), ('month', 100000000)");
+  await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:collage', 2000000), ('day', 15000000), ('month', 100000000)");
 });
 
 /** The fake voice, but its audio is a real quiet tone saved as mp3 (the only format it claims). */
@@ -76,7 +76,7 @@ async function run(id: string, name: string, handler: ReturnType<typeof withAtte
 
 describe("mp3 voice, mux and mix (real ffmpeg)", () => {
   it.each(["plan", "cue sheet"])("an mp3 voice becomes narration, is muxed onto the render and mixed with a cue from a %s into final.mp4", async (source) => {
-    const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t" });
+    const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "t" });
     const script = { title: "T", narration: "One fine line. Two fine lines." };
     await addContent(db.pool, v.id, "script", { body: script, sha256: sha256Hex(canonicalJson(script)) });
     const beats = { beats: [{ id: "b1", text: "x" }] };

@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   const deps = defaultDryRunDeps(db, root);
   const dispatcher = createStageDispatcher(dryRunHandlers(deps), 1);
   const config = await getEngineConfig(db).catch(() => buildEngineConfig(new Map()));
-  const video = await createVideo(db, { format: "short", kind: "scene_kit", language: "en", topic });
+  const video = await createVideo(db, { format: "short", kind: "collage", language: "en", topic });
   process.stdout.write(`video ${video.id}\n`);
 
   const pending: Array<{ id: string; inputHash: string }> = [];

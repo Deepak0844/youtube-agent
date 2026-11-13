@@ -32,7 +32,7 @@ beforeEach(async () => {
 
 const SESSION_ID = "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91";
 const SESSION = { kind: "session", sessionId: SESSION_ID } as const;
-const input = { format: "short", kind: "scene_kit", language: "en", topic: "Why the sky is blue" } as const;
+const input = { format: "short", kind: "collage", language: "en", topic: "Why the sky is blue" } as const;
 const RESERVE = 3000;
 const JOB_ID = "req-1234abcd";
 const ART: MediaArtifact = { path: "/x/generated-media/ab/abc.png", bytes: 67, sha256: "abc", provenance: { provider: "fal_image", model: "m", params: {}, priceMicroUsd: RESERVE, quoted: true } };

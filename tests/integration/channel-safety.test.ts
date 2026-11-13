@@ -60,7 +60,7 @@ async function channel(set = ""): Promise<string> {
 }
 
 async function seed(visibility = "private") {
-  const v = await createVideoRow(db.pool, { format: "short", kind: "scene_kit", language: "en", topic: "t", channelId: CH });
+  const v = await createVideoRow(db.pool, { format: "short", kind: "collage", language: "en", topic: "t", channelId: CH });
   const bytes = Buffer.from(`video-bytes-${v.id}`);
   const filePath = `videos/${v.id}/final.mp4`;
   mkdirSync(path.join(root, "videos", v.id), { recursive: true });

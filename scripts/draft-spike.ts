@@ -78,7 +78,7 @@ async function main() {
   }).ctx;
   const web = createWebTools({ searxUrl: process.env.SEARXNG_URL ?? "http://127.0.0.1:8888" });
 
-  const out = await runDraft(ctx, { llm, web, db: undefined as never, mode, store: null }, { topic, lang, kind: "scene_kit" });
+  const out = await runDraft(ctx, { llm, web, db: undefined as never, mode, store: null }, { topic, lang, kind: "tsx" });
   console.log(JSON.stringify(out.script, null, 2));
   console.log({ topic, mode, spentUsd: spentMicro / 1e6, evidenceClaims: out.script.evidence.length });
 }
