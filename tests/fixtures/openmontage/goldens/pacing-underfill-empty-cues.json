@@ -1,0 +1,24 @@
+{
+ "steps": [
+  {
+   "kind": "cmd",
+   "text": "ls"
+  }
+ ],
+ "sceneStart": 0.0,
+ "sceneEnd": 12.125,
+ "cues": [],
+ "tolerance": 1.0,
+ "expected": {
+  "landmarks": [
+   {
+    "video_time": 0.0,
+    "kind": "CMD",
+    "text": "ls"
+   }
+  ],
+  "problems": [
+   "steps underfill scene by 11.72s \u2014 last visible step holds frozen from 0.40s to 12.12s. Add a closer pause."
+  ]
+ }
+}

@@ -1,0 +1,80 @@
+{
+ "steps": [
+  {
+   "kind": "cmd",
+   "text": "git clone repo"
+  },
+  {
+   "kind": "out",
+   "text": "Cloning into 'repo'..."
+  },
+  {
+   "kind": "pill",
+   "text": "step 1"
+  },
+  {
+   "kind": "pause",
+   "seconds": 1.2
+  },
+  {
+   "kind": "cmd",
+   "text": "make setup",
+   "typeSpeed": 0.05,
+   "holdSeconds": 0.5
+  },
+  {
+   "kind": "out",
+   "text": "done",
+   "holdSeconds": 2.0
+  },
+  {
+   "kind": "pause",
+   "seconds": 3.0
+  },
+  {
+   "kind": "pause",
+   "seconds": 9.0
+  }
+ ],
+ "sceneStart": 10.0,
+ "sceneEnd": 18.0,
+ "cues": [
+  [
+   10.0,
+   "start"
+  ]
+ ],
+ "tolerance": 0.5,
+ "expected": {
+  "landmarks": [
+   {
+    "video_time": 10.0,
+    "kind": "CMD",
+    "text": "git clone repo"
+   },
+   {
+    "video_time": 10.8,
+    "kind": "OUT",
+    "text": "Cloning into 'repo'..."
+   },
+   {
+    "video_time": 11.07,
+    "kind": "PILL",
+    "text": "step 1"
+   },
+   {
+    "video_time": 12.27,
+    "kind": "CMD",
+    "text": "make setup"
+   },
+   {
+    "video_time": 13.27,
+    "kind": "OUT",
+    "text": "done"
+   }
+  ],
+  "problems": [
+   "steps overflow scene: cursor ends at 27.37s but scene_end is 18.00s (overflow 9.37s)"
+  ]
+ }
+}

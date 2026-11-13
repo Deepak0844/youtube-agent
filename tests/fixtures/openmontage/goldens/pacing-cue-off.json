@@ -1,0 +1,80 @@
+{
+ "steps": [
+  {
+   "kind": "cmd",
+   "text": "git clone repo"
+  },
+  {
+   "kind": "out",
+   "text": "Cloning into 'repo'..."
+  },
+  {
+   "kind": "pill",
+   "text": "step 1"
+  },
+  {
+   "kind": "pause",
+   "seconds": 1.2
+  },
+  {
+   "kind": "cmd",
+   "text": "make setup",
+   "typeSpeed": 0.05,
+   "holdSeconds": 0.5
+  },
+  {
+   "kind": "out",
+   "text": "done",
+   "holdSeconds": 2.0
+  },
+  {
+   "kind": "pause",
+   "seconds": 3.0
+  }
+ ],
+ "sceneStart": 50.0,
+ "sceneEnd": 60.0,
+ "cues": [
+  [
+   50.0,
+   "clone"
+  ],
+  [
+   57.4,
+   "agent reads guide"
+  ]
+ ],
+ "tolerance": 1.0,
+ "expected": {
+  "landmarks": [
+   {
+    "video_time": 50.0,
+    "kind": "CMD",
+    "text": "git clone repo"
+   },
+   {
+    "video_time": 50.8,
+    "kind": "OUT",
+    "text": "Cloning into 'repo'..."
+   },
+   {
+    "video_time": 51.07,
+    "kind": "PILL",
+    "text": "step 1"
+   },
+   {
+    "video_time": 52.27,
+    "kind": "CMD",
+    "text": "make setup"
+   },
+   {
+    "video_time": 53.27,
+    "kind": "OUT",
+    "text": "done"
+   }
+  ],
+  "problems": [
+   "cue 57.40s (agent reads guide) has no visual within \u00b11.0s \u2014 closest is OUT at 53.27s (-4.13s off): done"
+  ]
+ }
+}

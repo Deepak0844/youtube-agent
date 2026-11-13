@@ -1,0 +1,50 @@
+{
+ "pipeline": "talking-head",
+ "intent": {
+  "motion_required": true
+ },
+ "approvedFallback": null,
+ "cuts": [
+  {
+   "id": "text_card",
+   "type": "text_card",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "stat_card",
+   "type": "stat_card",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "avatar",
+   "type": "avatar",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  }
+ ],
+ "expected": {
+  "promise": {
+   "promise_type": "avatar_presenter",
+   "motion_required": true,
+   "source_required": false,
+   "tone_mode": "corporate",
+   "quality_floor": "presentable",
+   "approved_fallback": null
+  },
+  "check": {
+   "valid": false,
+   "violations": [
+    "avatar_presenter does not allow still-led fallback, but 2/3 cuts are non-motion (stills + animated slides). User must approve 'still_led' fallback or provide motion content."
+   ],
+   "motion_ratio": 0.3333333333333333,
+   "motion_cuts": 1,
+   "slide_cuts": 2,
+   "still_cuts": 0
+  }
+ }
+}

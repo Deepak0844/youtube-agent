@@ -1,0 +1,83 @@
+{
+ "pipeline": "animation",
+ "intent": {
+  "motion_required": false
+ },
+ "approvedFallback": null,
+ "cuts": [
+  {
+   "id": "video",
+   "type": "video",
+   "source": "a.mp4",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "animation",
+   "type": "animation",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "hero_title",
+   "type": "hero_title",
+   "source": "b.MOV",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "text_card",
+   "type": "text_card",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "bar_chart",
+   "type": "bar_chart",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "avatar",
+   "type": "avatar",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "video",
+   "type": "video",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "image",
+   "type": "image",
+   "source": "x.png",
+   "in_seconds": 0,
+   "out_seconds": 1
+  }
+ ],
+ "expected": {
+  "promise": {
+   "promise_type": "hybrid",
+   "motion_required": false,
+   "source_required": false,
+   "tone_mode": "corporate",
+   "quality_floor": "presentable",
+   "approved_fallback": null
+  },
+  "check": {
+   "valid": true,
+   "violations": [],
+   "motion_ratio": 0.625,
+   "motion_cuts": 5,
+   "slide_cuts": 2,
+   "still_cuts": 1
+  }
+ }
+}

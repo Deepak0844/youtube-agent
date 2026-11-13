@@ -1,0 +1,23 @@
+{
+ "steps": [
+  {
+   "kind": "pause",
+   "seconds": 2
+  }
+ ],
+ "sceneStart": 1.015,
+ "sceneEnd": 3.0,
+ "cues": [
+  [
+   1.5,
+   "x"
+  ]
+ ],
+ "tolerance": 1.0,
+ "expected": {
+  "landmarks": [],
+  "problems": [
+   "cue 1.50s (x): no landmarks at all"
+  ]
+ }
+}

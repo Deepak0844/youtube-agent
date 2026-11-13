@@ -1,0 +1,85 @@
+{
+ "pipeline": "animation",
+ "intent": {
+  "tone": "playful"
+ },
+ "approvedFallback": null,
+ "cuts": [
+  {
+   "id": "video",
+   "type": "video",
+   "source": "a.mp4",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "animation",
+   "type": "animation",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "hero_title",
+   "type": "hero_title",
+   "source": "b.MOV",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "text_card",
+   "type": "text_card",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "bar_chart",
+   "type": "bar_chart",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "avatar",
+   "type": "avatar",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "video",
+   "type": "video",
+   "source": "",
+   "in_seconds": 0,
+   "out_seconds": 1
+  },
+  {
+   "id": "image",
+   "type": "image",
+   "source": "x.png",
+   "in_seconds": 0,
+   "out_seconds": 1
+  }
+ ],
+ "expected": {
+  "promise": {
+   "promise_type": "motion_led",
+   "motion_required": true,
+   "source_required": false,
+   "tone_mode": "playful",
+   "quality_floor": "presentable",
+   "approved_fallback": null
+  },
+  "check": {
+   "valid": false,
+   "violations": [
+    "Motion ratio 62% is below minimum 70% for motion_led. 5/8 cuts have real motion (2 are animated slides which do not count as motion)."
+   ],
+   "motion_ratio": 0.625,
+   "motion_cuts": 5,
+   "slide_cuts": 2,
+   "still_cuts": 1
+  }
+ }
+}
