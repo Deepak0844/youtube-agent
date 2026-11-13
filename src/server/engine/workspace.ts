@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import { chmod, cp, lstat, mkdir, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 
-// The locked per-video folder of an engine run (ADR 0015). Claude Code starts in `dir` and may only read and write `work/`
-// (its own permission rules). Skills sit in `dir/.claude/skills` (outside work, so Claude cannot change them); brand files,
-// libraries and example shorts are read-only copies in `work/ref/`. (Claude Code keeps the real HOME: it needs it to find the
+// The locked per-video folder of an engine run (ADR 0015). Claude Code starts INSIDE `work/` (its starting folder is the only
+// one it may read; everything above, like the tools config in `dir`, is denied). Skills are read-only copies in
+// `work/.claude/skills` and brand files, libraries and example shorts in `work/ref/` (Edit is denied there too). (Claude Code keeps the real HOME: it needs it to find the
 // owner's login, ADR 0014; its Read rules still keep it out of the home folder.) After every run,
 // checkAfterRun compares two snapshots of the whole folder: anything changed outside `work/`, any link, any change under
 // `work/ref/`, or a work folder over the limits fails the run. Links are reported, never followed.
@@ -31,7 +31,7 @@ export interface Workspace {
   snapshot(): Promise<Snapshot>;
 }
 export interface WorkspaceSeeds {
-  /** Copied to dir/.claude/skills (read-only). */
+  /** Copied to work/.claude/skills (read-only). */
   skillsDir?: string;
   /** Each copied to work/ref/<to> (read-only). */
   refDirs?: ReadonlyArray<{ from: string; to: string }>;
@@ -82,7 +82,7 @@ export async function prepareWorkspace(root: string, videoId: string, seeds: Wor
   const workDir = path.join(dir, "work");
   await mkdir(workDir, { recursive: true });
   if (seeds.skillsDir) {
-    const to = path.join(dir, ".claude", "skills");
+    const to = path.join(workDir, ".claude", "skills");
     await cp(seeds.skillsDir, to, { recursive: true, dereference: false, verbatimSymlinks: true });
     await readOnlyFiles(to);
   }
@@ -109,8 +109,8 @@ export function checkAfterRun(before: Snapshot, after: Snapshot): string[] {
     if (same(a, b) || (a?.type === "dir" && b?.type === "dir")) continue;
     if (b?.type === "link") continue; // already reported
     if (r === "work/ref" || r.startsWith("work/ref/")) problems.push(`reference file changed: ${r}`);
+    else if (r === "work/.claude" || r.startsWith("work/.claude/")) problems.push(`the skills folder (.claude) changed: ${r}`);
     else if (r === "work" || r.startsWith("work/")) continue;
-    else if (r === ".claude" || r.startsWith(".claude/")) problems.push(`the skills folder (.claude) changed: ${r}`);
     else problems.push(`outside the work folder: ${r}`);
   }
   if (after.workBytes > WORK_LIMITS.maxBytes) problems.push("the work folder is over 200 MB");
