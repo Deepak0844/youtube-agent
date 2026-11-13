@@ -1,0 +1,19 @@
+{
+ "input": {
+  "cuts": [],
+  "audio": {}
+ },
+ "files": {
+  "voice-25.wav": 25.0,
+  "voice-21.wav": 21.5,
+  "music-10.wav": 10.0,
+  "bg.png": null
+ },
+ "expected": {
+  "valid": false,
+  "errors": [
+   "No cuts defined in composition"
+  ],
+  "warnings": []
+ }
+}

@@ -228,3 +228,11 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 - engine-kit/openmontage/MANIFEST.json: ours; the list of OpenMontage files taken.
 - engine-kit/openmontage/UPSTREAM.json: ours; the OpenMontage commit the files come from.
 - tests/fixtures/openmontage/animated-reel-20s.json: OpenMontage demo scene list (`remotion-composer/public/demo-props/`, AGPL-3.0), copied as written.
+- src/server/engine/om-checks/composition.ts: TypeScript port of OpenMontage tools/analysis/composition_validator.py (AGPL-3.0).
+- tests/fixtures/openmontage/goldens/composition-bad-times.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/composition-demo-reel.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/composition-missing-image.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/composition-music-short.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/composition-narration-slightly-long.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/composition-narration-too-long.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/composition-no-cuts.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).

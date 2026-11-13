@@ -1,0 +1,49 @@
+{
+ "input": {
+  "cuts": [
+   {
+    "id": "b",
+    "type": "text_card",
+    "in_seconds": 6,
+    "out_seconds": 4,
+    "text": "x"
+   },
+   {
+    "id": "c",
+    "type": "text_card",
+    "in_seconds": 8
+   },
+   {
+    "id": "a",
+    "type": "text_card",
+    "in_seconds": 0,
+    "out_seconds": 6,
+    "text": "x"
+   }
+  ],
+  "audio": {
+   "narration": {
+    "src": "missing-voice.wav"
+   },
+   "music": {
+    "src": "missing-music.mp3"
+   }
+  }
+ },
+ "files": {
+  "voice-25.wav": 25.0,
+  "voice-21.wav": 21.5,
+  "music-10.wav": 10.0,
+  "bg.png": null
+ },
+ "expected": {
+  "valid": false,
+  "errors": [
+   "Cut 'b': out_seconds (4) <= in_seconds (6)",
+   "Cut 'c': out_seconds (0) <= in_seconds (8)",
+   "Missing narration audio: missing-voice.wav",
+   "Missing music audio: missing-music.mp3"
+  ],
+  "warnings": []
+ }
+}
