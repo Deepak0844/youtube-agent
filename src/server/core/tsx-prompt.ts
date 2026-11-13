@@ -106,7 +106,8 @@ export function beatTimings(beats: readonly PromptBeat[], words: readonly Prompt
 const fr = (s: number) => Math.round(s * TSX_META.fps);
 
 function importLines(): string {
-  return Object.entries(TSX_IMPORTS).map(([mod, names]) => (mod === YT_KIT_MODULE ? `- "${mod}": the library below (every name is listed there)` : `- "${mod}": ${names.join(", ")}`)).join("\n");
+  // The old app's libraries (yt-old/*) are for the new engine, which documents them in its workspace; this prompt does not list them.
+  return Object.entries(TSX_IMPORTS).filter(([mod]) => !mod.startsWith("yt-old/")).map(([mod, names]) => (mod === YT_KIT_MODULE ? `- "${mod}": the library below (every name is listed there)` : `- "${mod}": ${names.join(", ")}`)).join("\n");
 }
 
 /** The fixed rules. No data of any kind goes in here. */

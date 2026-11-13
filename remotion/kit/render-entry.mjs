@@ -12,7 +12,7 @@
 // The TSX bundle's entry is tsx-index.ts, which imports nothing of the kit; the scene and the yt-kit library are reached through webpack aliases.
 // Prints "PROGRESS <0-100>" lines; the host turns them into stage log lines.
 // ESM import ignores NODE_PATH; createRequire honours it (/opt/render/node_modules in the image).
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -57,12 +57,16 @@ const withScene = (r) => {
   if (!tsx) return r;
   const scene = path.join(inDir, "video.tsx");
   const lib = path.join(import.meta.dirname, "tsxlib", "index.ts");
+  // "yt-old/<lib>" (exactly) resolves to the old app's drawing library of that name (oldlib/, read-only kit mount). Only plain
+  // top-level library files become aliases; the host's checkTsx has already allowed only the generated names.
+  const oldDir = path.join(import.meta.dirname, "oldlib");
+  const old = readdirSync(oldDir).filter((f) => /^[a-z][a-z0-9]*\.tsx?$/.test(f)).map((f) => ({ name: "yt-old/" + f.replace(/\.tsx?$/, ""), file: path.join(oldDir, f) }));
   const a = r.alias;
   return {
     ...r,
     alias: Array.isArray(a)
-      ? [...a, { name: "tsx-scene", alias: scene, onlyModule: true }, { name: "yt-kit", alias: lib, onlyModule: true }]
-      : { ...(a ?? {}), "tsx-scene$": scene, "yt-kit$": lib },
+      ? [...a, { name: "tsx-scene", alias: scene, onlyModule: true }, { name: "yt-kit", alias: lib, onlyModule: true }, ...old.map((o) => ({ name: o.name, alias: o.file, onlyModule: true }))]
+      : { ...(a ?? {}), "tsx-scene$": scene, "yt-kit$": lib, ...Object.fromEntries(old.map((o) => [`${o.name}$`, o.file])) },
   };
 };
 const serveUrl = await bundle({
