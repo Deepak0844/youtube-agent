@@ -1,4 +1,4 @@
-# Licences of everything imported from the old app (old-kit-import)
+# Licences of everything imported from the old app (old-kit-import) and from OpenMontage
 
 Source: the owner's old app `claude-faceless-shorts-creator` (read-only), copied 2026-11-13. One line per file; anything whose licence could not be confirmed was left out (listed at the end).
 
@@ -133,3 +133,49 @@ Source: the owner's old app `claude-faceless-shorts-creator` (read-only), copied
 
 - Old sound and music library (29 effects, 6 music beds): made with ElevenLabs; this app removed such clips in #177 (no guaranteed licence). Owner confirmed 2026-11-13.
 - `media/library/logos/claude-code-bot.png`: another company's logo.
+
+## OpenMontage (`remotion/kit/om/`, `engine-kit/openmontage/`, `tests/fixtures/openmontage/`)
+
+Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full text in `remotion/kit/om/LICENSE` and `engine-kit/openmontage/LICENSE`), at the commit in `engine-kit/openmontage/UPSTREAM.json`. Owner decision 2026-11-13: personal use on this Mac only, never hosted or shared; if the app is ever hosted or shared, the AGPL's source-sharing terms apply to these files and to code that uses them.
+
+- remotion/kit/om/Explainer.tsx: OpenMontage (AGPL-3.0), patched: the screenshot, anime and provider-chip scenes removed (engine-kit/openmontage/patches/).
+- remotion/kit/om/Root.tsx: OpenMontage (AGPL-3.0), patched: only the Explainer composition and the themes kept (engine-kit/openmontage/patches/).
+- remotion/kit/om/lib/resolveAsset.ts: OpenMontage (AGPL-3.0), patched: staged staticFile names only (no URLs, no host paths) (engine-kit/openmontage/patches/).
+- remotion/kit/om/lib/localFonts.ts: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/fonts/SpaceGrotesk-latin.woff2: font bundled by OpenMontage, SIL Open Font License 1.1 (licence text beside it).
+- remotion/kit/om/fonts/SpaceGrotesk-OFL.txt: SIL Open Font License 1.1 text, shipped by OpenMontage with its bundled font.
+- remotion/kit/om/fonts/PlayfairDisplay-latin.woff2: font bundled by OpenMontage, SIL Open Font License 1.1 (licence text beside it).
+- remotion/kit/om/fonts/PlayfairDisplay-Italic-latin.woff2: font bundled by OpenMontage, SIL Open Font License 1.1 (licence text beside it).
+- remotion/kit/om/fonts/PlayfairDisplay-OFL.txt: SIL Open Font License 1.1 text, shipped by OpenMontage with its bundled font.
+- remotion/kit/om/fonts/fonts.d.ts: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/index.ts: OpenMontage (AGPL-3.0), patched: exports of left-out components removed (engine-kit/openmontage/patches/).
+- remotion/kit/om/components/TextCard.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/StatCard.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/CalloutBox.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/ComparisonCard.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/ProgressBar.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/CaptionOverlay.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/SectionTitle.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/StatReveal.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/HeroTitle.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/TerminalScene.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/ParticleOverlay.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/charts/BarChart.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/charts/LineChart.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/charts/PieChart.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/charts/KPIGrid.tsx: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/components/charts/index.ts: OpenMontage (AGPL-3.0), copied as written.
+- remotion/kit/om/LICENSE: OpenMontage's licence (AGPL-3.0).
+- engine-kit/openmontage/LICENSE: OpenMontage's licence (AGPL-3.0).
+- engine-kit/openmontage/styles/clean-professional.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
+- engine-kit/openmontage/styles/flat-motion-graphics.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
+- engine-kit/openmontage/styles/minimalist-diagram.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
+- engine-kit/openmontage/styles/premium-minimalist.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
+- engine-kit/openmontage/styles/anime-ghibli.yaml: OpenMontage style playbook (AGPL-3.0), copied as written.
+- engine-kit/openmontage/patches/remotion__kit__om__Explainer.tsx.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
+- engine-kit/openmontage/patches/remotion__kit__om__Root.tsx.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
+- engine-kit/openmontage/patches/remotion__kit__om__components__index.ts.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
+- engine-kit/openmontage/patches/remotion__kit__om__lib__resolveAsset.ts.patch: our edits to an OpenMontage file (AGPL-3.0, as the file they change).
+- engine-kit/openmontage/MANIFEST.json: ours; the list of OpenMontage files taken.
+- engine-kit/openmontage/UPSTREAM.json: ours; the OpenMontage commit the files come from.
+- tests/fixtures/openmontage/animated-reel-20s.json: OpenMontage demo scene list (`remotion-composer/public/demo-props/`, AGPL-3.0), copied as written.

@@ -23,13 +23,8 @@ import { CaptionOverlay, CaptionProps, WordCaption } from "./components/CaptionO
 import { SectionTitle } from "./components/SectionTitle";
 import { StatReveal } from "./components/StatReveal";
 import { HeroTitle } from "./components/HeroTitle";
-import { AnimeScene } from "./components/AnimeScene";
-import type { CameraMotion } from "./components/AnimeScene";
 import { TerminalScene } from "./components/TerminalScene";
 import type { TerminalStep } from "./components/TerminalScene";
-import { ScreenshotScene } from "./components/ScreenshotScene";
-import type { ScreenshotStep } from "./components/ScreenshotScene";
-import { ProviderChip } from "./components/ProviderChip";
 import { resolveAsset } from "./lib/resolveAsset";
 import type { ParticleType } from "./components/ParticleOverlay";
 import { resolveTheme, type ThemeConfig, DEFAULT_THEME } from "./Root";
@@ -263,7 +258,7 @@ interface Cut {
   terminalTitle?: string;
   prompt?: string;
   // Screenshot scene props (type: "screenshot_scene")
-  screenshotSteps?: ScreenshotStep[];
+  screenshotSteps?: unknown[]; // ytstudio: screenshot_scene is not imported
   screenshotSize?: { width: number; height: number };
   cursorStartAt?: [number, number];
 }
@@ -649,17 +644,6 @@ const SceneRenderer: React.FC<{ cut: Cut; theme: ThemeConfig }> = ({ cut, theme 
       />
     );
   }
-  if (cut.type === "screenshot_scene" && cut.backgroundImage && cut.screenshotSteps) {
-    return (
-      <ScreenshotScene
-        backgroundImage={cut.backgroundImage}
-        backgroundSize={cut.screenshotSize}
-        steps={cut.screenshotSteps as ScreenshotStep[]}
-        accentColor={accent}
-        cursorStartAt={cut.cursorStartAt}
-      />
-    );
-  }
 
   // --- Chart types — use theme.chartColors as default palette ---
   if (cut.type === "bar_chart" && cut.chartData) {
@@ -735,25 +719,6 @@ const SceneRenderer: React.FC<{ cut: Cut; theme: ThemeConfig }> = ({ cut, theme 
     );
   }
 
-  // --- Anime scene (multi-image crossfade + particles) ---
-  if (cut.type === "anime_scene" && cut.images && cut.images.length > 0) {
-    return (
-      <AnimeScene
-        images={cut.images}
-        animation={(cut.animation as CameraMotion) || "ken-burns"}
-        particles={cut.particles}
-        particleColor={cut.particleColor}
-        particleCount={cut.particleCount}
-        particleIntensity={cut.particleIntensity}
-        backgroundColor={cut.backgroundColor}
-        vignette={cut.vignette ?? true}
-        lightingFrom={cut.lightingFrom}
-        lightingTo={cut.lightingTo}
-        sceneDurationSeconds={cut.out_seconds - cut.in_seconds}
-      />
-    );
-  }
-
   // --- Media types (image / video fallback) ---
   const animation = cut.animation || cut.transform?.animation;
 
@@ -823,17 +788,6 @@ const OverlayRenderer: React.FC<{ overlay: Overlay; theme: ThemeConfig }> = ({
         textColor={theme.textColor}
         subtitleColor={theme.mutedTextColor}
         scrimBackground={heroScrim(theme)}
-      />
-    );
-  }
-  if (overlay.type === "provider_chip" && overlay.providers) {
-    return (
-      <ProviderChip
-        providers={overlay.providers as string[]}
-        cycleSeconds={overlay.cycleSeconds}
-        position={(overlay.position as any) || "bottom-right"}
-        accentColor={overlay.accentColor}
-        label={overlay.label}
       />
     );
   }

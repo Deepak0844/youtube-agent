@@ -54,6 +54,8 @@ const eslintConfig = defineConfig([
     "engine-kit/**",
     // The old app's drawing libraries and their generated declarations: copied as written (old style), bundled only in the render box.
     "remotion/kit/oldlib/**",
+    // OpenMontage's composer (AGPL-3.0), copied as written plus patches (engine-kit/openmontage); bundled only in the render box.
+    "remotion/kit/om/**",
     // Remotion fixture: bundled by Remotion inside the render container, not by Next/tsc.
     "tests/fixtures/remotion-spike/**",
     "tests/fixtures/remotion-tsx/**",
