@@ -35,6 +35,8 @@ import { runChild } from "@/server/render/child";
 import { sweepLostAttempts } from "@/server/storage/store";
 import { createStageDispatcher, handleIngestJob, recoverRunningIngest, sweepStaleUploads, type StageHandlers } from "./handlers";
 import { startReconcileLoop } from "./reconcile-loop";
+import { resumeLimitedSteps } from "./engine-resume";
+import { killStaleEngineRuns } from "@/server/db/engine-runs";
 
 // Composition seams for boot cleanup (09), event retention/transitions (11), and notifications (12).
 export interface WorkerHooks {
@@ -67,6 +69,10 @@ export interface WorkerHooks {
   sweepOrphans(pool: pg.Pool, workerId: string): Promise<number>;
   holdWorkerLock(pool: pg.Pool, workerId: string): Promise<WorkerLock>;
   createChildRegistry(pool: pg.Pool, workerId: string): ChildRegistry;
+  /** After the lock: engine runs a dead worker left are marked killed (their process groups were swept). */
+  killStaleEngineRuns(pool: pg.Pool): Promise<number>;
+  /** Steps paused by the Claude usage limit whose resume time has come are queued again (once each). */
+  resumeLimitedSteps(pool: pg.Pool, queue: StageQueue, readers?: PipelineReaders): Promise<number>;
   /** After the lock: removes render containers a dead worker left (the real worker passes the docker sweep). Best effort. */
   sweepRenderContainers(pool: pg.Pool): Promise<number>;
 }
@@ -126,6 +132,8 @@ const defaults: WorkerHooks = {
   beforeStart: async () => {},
   sweepOrphans, holdWorkerLock, createChildRegistry,
   sweepRenderContainers: async () => 0,
+  killStaleEngineRuns: (pool) => killStaleEngineRuns(pool),
+  resumeLimitedSteps: (pool, queue, readers) => resumeLimitedSteps(pool, queue, readers),
 };
 
 // Stage outcomes the owner must hear about. A redelivered job reuses (stage id, fence), so it notifies once.
@@ -207,6 +215,8 @@ export function startRuntime(opts: WorkerOptions = {}) {
     if (swept > 0) log(`swept ${swept} orphaned child process(es)`);
     workerLock = await hooks.holdWorkerLock(db, workerId);
     if (stopping) return;
+    const stale = await hooks.killStaleEngineRuns(db).catch(() => 0);
+    if (stale > 0) log(`marked ${stale} engine run(s) left by a stopped worker`);
     const gone = await hooks.sweepRenderContainers(db).catch(() => 0);
     if (gone > 0) log(`removed ${gone} leftover render container(s)`);
     const childRegistry = hooks.createChildRegistry(db, workerId);
@@ -284,6 +294,11 @@ export function startRuntime(opts: WorkerOptions = {}) {
             if (stopping || Date.now() - lastAttemptSweep < ATTEMPT_SWEEP_MS) return;
             lastAttemptSweep = Date.now();
             await hooks.sweepLostAttempts(db, { root: opts.storageRoot ?? storageRoot() });
+          }),
+          guard("engine resume", async () => {
+            if (!queue || stopping || !hasHandlers) return;
+            const n = await hooks.resumeLimitedSteps(db, queue, readers);
+            if (n > 0) log(`resumed ${n} step(s) after the Claude usage limit`);
           }),
           guard("mark stalled uploads", async () => { const ids = await hooks.markStalled(db); if (Array.isArray(ids)) for (const id of ids) await notifyUploadEnd(db, workerSend(db), String(id), false); }),
           guard("prune", () => hooks.prune(db)),
