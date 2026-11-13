@@ -18,6 +18,13 @@ const MAX_PROPS_BYTES = 512 * 1024;
 const MAX_CUTS = 300;
 const MAX_STILL_BYTES = 32 * 1024 * 1024;
 const OM_EXT: ReadonlySet<string> = new Set([...ASSET_EXT, ...AUDIO_EXT]);
+/** The cut types om/Explainer.tsx draws and the fields each needs (its dispatch conditions); without them a cut draws nothing. */
+export const OM_CUT_TYPES: Readonly<Record<string, readonly string[]>> = {
+  text_card: ["text"], hero_title: ["text"], callout: ["text"], stat_card: ["stat"], comparison: ["leftLabel", "leftValue", "rightLabel", "rightValue"],
+  terminal_scene: ["steps"], bar_chart: ["chartData"], pie_chart: ["chartData"], kpi_grid: ["chartData"], line_chart: ["chartSeries"], progress_bar: ["progress"],
+};
+export const OM_OVERLAY_TYPES: readonly string[] = ["section_title", "stat_reveal", "hero_title"];
+const SOURCE_EXT = [".png", ".jpg", ".jpeg", ".webp", ".mp4"];
 export const OM_SIZE = { landscape: { width: 1920, height: 1080 }, portrait: { width: 1080, height: 1920 } } as const;
 
 export interface OmRenderInput {
@@ -56,6 +63,21 @@ export function checkOmProps(props: unknown): string[] {
     const b = cut?.out_seconds;
     if (typeof cut?.id !== "string" || (typeof cut.type !== "string" && typeof cut.source !== "string")) problems.push(`Cut ${i} needs an id and a type or source.`);
     if (typeof a !== "number" || typeof b !== "number" || !(a >= 0) || !(b > a)) problems.push(`Cut ${i} needs 0 <= in_seconds < out_seconds.`);
+    if (!cut) return;
+    const who = `Cut ${i} (${String(cut.id)})`;
+    const type = cut.type;
+    if (typeof type === "string" && type !== "") {
+      const need = OM_CUT_TYPES[type];
+      if (!Object.hasOwn(OM_CUT_TYPES, type) || !need) problems.push(`${who}: type '${type}' is not a scene type of this app's composer (see remotion-composer/SCENE_TYPES.md).`);
+      else if (need.some((f) => cut[f] === undefined || cut[f] === null || cut[f] === "")) problems.push(`${who}: a ${type} needs ${need.join(", ")}.`);
+    } else if (typeof cut.source === "string" && cut.source !== "" && !SOURCE_EXT.some((e) => (cut.source as string).toLowerCase().endsWith(e))) {
+      problems.push(`${who}: source '${cut.source.slice(0, 80)}' must be a staged .png, .jpg, .jpeg, .webp or .mp4 file.`);
+    }
+  });
+  (Array.isArray(p.overlays) ? p.overlays : []).forEach((o: unknown, i) => {
+    const ov = (o ?? {}) as Record<string, unknown>;
+    if (typeof ov.type !== "string" || !OM_OVERLAY_TYPES.includes(ov.type)) problems.push(`Overlay ${i}: type '${String(ov.type)}' is not an overlay type of this app's composer (${OM_OVERLAY_TYPES.join(", ")}).`);
+    else if (typeof ov.text !== "string" || ov.text === "") problems.push(`Overlay ${i}: a ${ov.type} needs text.`);
   });
   if (problems.length === 0 && omDurationFrames(p) > MAX_FRAMES) problems.push("The video is longer than 12 minutes.");
   return problems.slice(0, 10);

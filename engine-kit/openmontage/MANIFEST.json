@@ -325,6 +325,34 @@
     {
       "from": "styles/anime-ghibli.yaml",
       "to": "engine-kit/openmontage/ref/styles/anime-ghibli.yaml"
+    },
+    {
+      "from": "AGENT_GUIDE.md",
+      "to": "engine-kit/openmontage/ref/AGENT_GUIDE.md"
+    },
+    {
+      "from": "remotion-composer/SCENE_TYPES.md",
+      "to": "engine-kit/openmontage/ref/remotion-composer/SCENE_TYPES.md"
+    },
+    {
+      "from": "remotion-composer/public/demo-props/animated-reel-20s.json",
+      "to": "engine-kit/openmontage/ref/remotion-composer/public/demo-props/animated-reel-20s.json"
+    },
+    {
+      "from": "remotion-composer/public/demo-props/code-to-screen.json",
+      "to": "engine-kit/openmontage/ref/remotion-composer/public/demo-props/code-to-screen.json"
+    },
+    {
+      "from": "remotion-composer/public/demo-props/focusflow-pitch.json",
+      "to": "engine-kit/openmontage/ref/remotion-composer/public/demo-props/focusflow-pitch.json"
+    },
+    {
+      "from": "remotion-composer/public/demo-props/world-in-numbers.json",
+      "to": "engine-kit/openmontage/ref/remotion-composer/public/demo-props/world-in-numbers.json"
+    },
+    {
+      "from": "schemas/checkpoints/checkpoint.schema.json",
+      "to": "engine-kit/openmontage/ref/schemas/checkpoints/checkpoint.schema.json"
     }
   ]
 }

@@ -65,12 +65,28 @@ describe("OpenMontage scene lists on the host", () => {
     expect(checkOmProps(reel)).toEqual([]);
   });
 
+  it("refuses_cuts_the_composer_would_draw_as_nothing", () => {
+    const cut = (o: Record<string, unknown>) => ({ cuts: [{ id: "a", in_seconds: 0, out_seconds: 2, ...o }] });
+    expect(checkOmProps(cut({ type: "hero_title", text: "Hi" }))).toEqual([]);
+    expect(checkOmProps(cut({ type: "bar_chart", chartData: [{ label: "a", value: 1 }] }))).toEqual([]);
+    expect(checkOmProps(cut({ source: "clip.mp4" }))).toEqual([]);
+    expect(checkOmProps(cut({ type: "anime_scene", images: ["a.png"] }))).toEqual(["Cut 0 (a): type 'anime_scene' is not a scene type of this app's composer (see remotion-composer/SCENE_TYPES.md)."]);
+    expect(checkOmProps(cut({ type: "stat_card", text: "no stat" }))).toEqual(["Cut 0 (a): a stat_card needs stat."]);
+    expect(checkOmProps(cut({ type: "comparison", leftLabel: "a", rightLabel: "b", leftValue: "1" }))).toEqual(["Cut 0 (a): a comparison needs leftLabel, leftValue, rightLabel, rightValue."]);
+    expect(checkOmProps(cut({ source: "scene-1.svg" }))).toEqual(["Cut 0 (a): source 'scene-1.svg' must be a staged .png, .jpg, .jpeg, .webp or .mp4 file."]);
+    expect(checkOmProps(cut({ source: "hero_title" }))).toEqual(["Cut 0 (a): source 'hero_title' must be a staged .png, .jpg, .jpeg, .webp or .mp4 file."]);
+    expect(checkOmProps({ ...cut({ type: "text_card", text: "x" }), overlays: [{ type: "provider_chip", in_seconds: 0, out_seconds: 1 }, { type: "section_title", in_seconds: 0, out_seconds: 1 }] })).toEqual([
+      "Overlay 0: type 'provider_chip' is not an overlay type of this app's composer (section_title, stat_reveal, hero_title).",
+      "Overlay 1: a section_title needs text.",
+    ]);
+  });
+
   it("refuses_unusable_scene_lists", () => {
     expect(checkOmProps([])).toEqual(["The scene list is not a JSON object."]);
     expect(checkOmProps({ cuts: [] })).toEqual(["The scene list has no cuts."]);
-    expect(checkOmProps({ cuts: [{ id: "a", type: "text_card", in_seconds: 3, out_seconds: 2 }] })).toEqual(["Cut 0 needs 0 <= in_seconds < out_seconds."]);
-    expect(checkOmProps({ cuts: [{ type: "text_card", in_seconds: 0, out_seconds: 2 }] })).toEqual(["Cut 0 needs an id and a type or source."]);
-    expect(checkOmProps({ cuts: [{ id: "a", type: "text_card", in_seconds: 0, out_seconds: 13 * 60 }] })).toEqual(["The video is longer than 12 minutes."]);
+    expect(checkOmProps({ cuts: [{ id: "a", type: "text_card", text: "x", in_seconds: 3, out_seconds: 2 }] })).toEqual(["Cut 0 needs 0 <= in_seconds < out_seconds."]);
+    expect(checkOmProps({ cuts: [{ type: "text_card", text: "x", in_seconds: 0, out_seconds: 2 }] })).toEqual(["Cut 0 needs an id and a type or source."]);
+    expect(checkOmProps({ cuts: [{ id: "a", type: "text_card", text: "x", in_seconds: 0, out_seconds: 13 * 60 }] })).toEqual(["The video is longer than 12 minutes."]);
     expect(checkOmProps({ cuts: [{ id: "a", type: "text_card", in_seconds: 0, out_seconds: 2, text: "x".repeat(600_000) }] })).toContain("The scene list is bigger than 512 KB.");
   });
 });
