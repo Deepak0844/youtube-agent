@@ -35,7 +35,6 @@ describe("prepareWorkspace", () => {
     const ref = path.join(ws.workDir, "ref", "brand", "brand.md");
     expect(await readFile(ref, "utf8")).toBe("colours");
     expect((await stat(ref)).mode & 0o222).toBe(0); // no write bits
-    expect((await stat(ws.home)).isDirectory()).toBe(true);
   });
 
   it("refuses a video id that is not a uuid", async () => {
@@ -63,7 +62,6 @@ describe("checkAfterRun", () => {
     const ws = await prepareWorkspace(root, VID, seeds());
     const before = await ws.snapshot();
     await writeFile(path.join(ws.dir, "escaped.txt"), "x");
-    await writeFile(path.join(ws.home, ".zshrc"), "x");
     expect(checkAfterRun(before, await ws.snapshot()).join(" ")).toMatch(/outside the work folder: escaped\.txt/);
   });
 
