@@ -1,0 +1,56 @@
+{
+ "scenes": [
+  {
+   "type": "text_card",
+   "description": "Same card"
+  },
+  {
+   "type": "text_card",
+   "description": "Same card"
+  },
+  {
+   "type": "text_card",
+   "description": "Same card"
+  },
+  {
+   "type": "text_card",
+   "description": "Same card"
+  },
+  {
+   "type": "text_card",
+   "description": "Same card"
+  }
+ ],
+ "rendererFamily": null,
+ "expected": {
+  "average": 3.42,
+  "verdict": "revise",
+  "dimensions": {
+   "repetition": {
+    "score": 5.0,
+    "reason": "Scene type 'text_card' dominates at 100%; Only 20% unique descriptions; Same shot size in 100% of scenes"
+   },
+   "decorative_visuals": {
+    "score": 5.0,
+    "reason": "5/5 scenes have no stated purpose (no information_role, narrative_role, or shot_intent)"
+   },
+   "weak_motion": {
+    "score": 1.5,
+    "reason": "No camera movement defined (may be intentional for static style)"
+   },
+   "weak_shot_intent": {
+    "score": 5.0,
+    "reason": "Only 0/5 scenes have shot_intent \u2014 most shots lack purpose"
+   },
+   "typography_overreliance": {
+    "score": 4.0,
+    "reason": "5/5 scenes are text/stat cards \u2014 video feels like animated slides"
+   },
+   "unsupported_cinematic_claims": {
+    "score": 0.0,
+    "reason": "Not claiming cinematic treatment"
+   }
+  },
+  "render_runtime": null
+ }
+}

@@ -1,0 +1,69 @@
+{
+ "scenes": [
+  {
+   "type": "hero_title",
+   "description": "d0",
+   "hero_moment": false,
+   "shot_intent": "y",
+   "shot_language": {
+    "camera_movement": "crane",
+    "lighting_key": "low",
+    "shot_size": "wide"
+   }
+  },
+  {
+   "type": "hero_title",
+   "description": "d1",
+   "hero_moment": true,
+   "shot_intent": "y",
+   "shot_language": {
+    "camera_movement": "crane",
+    "lighting_key": "low",
+    "shot_size": "close"
+   }
+  },
+  {
+   "type": "hero_title",
+   "description": "d2",
+   "hero_moment": false,
+   "shot_intent": "y",
+   "shot_language": {
+    "camera_movement": "crane",
+    "lighting_key": "low",
+    "shot_size": "medium"
+   }
+  }
+ ],
+ "rendererFamily": "Cinematic",
+ "expected": {
+  "average": 0.33,
+  "verdict": "strong",
+  "dimensions": {
+   "repetition": {
+    "score": 2.0,
+    "reason": "Scene type 'hero_title' dominates at 100%"
+   },
+   "decorative_visuals": {
+    "score": 0.0,
+    "reason": "Most scenes have clear communicative purpose"
+   },
+   "weak_motion": {
+    "score": 0.0,
+    "reason": "Camera movement appears purposeful"
+   },
+   "weak_shot_intent": {
+    "score": 0.0,
+    "reason": "Strong shot intent coverage"
+   },
+   "typography_overreliance": {
+    "score": 0.0,
+    "reason": "Visual-first approach"
+   },
+   "unsupported_cinematic_claims": {
+    "score": 0.0,
+    "reason": "Cinematic claims supported by structure"
+   }
+  },
+  "render_runtime": null
+ }
+}

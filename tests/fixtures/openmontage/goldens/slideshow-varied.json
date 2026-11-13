@@ -1,0 +1,85 @@
+{
+ "scenes": [
+  {
+   "type": "hero_title",
+   "description": "Open on the question",
+   "narrative_role": "hook",
+   "shot_intent": "pose the problem",
+   "shot_language": {
+    "camera_movement": "push_in",
+    "shot_size": "wide"
+   }
+  },
+  {
+   "type": "bar_chart",
+   "description": "Show the numbers",
+   "information_role": "evidence",
+   "shot_intent": "prove scale",
+   "shot_language": {
+    "camera_movement": "static",
+    "shot_size": "medium"
+   }
+  },
+  {
+   "type": "terminal_scene",
+   "description": "Run the command",
+   "information_role": "demo",
+   "shot_intent": "show it working",
+   "shot_language": {
+    "camera_movement": "pan",
+    "shot_size": "close"
+   }
+  },
+  {
+   "type": "comparison",
+   "description": "Before and after",
+   "information_role": "contrast",
+   "shot_language": {
+    "camera_movement": "static",
+    "shot_size": "wide"
+   }
+  },
+  {
+   "type": "stat_card",
+   "description": "The payoff number",
+   "narrative_role": "climax",
+   "shot_intent": "land the point",
+   "shot_language": {
+    "camera_movement": "zoom",
+    "shot_size": "extreme_close"
+   }
+  }
+ ],
+ "rendererFamily": null,
+ "expected": {
+  "average": 0.17,
+  "verdict": "strong",
+  "dimensions": {
+   "repetition": {
+    "score": 0.0,
+    "reason": "Good variety"
+   },
+   "decorative_visuals": {
+    "score": 0.0,
+    "reason": "Most scenes have clear communicative purpose"
+   },
+   "weak_motion": {
+    "score": 0.0,
+    "reason": "Camera movement appears purposeful"
+   },
+   "weak_shot_intent": {
+    "score": 1.0,
+    "reason": "Strong shot intent coverage"
+   },
+   "typography_overreliance": {
+    "score": 0.0,
+    "reason": "Visual-first approach"
+   },
+   "unsupported_cinematic_claims": {
+    "score": 0.0,
+    "reason": "Not claiming cinematic treatment"
+   }
+  },
+  "render_runtime": null
+ }
+}
