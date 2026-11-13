@@ -56,3 +56,9 @@ export async function usageWindow(db: Q, since: Date): Promise<{ runs: number; i
   const r = res.rows[0]!;
   return { runs: r.runs, inputTokens: Number(r.i), outputTokens: Number(r.o), costUsdEquiv: Number(r.c) };
 }
+
+/** At worker start: runs still marked running belong to a worker that is gone (its process group was swept). */
+export async function killStaleEngineRuns(db: Q): Promise<number> {
+  const res = await db.query("update engine_runs set status = 'killed', ended_at = clock_timestamp(), error = 'The worker restarted during this run.' where status = 'running'");
+  return res.rowCount ?? 0;
+}
