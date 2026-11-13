@@ -1,0 +1,70 @@
+{
+ "scenes": [
+  {
+   "type": "text_card",
+   "description": "A",
+   "shot_language": {
+    "camera_movement": "pan",
+    "shot_size": "wide"
+   },
+   "shot_intent": "x"
+  },
+  {
+   "type": "text_card",
+   "description": "A",
+   "shot_language": {
+    "camera_movement": "pan",
+    "shot_size": "wide"
+   }
+  },
+  {
+   "type": "text_card",
+   "description": "B",
+   "shot_language": {
+    "camera_movement": "static",
+    "shot_size": "close"
+   }
+  },
+  {
+   "type": "bar_chart",
+   "description": "B",
+   "shot_language": {
+    "camera_movement": null,
+    "shot_size": "close"
+   },
+   "narrative_role": "r"
+  }
+ ],
+ "rendererFamily": null,
+ "expected": {
+  "average": 2.63,
+  "verdict": "acceptable",
+  "dimensions": {
+   "repetition": {
+    "score": 3.5,
+    "reason": "Scene type 'text_card' dominates at 75%; Only 50% unique descriptions"
+   },
+   "decorative_visuals": {
+    "score": 2.5,
+    "reason": "2/4 scenes lack stated purpose"
+   },
+   "weak_motion": {
+    "score": 2.0,
+    "reason": "Camera movement appears purposeful"
+   },
+   "weak_shot_intent": {
+    "score": 3.8,
+    "reason": "Only 1/4 scenes have shot_intent \u2014 most shots lack purpose"
+   },
+   "typography_overreliance": {
+    "score": 4.0,
+    "reason": "3/4 scenes are text/stat cards \u2014 video feels like animated slides"
+   },
+   "unsupported_cinematic_claims": {
+    "score": 0.0,
+    "reason": "Not claiming cinematic treatment"
+   }
+  },
+  "render_runtime": null
+ }
+}

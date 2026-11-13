@@ -236,3 +236,13 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 - tests/fixtures/openmontage/goldens/composition-narration-slightly-long.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
 - tests/fixtures/openmontage/goldens/composition-narration-too-long.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
 - tests/fixtures/openmontage/goldens/composition-no-cuts.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- src/server/engine/om-checks/slideshow-risk.ts: TypeScript port of OpenMontage lib/slideshow_risk.py (AGPL-3.0).
+- src/server/engine/om-checks/py.ts: helpers of ours that reproduce Python's rounding and truthiness for the OpenMontage ports.
+- tests/fixtures/openmontage/goldens/slideshow-all-text.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/slideshow-cinematic-claim.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/slideshow-cinematic-ok.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/slideshow-eight-scenes.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/slideshow-empty.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/slideshow-kpi-boundary.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/slideshow-repeated-ties.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- tests/fixtures/openmontage/goldens/slideshow-varied.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).

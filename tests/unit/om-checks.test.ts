@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { validateComposition } from "@/server/engine/om-checks/composition";
+import { scoreSlideshowRisk } from "@/server/engine/om-checks/slideshow-risk";
 
 // OpenMontage parity, Phase B: the TypeScript ports of OpenMontage's pre-render checks give the same answers as its Python on
 // golden cases (tests/fixtures/openmontage/goldens, made once by running the Python in the upstream clone).
@@ -19,5 +20,15 @@ describe("composition validator port", () => {
 
   it("has_the_cases", () => {
     expect(goldens("composition-").length).toBe(7);
+  });
+});
+
+describe("slideshow risk port", () => {
+  it.each(goldens("slideshow-"))("slideshow_risk_matches_openmontage %s", (_name, g) => {
+    expect(scoreSlideshowRisk(g.scenes, null, g.rendererFamily)).toEqual(g.expected);
+  });
+
+  it("has_the_cases", () => {
+    expect(goldens("slideshow-").length).toBe(8);
   });
 });

@@ -1,0 +1,56 @@
+{
+ "scenes": [
+  {
+   "type": "kpi_grid",
+   "description": "k"
+  },
+  {
+   "type": "stat_card",
+   "description": "s"
+  },
+  {
+   "type": "text_card",
+   "description": "t"
+  },
+  {
+   "type": "line_chart",
+   "description": "l"
+  },
+  {
+   "type": "pie_chart",
+   "description": "p"
+  }
+ ],
+ "rendererFamily": null,
+ "expected": {
+  "average": 2.58,
+  "verdict": "acceptable",
+  "dimensions": {
+   "repetition": {
+    "score": 1.5,
+    "reason": "Same shot size in 100% of scenes"
+   },
+   "decorative_visuals": {
+    "score": 5.0,
+    "reason": "5/5 scenes have no stated purpose (no information_role, narrative_role, or shot_intent)"
+   },
+   "weak_motion": {
+    "score": 1.5,
+    "reason": "No camera movement defined (may be intentional for static style)"
+   },
+   "weak_shot_intent": {
+    "score": 5.0,
+    "reason": "Only 0/5 scenes have shot_intent \u2014 most shots lack purpose"
+   },
+   "typography_overreliance": {
+    "score": 2.5,
+    "reason": "3/5 scenes are text-based \u2014 consider balancing with visual scenes"
+   },
+   "unsupported_cinematic_claims": {
+    "score": 0.0,
+    "reason": "Not claiming cinematic treatment"
+   }
+  },
+  "render_runtime": null
+ }
+}

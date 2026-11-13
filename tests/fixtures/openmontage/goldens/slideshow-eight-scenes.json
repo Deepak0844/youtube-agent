@@ -1,0 +1,108 @@
+{
+ "scenes": [
+  {
+   "type": "stat_card",
+   "description": "scene 0",
+   "shot_intent": "i",
+   "shot_language": {
+    "camera_movement": "dolly",
+    "shot_size": "wide"
+   }
+  },
+  {
+   "type": "stat_card",
+   "description": "scene 1",
+   "shot_intent": "i",
+   "shot_language": {
+    "camera_movement": "unspecified",
+    "shot_size": "wide"
+   }
+  },
+  {
+   "type": "stat_card",
+   "description": "scene 2",
+   "shot_intent": "i",
+   "shot_language": {
+    "camera_movement": "dolly",
+    "shot_size": "wide"
+   }
+  },
+  {
+   "type": "stat_card",
+   "description": "scene 3",
+   "shot_intent": "i",
+   "shot_language": {
+    "camera_movement": "unspecified",
+    "shot_size": "wide"
+   }
+  },
+  {
+   "type": "stat_card",
+   "description": "scene 4",
+   "shot_intent": "i",
+   "shot_language": {
+    "camera_movement": "dolly",
+    "shot_size": "wide"
+   }
+  },
+  {
+   "type": "hero_title",
+   "description": "scene 0",
+   "shot_intent": "",
+   "shot_language": {
+    "camera_movement": "unspecified",
+    "shot_size": "close"
+   }
+  },
+  {
+   "type": "hero_title",
+   "description": "scene 1",
+   "shot_intent": "",
+   "shot_language": {
+    "camera_movement": "dolly",
+    "shot_size": "close"
+   }
+  },
+  {
+   "type": "hero_title",
+   "description": "scene 2",
+   "shot_intent": "",
+   "shot_language": {
+    "camera_movement": "unspecified",
+    "shot_size": "close"
+   }
+  }
+ ],
+ "rendererFamily": null,
+ "expected": {
+  "average": 1.72,
+  "verdict": "strong",
+  "dimensions": {
+   "repetition": {
+    "score": 1.5,
+    "reason": "Same shot size in 62% of scenes"
+   },
+   "decorative_visuals": {
+    "score": 1.9,
+    "reason": "3/8 scenes lack stated purpose"
+   },
+   "weak_motion": {
+    "score": 1.0,
+    "reason": "Camera movement appears purposeful"
+   },
+   "weak_shot_intent": {
+    "score": 1.9,
+    "reason": "Strong shot intent coverage"
+   },
+   "typography_overreliance": {
+    "score": 4.0,
+    "reason": "5/8 scenes are text/stat cards \u2014 video feels like animated slides"
+   },
+   "unsupported_cinematic_claims": {
+    "score": 0.0,
+    "reason": "Not claiming cinematic treatment"
+   }
+  },
+  "render_runtime": null
+ }
+}

@@ -1,0 +1,64 @@
+{
+ "scenes": [
+  {
+   "type": "hero_title",
+   "description": "d0",
+   "shot_language": {
+    "camera_movement": "static"
+   }
+  },
+  {
+   "type": "hero_title",
+   "description": "d1",
+   "shot_language": {
+    "camera_movement": "static"
+   }
+  },
+  {
+   "type": "hero_title",
+   "description": "d2",
+   "shot_language": {
+    "camera_movement": "static"
+   }
+  },
+  {
+   "type": "hero_title",
+   "description": "d3",
+   "shot_language": {
+    "camera_movement": "static"
+   }
+  }
+ ],
+ "rendererFamily": "cinematic-trailer",
+ "expected": {
+  "average": 3.33,
+  "verdict": "revise",
+  "dimensions": {
+   "repetition": {
+    "score": 3.5,
+    "reason": "Scene type 'hero_title' dominates at 100%; Same shot size in 100% of scenes"
+   },
+   "decorative_visuals": {
+    "score": 5.0,
+    "reason": "4/4 scenes have no stated purpose (no information_role, narrative_role, or shot_intent)"
+   },
+   "weak_motion": {
+    "score": 1.5,
+    "reason": "No camera movement defined (may be intentional for static style)"
+   },
+   "weak_shot_intent": {
+    "score": 5.0,
+    "reason": "Only 0/4 scenes have shot_intent \u2014 most shots lack purpose"
+   },
+   "typography_overreliance": {
+    "score": 0.0,
+    "reason": "Visual-first approach"
+   },
+   "unsupported_cinematic_claims": {
+    "score": 5.0,
+    "reason": "Claims cinematic but has no hero_moment defined; Claims cinematic but only 0/4 scenes have camera movement; Claims cinematic but only 0/4 scenes define lighting"
+   }
+  },
+  "render_runtime": null
+ }
+}

@@ -1,0 +1,10 @@
+{
+ "scenes": [],
+ "rendererFamily": null,
+ "expected": {
+  "average": 5.0,
+  "verdict": "fail",
+  "dimensions": {},
+  "render_runtime": null
+ }
+}
