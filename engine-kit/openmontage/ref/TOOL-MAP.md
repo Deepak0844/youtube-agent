@@ -18,6 +18,9 @@ Engine tools you have: `check_code`, `preview_frames`, `list_assets`, `fetch_ass
 | `projects/<slug>/assets/...`, `public/...` | `assets/` (filled by `fetch_asset`); refer to files by their name inside `assets/` |
 | `projects/<slug>/index.tsx` (a bespoke or "atelier" composition) | `scene/video.tsx`, checked with `check_code` and previewed with `preview_frames` |
 | `projects/<project-name>/skills/<name>.md` (project skills) | not used |
+| `remotion-composer/public/...` (where OpenMontage stages files) | `assets/` |
+| `remotion-composer/src/...`, `src/Explainer.tsx`, `src/components/...` | not readable here; `ref/openmontage/remotion-composer/SCENE_TYPES.md` is the contract of what the composer draws |
+| `AGENT_GUIDE.md` | `ref/openmontage/AGENT_GUIDE.md`; where it conflicts with this map (tools, runtimes, commands), this map wins |
 
 ## Tools
 
@@ -27,9 +30,10 @@ Engine tools you have: `check_code`, `preview_frames`, `list_assets`, `fetch_ass
 | `npx remotion still`, `atelier_snapshots`, snapshots of a composition | `preview_frames` on `scene/video.tsx` | yes |
 | `scaffold_atelier_project` | create `scene/video.tsx` yourself | yes |
 | `composition_validator`, `score_slideshow_risk`, `slideshow_risk`, delivery promise checks | `check_scenes` | yes |
-| `tts_selector`, `openai_tts`, `google_tts`, `elevenlabs_tts`, voice providers | not called by you: the app narrates the approved script in its voice step and gives you word times | app does it |
+| `tts_selector`, `openai_tts`, `google_tts`, `elevenlabs_tts`, `azure_tts`, voice providers | not called by you: the app narrates the approved script in its voice step and gives you word times | app does it |
 | `subtitle_gen`, `subtitle_check` | not called by you: the app makes captions from the narration's word times | app does it |
 | `image_selector`, `image_gen`, `diagram_gen`, image providers | no generated pictures. Use the composer's scenes (cards, charts, terminal, stat reveals), or `list_assets` kind `image` then `fetch_asset` | partly |
+| `video_gen`, video generation providers | not available in a build run: use component scenes or library clips | no |
 | `video_selector`, stock footage, `pexels_url` | `list_assets` kind `video` then `fetch_asset` | yes |
 | `music_gen`, `music_search`, `pixabay_music` | `list_assets` kind `music` then `fetch_asset` | yes |
 | sound effects | `list_assets` kind `sfx` then `fetch_asset` | yes |
@@ -43,6 +47,22 @@ Engine tools you have: `check_code`, `preview_frames`, `list_assets`, `fetch_ass
 | `cost_tracker`, `estimate_cost` | not needed: everything here is free and local; the app asks the owner before any paid step | no |
 | `technical_probe` (a field of `source_media_review`) | not used: Explainer and Animation videos have no footage of yours to review | n/a |
 | the tool registry (`tools.tool_registry`, `install_instructions`) | this map is the registry | n/a |
+
+## Writing the Explainer scene list (`om/edit_decisions.json`)
+
+The look comes from the composer's own scene components. Use them; do not draw your own pictures for a scene.
+
+- A component cut has a `type` from `ref/openmontage/remotion-composer/SCENE_TYPES.md` and that type's required fields, and no
+  `source`: e.g. `{"id": "hook", "type": "hero_title", "text": "...", "heroSubtitle": "...", "in_seconds": 0, "out_seconds": 4}`.
+- Types this app's composer draws: `text_card`, `hero_title`, `stat_card`, `callout`, `comparison`, `bar_chart`, `line_chart`,
+  `pie_chart`, `kpi_grid`, `progress_bar`, `terminal_scene`. Overlays: `section_title`, `stat_reveal`, `hero_title`.
+  Not here: `anime_scene`, `screenshot_scene` and the `provider_chip` overlay.
+- `source` is only for a real staged file in `assets/` (`.png`, `.jpg`, `.jpeg`, `.webp`, `.mp4`, from `fetch_asset`). Never
+  put a component name in `source`, and never hand-write images (SVG cannot be staged).
+- Worked examples, exactly as OpenMontage writes them: `ref/openmontage/remotion-composer/public/demo-props/*.json`.
+- Motion: the components animate themselves. Component scenes are "animated slides" for the delivery promise; a
+  `teacher_explainer` or `data_explainer` promise does not need footage, so do not set `motion_required` unless real footage is
+  planned. `check_scenes` refuses unknown types, missing required fields and unusable sources.
 
 ## Human checkpoints
 
@@ -65,4 +85,9 @@ them; for Remotion craft use your own Remotion knowledge and the Explainer compo
 - `skills/synthetic-screen-recording`, `skills/website-to-video`, `skills/creative/ink-theater.md`, `skills/styles`
 - `skills/core/ffmpeg.md`, `skills/meta/skill-creator.md`, `skills/meta/video-reference-analyst.md`
 - `skills/pipelines/cinematic/...` (comes with the Cinematic step)
+- `skills/meta/onboarding.md`, `skills/creative/commercial-product-video.md`, `skills/creative/animated-drawing.md`, `skills/synthetic-ui-recording`
+- `pipeline_defs/screen-demo.yaml`, `skills/pipelines/screen-demo` (Screen Demo is not part of this app)
+- `schemas/pipelines`, `schemas/styles`, `styles/ink-sketch.yaml`, `styles/playbook_loader.py`
+- `remotion-composer/src`, `remotion-composer/projects` (the composer's code is in the render box; SCENE_TYPES.md is its contract)
+- `PROJECT_CONTEXT.md`
 - anything under `.agents/skills/`

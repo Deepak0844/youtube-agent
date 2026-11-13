@@ -17,7 +17,9 @@ OpenMontage's pipelines and guides are in `ref/openmontage/` (read-only). Follow
 4. Write each stage's artifact to `om/<name>.json`, valid against `ref/openmontage/schemas/artifacts/<name>.schema.json`, and
    its checkpoint to `om/checkpoint_<stage>.json`.
 5. Style: use the playbook `ref/openmontage/styles/<style>.yaml` the request names; set the same name as the Explainer `theme`.
-6. Templated path (default): the edit stage's output is the Explainer scene list in `om/edit_decisions.json`. Run
+6. Templated path (default): the edit stage's output is the Explainer scene list in `om/edit_decisions.json`, built from the
+   composer's own scene types (`ref/openmontage/remotion-composer/SCENE_TYPES.md`, examples in
+   `ref/openmontage/remotion-composer/public/demo-props/`; see TOOL-MAP "Writing the Explainer scene list"). Run
    `check_scenes` and fix the list until its last line is `VERDICT: pass`.
    Bespoke path (only when the runtime-selector guide says the templated components cannot carry the idea): write
    `scene/video.tsx`, then `check_code` and `preview_frames`.

@@ -29,7 +29,7 @@ describe("engine-kit seeds", () => {
     // a guide pointing at a file this app does not have must be listed in TOOL-MAP's "Guides not included"
     const missing = new Set<string>();
     for (const f of guides()) {
-      for (const m of readFileSync(f, "utf8").matchAll(/\b(?:skills|schemas|styles|pipeline_defs)\/[A-Za-z0-9_./-]*[A-Za-z0-9_]/g)) {
+      for (const m of readFileSync(f, "utf8").matchAll(/\b(?:(?:skills|schemas|styles|pipeline_defs|remotion-composer)\/[A-Za-z0-9_./-]*[A-Za-z0-9_]|AGENT_GUIDE\.md|PROJECT_CONTEXT\.md)/g)) {
         const p = m[0];
         if (![p, `${p}.md`, `${p}.yaml`].some((x) => existsSync(path.join(OM_REF, x)))) missing.add(p);
       }

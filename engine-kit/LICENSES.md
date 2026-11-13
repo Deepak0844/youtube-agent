@@ -223,6 +223,13 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 - engine-kit/openmontage/ref/schemas/artifacts/render_report.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
 - engine-kit/openmontage/ref/schemas/artifacts/publish_log.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
 - engine-kit/openmontage/ref/schemas/artifacts/decision_log.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/AGENT_GUIDE.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/remotion-composer/SCENE_TYPES.md: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/remotion-composer/public/demo-props/animated-reel-20s.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/remotion-composer/public/demo-props/code-to-screen.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/remotion-composer/public/demo-props/focusflow-pitch.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/remotion-composer/public/demo-props/world-in-numbers.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/schemas/checkpoints/checkpoint.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
 - engine-kit/openmontage/ref/TOOL-MAP.md: ours; maps OpenMontage's tools and paths to the engine's.
 - engine-kit/skills/openmontage-pipeline/SKILL.md: ours; the entry point to OpenMontage's pipelines in engine runs.
 - engine-kit/openmontage/MANIFEST.json: ours; the list of OpenMontage files taken.
