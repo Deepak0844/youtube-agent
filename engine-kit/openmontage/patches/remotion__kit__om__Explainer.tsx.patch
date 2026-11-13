@@ -1,0 +1,87 @@
+--- a/remotion/kit/om/Explainer.tsx
++++ b/remotion/kit/om/Explainer.tsx
+@@ -23,13 +23,8 @@
+ import { SectionTitle } from "./components/SectionTitle";
+ import { StatReveal } from "./components/StatReveal";
+ import { HeroTitle } from "./components/HeroTitle";
+-import { AnimeScene } from "./components/AnimeScene";
+-import type { CameraMotion } from "./components/AnimeScene";
+ import { TerminalScene } from "./components/TerminalScene";
+ import type { TerminalStep } from "./components/TerminalScene";
+-import { ScreenshotScene } from "./components/ScreenshotScene";
+-import type { ScreenshotStep } from "./components/ScreenshotScene";
+-import { ProviderChip } from "./components/ProviderChip";
+ import { resolveAsset } from "./lib/resolveAsset";
+ import type { ParticleType } from "./components/ParticleOverlay";
+ import { resolveTheme, type ThemeConfig, DEFAULT_THEME } from "./Root";
+@@ -263,7 +258,7 @@
+   terminalTitle?: string;
+   prompt?: string;
+   // Screenshot scene props (type: "screenshot_scene")
+-  screenshotSteps?: ScreenshotStep[];
++  screenshotSteps?: unknown[]; // ytstudio: screenshot_scene is not imported
+   screenshotSize?: { width: number; height: number };
+   cursorStartAt?: [number, number];
+ }
+@@ -646,17 +641,6 @@
+         prompt={cut.prompt}
+         accentColor={accent}
+         backgroundColor={bgColor || theme.backgroundColor}
+-      />
+-    );
+-  }
+-  if (cut.type === "screenshot_scene" && cut.backgroundImage && cut.screenshotSteps) {
+-    return (
+-      <ScreenshotScene
+-        backgroundImage={cut.backgroundImage}
+-        backgroundSize={cut.screenshotSize}
+-        steps={cut.screenshotSteps as ScreenshotStep[]}
+-        accentColor={accent}
+-        cursorStartAt={cut.cursorStartAt}
+       />
+     );
+   }
+@@ -732,25 +716,6 @@
+           segments={cut.progressSegments} backgroundColor={cut.backgroundColor || theme.surfaceColor}
+         />
+       </AbsoluteFill>
+-    );
+-  }
+-
+-  // --- Anime scene (multi-image crossfade + particles) ---
+-  if (cut.type === "anime_scene" && cut.images && cut.images.length > 0) {
+-    return (
+-      <AnimeScene
+-        images={cut.images}
+-        animation={(cut.animation as CameraMotion) || "ken-burns"}
+-        particles={cut.particles}
+-        particleColor={cut.particleColor}
+-        particleCount={cut.particleCount}
+-        particleIntensity={cut.particleIntensity}
+-        backgroundColor={cut.backgroundColor}
+-        vignette={cut.vignette ?? true}
+-        lightingFrom={cut.lightingFrom}
+-        lightingTo={cut.lightingTo}
+-        sceneDurationSeconds={cut.out_seconds - cut.in_seconds}
+-      />
+     );
+   }
+ 
+@@ -826,17 +791,6 @@
+       />
+     );
+   }
+-  if (overlay.type === "provider_chip" && overlay.providers) {
+-    return (
+-      <ProviderChip
+-        providers={overlay.providers as string[]}
+-        cycleSeconds={overlay.cycleSeconds}
+-        position={(overlay.position as any) || "bottom-right"}
+-        accentColor={overlay.accentColor}
+-        label={overlay.label}
+-      />
+-    );
+-  }
+   return null;
+ };
+ 
