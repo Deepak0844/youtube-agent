@@ -1,6 +1,3 @@
-import { renderLimitNote, scaleRows } from "@/server/core/scale3d-view";
-import { LOOK_SEND_BACK_CAP, lookView, type LookSummary, type LookStill } from "@/server/core/scene3d-view";
-import { getEngineConfig } from "@/server/db/engine-config";
 import { claimsOf as evidenceClaims } from "@/server/core/evidence-edit";
 import { outlineEstimate, outlineSchema } from "@/server/core/long-form";
 import type pg from "pg";
@@ -12,9 +9,7 @@ import { wordCount, isLang } from "@/server/core/lang";
 import { getDecision, type DecisionDetail } from "@/server/db/decision";
 import { readSnapshot } from "@/server/db/approvals";
 import { breakerHold } from "@/server/db/breakers";
-import { approvalReaders, lookFeedbackOf } from "@/server/db/approval-readers";
-import { activeReviewOf } from "@/server/db/review-state";
-import { reviewView, type ReviewView } from "@/server/core/scene3d-review";
+import { approvalReaders } from "@/server/db/approval-readers";
 import { getCachedMediaKey, getOrCreateMediaKey } from "@/server/db/media-key";
 import { readNextAction } from "@/server/db/pipeline";
 import { getSetting } from "@/server/db/settings";
@@ -35,18 +30,8 @@ export type GateContent =
       /** null when the stored outline could not be read in its usual shape */
       outline: { chapters: Array<{ title: string; line: string; targetS: number; words: number }>; totalS: number; words: number; minMinutes: number; maxMinutes: number } | null;
     }
-  | { kind: "script"; title: string; description: string | null; narration: string; words: number; beats: number; beatRows: BeatRow[]; shownForReal: string | null; style: string | null; claims: GateClaim[]; readable: boolean; /** 3D scale scripts only: the heights to approve and the render-limit note. */ scale?: { rows: GateClaim[]; limitNote: string | null } }
+  | { kind: "script"; title: string; description: string | null; narration: string; words: number; beats: number; beatRows: BeatRow[]; shownForReal: string | null; style: string | null; claims: GateClaim[]; readable: boolean }
   | { kind: "cost"; totalMicroUsd: number; path: string; models: Array<[string, string]>; items: Array<{ kind: string; provider: string; quoteMicroUsd: number }>; /** AI videos: what each clip asks the video model for, and whether every clip starts from a locked character picture. */ shots?: Array<{ beatId: string; seconds: number; prompt: string }>; character?: boolean }
-  | {
-      kind: "look";
-      /** The pictures (signed addresses), what the director could not find, and the picture check's notes; or why they cannot be shown. */
-      view: { ok: true; look: Omit<LookSummary, "stills"> & { stills: Array<LookStill & { src: string | null }> } } | { ok: false; message: string };
-      /** How many times this look was already sent back, and the most allowed. */
-      sentBack: number;
-      cap: number;
-      /** AI-written scenes only: what the automatic picture review did (rounds, fixed, still wrong); null for the other 3D kind and for older videos. */
-      review: ReviewView | null;
-    }
   | { kind: "video"; src: string | null; shaPrefix: string; captions: "exact" | "approximate" | "check" | "checked"; rewriteLines: number[] }
   | { kind: "evidence"; claims: GateClaim[]; fileSrc: string | null; shaPrefix: string }
   | {
@@ -179,15 +164,9 @@ async function contentFor(db: pg.Pool, gate: QueueGate, snap: Exclude<Awaited<Re
     const { parsed } = claimsOf(c.script?.body);
     if (!parsed.success) return { kind: "script", title: "Script", description: null, narration: JSON.stringify(c.script?.body ?? null), words: 0, beats: 0, beatRows: [], shownForReal: null, style, claims: [], readable: false };
     const s = parsed.data;
-    return { kind: "script", title: s.title, description: s.description ?? null, narration: s.narration, words: isLang(lang) ? wordCount(s.narration) : s.narration.split(/\s+/).filter(Boolean).length, beats: s.beats.length, beatRows: buildBeatRows(s.beats), shownForReal: s.shown_for_real ?? null, style, claims: claimsOf(s).claims, readable: true, ...(s.scale ? { scale: { rows: scaleRows(s.scale), limitNote: renderLimitNote((await getEngineConfig(db)).render.timeoutS) } } : {}) };
+    return { kind: "script", title: s.title, description: s.description ?? null, narration: s.narration, words: isLang(lang) ? wordCount(s.narration) : s.narration.split(/\s+/).filter(Boolean).length, beats: s.beats.length, beatRows: buildBeatRows(s.beats), shownForReal: s.shown_for_real ?? null, style, claims: claimsOf(s).claims, readable: true };
   }
   if (gate === "cost") return costGateContent(c.cost_plan?.body);
-  if (gate === "look") {
-    const v = lookView(c.previews?.body, c.scenes?.body);
-    const used = (await lookFeedbackOf(db, videoId))?.count ?? 0;
-    const review = reviewView(await activeReviewOf(db, videoId));
-    return { kind: "look", sentBack: used, cap: LOOK_SEND_BACK_CAP, review, view: v.ok ? { ok: true, look: { ...v.look, stills: v.look.stills.map((s) => ({ ...s, src: src(`videos/${videoId}/${s.file}`) })) } } : v };
-  }
   if (gate === "video") {
     const cap = asObj(c.captions?.body);
     const captions = cap.approximate === true ? (cap.checked_by_owner === true ? "checked" : "approximate") : cap.needs_check === true ? "check" : "exact";

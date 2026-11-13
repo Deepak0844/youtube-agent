@@ -134,7 +134,6 @@ describe("gateWaitInput", () => {
   it("maps_a_waiting_gate_to_its_event_and_ignores_gates_without_one", () => {
     expect(gateWaitInput("v", "script", "active", "t")).toEqual({ event: "script_review", videoId: "v", from: "active", to: "gate.script", transitionId: "t" });
     expect(gateWaitInput("v", "comment_reply", "active", "t")?.event).toBe("comment_replies");
-    expect(gateWaitInput("v", "look", "active", "t")).toBeNull();
   });
 });
 

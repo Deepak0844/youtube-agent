@@ -100,9 +100,6 @@ export const SETTINGS = {
   "qa.long_max_s": { schema: posNum.min(1).max(86_400), default: 900, safety: true, label: "QA long max seconds" },
   // Render sandbox limits (ADR 0003). Safety: raising them loosens the container. Upper bounds keep a ceiling.
   "render.timeout_s": { schema: posInt.max(3600), default: 600, safety: true, label: "Render time limit, seconds" },
-  // Phase 5d: 3D videos may render on this Mac (outside Docker, in a no-network sandbox, ADR in the roadmap). Off by default; the owner turns it on.
-  "render.native_3d": { schema: z.boolean(), default: false, safety: true, label: "Render 3D videos natively on this Mac" },
-  "render.native_timeout_s": { schema: posInt.min(60).max(7200), default: 1800, safety: true, label: "Native 3D render time limit, seconds" },
   "render.cpus": { schema: posInt.max(32), default: 4, safety: true, label: "Render CPUs" },
   "render.memory_mb": { schema: posInt.min(1024).max(16384), default: 4096, safety: true, label: "Render memory (MB)" },
   "render.pids": { schema: posInt.min(64).max(2048), default: 512, safety: true, label: "Render process limit" },
@@ -139,9 +136,6 @@ export const SAFETY_KEYS = (Object.keys(SETTINGS) as SettingKey[]).filter((k) =>
 export const BUDGET_DEFAULTS: Record<string, number> = {
   "video:scene_kit": 2_000_000,
   "video:tsx": 5_000_000,
-  "video:scale3d": 5_000_000,
-  "video:scene3d": 5_000_000,
-  "video:scene3d_code": 5_000_000,
   "video:collage": 5_000_000,
   "video:ai": 15_000_000,
   "video:long": 8_000_000,
@@ -154,9 +148,6 @@ export const BUDGET_DEFAULTS: Record<string, number> = {
 export const BUDGET_LABELS: Record<string, { title: string; note: string }> = {
   "video:scene_kit": { title: "Scene-kit video", note: "The most one scene-kit video may spend." },
   "video:tsx": { title: "Code-scene video", note: "The most one code-scene video may spend." },
-  "video:scale3d": { title: "3D scale video", note: "The most one 3D scale-comparison video may spend." },
-  "video:scene3d": { title: "3D scene video", note: "The most one 3D scene video may spend." },
-  "video:scene3d_code": { title: "3D story video (AI-written scene)", note: "The most one AI-written 3D story video may spend." },
   "video:collage": { title: "Collage video", note: "The most one collage video may spend." },
   "video:ai": { title: "AI video", note: "The most one AI-generated video may spend." },
   "video:long": { title: "Long video", note: "The most one long-form video may spend." },

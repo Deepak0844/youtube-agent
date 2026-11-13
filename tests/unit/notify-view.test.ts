@@ -8,7 +8,7 @@ describe("bellItem", () => {
     expect(bellItem(row())).toEqual({ group: "problems", title: "Video failed", detail: "Step: Draft", href: "/videos/v1", unread: true });
   });
   it("an internal step id becomes its label", () => {
-    expect(bellItem(row({ text: "scene3d_author" })).detail).toBe("Step: 3D scene code");
+    expect(bellItem(row({ text: "tsx_author" })).detail).toBe("Step: Code scene");
   });
   it("free text stays as it is", () => {
     expect(bellItem(row({ event: "breaker_hit", text: 'Stage "draft" is paused.' })).detail).toBe('Stage "draft" is paused.');

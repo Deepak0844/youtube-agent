@@ -9,7 +9,7 @@ import { DECISION_CHOICES, type DecisionChoice } from "@/server/core/decision";
 export const STALE_MESSAGE = "This changed while you were looking. Review again.";
 export const BAD_FORM = "That request was not understood. Nothing was changed.";
 
-export const QUEUE_GATES = ["outline", "script", "cost", "look", "video", "evidence", "publish"] as const;
+export const QUEUE_GATES = ["outline", "script", "cost", "video", "evidence", "publish"] as const;
 export type QueueGate = (typeof QUEUE_GATES)[number];
 export const BREAKER_STAGES = ["draft", "build", "voice"] as const;
 export type BreakerStage = (typeof BREAKER_STAGES)[number];

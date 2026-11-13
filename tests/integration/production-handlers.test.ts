@@ -24,7 +24,7 @@ const registry = () => {
 describe("production handlers", () => {
   it("wires outline, draft, build, tts, render, voice, sfx, qa and shots; generate is wired for AI videos only", () => {
     const h = productionHandlers(db.pool);
-    expect(Object.keys(h).sort()).toEqual(["build", "derive", "direct_scene3d", "draft", "generate", "outline", "pictures", "qa", "reframe", "render", "repair_scenes", "reply_drafts", "scene3d_author", "scene3d_review", "scene3d_stills", "seo", "sfx", "shots", "thumbnail", "tsx_author", "tts", "voice"]);
+    expect(Object.keys(h).sort()).toEqual(["build", "derive", "draft", "generate", "outline", "pictures", "qa", "reframe", "render", "repair_scenes", "reply_drafts", "seo", "sfx", "shots", "thumbnail", "tsx_author", "tts", "voice"]);
   });
 
   it("the kit folder comes from the code's own location, symlinks resolved; a symlinked kit is passed unresolved (and refused)", () => {
@@ -40,13 +40,6 @@ describe("production handlers", () => {
   it("the production renderer is the container renderer and refuses a call without validated scenes", async () => {
     const ctx = { claim: { stageRunId: "r" }, attemptDir: "/nonexistent" } as never;
     await expect(productionStageDeps(db.pool).renderer.render(ctx, { sceneFile: "x", outFile: "render.mp4", size: { width: 1080, height: 1920 } })).rejects.toThrow(/checked scenes/);
-  });
-
-  it("the native Mac renderer is wired but refuses while render.native_3d is off (the default), and starts nothing", async () => {
-    const native = productionStageDeps(db.pool).native!;
-    const { buildEngineConfig } = await import("@/server/core/engine-config");
-    const ctx = { claim: { stageRunId: "r" }, attemptDir: "/nonexistent", config: buildEngineConfig(new Map()) } as never;
-    await expect(native.renderer.render(ctx, { sceneFile: "x", scale3d: {} as never, outFile: "render.mp4", size: { width: 1080, height: 1920 } })).rejects.toThrow(/switched off/);
   });
 
   it("a dry-run video is refused by the production tts handler", async () => {

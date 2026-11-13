@@ -40,12 +40,6 @@ export interface VideoPage {
   /** The frame check of a code scene as one plain sentence (a warning when it found problems or did not run), or null. */
   frameReviewNote: { text: string; warn: boolean } | null;
   stages: StageView[];
-  /** 3D scale videos only: the stored scenes body ({kind: "scale3d", scene}), or null. */
-  scale3dBody: unknown;
-  /** 3D story videos only: the stored scenes body ({kind: "scene3d", scene, missing_assets}), the script's story and the preview pictures body; each null until it exists. */
-  scene3d: { scenes: unknown; story: unknown; previews: unknown } | null;
-  /** The render time limit now in force (read only), for the 3D scale note. */
-  renderTimeoutS: number;
   /** The newest run status per stage, for the re-run buttons. */
   runStatus: Partial<Record<StageName, RunStatus>>;
   /** an upload row exists that is not a failed one: the file is spoken for */
@@ -111,15 +105,6 @@ const EVENT_TEXT: Record<string, string> = {
   "stage.started": "started", "stage.succeeded": "finished", "stage.failed": "failed", "stage.needs_decision": "needs your decision", "stage.cancelled": "cancelled",
   "gate.waiting": "waiting for you", "gate.approved": "approved", "gate.sent_back": "sent back", "video.created": "video created", "video.done": "video finished", "video.failed": "video failed",
 };
-
-async function scene3dData(db: pg.Pool, videoId: string): Promise<NonNullable<VideoPage["scene3d"]>> {
-  const story = (await latestContent(db, videoId, "script"))?.body;
-  return {
-    scenes: (await latestContent(db, videoId, "scenes"))?.body ?? null,
-    story: typeof story === "object" && story !== null ? ((story as { story?: unknown }).story ?? null) : null,
-    previews: (await latestContent(db, videoId, "previews"))?.body ?? null,
-  };
-}
 
 export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<VideoPage | null> {
   const vr = await db.query("select id, topic, language, kind, kind_origin, format, status, created_at, style, caption_style from videos where id = $1", [videoId]);
@@ -222,7 +207,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   return {
-    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, scale3dBody: head.kind === "scale3d" ? ((await latestContent(db, videoId, "scenes"))?.body ?? null) : null, scene3d: head.kind === "scene3d" || head.kind === "scene3d_code" ? await scene3dData(db, videoId) : null, renderTimeoutS: cfg.render.timeoutS, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
+    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
     beats: beats?.body ?? null,
     evidence: evidence ? { body: evidence.body, fileSrc: sign?.(evidence.filePath) ?? null } : null,
     titles: titles?.body ?? null,

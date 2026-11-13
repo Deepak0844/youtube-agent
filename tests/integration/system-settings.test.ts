@@ -119,7 +119,7 @@ describe("local service list (app role)", () => {
 });
 
 describe("system settings form (app role)", () => {
-  const good = { concurrent_renders: 2, concurrent_jobs: 3, storage_warn_gb: 80, max_long_minutes: 20, render_timeout_s: 900, native_3d: false, native_timeout_s: 1800, scene_kit: false };
+  const good = { concurrent_renders: 2, concurrent_jobs: 3, storage_warn_gb: 80, max_long_minutes: 20, render_timeout_s: 900, scene_kit: false };
 
   it("saves each changed value and audits each", async () => {
     const r = await saveSystemSettings(db.pool, good);
@@ -141,22 +141,6 @@ describe("system settings form (app role)", () => {
     const rows = (await audit()).filter((x) => settingOf(x) === "render.timeout_s");
     expect(rows).toHaveLength(1);
     expect(rows[0]!.detail).toMatchObject({ from: 600, to: 900 });
-  });
-
-  it("saving the native 3D switch and its time limit writes one setting.changed row for each", async () => {
-    expect(await getSetting(db.pool, "render.native_3d")).toBe(false);
-    expect(await getSetting(db.pool, "render.native_timeout_s")).toBe(1800);
-    await saveSystemSettings(db.pool, { ...good, native_3d: true, native_timeout_s: 3000 });
-    expect(await getSetting(db.pool, "render.native_3d")).toBe(true);
-    expect(await getSetting(db.pool, "render.native_timeout_s")).toBe(3000);
-    const rows = (await audit()).filter((x) => ["render.native_3d", "render.native_timeout_s"].includes(settingOf(x)));
-    expect(rows.map((x) => [settingOf(x), x.detail])).toEqual(
-      expect.arrayContaining([
-        ["render.native_3d", expect.objectContaining({ from: false, to: true })],
-        ["render.native_timeout_s", expect.objectContaining({ from: 1800, to: 3000 })],
-      ]),
-    );
-    expect(rows).toHaveLength(2);
   });
 
   it("an unchanged form audits nothing", async () => {
@@ -186,9 +170,6 @@ describe("system settings form (app role)", () => {
     ["huge", { ...good, concurrent_jobs: 100000 }],
     ["timeout too low", { ...good, render_timeout_s: 59 }],
     ["timeout too high", { ...good, render_timeout_s: 3601 }],
-    ["native timeout too low", { ...good, native_timeout_s: 59 }],
-    ["native timeout too high", { ...good, native_timeout_s: 7201 }],
-    ["native flag as text", { ...good, native_3d: "on" }],
     ["missing", { concurrent_jobs: 2 }],
     ["extra key", { ...good, tsx: true }],
   ])("refuses invalid limits: %s, and stores nothing", async (_n, input) => {
@@ -215,12 +196,12 @@ describe("system settings form (app role)", () => {
   });
 
   it("N4: two saves at once leave one whole form, never a mixture", async () => {
-    const a = { concurrent_renders: 2, concurrent_jobs: 4, storage_warn_gb: 60, max_long_minutes: 30, render_timeout_s: 900, native_3d: false, native_timeout_s: 1800, scene_kit: true };
-    const b = { concurrent_renders: 3, concurrent_jobs: 5, storage_warn_gb: 70, max_long_minutes: 40, render_timeout_s: 1200, native_3d: true, native_timeout_s: 2400, scene_kit: false };
+    const a = { concurrent_renders: 2, concurrent_jobs: 4, storage_warn_gb: 60, max_long_minutes: 30, render_timeout_s: 900, scene_kit: true };
+    const b = { concurrent_renders: 3, concurrent_jobs: 5, storage_warn_gb: 70, max_long_minutes: 40, render_timeout_s: 1200, scene_kit: false };
     for (let i = 0; i < 5; i++) {
       await Promise.all([saveSystemSettings(db.pool, a), saveSystemSettings(db.pool, b)]);
       const s = await loadSystemSettings(db.pool);
-      const got = { concurrent_renders: s.renders, concurrent_jobs: s.jobs, storage_warn_gb: s.warnGb, max_long_minutes: s.longMinutes, render_timeout_s: s.renderTimeoutS, native_3d: s.native3d, native_timeout_s: s.nativeTimeoutS, scene_kit: s.sceneKit };
+      const got = { concurrent_renders: s.renders, concurrent_jobs: s.jobs, storage_warn_gb: s.warnGb, max_long_minutes: s.longMinutes, render_timeout_s: s.renderTimeoutS, scene_kit: s.sceneKit };
       expect([a, b]).toContainEqual(got);
     }
   });

@@ -45,10 +45,6 @@ export interface BreakerHold {
 export interface PipelineReaders {
   approvedGates(db: pg.PoolClient, videoId: string): Promise<ReadonlySet<GateId>>;
   feedback(db: pg.PoolClient, videoId: string): Promise<string | null>;
-  /** 3D stories: how often the Look was sent back and the latest note, or null. Optional: readers without it mean "never sent back". */
-  lookFeedback?(db: pg.PoolClient, videoId: string): Promise<{ count: number; note: string } | null>;
-  /** AI-written 3D stories: how many automatic revisions the look review has asked for (0 = none). Optional: readers without it mean 0. */
-  reviewRound?(db: pg.PoolClient, videoId: string): Promise<number>;
   /** Long videos: the note on the newest outline send-back, or null. Optional: readers without it mean "never sent back". */
   outlineFeedback?(db: pg.PoolClient, videoId: string): Promise<string | null>;
 }
@@ -148,8 +144,6 @@ async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineRead
     ...(v.kind === "ai" ? { clipRoute: await clipRouteOf(c, v), characterAsset: (await characterOf(c, v.id))?.assetId ?? null } : {}),
     feedback: await readers.feedback(c, v.id),
     ...(v.format === "long" && readers.outlineFeedback ? { outlineFeedback: await readers.outlineFeedback(c, v.id) } : {}),
-    ...((v.kind === "scene3d" || v.kind === "scene3d_code") && readers.lookFeedback ? { lookFeedback: await readers.lookFeedback(c, v.id) } : {}),
-    ...(v.kind === "scene3d_code" && readers.reviewRound ? { reviewRound: await readers.reviewRound(c, v.id) } : {}),
     content: shas,
     runs,
     approved: await readers.approvedGates(c, v.id),

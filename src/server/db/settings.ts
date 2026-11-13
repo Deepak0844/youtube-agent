@@ -68,8 +68,6 @@ export const SESSION_BATCH_KEYS: readonly string[] = [
   "storage.warn_gb",
   "video.max_long_minutes",
   "render.timeout_s",
-  "render.native_3d",
-  "render.native_timeout_s",
   "tracks.enabled",
   "uploads.kill_switch",
   "comments.dry_run",

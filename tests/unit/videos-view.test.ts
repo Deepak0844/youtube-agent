@@ -77,21 +77,6 @@ describe("parseNewVideoForm", () => {
     expect(kit.ok && kit.value.style).toBe("flat_motion");
     expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", format: "long" })).ok).toBe(false);
   });
-  it("3D scale is accepted for Shorts only and drops the style and caption look", () => {
-    const r = parseNewVideoForm(form({ topic: "x", language: "en", kind: "scale3d", style: "flat_motion", captionStyle: "punchy_captions" }));
-    expect(r).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "scale3d", format: "short", notes: undefined } });
-    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "scale3d", format: "long" })).ok).toBe(false);
-  });
-  it("3D story (scene3d) is accepted for Shorts only and drops the style and caption look", () => {
-    const r = parseNewVideoForm(form({ topic: "x", language: "en", kind: "scene3d", style: "flat_motion", captionStyle: "punchy_captions" }));
-    expect(r).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "scene3d", format: "short", notes: undefined } });
-    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "scene3d", format: "long" })).ok).toBe(false);
-  });
-  it("3D story with an AI-written scene (scene3d_code) is Shorts only and drops the style and caption look", () => {
-    const r = parseNewVideoForm(form({ topic: "x", language: "en", kind: "scene3d_code", style: "flat_motion", captionStyle: "punchy_captions" }));
-    expect(r).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "scene3d_code", format: "short", notes: undefined } });
-    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "scene3d_code", format: "long" })).ok).toBe(false);
-  });
   it("refuses empty or too long topics and unknown language/kind/format", () => {
     expect(parseNewVideoForm(form({ topic: "   ", language: "en" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ topic: "x".repeat(201), language: "en" })).ok).toBe(false);

@@ -3,7 +3,6 @@ import type { GateId } from "@/server/core/gates";
 import { IMPLEMENTED_GATES } from "@/server/core/approvals";
 import { APPROVAL_SESSION_VALID_SQL, approvalState } from "@/server/db/approvals";
 import type { PipelineReaders } from "@/server/db/pipeline";
-import { reviewRoundOf } from "@/server/db/review-state";
 
 // The real answer to "what has the owner decided?" for the pipeline. Approvals are derived on every read (db/approvals.ts):
 // a gate counts only while its newest decision is 'approved' AND its hash equals the live hash. The same readers go to
@@ -42,21 +41,4 @@ export const approvalReaders: PipelineReaders = {
     const row = r.rows[0];
     return row?.note ? `${Number(row.n)}:${row.note}` : null;
   },
-  /** The Look send-backs of a 3D story: how many and the newest note. The note reaches the director (fenced as untrusted data); the count keeps a repeated note from being ignored. */
-  async lookFeedback(db: pg.PoolClient, videoId: string): Promise<{ count: number; note: string } | null> {
-    return lookFeedbackOf(db, videoId);
-  },
-  /** AI-written 3D stories: how many automatic revisions the look review has asked for. It is part of the author's hash, so the author, the pictures and the review run again. */
-  async reviewRound(db: pg.PoolClient, videoId: string): Promise<number> {
-    return reviewRoundOf(db, videoId);
-  },
 };
-
-export async function lookFeedbackOf(db: pg.PoolClient | pg.Pool, videoId: string): Promise<{ count: number; note: string } | null> {
-  const r = await db.query<{ note: string | null; n: string }>(
-    "select (select note from approvals where video_id = $1 and gate = 'look' and decision = 'sent_back' order by seq desc limit 1) as note, (select count(*) from approvals where video_id = $1 and gate = 'look' and decision = 'sent_back') as n",
-    [videoId],
-  );
-  const row = r.rows[0];
-  return row?.note ? { count: Number(row.n), note: row.note } : null;
-}

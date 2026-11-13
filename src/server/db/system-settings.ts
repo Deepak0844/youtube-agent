@@ -35,8 +35,6 @@ export const systemFormSchema = z
     storage_warn_gb: int(100_000),
     max_long_minutes: int(240),
     render_timeout_s: int(3600).pipe(z.number().min(60)),
-    native_3d: z.boolean(),
-    native_timeout_s: int(7200).pipe(z.number().min(60)),
     scene_kit: z.boolean(),
   })
   .strict();
@@ -78,8 +76,6 @@ export async function saveSystemSettings(db: pg.Pool, input: unknown): Promise<S
       { key: "storage.warn_gb", value: v.storage_warn_gb },
       { key: "video.max_long_minutes", value: v.max_long_minutes },
       { key: "render.timeout_s", value: v.render_timeout_s },
-      { key: "render.native_3d", value: v.native_3d },
-      { key: "render.native_timeout_s", value: v.native_timeout_s },
       // read under the lock, so other tracks are never overwritten with a stale copy
       { key: "tracks.enabled", value: (cur: unknown) => ({ ...(cur as Record<string, boolean>), scene_kit: v.scene_kit }) },
     ]);
@@ -251,8 +247,6 @@ export interface SystemSettingsView {
   warnGb: number;
   longMinutes: number;
   renderTimeoutS: number;
-  native3d: boolean;
-  nativeTimeoutS: number;
   sceneKit: boolean;
   services: string[];
   killSwitch: boolean;
@@ -271,20 +265,18 @@ export async function qaLongSeconds(db: pg.Pool | pg.PoolClient): Promise<{ minS
 
 /** Everything the page shows, read here so only this file touches the settings module. */
 export async function loadSystemSettings(db: pg.Pool): Promise<SystemSettingsView> {
-  const [renders, jobs, warnGb, longMinutes, renderTimeoutS, native3d, nativeTimeoutS, tracks, services, killSwitch, cutoverDone] = await Promise.all([
+  const [renders, jobs, warnGb, longMinutes, renderTimeoutS, tracks, services, killSwitch, cutoverDone] = await Promise.all([
     getSetting(db, "jobs.concurrent_renders") as Promise<number>,
     getSetting(db, "jobs.concurrent_jobs") as Promise<number>,
     getSetting(db, "storage.warn_gb") as Promise<number>,
     getSetting(db, "video.max_long_minutes") as Promise<number>,
     getSetting(db, "render.timeout_s") as Promise<number>,
-    getSetting(db, "render.native_3d") as Promise<boolean>,
-    getSetting(db, "render.native_timeout_s") as Promise<number>,
     getSetting(db, "tracks.enabled") as Promise<{ scene_kit: boolean }>,
     loadLocalServices(db),
     getSetting(db, "uploads.kill_switch"),
     getSetting(db, "youtube.cutover_done"),
   ]);
-  return { renders, jobs, warnGb, longMinutes, renderTimeoutS, native3d: native3d === true, nativeTimeoutS, sceneKit: tracks.scene_kit, services, killSwitch: killSwitch !== false, cutoverDone: cutoverDone === true };
+  return { renders, jobs, warnGb, longMinutes, renderTimeoutS, sceneKit: tracks.scene_kit, services, killSwitch: killSwitch !== false, cutoverDone: cutoverDone === true };
 }
 
 /** Engine numbers form: the stored value of each field (default when no row), as the text the form shows. */

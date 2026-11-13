@@ -68,8 +68,6 @@ const ALTERNATE: Record<string, unknown> = {
   "qa.long_min_s": 60,
   "qa.long_max_s": 1200,
   "render.timeout_s": 900,
-  "render.native_3d": true,
-  "render.native_timeout_s": 900,
   "render.cpus": 2,
   "render.memory_mb": 2048,
   "render.pids": 256,

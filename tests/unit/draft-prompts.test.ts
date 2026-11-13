@@ -56,12 +56,4 @@ describe("draft prompts", () => {
   it("other_kinds_do_not_get_the_scene_kit_grammar", () => {
     expect(writeMessages({ ...base, kind: "tsx" as never, pages: [] }).find((m) => m.role === "system")!.content).not.toContain("QUIZ");
   });
-  it("scene3d_gets_the_story_section_and_the_longer_word_target_only", () => {
-    const sys = (kind: string) => writeMessages({ ...base, kind: kind as never, pages: [] }).find((m) => m.role === "system")!.content;
-    expect(sys("scene3d")).toContain('"story" array of 6 to 12 beats');
-    expect(sys("scene3d")).toContain("About 140 spoken words");
-    expect(sys("scene_kit")).not.toContain("3D STORY");
-    expect(sys("scale3d")).not.toContain("3D STORY");
-    expect(sys("tsx")).toContain("About 100 spoken words");
-  });
 });

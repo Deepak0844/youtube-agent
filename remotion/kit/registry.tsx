@@ -61,14 +61,6 @@ import { frameLayout, landscapeFrames } from "./frameLayout";
 import { firstPictureId, HOOK_FRAMES, hashString, lookBackground, pickLook, sceneCaptionAllowed } from "./look";
 import { collageStarts, docFrames, introSkipFrames, loopOpacity, loopOverlay, mediaOf, msToFrame, sceneRange, sequenceFrames, transitionIn, type CaptionWord } from "./timeline";
 import type { Scene, SceneDoc } from "../../src/shared/scene";
-import { SCALE3D_DEMO } from "./scale3d/demo-scene";
-import { totalFrames } from "./scale3d/math";
-import type { Scale3DProps } from "./scale3d/Scale3D";
-import { SCENE3D_DEMO } from "./scene3d/demo-scene";
-import { withDefaults } from "./scene3d/defaults";
-import { scene3dFrames } from "./scene3d/camera";
-import type { Scene3DProps } from "./scene3d/Scene3D";
-import { s3kFrames, type S3kDemoProps } from "./s3k/meta";
 
 const terminal: TerminalProps = {
   lines: [{ text: "npm run build" }, { text: "build ok", prompt: ">" }],
@@ -434,39 +426,6 @@ export const KitRoot: React.FC = () => (
       height={theme.height}
       fps={theme.fps}
       durationInFrames={120}
-    />
-    {/* 3D scale comparison: loaded on demand so the three.js code is only touched when this composition is rendered. */}
-    <Composition
-      id="scale3d"
-      lazyComponent={() => import("./scale3d/Scale3D").then((m) => ({ default: m.Scale3D as React.FC<Record<string, unknown>> }))}
-      defaultProps={{ scene: SCALE3D_DEMO } as Scale3DProps}
-      calculateMetadata={({ props }) => ({ durationInFrames: Math.max(1, totalFrames(props.scene.beats.map((b) => b.duration_s), theme.fps)) })}
-      width={theme.width}
-      height={theme.height}
-      fps={theme.fps}
-      durationInFrames={900}
-    />
-    {/* General 3D scene engine v2 (scene format v2): lazy like scale3d, so three.js loads only for this composition. Rendered natively, not in the container. */}
-    <Composition
-      id="scene3d"
-      lazyComponent={() => import("./scene3d/Scene3D").then((m) => ({ default: m.Scene3D as React.FC<Record<string, unknown>> }))}
-      defaultProps={{ scene: withDefaults(SCENE3D_DEMO) } as Scene3DProps}
-      calculateMetadata={({ props }) => ({ durationInFrames: scene3dFrames(props.scene) })}
-      width={theme.width}
-      height={theme.height}
-      fps={30}
-      durationInFrames={300}
-    />
-    {/* 3D authoring kit demo (s3k): lazy, so three.js loads only for this composition (meta.ts has no three import). Rendered natively, not in the container. */}
-    <Composition
-      id="S3kDemo"
-      lazyComponent={() => import("./s3k/Demo").then((m) => ({ default: m.S3kDemo as React.FC<Record<string, unknown>> }))}
-      defaultProps={{ example: "tunnel" } as S3kDemoProps}
-      calculateMetadata={({ props }) => ({ durationInFrames: s3kFrames(props) })}
-      width={theme.width}
-      height={theme.height}
-      fps={30}
-      durationInFrames={600}
     />
     <Composition
       id="kit-video"

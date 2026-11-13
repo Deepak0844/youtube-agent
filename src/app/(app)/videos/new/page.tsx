@@ -1,9 +1,5 @@
 import { Suspense } from "react";
 import { requireOwner } from "@/lib/auth/require-owner";
-import { renderLimitNote } from "@/server/core/scale3d-view";
-import { scene3dNativeNote } from "@/server/core/scene3d-view";
-import { checkNativeRenderReady } from "@/server/providers/renderer/native-preflight";
-import { getEngineConfig } from "@/server/db/engine-config";
 import { getPool } from "@/server/db/pool";
 import { resolveRoute } from "@/server/db/media-registry";
 import { characterCandidates } from "@/server/db/video-characters";
@@ -26,11 +22,7 @@ export default function NewVideo({ searchParams }: PageProps<"/videos/new">) {
 async function Owned({ searchParams }: Pick<PageProps<"/videos/new">, "searchParams">) {
   await requireOwner();
   const initialFormat = (await searchParams).format === "long" ? "long" : "short"; // "New long video" links here with ?format=long
-  const config = await getEngineConfig(getPool());
   const maxLongMinutes = Math.min(await readMaxLongMinutes(getPool()), LONG_HARD_MAX_MINUTES);
-  const limitNote = renderLimitNote(config.render.timeoutS);
-  // Read only: the preflight looks at this Mac (sandbox, Remotion, Chrome shell, disk); nothing is changed or downloaded.
-  const nativeNote = scene3dNativeNote(config.render.native3d, config.render.native3d ? await checkNativeRenderReady().catch(() => ({ ready: false, message: "The readiness check failed." })) : null);
   // AI videos: say plainly when no provider and model are chosen yet, and offer the library pictures that can be a character.
   const route = await resolveRoute(getPool(), "video", { format: "short", videoKind: "ai" }).catch(() => null);
   const aiNote = route?.model ? null : "No AI video provider and model are chosen yet (Settings > Providers). The script and the narration can be made, but the clips wait for one.";
@@ -43,7 +35,7 @@ async function Owned({ searchParams }: Pick<PageProps<"/videos/new">, "searchPar
         <h1 className="text-page-title font-semibold tracking-tight">New video</h1>
         <p className="m-0 max-w-prose text-body text-muted">Say what the video is about. The studio writes a script and stops to ask you before it spends money or publishes anything.</p>
       </header>
-      <NewForm initialFormat={initialFormat} scaleLimitNote={limitNote} scene3dNote={nativeNote} maxLongMinutes={maxLongMinutes} aiNote={aiNote} characters={characters} channels={channels} />
+      <NewForm initialFormat={initialFormat} maxLongMinutes={maxLongMinutes} aiNote={aiNote} characters={characters} channels={channels} />
     </div>
   );
 }
