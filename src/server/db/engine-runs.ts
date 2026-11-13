@@ -1,5 +1,6 @@
 import type pg from "pg";
 import type { EngineRunKind } from "@/server/engine/args";
+import { estimateVideosLeft, WINDOW_MS } from "@/server/engine/usage";
 
 // Rows of the new video engine's Claude Code runs (ADR 0015, migration 0086): usage per run and the usage-limit pauses.
 
@@ -61,4 +62,30 @@ export async function usageWindow(db: Q, since: Date): Promise<{ runs: number; i
 export async function killStaleEngineRuns(db: Q): Promise<number> {
   const res = await db.query("update engine_runs set status = 'killed', ended_at = clock_timestamp(), error = 'The worker restarted during this run.' where status = 'running'");
   return res.rowCount ?? 0;
+}
+
+/** Health's engine line: usage in the last 5 hours and, when it can be learned, how many more videos fit (an estimate). */
+export async function engineUsageSummary(db: Q, now: Date = new Date()): Promise<{ runs: number; tokens: number; costUsdEquiv: number; videosLeft: number | null }> {
+  const win = await usageWindow(db, new Date(now.getTime() - WINDOW_MS));
+  const last = (await db.query<{ at: Date }>("select ended_at as at from engine_runs where status = 'limit' order by ended_at desc limit 1")).rows[0]?.at ?? null;
+  // The window's size is learned from the last time the limit was hit: what was used in the 5 hours up to that moment.
+  const capacity = last
+    ? Number((await db.query<{ t: string }>("select coalesce(sum(coalesce(input_tokens, 0) + coalesce(output_tokens, 0)), 0)::text as t from engine_runs where ended_at > $1 and ended_at <= $2", [new Date(last.getTime() - WINDOW_MS), last])).rows[0]!.t)
+    : null;
+  const per = await db.query<{ t: string }>(
+    `select sum(coalesce(input_tokens, 0) + coalesce(output_tokens, 0))::text as t from engine_runs where status = 'succeeded'
+      group by video_id order by max(ended_at) desc limit 10`,
+  );
+  const tokens = win.inputTokens + win.outputTokens;
+  return { runs: win.runs, tokens, costUsdEquiv: win.costUsdEquiv, videosLeft: estimateVideosLeft({ capacityTokens: capacity, usedTokens: tokens, perVideoTokens: per.rows.map((r) => Number(r.t)) }) };
+}
+
+/** Usage per engine step of one video (summed over its runs), for the video page. */
+export async function engineUsageByStage(db: Q, videoId: string): Promise<Array<{ stage: string; inputTokens: number; outputTokens: number; costUsdEquiv: number; turns: number }>> {
+  const r = await db.query<{ stage: string; i: string; o: string; c: string; t: string }>(
+    `select s.name as stage, coalesce(sum(e.input_tokens), 0)::text as i, coalesce(sum(e.output_tokens), 0)::text as o, coalesce(sum(e.cost_usd_equiv), 0)::text as c, coalesce(sum(e.turns), 0)::text as t
+       from engine_runs e join stage_runs s on s.id = e.stage_run_id where e.video_id = $1 and e.ended_at is not null group by s.name order by min(e.started_at)`,
+    [videoId],
+  );
+  return r.rows.map((x) => ({ stage: x.stage, inputTokens: Number(x.i), outputTokens: Number(x.o), costUsdEquiv: Number(x.c), turns: Number(x.t) }));
 }

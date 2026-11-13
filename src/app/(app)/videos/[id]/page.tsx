@@ -80,6 +80,11 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
       <StepBar p={p} />
 
       {p.kindNote ? <p data-testid="kind-note" className="m-0 rounded-card border border-border bg-surface p-pad text-body text-muted">{p.kindNote}</p> : null}
+      {p.engineUsage.length > 0 ? (
+        <ul data-testid="engine-usage" className="m-0 flex list-none flex-col gap-1 rounded-card border border-border bg-surface p-pad text-small text-muted">
+          {p.engineUsage.map((u) => <li key={u.stage}><span className="font-medium text-text">{STAGE_LABELS[u.stage as StageName] ?? u.stage}:</span> {u.line}</li>)}
+        </ul>
+      ) : null}
       {p.frameReviewNote ? <p data-testid="frame-review-note" className={`m-0 rounded-card border border-border bg-surface p-pad text-body ${p.frameReviewNote.warn ? "text-warning" : "text-muted"}`}>{p.frameReviewNote.text}</p> : null}
       <LiveFeed />
 
