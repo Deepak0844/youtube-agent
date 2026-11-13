@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -38,6 +39,7 @@ function deps(over: Partial<EngineToolDeps> = {}): EngineToolDeps {
     },
     listAssets: async () => [{ id: "a1", kind: "sfx", name: "whoosh", licence: "CC0", durationS: 1.2 }],
     assetFile: async (id) => (id === "a1" ? path.join(outside, "whoosh.wav") : null),
+    probeDuration: async (file) => (file.endsWith(".wav") ? 18 : null),
     ...over,
   };
 }
@@ -53,9 +55,9 @@ describe("safeWorkPath", () => {
 });
 
 describe("engine tools", () => {
-  it("lists exactly the four tools with closed schemas", () => {
+  it("lists exactly the five tools with closed schemas", () => {
     const ts = engineTools(deps());
-    expect(ts.map((t) => t.name)).toEqual(["check_code", "preview_frames", "list_assets", "fetch_asset"]);
+    expect(ts.map((t) => t.name)).toEqual(["check_code", "preview_frames", "check_scenes", "list_assets", "fetch_asset"]);
     for (const t of ts) expect(t.inputSchema.additionalProperties, t.name).toBe(false);
   });
 
@@ -99,5 +101,68 @@ describe("engine tools", () => {
     expect((out[0] as { text: string }).text).toBe("Copied to assets/whoosh.wav.");
     await expect(tool(deps(), "fetch_asset").run({ id: "nope", name: "x.wav" })).rejects.toBeInstanceOf(ToolMessage);
     await expect(tool(deps(), "fetch_asset").run({ id: "a1", name: "../x.wav" })).rejects.toBeInstanceOf(ToolMessage);
+  });
+});
+
+describe("check_scenes", () => {
+  const reel = JSON.parse(readFileSync("tests/fixtures/openmontage/animated-reel-20s.json", "utf8")) as { cuts: Array<Record<string, unknown>> };
+  const shots = ["push_in", "static", "pan", "static"];
+  const plan = { version: "1", scenes: reel.cuts.map((c, i) => ({ type: c.type, description: `scene ${i}`, narrative_role: "beat", shot_intent: "why", shot_language: { camera_movement: shots[i], shot_size: ["wide", "medium", "close", "wide"][i] } })) };
+  const edit = (over: Record<string, unknown> = {}) => ({ version: "1", render_runtime: "remotion", renderer_family: "explainer", ...reel, metadata: { delivery_promise: { promise_type: "data_explainer", motion_required: false, tone_mode: "educational", quality_floor: "presentable" } }, ...over });
+  const put = async (rel: string, v: unknown) => {
+    await mkdir(path.dirname(path.join(work, rel)), { recursive: true });
+    await writeFile(path.join(work, rel), typeof v === "string" ? v : JSON.stringify(v));
+  };
+  const run = async (args: Record<string, unknown> = {}) => (await tool(deps(), "check_scenes").run(args)).map((c) => (c.type === "text" ? c.text : "")).join("\n");
+
+  it("check_scenes_reports_all_checks", async () => {
+    await put("om/edit_decisions.json", edit());
+    await put("om/scene_plan.json", plan);
+    const t = await run();
+    for (const h of ["Shape", "Assets and timing", "Slideshow risk", "Delivery promise"]) expect(t).toContain(`## ${h}`);
+    expect(t.trim().split("\n").at(-1)).toBe("VERDICT: pass");
+  });
+
+  it("check_scenes_names_a_missing_asset", async () => {
+    await put("om/edit_decisions.json", edit({ cuts: [...reel.cuts, { id: "clip", source: "intro.mp4", in_seconds: 20, out_seconds: 22 }], audio: { narration: { src: "voice.wav" } } }));
+    await put("assets/voice.wav", "x");
+    const t = await run();
+    expect(t).toContain("Missing asset: intro.mp4 (looked in assets)");
+    expect(t).toContain("Narration duration: 18.0s"); // probed through the injected probe, inside work/assets only
+    expect(t.trim().split("\n").at(-1)).toBe("VERDICT: fail");
+  });
+
+  it("check_scenes_blocks_like_openmontage_pre_compose", async () => {
+    await put("om/edit_decisions.json", edit({ renderer_family: undefined, metadata: { delivery_promise: { promise_type: "motion_led", motion_required: true } } }));
+    const t = await run();
+    expect(t).toContain("No renderer_family in edit_decisions.");
+    expect(t).toContain("Delivery promise violation: Motion ratio 0% is below minimum 70% for motion_led.");
+    expect(t.trim().split("\n").at(-1)).toBe("VERDICT: fail");
+  });
+
+  it("fail_when_slideshow_verdict_is_fail", async () => {
+    await put("om/edit_decisions.json", edit({ renderer_family: "cinematic" })); // repeated text cards, no intent, cinematic claim without hero or lighting: 4.43
+    await put("om/scene_plan.json", { version: "1", scenes: Array.from({ length: 5 }, () => ({ type: "text_card", description: "same", shot_language: { camera_movement: "pan", shot_size: "wide" } })) });
+    const t = await run();
+    expect(t).toMatch(/Slideshow risk score 4\.\d\/5\.0 \(verdict: fail\)/);
+    expect(t.trim().split("\n").at(-1)).toBe("VERDICT: fail");
+  });
+
+  it("check_scenes_refuses_paths_outside_work_and_links", async () => {
+    await expect(run({ file: "../x.json" })).rejects.toThrow(ToolMessage);
+    await expect(run({ file: path.join(outside, "secret.txt") })).rejects.toThrow(ToolMessage);
+    await mkdir(path.join(work, "om"), { recursive: true });
+    await symlink(path.join(outside, "secret.txt"), path.join(work, "om", "edit_decisions.json"));
+    await expect(run()).rejects.toThrow(/Links are not allowed/);
+    await rm(path.join(work, "om", "edit_decisions.json"));
+    await put("om/edit_decisions.json", edit({ cuts: [{ id: "a", type: "text_card", in_seconds: 0, out_seconds: 1, source: "../../secret.txt" }] }));
+    expect(await run()).toContain("Missing asset: ../../secret.txt"); // an asset name never reaches outside work/assets
+  });
+
+  it("check_scenes_refuses_files_over_512_KB_and_bad_json", async () => {
+    await put("om/edit_decisions.json", "x".repeat(513 * 1024));
+    await expect(run()).rejects.toThrow(/512 KB/);
+    await put("om/edit_decisions.json", "{nope");
+    await expect(run()).rejects.toThrow(/not valid JSON/);
   });
 });

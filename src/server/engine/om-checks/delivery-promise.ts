@@ -41,6 +41,20 @@ const SLIDE_TYPES = new Set(["text_card", "stat_card", "chart", "bar_chart", "li
 const MOTION_TYPES = new Set(["video", "animation", "avatar"]);
 const MOTION_EXT = new Set(["mp4", "mov", "webm", "avi", "mkv"]);
 
+/** DeliveryPromise.from_dict: throws when promise_type is missing or unknown (the caller treats that as "could not validate"). */
+export function promiseFromDict(data: Record<string, unknown>): DeliveryPromise {
+  const t = data.promise_type;
+  if (typeof t !== "string" || !Object.hasOwn(PROMISE_RULES, t)) throw new Error(`'${String(t)}' is not a valid PromiseType`);
+  return {
+    promise_type: t as PromiseType,
+    motion_required: pyGet(data, "motion_required", false) as boolean,
+    source_required: pyGet(data, "source_required", false) as boolean,
+    tone_mode: pyGet(data, "tone_mode", "corporate") as string,
+    quality_floor: pyGet(data, "quality_floor", "presentable") as string,
+    approved_fallback: (pyGet(data, "approved_fallback", null) as string | null) ?? null,
+  };
+}
+
 /** classify_from_brief(pipeline_type, user_intent): the default promise; the proposal director refines it. */
 export function classifyFromBrief(pipelineType: string, userIntent: Record<string, unknown>): DeliveryPromise {
   let type: PromiseType = Object.hasOwn(PIPELINE_DEFAULTS, pipelineType) ? PIPELINE_DEFAULTS[pipelineType]! : "hybrid";
