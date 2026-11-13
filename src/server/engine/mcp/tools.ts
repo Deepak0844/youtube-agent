@@ -1,9 +1,10 @@
 import { copyFile, lstat, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { TSX_MAX_BYTES } from "@/server/core/tsx-check";
+import { checkScenes, referencedAssets } from "@/server/engine/om-checks";
 import { ToolMessage, type McpContent, type McpTool } from "./protocol";
 
-// The four engine tools of a build run (ADR 0015). Paths are relative to work/ and checked (no absolute, no "..", no link
+// The engine tools of a build run (ADR 0015). Paths are relative to work/ and checked (no absolute, no "..", no link
 // anywhere on the way). Rendering goes only through `stills` (the locked render container in production); assets come only
 // from the app's registry. Plain sentences only: a ToolMessage is shown to Claude, anything else becomes a fixed sentence.
 
@@ -18,6 +19,8 @@ export interface EngineToolDeps {
   listAssets(kind: AssetKind, query?: string): Promise<Array<{ id: string; kind: AssetKind; name: string; licence: string; durationS?: number }>>;
   /** The stored file of a registered asset, or null. */
   assetFile(id: string): Promise<string | null>;
+  /** Length in seconds of an audio or video file inside work/assets (ffprobe), or null when it cannot be read. */
+  probeDuration(file: string): Promise<number | null>;
 }
 
 const MAX_FRAMES = 8;
@@ -47,6 +50,29 @@ async function readScene(d: EngineToolDeps, file: unknown): Promise<string> {
   if (!st?.isFile()) throw new ToolMessage(`There is no file ${String(file)} in the work folder.`);
   if (st.size > TSX_MAX_BYTES) throw new ToolMessage(`The file is over ${TSX_MAX_BYTES / 1024} KB. Make it smaller.`);
   return readFile(full, "utf8");
+}
+
+const MAX_JSON_BYTES = 512 * 1024;
+
+/** A JSON artifact in the work folder (om/...): inside work, no links, at most 512 KB, an object. Missing = null when optional. */
+async function readJson(d: EngineToolDeps, rel: string, optional: boolean): Promise<Record<string, unknown> | null> {
+  const full = safeWorkPath(d.workDir, rel);
+  if (!full) throw new ToolMessage("Give a file path inside the work folder, like om/edit_decisions.json.");
+  await noLinks(d.workDir, full);
+  const st = await lstat(full).catch(() => null);
+  if (!st?.isFile()) {
+    if (optional) return null;
+    throw new ToolMessage(`There is no file ${rel} in the work folder.`);
+  }
+  if (st.size > MAX_JSON_BYTES) throw new ToolMessage(`${rel} is over 512 KB. Make it smaller.`);
+  let v: unknown;
+  try {
+    v = JSON.parse(await readFile(full, "utf8"));
+  } catch {
+    throw new ToolMessage(`${rel} is not valid JSON.`);
+  }
+  if (typeof v !== "object" || v === null || Array.isArray(v)) throw new ToolMessage(`${rel} must hold a JSON object.`);
+  return v as Record<string, unknown>;
 }
 
 const obj = (a: unknown): Record<string, unknown> => (typeof a === "object" && a !== null && !Array.isArray(a) ? (a as Record<string, unknown>) : {});
@@ -86,6 +112,40 @@ export function engineTools(d: EngineToolDeps): McpTool[] {
         }
         out.push({ type: "text", text: `Frames ${(frames as number[]).join(", ")} of ${r.frameCount}.` });
         return out;
+      },
+    },
+    {
+      name: "check_scenes",
+      description:
+        "Run OpenMontage's pre-render checks on the scene list (om/edit_decisions.json): shape, staged assets and audio length, slideshow risk, delivery promise, renderer_family. Ends with VERDICT: pass, revise or fail.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          file: { type: "string", description: "Default om/edit_decisions.json" },
+          plan: { type: "string", description: "Default om/scene_plan.json (optional file)" },
+          brief: { type: "string", description: "Default om/proposal_packet.json (optional file)" },
+        },
+        additionalProperties: false,
+      },
+      run: async (a) => {
+        const { file, plan, brief } = obj(a);
+        const rel = (v: unknown, def: string) => (v === undefined ? def : typeof v === "string" ? v : "");
+        const edit = (await readJson(d, rel(file, "om/edit_decisions.json"), false))!;
+        const scenePlan = await readJson(d, rel(plan, "om/scene_plan.json"), true);
+        const proposal = await readJson(d, rel(brief, "om/proposal_packet.json"), true);
+        // Asset names resolve inside work/assets only; a name that climbs out or passes a link is simply missing.
+        const assetsDir = path.join(d.workDir, "assets");
+        const found = new Map<string, number | null>();
+        for (const name of referencedAssets(edit)) {
+          const full = safeWorkPath(assetsDir, name);
+          if (!full) continue;
+          const linked = await noLinks(d.workDir, full).then(() => false, () => true);
+          const st = linked ? null : await lstat(full).catch(() => null);
+          if (!st?.isFile()) continue;
+          found.set(name, /\.(wav|mp3|m4a|aac|flac|ogg|mp4|webm|mov)$/i.test(name) ? await d.probeDuration(full).catch(() => null) : null);
+        }
+        const r = checkScenes({ editDecisions: edit, scenePlan, proposal, files: { exists: (n) => found.has(n), durationS: (n) => found.get(n) ?? null } });
+        return [{ type: "text", text: r.report }];
       },
     },
     {

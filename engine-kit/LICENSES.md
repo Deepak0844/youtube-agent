@@ -261,3 +261,4 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 - tests/fixtures/openmontage/goldens/promise-footage.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
 - tests/fixtures/openmontage/goldens/promise-talking-head-forced.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
 - tests/fixtures/openmontage/goldens/promise-unknown-pipeline-empty.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- src/server/engine/om-checks/index.ts: check_scenes; ports OpenMontage tools/video/video_compose.py _pre_compose_validation (AGPL-3.0) and combines it with the other ports.

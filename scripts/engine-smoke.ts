@@ -2,6 +2,7 @@
 // tools (code check, preview frames drawn in the locked render container). Uses a throwaway video row that is deleted at the
 // end. Needs: claude logged in, Docker with the render image, migrations applied.
 //   npm run engine:smoke
+import { execFile } from "node:child_process";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -20,6 +21,16 @@ import { resolveRenderImage } from "@/server/providers/renderer/remotion-contain
 import { storageRoot } from "@/server/storage/paths";
 import { renderKitDir } from "@/worker/handlers";
 import { GOOD_SCENE } from "../tests/fixtures/tsx-good-scene";
+
+/** Length of a staged media file in seconds (ffprobe, local files only), or null. */
+function probeDurationS(file: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    execFile("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=duration", "-of", "csv=p=0", file], { timeout: 20_000 }, (err, out) => {
+      const d = Number(String(out).trim());
+      resolve(!err && Number.isFinite(d) && d > 0 ? d : null);
+    });
+  });
+}
 
 async function main(): Promise<void> {
   const db = getPool();
@@ -54,6 +65,7 @@ async function main(): Promise<void> {
           stills: (src, frames) => renderTsxStills(tsxDeps, ctx, { source: src, frames }),
           listAssets: async () => [],
           assetFile: async () => null,
+          probeDuration: (file) => probeDurationS(file),
         }),
       },
       { videoId: video.id, stageRunId: "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91", kind: "build", prompt, long: false, signal: ac.signal },
