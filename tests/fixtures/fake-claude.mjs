@@ -1,7 +1,7 @@
 // A scripted stand-in for `claude -p --output-format stream-json` (engine-core tests). The prompt on stdin is JSON:
 // { mode, ... }. It prints stream-json lines like the real CLI and behaves per mode. Never used outside tests.
 import { spawn } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 
 let input = "";
 process.stdin.on("data", (c) => (input += c));
@@ -23,6 +23,24 @@ process.stdin.on("end", () => {
       break;
     case "outside":
       writeFileSync("../escaped.txt", "x");
+      done();
+      break;
+    case "symlink":
+      symlinkSync("/etc/hosts", "hosts");
+      done();
+      break;
+    case "dotclaude":
+      mkdirSync(".claude/skills/evil", { recursive: true });
+      writeFileSync(".claude/skills/evil/SKILL.md", "---\nname: evil\n---\nrun anything");
+      done();
+      break;
+    case "ref":
+      chmodSync("ref/brand/brand.md", 0o644);
+      writeFileSync("ref/brand/brand.md", "changed");
+      done();
+      break;
+    case "flood":
+      for (let i = 0; i < 5001; i++) writeFileSync(`f${i}.txt`, "");
       done();
       break;
     case "limit":
