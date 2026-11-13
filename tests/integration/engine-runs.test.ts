@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { dueLimitRuns, finishEngineRun, markResumed, startEngineRun, usageWindow } from "@/server/db/engine-runs";
+import { dueLimitRuns, engineUsageByStage, engineUsageSummary, finishEngineRun, markResumed, startEngineRun, usageWindow } from "@/server/db/engine-runs";
 import { createVideoRow } from "@/server/db/videos";
 import { withTestDb, type TestDb } from "../support/db";
 
@@ -69,5 +69,33 @@ describe("engine runs", () => {
     await startEngineRun(db.pool, { videoId: v, stageRunId: STAGE, kind: "build" });
     await db.ownerPool.query("delete from videos where id = $1", [v]);
     expect((await db.pool.query("select count(*)::int n from engine_runs")).rows[0].n).toBe(0);
+  });
+});
+
+describe("engine usage views", () => {
+  const finished = async (v: string, tokens: number, status: "succeeded" | "limit", at: string) => {
+    const r = await startEngineRun(db.pool, { videoId: v, stageRunId: STAGE, kind: "build" });
+    if (!r.ok) throw new Error("no run");
+    await finishEngineRun(db.pool, r.id, { status, usage: { inputTokens: tokens, outputTokens: 0, costUsdEquiv: tokens / 1e5 }, turns: 2, ...(status === "limit" ? { resumeAt: new Date(at) } : {}) });
+    await db.pool.query("update engine_runs set ended_at = $2 where id = $1", [r.id, at]);
+  };
+
+  it("no estimate before the limit was ever hit; then it learns the window from the 5 hours before it", async () => {
+    const [a, b, c] = [await video(), await video(), await video()];
+    await finished(a, 1000, "succeeded", "2026-11-13T05:00:00Z");
+    await finished(b, 1000, "succeeded", "2026-11-13T06:00:00Z");
+    await finished(c, 1000, "succeeded", "2026-11-13T07:00:00Z");
+    const now = new Date("2026-11-13T08:00:00Z");
+    expect(await engineUsageSummary(db.pool, now)).toMatchObject({ runs: 3, tokens: 3000, videosLeft: null });
+    await finished(c, 2000, "limit", "2026-11-13T08:00:00Z"); // 5000 tokens used in the 5 hours up to the limit
+    const later = new Date("2026-11-13T14:00:00Z"); // a fresh window: nothing used yet
+    expect(await engineUsageSummary(db.pool, later)).toMatchObject({ runs: 0, tokens: 0, videosLeft: 5 }); // 5000 / 1000 per video
+  });
+
+  it("usage per step of one video", async () => {
+    const v = await video();
+    await finished(v, 1200, "succeeded", "2026-11-13T05:00:00Z");
+    await db.pool.query("insert into stage_runs (id, video_id, name, status, input_hash) values ($1, $2, 'tsx_author', 'succeeded', 'h') on conflict do nothing", [STAGE, v]);
+    expect(await engineUsageByStage(db.pool, v)).toEqual([{ stage: "tsx_author", inputTokens: 1200, outputTokens: 0, costUsdEquiv: 0.012, turns: 2 }]);
   });
 });

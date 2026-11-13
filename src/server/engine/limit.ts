@@ -78,3 +78,9 @@ export class EngineLimitError extends KnownFailure {
     this.name = "EngineLimitError";
   }
 }
+
+/** True for a step that is only paused by the Claude usage limit (its stored error is EngineLimitError's note): not news. */
+export function isEnginePause(result: unknown): boolean {
+  const err = (result as { error?: unknown } | null)?.error;
+  return typeof err === "string" && err.includes("Claude limit reached. This step resumes about");
+}

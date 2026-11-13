@@ -37,6 +37,7 @@ import { createStageDispatcher, handleIngestJob, recoverRunningIngest, sweepStal
 import { startReconcileLoop } from "./reconcile-loop";
 import { resumeLimitedSteps } from "./engine-resume";
 import { killStaleEngineRuns } from "@/server/db/engine-runs";
+import { isEnginePause } from "@/server/engine/limit";
 
 // Composition seams for boot cleanup (09), event retention/transitions (11), and notifications (12).
 export interface WorkerHooks {
@@ -395,6 +396,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
               if (hit && "claim" in outcome && !retryScheduled) {
                 try {
                   const row = await getStage(db, outcome.claim.stageRunId);
+                  if (isEnginePause(row?.result)) return; // paused by the Claude usage limit: it resumes by itself, nothing failed
                   const event = hit.event === "video_failed" ? failureEvent(row?.result) : hit.event;
                   await hooks.notify(db, { channels: {} }, {
                     event, videoId: row?.videoId, from: "running", to: event === "video_blocked" ? "blocked" : hit.to,

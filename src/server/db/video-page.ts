@@ -1,4 +1,6 @@
 import type pg from "pg";
+import { engineUsageByStage } from "@/server/db/engine-runs";
+import { usageLine } from "@/server/engine/usage";
 import { redactLine } from "@/server/core/log-redact";
 import { STAGE_NAMES, stagePlan, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
 import { reframeFileName, type ReframeFormat } from "@/server/core/reframe";
@@ -37,6 +39,8 @@ export interface VideoPage {
   kindNote: string | null;
   /** Custom-animation videos with an accepted scene file: the hash the owner approves saving to the library; null otherwise. */
   tsxLibrary: TsxLibraryState | null;
+  /** Claude engine usage per step (ADR 0015), only steps that ran on the engine. */
+  engineUsage: Array<{ stage: string; line: string }>;
   /** The frame check of a code scene as one plain sentence (a warning when it found problems or did not run), or null. */
   frameReviewNote: { text: string; warn: boolean } | null;
   stages: StageView[];
@@ -207,7 +211,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   return {
-    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
+    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, engineUsage: (await engineUsageByStage(db, videoId).catch(() => [])).map((u) => ({ stage: u.stage, line: usageLine(u) })), frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
     beats: beats?.body ?? null,
     evidence: evidence ? { body: evidence.body, fileSrc: sign?.(evidence.filePath) ?? null } : null,
     titles: titles?.body ?? null,

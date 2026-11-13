@@ -5,6 +5,7 @@ import { localServiceBlockers, MAX_LOCAL_SERVICES, ownServiceConfigProblem } fro
 import { getPool } from "@/server/db/pool";
 import { loadInrRate, loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
+import { engineUsageSummary } from "@/server/db/engine-runs";
 import { Pill } from "@/ui/primitives/pill";
 import { EngineNumbersSection } from "./engine-numbers-section";
 import { RateForm } from "./rate-form";
@@ -26,7 +27,7 @@ export default function SystemSettings() {
 async function Owned() {
   await requireOwner();
   const db = getPool();
-  const [status, view] = await Promise.all([getSystemStatus(db), loadSystemSettings(db)]);
+  const [status, view, engine] = await Promise.all([getSystemStatus(db), loadSystemSettings(db), engineUsageSummary(db).catch(() => null)]);
   const { renders, jobs, warnGb, longMinutes, services } = view;
   const blockers = localServiceBlockers();
   const configProblem = ownServiceConfigProblem();
@@ -34,7 +35,7 @@ async function Owned() {
     // Wide screens: two columns of cards; Status and the two long forms span both (UI redesign: no half-empty pages).
     <div className="grid min-w-0 gap-layout xl:grid-cols-2 xl:items-start">
       <h1 className="text-page-title font-semibold tracking-tight xl:col-span-2">System</h1>
-      <div className="min-w-0 xl:col-span-2"><Status s={status} /></div>
+      <div className="min-w-0 xl:col-span-2"><Status s={status} engine={engine} /></div>
       <BackupSection />
       <RateForm rate={await loadInrRate(db)} />
       <section aria-labelledby="limits-h" className="rounded-card border border-border bg-surface p-pad xl:col-span-2">
@@ -114,7 +115,7 @@ function Up({ ok, ms }: { ok: boolean; ms: number | null }) {
   );
 }
 
-function Status({ s }: { s: SystemStatus }) {
+function Status({ s, engine }: { s: SystemStatus; engine: Awaited<ReturnType<typeof engineUsageSummary>> | null }) {
   const v = VAULT[s.vault.status];
   const used = s.disk.totalBytes > 0 ? 1 - s.disk.freeBytes / s.disk.totalBytes : 0;
   return (
@@ -148,6 +149,14 @@ function Status({ s }: { s: SystemStatus }) {
             <span data-testid={`tool-${t.id}`} className="text-small text-muted">{t.detail}{t.fix ? ` ${t.fix}` : ""}</span>
           </Row>
         ))}
+        {engine ? (
+          <Row label="Claude engine, last 5 h">
+            <span data-testid="engine-usage" className="tabular-nums">{engine.tokens.toLocaleString("en-IN")} tokens · {engine.runs} run{engine.runs === 1 ? "" : "s"}</span>
+            <span className="text-small text-faint">
+              {engine.videosLeft === null ? "videos left: not enough data yet" : `about ${engine.videosLeft} more video${engine.videosLeft === 1 ? "" : "s"} this window (estimate)`}
+            </span>
+          </Row>
+        ) : null}
         <Row label="Storage used">
           <span className="tabular-nums">{s.storageBytes === null ? "Unknown" : gb(s.storageBytes)}</span>
           <span className="text-small text-faint">estimate, refreshed each minute</span>

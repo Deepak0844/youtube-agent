@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { istTime, parseLimit } from "@/server/engine/limit";
+import { EngineLimitError, isEnginePause, istTime, parseLimit } from "@/server/engine/limit";
 
 // Claude Code's usage-limit messages (5-hour and weekly). The step pauses until the reset time, shown in IST.
 // 2026-11-13 is a Friday; 12:00Z is 17:30 IST.
@@ -41,5 +41,14 @@ describe("istTime", () => {
   it("shows the time in IST", () => {
     expect(istTime(new Date("2026-11-13T14:30:00Z"), NOW)).toBe("8:00 PM"); // same IST day: time only
     expect(istTime(new Date("2026-11-20T04:00:00Z"), NOW)).toBe("Fri 9:30 AM"); // another day: weekday too
+  });
+});
+
+describe("isEnginePause", () => {
+  it("is true only for the limit note", () => {
+    const note = new EngineLimitError(new Date("2026-11-13T14:30:00Z"), NOW).message;
+    expect(isEnginePause({ error: `known_failure: ${note}` })).toBe(true);
+    expect(isEnginePause({ error: "known_failure: The run was cancelled." })).toBe(false);
+    expect(isEnginePause(null)).toBe(false);
   });
 });
