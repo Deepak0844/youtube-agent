@@ -1,7 +1,5 @@
 import { formatMoney } from "@/server/core/display-format";
 import { microToUsd } from "@/server/core/llm-catalog";
-import { reviewSummary } from "@/server/core/scene3d-review";
-import { timeLabel } from "@/server/core/scene3d-view";
 import type { GateClaim, GateContent, GateItem } from "@/server/db/queue-data";
 import { ChannelInitial } from "@/ui/domain/channel-initial";
 import { BeatTable } from "@/ui/domain/beat-table";
@@ -16,7 +14,6 @@ const GATE_LABEL: Record<GateItem["gate"], { name: string; ask: string; approve:
   outline: { name: "Outline", ask: "Read the chapters. Approving lets the studio write the script from exactly this outline. Nothing is spent on narration yet.", approve: "Approve outline" },
   script: { name: "Script", ask: "Read the script. Approving lets the studio build the video from exactly this text.", approve: "Approve script" },
   cost: { name: "Cost", ask: "Approving lets the studio spend up to the total below on paid images and clips. It will not spend more.", approve: "Approve cost" },
-  look: { name: "Look", ask: "Look at the preview pictures. Approving lets the studio draw the whole video from exactly this scene, which takes a long time on this Mac. Send it back with a note if something should look different.", approve: "Approve look" },
   video: { name: "Video", ask: "Watch the video. Approving says this exact file is the one you reviewed.", approve: "Approve video" },
   evidence: { name: "Evidence", ask: "Check that every claim has a source you trust. Approving signs the evidence off.", approve: "Approve evidence" },
   publish: { name: "Publish", ask: "Approving sends exactly this video, with this title, visibility and schedule, to YouTube. It happens once.", approve: "Approve and publish" },
@@ -69,84 +66,6 @@ function Player({ src, label, long = false }: { src: string | null; label: strin
   return <video controls preload="metadata" src={src} aria-label={label} className={long ? "aspect-video max-h-[520px] w-auto max-w-full rounded-card bg-raised" : "aspect-[9/16] max-h-[520px] w-auto max-w-full rounded-card bg-raised"} />;
 }
 
-/** The contact sheet: each preview picture with its shot name, time and caption. Shared by the Look card and the video page Preview tab. */
-export function LookStills({ stills }: { stills: Array<{ file: string; timeS: number; shot: string; caption: string | null; src: string | null }> }) {
-  return (
-    <ul data-testid="look-sheet" className="m-0 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-4">
-      {stills.map((s, i) => (
-        <li key={s.file} className="flex min-w-0 flex-col gap-1">
-          {s.src ? (
-            // eslint-disable-next-line @next/next/no-img-element -- a signed media address of our own picture; next/image would need the host allow-listed
-            <img src={s.src} alt={`Preview ${i + 1}: shot ${s.shot} at ${timeLabel(s.timeS)}`} width={540} height={960} loading="lazy" className="aspect-[9/16] h-auto w-full rounded-card bg-raised object-cover" />
-          ) : (
-            <p className="m-0 flex aspect-[9/16] items-center rounded-card bg-raised p-2 text-small text-muted">Picture {i + 1} cannot be shown right now (the media key is locked).</p>
-          )}
-          <span className="text-small font-medium tabular-nums">{i + 1}. {s.shot} at {timeLabel(s.timeS)}</span>
-          {s.caption ? <span className="text-small text-muted [overflow-wrap:anywhere]">Caption: {s.caption}</span> : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** The Look: a contact sheet of preview pictures with their shot names and times, what the director could not find, and the advisory picture check. */
-function LookContent({ c }: { c: Extract<GateContent, { kind: "look" }> }) {
-  if (!c.view.ok) return <p data-testid="look-unreadable" className="m-0 max-w-[68ch] text-body text-muted">{c.view.message}</p>;
-  const { stills, missing, advice } = c.view.look;
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <LookStills stills={stills} />
-      {c.view.look.models ? (
-        <section aria-label="Models used" className="flex min-w-0 flex-col gap-1">
-          <h4 className="m-0 text-small font-medium text-muted">Models the scene code uses</h4>
-          <ul data-testid="look-models" className="m-0 flex list-none flex-col gap-1 p-0 text-body">
-            {c.view.look.models.map((m) => <li key={m} className="[overflow-wrap:anywhere]">{m}</li>)}
-          </ul>
-        </section>
-      ) : null}
-      {c.review ? (
-        <section aria-label="Automatic picture review" data-testid="look-review" className="flex min-w-0 flex-col gap-1">
-          <h4 className="m-0 text-small font-medium text-muted">Automatic picture review</h4>
-          <p data-testid="look-review-summary" className="m-0 max-w-[68ch] text-body">{reviewSummary(c.review)}</p>
-          {c.review.remaining.length > 0 ? (
-            <ul data-testid="look-review-remaining" className="m-0 flex list-disc flex-col gap-1 pl-5 text-body">
-              {c.review.remaining.map((p, i) => <li key={i} className="[overflow-wrap:anywhere]">{p}</li>)}
-            </ul>
-          ) : null}
-          <p data-testid="look-review-shown" className="m-0 text-small text-muted tabular-nums">Pictures shown: {c.review.shownRound === 0 ? "the first draft" : `after ${c.review.shownRound} automatic ${c.review.shownRound === 1 ? "revision" : "revisions"}`}.</p>
-        </section>
-      ) : null}
-      <section aria-label="What could not be found" className="flex min-w-0 flex-col gap-1">
-        <h4 className="m-0 text-small font-medium text-muted">What could not be found</h4>
-        {missing.length === 0 ? (
-          <p data-testid="look-missing" className="m-0 text-body">Every visual was matched to a model or a block.</p>
-        ) : (
-          <ul data-testid="look-missing" className="m-0 flex list-none flex-col gap-1 p-0 text-body">
-            {missing.map((m, i) => (
-              <li key={i} className="[overflow-wrap:anywhere]">Scene {m.beat}: wanted {m.wanted}; used {m.substitute} instead.</li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <section aria-label="Picture check" className="flex min-w-0 flex-col gap-1">
-        <h4 className="m-0 text-small font-medium text-muted">Picture check (advice only, it never blocks)</h4>
-        <div role="note" data-testid="look-advice" className="max-w-[68ch] rounded-card bg-raised p-4 text-body">
-          {advice.status === "done" ? (
-            advice.notes.length === 0 ? <p className="m-0">The check found no obvious problem.</p> : (
-              <ul className="m-0 flex list-disc flex-col gap-1 pl-5">
-                {advice.notes.map((n, i) => <li key={i} className="[overflow-wrap:anywhere]">{n}</li>)}
-              </ul>
-            )
-          ) : (
-            <p className="m-0 text-muted [overflow-wrap:anywhere]">No check was made: {advice.reason}</p>
-          )}
-        </div>
-      </section>
-      {c.sentBack > 0 ? <p data-testid="look-sendbacks" className="m-0 text-small text-muted tabular-nums">Sent back {c.sentBack} of {c.cap} times.{c.sentBack >= c.cap ? " That is the most. Approve this look, or cancel the video." : ""}</p> : null}
-    </div>
-  );
-}
-
 /** The outline of a long video: chapters with their estimated length and narration words, the total, and the form to edit them. */
 function OutlineContent({ c, lang, fields }: { c: Extract<GateContent, { kind: "outline" }>; lang: string; fields: GateFields }) {
   if (!c.outline) return <p data-testid="outline-unreadable" className="m-0 max-w-[68ch] text-body text-muted">This outline could not be read in its usual shape. Send it back with a note and a new one will be written.</p>;
@@ -185,13 +104,6 @@ function Content({ c, lang, videoId, rate, long, fields }: { c: GateContent; lan
           <BeatTable rows={c.beatRows} shownForReal={c.shownForReal} style={c.style} />
           <h4 className="m-0 mt-2 text-small font-medium text-muted">Evidence</h4>
           <Claims claims={c.claims} />
-          {c.scale ? (
-            <>
-              <h4 className="m-0 mt-2 text-small font-medium text-muted">Heights in the 3D scale video (you will verify each one later)</h4>
-              <Claims claims={c.scale.rows} />
-              {c.scale.limitNote ? <p role="note" data-testid="render-limit-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{c.scale.limitNote}</p> : null}
-            </>
-          ) : null}
         </div>
       );
     case "cost":
@@ -223,8 +135,6 @@ function Content({ c, lang, videoId, rate, long, fields }: { c: GateContent; lan
           ) : null}
         </div>
       );
-    case "look":
-      return <LookContent c={c} />;
     case "video":
       return (
         <div className="flex min-w-0 flex-col gap-2">

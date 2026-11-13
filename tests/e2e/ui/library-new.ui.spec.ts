@@ -69,59 +69,6 @@ test("New with an empty topic does not create a video", async ({ page }) => {
   expect(Number((await db().query("select count(*) as n from videos")).rows[0].n)).toBe(before);
 });
 
-test("New short: 3D scale comparison hides the style picker and creates a scale3d short", async ({ page }) => {
-  const topic = `Crane vs tower ${stamp()}`;
-  await page.goto("/videos/new");
-  await page.waitForLoadState("networkidle");
-  await expect(page.getByRole("group", { name: "Style" })).toBeVisible();
-  await page.getByRole("radio", { name: /3D scale comparison/ }).check();
-  await expect(page.getByRole("group", { name: "Style" })).toHaveCount(0);
-  await expect(page.getByText("Sizes compared on a ruler")).toBeVisible();
-  await noPageScroll(page);
-  await page.getByLabel("Topic").fill(topic);
-  await page.getByRole("button", { name: "Start video" }).click();
-  await page.waitForURL(/\/videos\/[0-9a-f-]{36}$/);
-  const row = (await db().query("select kind, format, style from videos where topic = $1", [topic])).rows;
-  expect(row).toEqual([{ kind: "scale3d", format: "short", style: null }]);
-});
-
-test("New short: 3D story hides the style picker, explains itself, and creates a scene3d short", async ({ page }) => {
-  const topic = `How a dam works ${stamp()}`;
-  await page.goto("/videos/new");
-  await page.waitForLoadState("networkidle");
-  await page.getByRole("radio", { name: /3D story \(detailed\)/ }).check();
-  await expect(page.getByRole("group", { name: "Style" })).toHaveCount(0);
-  await expect(page.getByText("A 60 s illustrated 3D story built from free CC0 models")).toBeVisible();
-  // The native render is off by default (and never ready on the CI machine): the plain note names the setting and the command.
-  const note = page.getByTestId("scene3d-native-note");
-  await expect(note).toHaveCount(1);
-  await expect(note).toContainText("render.native_3d");
-  await expect(note).toContainText("npx remotion browser ensure");
-  await noPageScroll(page);
-  await page.getByLabel("Topic").fill(topic);
-  await page.getByRole("button", { name: "Start video" }).click();
-  await page.waitForURL(/\/videos\/[0-9a-f-]{36}$/);
-  const row = (await db().query("select kind, format, style from videos where topic = $1", [topic])).rows;
-  expect(row).toEqual([{ kind: "scene3d", format: "short", style: null }]);
-});
-
-test("new video: the 3D story (AI-written scene) choice explains itself, shows one native note and creates the right kind", async ({ page }) => {
-  const topic = `ai code scene ${Date.now()}`;
-  await page.goto("/videos/new");
-  await page.waitForLoadState("networkidle");
-  await page.getByRole("radio", { name: /3D story \(AI-written scene\)/ }).check();
-  await expect(page.getByRole("group", { name: "Style" })).toHaveCount(0);
-  await expect(page.getByText("The app checks the code line by line")).toBeVisible();
-  const note = page.getByTestId("scene3d-native-note");
-  await expect(note).toHaveCount(1);
-  await expect(note).toContainText("render.native_3d");
-  await page.getByLabel("Topic").fill(topic);
-  await page.getByRole("button", { name: "Start video" }).click();
-  await page.waitForURL(/\/videos\/[0-9a-f-]{36}$/);
-  const row = (await db().query("select kind, format, style from videos where topic = $1", [topic])).rows;
-  expect(row).toEqual([{ kind: "scene3d_code", format: "short", style: null }]);
-});
-
 test("nav: Videos and New video are reachable and only the current one is marked", async ({ page }) => {
   const phone = (page.viewportSize()?.width ?? 1440) < 768;
   await page.goto("/videos/new");

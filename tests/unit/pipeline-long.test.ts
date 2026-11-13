@@ -23,16 +23,12 @@ describe("short plans are pinned (Phase 6b must not change them)", () => {
       { stage: "qa", gateAfter: "video", resource: "cpu" },
     ]);
   });
-  it("tsx, scale3d, scene3d and scene3d_code shorts", () => {
+  it("tsx shorts", () => {
     const f = { requireEvidence: false, paidGeneration: false };
     expect(names(stagePlan("tsx", "short", f))).toEqual(["draft", "tts", "tsx_author", "voice", "sfx", "qa"]);
-    expect(names(stagePlan("scale3d", "short", f))).toEqual(["draft", "build", "tts", "render", "voice", "sfx", "qa"]);
-    expect(names(stagePlan("scene3d", "short", f))).toEqual(["draft", "direct_scene3d", "tts", "scene3d_stills", "render", "voice", "sfx", "qa"]);
-    expect(names(stagePlan("scene3d_code", "short", f))).toEqual(["draft", "tts", "scene3d_author", "scene3d_stills", "scene3d_review", "render", "voice", "sfx", "qa"]);
-    expect(stagePlan("scene3d", "short", f).find((s) => s.stage === "scene3d_stills")?.gateAfter).toBe("look");
   });
   it("a short never has an outline step or outline gate", () => {
-    for (const k of ["scene_kit", "tsx", "scale3d", "scene3d", "scene3d_code"] as const) {
+    for (const k of ["scene_kit", "tsx"] as const) {
       const p = stagePlan(k, "short", flags);
       expect(names(p)).not.toContain("outline");
       expect(p.some((s) => s.gateAfter === "outline")).toBe(false);
@@ -59,7 +55,7 @@ describe("long plan for the scene kit", () => {
     expect(p.some((s) => s.gateAfter === "chapter" || s.gateAfter === "thumbnail")).toBe(false);
   });
   it("is refused for every other kind with a clear message", () => {
-    for (const k of ["tsx", "collage", "ai", "scale3d", "scene3d", "scene3d_code"] as const) expect(() => stagePlan(k, "long", flags)).toThrow("long videos are only available for the scene kit for now");
+    for (const k of ["tsx", "collage", "ai"] as const) expect(() => stagePlan(k, "long", flags)).toThrow("long videos are only available for the scene kit for now");
   });
   it("routeFor a long video is the long plan", () => {
     expect(names(routeFor(view()))[0]).toBe("outline");

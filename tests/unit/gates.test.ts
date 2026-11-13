@@ -7,7 +7,7 @@ import { GATE_SUITES, gatesWithoutSuite, suiteProblems, expectApprovalVoidedByCh
 // Doc 02 4.4 as data, plus the registry rule: a gate row without a test suite (or an explicit todoPhase) fails the build.
 describe("GATES (Doc 02 4.4)", () => {
   it("has exactly the twelve documented gates, once each", () => {
-    expect([...GATE_IDS]).toEqual(["outline", "script", "cost", "look", "chapter", "video", "thumbnail", "evidence", "publish", "comment_reply", "allow_public", "live_title"]);
+    expect([...GATE_IDS]).toEqual(["outline", "script", "cost", "chapter", "video", "thumbnail", "evidence", "publish", "comment_reply", "allow_public", "live_title"]);
     expect(new Set(GATES.map((g) => g.id)).size).toBe(GATES.length);
   });
   it("every gate is session-only and hash-bound, with a non-empty description of what the hash covers", () => {
@@ -21,7 +21,6 @@ describe("GATES (Doc 02 4.4)", () => {
   it("the hash covers what Doc 02 4.4 lists for the money and publish gates", () => {
     expect(gateById("publish").hashCovers).toEqual(["video", "metadata", "evidence", "channel", "visibility", "publish_at"]);
     expect(gateById("cost").hashCovers).toEqual(["cost_plan", "providers_models", "path", "library_scene_versions", "quote"]);
-    expect(gateById("look").hashCovers).toEqual(["previews", "scene"]);
     expect(gateById("allow_public").hashCovers).toEqual(["channel", "flag_value"]);
     expect(gateById("comment_reply").hashCovers).toEqual(["reply_text", "target_comment"]);
     expect(gateById("live_title").hashCovers).toEqual(["video", "new_title"]);

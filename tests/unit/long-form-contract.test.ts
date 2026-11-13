@@ -90,14 +90,13 @@ describe("QA uses the long bounds for a long video", () => {
 
 describe("render-entry.mjs landscape mode", () => {
   const src = readFileSync(path.join(process.cwd(), "remotion/kit/render-entry.mjs"), "utf8");
-  it("is a kit-style mode that picks the kit-video-landscape composition and is not native", () => {
+  it("is a kit-style mode that picks the kit-video-landscape composition", () => {
     expect(src).toContain('mode === "--landscape" ? "kit-video-landscape"');
-    expect(src).toContain('["kit", "--landscape", "--thumbnail", "--scale3d"');
-    expect(src).toContain('const native = (mode === "--scale3d" || mode === "--scene3d"'); // landscape is not in the native list
+    expect(src).toContain('["kit", "--landscape", "--thumbnail", "--tsx", "--tsx-stills"]');
   });
   it("takes a chapter chunk only in landscape mode, in one exact form, and checks the range against the composition", () => {
     expect(src).toContain('const chunkArgs = mode === "--landscape" && CHUNK !== null && (extra.length === 1 || (extra.length === 2 && extra[1] === "--muted"));');
-    expect(src).toContain("(extra.length > 0 && !native && !chunkArgs)");
+    expect(src).toContain("(extra.length > 0 && !chunkArgs)");
     expect(src).toContain("chunk.from > to || to > composition.durationInFrames - 1");
     expect(src).toContain("frameRange, muted: chunk.muted");
   });
@@ -130,11 +129,9 @@ describe("long drafts: beat length and output size", () => {
 
 describe("render-entry.mjs thumbnail mode", () => {
   const src = readFileSync(path.join(process.cwd(), "remotion/kit/render-entry.mjs"), "utf8");
-  it("is a kit-style, non-native mode that takes no extra arguments and draws one 1280x720 png", () => {
+  it("is a kit-style mode that takes no extra arguments and draws one 1280x720 png", () => {
     expect(src).toContain('mode === "--thumbnail" ? "thumbnail"');
-    expect(src).not.toMatch(/mode === "--thumbnail"[^\n]*native/); // never in the native list
-    expect(src).toContain('const native = (mode === "--scale3d" || mode === "--scene3d"'); // unchanged: thumbnail is not native
-    expect(src).toContain("(extra.length > 0 && !native && !chunkArgs)"); // so any extra argument after --thumbnail is refused
+    expect(src).toContain("(extra.length > 0 && !chunkArgs)"); // so any extra argument after --thumbnail is refused
     expect(src).toContain('composition.width !== 1280 || composition.height !== 720');
     expect(src).toContain('imageFormat: "png", inputProps');
   });

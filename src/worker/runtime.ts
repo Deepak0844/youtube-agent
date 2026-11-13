@@ -214,7 +214,7 @@ export function startRuntime(opts: WorkerOptions = {}) {
     const hasHandlers = Object.keys(handlers).length > 0;
     if (!hasHandlers) log("no stage handlers registered; stages stay queued and are not consumed or advanced");
     const dispatch = createStageDispatcher(handlers, settings.concurrentRenders);
-    const renderStageNames = [...stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }), ...stagePlan("tsx", "short", { paidGeneration: false, requireEvidence: false }), ...stagePlan("scene3d", "short", { paidGeneration: false, requireEvidence: false }), ...stagePlan("scene3d_code", "short", { paidGeneration: false, requireEvidence: false })].filter((s) => s.resource === "render").map((s) => s.stage);
+    const renderStageNames = [...stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }), ...stagePlan("tsx", "short", { paidGeneration: false, requireEvidence: false })].filter((s) => s.resource === "render").map((s) => s.stage);
     // Reconciler paths that park (unknown paid outcome) or fail (too many attempts) a stage tell the owner too.
     // Same (stage id, fence) key as the runner path, so one stage state notifies once.
     // Worker-side delivery: the hook adds the real desktop and webhook senders.

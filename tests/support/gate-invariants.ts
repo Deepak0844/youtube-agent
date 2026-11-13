@@ -72,7 +72,6 @@ export const GATE_SUITES: Record<GateId, GateSuite> = {
   outline: { todoPhase: GATE_ROADMAP_PHASE.outline },
   script: { suite: "tests/integration/gates/script.test.ts" },
   cost: { suite: "tests/integration/gates/cost.test.ts" },
-  look: { suite: "tests/integration/gates/look.test.ts" },
   chapter: { todoPhase: GATE_ROADMAP_PHASE.chapter },
   video: { suite: "tests/integration/gates/video.test.ts" },
   thumbnail: { suite: "tests/integration/gates/thumbnail.test.ts" },

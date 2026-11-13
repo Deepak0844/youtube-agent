@@ -5,7 +5,7 @@ import { ensureScopeCopies, periodScopes, videoTemplate } from "@/server/db/budg
 import { getBudget } from "@/server/db/spend";
 import { latestContent, type ContentKind, type VideoFormat, type VideoKind, type VideoLanguage } from "@/server/db/videos";
 import type { ImageProvider } from "@/server/providers/media";
-import type { Renderer, Scene3dStillsRenderer, TsxRenderer } from "@/server/providers/renderer";
+import type { Renderer, TsxRenderer } from "@/server/providers/renderer";
 import type { ThumbnailRenderer } from "@/server/providers/renderer/thumbnail-container";
 import type { CaptionsBody } from "@/server/core/alignment";
 import type { Lang } from "@/server/core/lang";
@@ -16,7 +16,6 @@ import type { AlignArgs } from "@/server/render/whisper";
 import type { MixDeps } from "@/server/render/mix";
 import type { probeVideo } from "@/server/render/probe";
 import type { QaScanner } from "@/server/render/qa-scan";
-import type { Catalog3d } from "@/shared/assets3d/catalog";
 import type { LlmClient } from "@/server/llm/client";
 import { videoIdOf } from "./attempt";
 
@@ -52,8 +51,6 @@ export interface StageDeps {
   ingestClipFn?: typeof ingestClip;
   /** The thumbnail card renderer (on-demand `thumbnail` stage, long videos). Absent = that stage refuses with a plain sentence. */
   thumbnails?: ThumbnailRenderer;
-  /** The native (Mac GPU, sandbox-exec) renderer for 3D scale videos and its readiness check (Phase 5d). Absent = never used. */
-  native?: { renderer: Renderer; /** preview pictures of a 3D story (scene3d_stills); absent = that stage refuses */ stills?: Scene3dStillsRenderer; ready(): Promise<{ ready: boolean; message: string }> };
   /** The sandboxed code-scene renderer (tsx_author only). Absent = that stage refuses with a plain sentence. */
   tsx?: TsxRenderer;
   /** Defaults to the real ffprobe-based probe. */
@@ -76,10 +73,6 @@ export interface StageDeps {
   sceneAssets?: (videoId: string) => Promise<string[]>;
   /** Build only: pictures linked to beats (video_assets). When given, those beats get story_kenburns/collage from the app and sceneAssets is not used by Build. */
   scenePictures?: (videoId: string) => Promise<Array<{ assetId: string; beatId: string; kind?: string; cutout?: boolean }>>;
-  /** Director only: the CC0 3D model catalogue (assets3d/manifest.json). Absent = the scene3d director refuses with a plain sentence. */
-  catalog3d?: () => Promise<Catalog3d>;
-  /** scene3d_author only: the in-process type-check of an AI-written scene. Default: typeCheckScene3d (tests inject one). */
-  sceneTypeCheck?: (source: string) => { ok: boolean; problems: string[] } | Promise<{ ok: boolean; problems: string[] }>;
   /** Real sound pass (ffmpeg). Absent = dry run: Voice and Sfx copy the file on. */
   mix?: MixDeps;
 }

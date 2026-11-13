@@ -45,7 +45,7 @@ describe("startVersion (remake a Short as another type)", () => {
     await addContent(db.pool, src.id, "script", { body: { title: "T", narration: "n" }, sha256: sha256Hex("s") });
     await db.pool.query("insert into stage_runs (id, video_id, name, status, input_hash) values (gen_random_uuid(), $1, 'draft', 'succeeded', 'h')", [src.id]);
     const before = (await db.pool.query("select updated_at, status from videos where id = $1", [src.id])).rows[0];
-    const r = await startVersion(db.pool, queue, actor, src.id, "scene3d");
+    const r = await startVersion(db.pool, queue, actor, src.id, "tsx");
     if (!r.ok) throw new Error(r.message);
     expect((await db.pool.query("select count(*)::int n from video_content where video_id = $1", [r.videoId])).rows[0].n).toBe(0);
     expect((await db.pool.query("select count(*)::int n from approvals where video_id = $1", [r.videoId])).rows[0].n).toBe(0);

@@ -10,7 +10,6 @@ describe("versionInput (remake a Short as another type)", () => {
   it("keeps the topic, notes and language, and the style and caption look only where the new type uses them", () => {
     expect(versionInput(src({ kind: "tsx" }), "scene_kit")).toEqual({ ok: true, value: { topic: "Why the sea is salty", language: "ta", kind: "scene_kit", format: "short", notes: "calm tone", style: "ai_studio", captionStyle: CAPTION } });
     expect(versionInput(src(), "tsx")).toEqual({ ok: true, value: { topic: "Why the sea is salty", language: "ta", kind: "tsx", format: "short", notes: "calm tone", style: "ai_studio" } }); // a custom animation burns its own captions
-    for (const k of ["scale3d", "scene3d", "scene3d_code"] as const) expect(versionInput(src(), k)).toEqual({ ok: true, value: { topic: "Why the sea is salty", language: "ta", kind: k, format: "short", notes: "calm tone" } });
   });
   it("leaves out a style or caption look that is not set or not a known one, and notes that are empty", () => {
     const v = versionInput(src({ kind: "tsx", style: null, captionStyle: "nonsense", notes: null }), "scene_kit");
@@ -23,6 +22,6 @@ describe("versionInput (remake a Short as another type)", () => {
     expect(versionInput(src({ language: "xx" }), "tsx")).toMatchObject({ ok: false, message: expect.stringMatching(/unknown language/) });
   });
   it("offers exactly the types the New form offers for a Short", () => {
-    expect([...VERSION_KINDS]).toEqual(["scene_kit", "tsx", "scale3d", "scene3d", "scene3d_code"]);
+    expect([...VERSION_KINDS]).toEqual(["scene_kit", "tsx"]);
   });
 });

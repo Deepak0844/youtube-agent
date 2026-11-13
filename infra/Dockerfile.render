@@ -21,15 +21,13 @@ RUN fc-cache -f
 # old shorts kit imports beyond Remotion core (lib/collage, lib/chatui, lib/browser, lib/kit). @remotion/*
 # follow the image Remotion version (the old lockfile pins 4.0.486, whose @remotion/shapes would nest a
 # second remotion copy); chroma-js and lucide-react are pinned to the old lockfile.
-# The third line is the 3D scale-comparison kit (remotion/kit/scale3d): @remotion/three must equal the Remotion
-# version; these three must match package.json (tests/unit/render-image-pins.test.ts checks it).
+# These pins must match package.json (tests/unit/render-image-pins.test.ts checks it).
 WORKDIR /opt/render
 RUN npm init -y >/dev/null \
  && npm i --omit=dev --no-audit --no-fund --save-exact \
       remotion@4.0.542 @remotion/cli@4.0.542 @remotion/bundler@4.0.542 @remotion/renderer@4.0.542 \
       react@19.3.0 react-dom@19.3.0 \
       @remotion/shapes@4.0.542 @remotion/paths@4.0.542 chroma-js@3.2.0 lucide-react@1.23.0 \
-      @remotion/three@4.0.542 @react-three/fiber@9.8.2 three@0.160.0 \
  && npx remotion browser ensure \
  && shell="$(find /opt/render/node_modules/.remotion -type f -perm -u+x \( -name headless_shell -o -name chrome-headless-shell \) | head -n1)" \
  && if [ -z "$shell" ]; then echo "ERROR: no headless shell binary (headless_shell or chrome-headless-shell) found under /opt/render/node_modules/.remotion" >&2; exit 1; fi \

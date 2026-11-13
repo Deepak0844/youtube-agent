@@ -69,30 +69,6 @@ describe("liveHash", () => {
       expect(hash(g, j), g).toBe(hash(g, base()));
     }
   });
-  it("look needs both the preview pictures and the scene, and follows exactly those two (and nothing else)", () => {
-    const withLook = (): LiveInputs => {
-      const i = base();
-      i.content.previews = { sha256: h("1"), body: { kind: "scene3d_previews", times: [1, 2] } };
-      i.content.scenes = { sha256: h("2"), body: { kind: "scene3d", scene: { v: 2 }, missing_assets: [] } };
-      return i;
-    };
-    expect(liveHash("look", base())).toMatchObject({ ok: false });
-    const noScene = withLook();
-    delete noScene.content.scenes;
-    expect(liveHash("look", noScene)).toMatchObject({ ok: false });
-    const before = hash("look", withLook());
-    expect(hash("look", withLook())).toBe(before);
-    const newPictures = withLook();
-    newPictures.content.previews = { sha256: h("9"), body: newPictures.content.previews!.body };
-    expect(hash("look", newPictures)).not.toBe(before);
-    const newScene = withLook();
-    newScene.content.scenes = { sha256: newScene.content.scenes!.sha256, body: { kind: "scene3d", scene: { v: 3 }, missing_assets: [] } }; // same stored sha, different body
-    expect(hash("look", newScene)).not.toBe(before);
-    const other = withLook();
-    other.content.script = { sha256: h("7"), body: { t: 2 } };
-    other.content.video = { sha256: h("6"), body: null };
-    expect(hash("look", other)).toBe(before);
-  });
   it("same_stored_sha_with_a_different_body_or_file_path_changes_the_hash", () => {
     for (const g of ["script", "video", "evidence", "publish"] as const) {
       const before = hash(g, base());

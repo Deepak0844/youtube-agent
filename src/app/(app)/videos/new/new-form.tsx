@@ -17,9 +17,9 @@ const selectClass = cn("w-full rounded-control border border-control bg-surface 
 const card = "m-0 flex min-w-0 flex-col gap-4 rounded-card border border-border bg-surface p-pad";
 const cardTitle = "text-section font-semibold";
 
-export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, characters, channels = [], initialFormat = "short" }: { scaleLimitNote: string | null; scene3dNote: string | null; maxLongMinutes: number; aiNote: string | null; characters: Array<{ id: string; name: string }>; channels?: Array<{ id: string; title: string; language: string; style: string | null }>; initialFormat?: "short" | "long" }) {
+export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], initialFormat = "short" }: { maxLongMinutes: number; aiNote: string | null; characters: Array<{ id: string; name: string }>; channels?: Array<{ id: string; title: string; language: string; style: string | null }>; initialFormat?: "short" | "long" }) {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
-  const [kind, setKind] = useState<"scene_kit" | "tsx" | "collage" | "ai" | "scale3d" | "scene3d" | "scene3d_code">("scene_kit");
+  const [kind, setKind] = useState<"scene_kit" | "tsx" | "collage" | "ai">("scene_kit");
   const [format, setFormat] = useState<"short" | "long">(initialFormat);
   const [dirty, setDirty] = useState(false);
   useUnsavedWarning(dirty && !pending);
@@ -29,7 +29,6 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
     if (f === "long") setKind("scene_kit");
   };
   const custom = kind === "tsx";
-  const scale = kind === "scale3d" || kind === "scene3d" || kind === "scene3d_code"; // both draw their own look: no style or caption pickers
   // Custom animation has no Classic look: its default card is AI Studio. Scene kit keeps Classic ("" = no style).
   const [picked, setPicked] = useState("");
   const style = custom && picked === "" ? "ai_studio" : picked;
@@ -113,9 +112,6 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
             ["tsx", "Custom animation (TSX, experimental)", "Claude writes the animation code. Slower, and it may fall back to the scene kit if the code does not pass the safety checks."],
             ["collage", "Collage (cut-out layers, Shorts)", "Free pictures are found for each beat, the background is removed with the background remover, and the cut-outs are layered over the look. Free: no money. Needs the worker running; a picture whose cut-out fails is used as it is."],
             ["ai", "AI video (paid clips, Shorts)", "A video model draws a short clip for every beat, as long as that beat of narration. The voice is made first, then you see the price of every clip and approve it before anything is bought. Optionally keep one character the same in every clip."],
-            ["scale3d", "3D scale comparison (Shorts)", "Sizes compared on a ruler: a camera climbs past real objects. Every height is a claim you verify. Needs the render time limit set to 900 s or more (Settings > System)."],
-            ["scene3d_code", "3D story (AI-written scene)", "The AI writes the whole 3D scene as code, from the free building blocks and CC0 models. The app checks the code line by line, runs it only in a locked box on this Mac, and you approve the look from preview pictures before the long render. Needs 'Render 3D on this Mac' turned on in System settings."],
-            ["scene3d", "3D story (detailed)", "A 60 s illustrated 3D story built from free CC0 models. You approve the look from preview pictures before the long render. Needs 'Render 3D on this Mac' turned on in System settings."],
           ] as const
         ).map(([id, title, help]) => (
           <label key={id} className={cn("flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-border bg-page p-3 has-checked:outline-2 has-checked:outline", long && id !== "scene_kit" && "opacity-50")}>
@@ -127,7 +123,6 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
           </label>
         ))}
       </fieldset>
-      {(kind === "scene3d" || kind === "scene3d_code") && scene3dNote ? <p role="note" data-testid="scene3d-native-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{scene3dNote}</p> : null}
       {kind === "ai" ? (
         <fieldset data-testid="ai-options" className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
           <legend className="mb-1 text-body font-medium">Character (optional)</legend>
@@ -143,8 +138,6 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
           {aiNote ? <p role="note" data-testid="ai-route-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{aiNote}</p> : null}
         </fieldset>
       ) : null}
-      {kind === "scale3d" && scaleLimitNote ?<p role="note" data-testid="render-limit-note" className="m-0 max-w-[68ch] rounded-card bg-pill-warning-bg p-4 text-body text-pill-warning-ink">{scaleLimitNote}</p> : null}
-      {scale ? null : (
       <fieldset className={cn(card, "xl:col-span-2")}>
         <legend className="sr-only">Style</legend>
         <p aria-hidden className={cardTitle}>Look</p>
@@ -167,13 +160,10 @@ export function NewForm({ scaleLimitNote, scene3dNote, maxLongMinutes, aiNote, c
           ))}
         </div>
       </fieldset>
-      )}
-      {scale ? null : (
       <label className="flex items-start gap-3 text-body xl:col-span-2">
         <input type="checkbox" name="captionStyle" value="punchy_captions" disabled={custom} className="mt-1" />
         <span>Punchy captions <span className="block text-small text-muted">Big 1-3 word captions, yellow active word, black outline. Works with any style.{custom ? " Not used for custom animation, which has its own captions." : ""}</span></span>
       </label>
-      )}
       <div className="flex flex-wrap items-center gap-3 xl:col-span-2">
         <Button type="submit" loading={pending}>
           Start video

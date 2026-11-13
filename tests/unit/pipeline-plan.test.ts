@@ -5,11 +5,9 @@ import {
   expectedInputHash,
   FORCE_RERUN_STAGES,
   FREE_VOICE_PROVIDERS,
-  isScene3dKind,
   ttsRerunProblem,
   nextActions,
   stageInputHash,
-  routeFor,
   stagePlan,
   postStageGates,
   type PipelineView,
@@ -108,7 +106,7 @@ describe("stagePlan", () => {
     expect(postStageGates(p, f)).toEqual(["video", "publish"]);
   });
   it("long_format_is_refused_for_every_kind_but_the_scene_kit", () => {
-    for (const k of ["tsx", "collage", "ai", "scale3d", "scene3d", "scene3d_code"] as const) expect(() => stagePlan(k, "long", flags), k).toThrow(/only available for the scene kit/);
+    for (const k of ["tsx", "collage", "ai"] as const) expect(() => stagePlan(k, "long", flags), k).toThrow(/only available for the scene kit/);
     expect(() => stagePlan("scene_kit", "long", flags)).not.toThrow();
   });
 });
@@ -287,154 +285,15 @@ describe("tsx route (slice 3)", () => {
   });
 });
 
-describe("scale3d kind", () => {
+describe("existing kinds", () => {
   const f = { requireEvidence: true, paidGeneration: false };
-  it("has_no_pictures_or_generate_and_builds_before_narration", () => {
-    expect(stagePlan("scale3d", "short", f).map((s) => s.stage)).toEqual(["draft", "build", "tts", "render", "voice", "sfx", "qa"]);
-    expect(stagePlan("scale3d", "short", { ...f, paidGeneration: true }).map((s) => s.stage)).not.toContain("generate");
-    expect(stagePlan("scale3d", "short", f)[0]).toMatchObject({ stage: "draft", gateAfter: "script" });
-    expect(stagePlan("scale3d", "short", f).at(-1)).toMatchObject({ stage: "qa", gateAfter: "video" });
-  });
-  it("chain_is_unbroken", () => {
-    const plan = stagePlan("scale3d", "short", f);
-    expect(chainPrev(plan, 1)?.stage).toBe("draft");
-    expect(chainPrev(plan, 3)?.stage).toBe("tts");
-  });
-  it("leaves_the_hashes_of_scene_kit_and_tsx_videos_exactly_as_they_were", () => {
-    const sk = base({ content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
-    expect(expectedInputHash(sk, "draft", null)).toBe(stageInputHash("draft", { params: "p", feedback: "" }, {}));
-    expect(expectedInputHash(sk, "build", "d")).toBe(stageInputHash("build", { prev: "d", script: "s" }, {}));
-    expect(expectedInputHash(sk, "render", "t")).toBe(stageInputHash("render", { prev: "t", beats: "b", narration: "n", scenes: "sc" }, {}));
-    const tsx = base({ kind: "tsx", content: { script: "s", narration: "n" } });
-    expect(expectedInputHash(tsx, "tsx_author", "t")).toBe(stageInputHash("tsx_author", { prev: "t", script: "s", narration: "n" }, {}));
-    // the kind itself is never part of a stage hash, so the new kind cannot move an old one
-    expect(expectedInputHash({ ...sk, kind: "scale3d" }, "build", "d")).toBe(expectedInputHash(sk, "build", "d"));
-  });
-  it("route_for_scale3d_keeps_every_stage", () => {
-    const v = base({ kind: "scale3d", flags: f, runs: { build: { status: "succeeded", inputHash: "x" } } });
-    expect(routeFor(v).map((s) => s.stage)).toEqual(["draft", "build", "tts", "render", "voice", "sfx", "qa"]);
-  });
-});
-
-describe("scene3d kind", () => {
-  const f = { requireEvidence: true, paidGeneration: false };
-  it("runs draft, direct_scene3d, tts, scene3d_stills, render, voice, sfx, qa with no pictures, build or generate", () => {
-    const plan = stagePlan("scene3d", "short", { ...f, paidGeneration: true });
-    expect(plan.map((s) => s.stage)).toEqual(["draft", "direct_scene3d", "tts", "scene3d_stills", "render", "voice", "sfx", "qa"]);
-    expect(plan.find((s) => s.stage === "scene3d_stills")).toMatchObject({ resource: "render" });
-    expect(plan[0]).toMatchObject({ stage: "draft", gateAfter: "script" });
-    expect(plan.at(-1)).toMatchObject({ stage: "qa", gateAfter: "video" });
-    expect(chainPrev(plan, 2)?.stage).toBe("direct_scene3d");
-  });
-  it("the director hash covers the script and the previous stage; the kind is never in a hash", () => {
-    const v = base({ kind: "scene3d", content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
-    expect(expectedInputHash(v, "direct_scene3d", "d")).toBe(stageInputHash("direct_scene3d", { prev: "d", script: "s" }, {}));
-    expect(expectedInputHash(v, "render", "t")).toBe(stageInputHash("render", { prev: "t", beats: "b", narration: "n", scenes: "sc" }, {}));
-  });
-  it("the preview pictures read the scene and the narration, chain on the narration, and Render chains on them", () => {
-    const v = base({ kind: "scene3d", content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
-    expect(expectedInputHash(v, "scene3d_stills", "t")).toBe(stageInputHash("scene3d_stills", { prev: "t", scenes: "sc", narration: "n" }, {}));
-    const plan = stagePlan("scene3d", "short", f);
-    expect(chainPrev(plan, plan.findIndex((s) => s.stage === "render"))?.stage).toBe("scene3d_stills");
-    const changed = base({ kind: "scene3d", content: { script: "s", beats: "b", narration: "n2", scenes: "sc" } });
-    expect(expectedInputHash(changed, "scene3d_stills", "t")).not.toBe(expectedInputHash(v, "scene3d_stills", "t"));
-  });
-  it("stops at the look gate after the preview pictures, before Render; the other gates keep their order", () => {
-    const plan = stagePlan("scene3d", "short", f);
-    expect(plan.filter((s) => s.gateAfter || s.gateBefore).map((s) => [s.stage, s.gateAfter ?? s.gateBefore])).toEqual([["draft", "script"], ["scene3d_stills", "look"], ["qa", "video"]]);
-    expect(postStageGates(plan, f)).toEqual(["video", "evidence", "publish"]);
-    const { trail } = walk(base({ kind: "scene3d" }));
-    expect(trail).toEqual(["draft", "gate:script", "direct_scene3d", "tts", "scene3d_stills", "gate:look", "render", "voice", "sfx", "qa", "gate:video", "gate:evidence", "gate:publish", "done"]);
-    // no look approval: Render is never queued
-    const held = walk(base({ kind: "scene3d" }), { approve: false });
-    expect(held.trail).toEqual(["draft", "gate:script"]);
-    const atLook = { ...held.v, approved: new Set<GateId>(["script"]) };
-    const stopped = walk(atLook, { approve: false });
-    expect(stopped.trail.slice(-2)).toEqual(["scene3d_stills", "gate:look"]);
-    expect(stopped.v.runs.render).toBeUndefined();
-  });
-  it("a Look send-back makes the director run again, even with the same note twice, and changes no other hash", () => {
-    const v = base({ kind: "scene3d", content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
-    const plain = expectedInputHash(v, "direct_scene3d", "d");
-    expect(plain).toBe(stageInputHash("direct_scene3d", { prev: "d", script: "s" }, {}));
-    const one = expectedInputHash({ ...v, lookFeedback: { count: 1, note: "more trees" } }, "direct_scene3d", "d");
-    const two = expectedInputHash({ ...v, lookFeedback: { count: 2, note: "more trees" } }, "direct_scene3d", "d");
-    expect(one).not.toBe(plain);
-    expect(two).not.toBe(one);
-    expect(expectedInputHash({ ...v, lookFeedback: null }, "direct_scene3d", "d")).toBe(plain);
-    for (const stage of ["draft", "tts", "scene3d_stills", "render", "qa"] as const) expect(expectedInputHash({ ...v, lookFeedback: { count: 1, note: "x" } }, stage, "p"), stage).toBe(expectedInputHash(v, stage, "p"));
-  });
-  it("after a send-back the director is queued again (before the look gate is asked about)", () => {
-    const first = walk(base({ kind: "scene3d" }), { approve: true }).v;
-    const sentBack = { ...first, approved: new Set<GateId>(["script"]), lookFeedback: { count: 1, note: "more trees" } };
-    expect(nextActions(sentBack)).toMatchObject([{ kind: "enqueue", stage: "direct_scene3d" }]);
-  });
-  it("leaves the hashes and routes of every existing kind exactly as they were", () => {
+  it("keeps the hashes and routes of the scene kit and tsx kinds", () => {
     const sk = base({ content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
     expect(expectedInputHash(sk, "draft", null)).toBe(stageInputHash("draft", { params: "p", feedback: "" }, {}));
     expect(expectedInputHash(sk, "build", "d")).toBe(stageInputHash("build", { prev: "d", script: "s" }, {}));
     expect(expectedInputHash(sk, "tts", "b")).toBe(stageInputHash("tts", { prev: "b", script: "s" }, {}));
     expect(expectedInputHash(sk, "render", "t")).toBe(stageInputHash("render", { prev: "t", beats: "b", narration: "n", scenes: "sc" }, {}));
-    expect(stagePlan("scale3d", "short", f).map((s) => s.stage)).toEqual(["draft", "build", "tts", "render", "voice", "sfx", "qa"]);
     expect(stagePlan("tsx", "short", f).map((s) => s.stage)).toEqual(["draft", "tts", "tsx_author", "voice", "sfx", "qa"]);
     expect(stagePlan("scene_kit", "short", f).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
-    for (const k of ["scene_kit", "tsx", "scale3d"] as const) expect(stagePlan(k, "short", f).map((s) => s.stage), k).not.toContain("scene3d_stills");
-  });
-});
-
-describe("scene3d_code kind (3D story, AI-written scene)", () => {
-  const f = { requireEvidence: true, paidGeneration: false };
-  it("runs draft, tts, scene3d_author, scene3d_stills, scene3d_review, render, voice, sfx, qa: the author comes AFTER the narration so it sees real beat times", () => {
-    const plan = stagePlan("scene3d_code", "short", { ...f, paidGeneration: true });
-    expect(plan.map((s) => s.stage)).toEqual(["draft", "tts", "scene3d_author", "scene3d_stills", "scene3d_review", "render", "voice", "sfx", "qa"]);
-    expect(plan.filter((s) => s.gateAfter || s.gateBefore).map((s) => [s.stage, s.gateAfter ?? s.gateBefore])).toEqual([["draft", "script"], ["scene3d_review", "look"], ["qa", "video"]]);
-    expect(isScene3dKind("scene3d_code") && isScene3dKind("scene3d") && !isScene3dKind("tsx")).toBe(true);
-  });
-  it("pins the author and stills hashes; the kind is never part of a hash", () => {
-    const v = base({ kind: "scene3d_code", content: { script: "s", beats: "b", narration: "n", scenes: "sc" } });
-    expect(expectedInputHash(v, "scene3d_author", "t")).toBe(stageInputHash("scene3d_author", { prev: "t", script: "s", narration: "n" }, {}));
-    expect(expectedInputHash(v, "scene3d_stills", "a")).toBe(stageInputHash("scene3d_stills", { prev: "a", scenes: "sc", narration: "n" }, {}));
-    expect(expectedInputHash(v, "render", "p")).toBe(stageInputHash("render", { prev: "p", beats: "b", narration: "n", scenes: "sc" }, {}));
-    // the review reads the scene and the pictures; Render chains on it
-    expect(expectedInputHash({ ...v, content: { ...v.content, previews: "pv" } }, "scene3d_review", "s")).toBe(stageInputHash("scene3d_review", { prev: "s", scenes: "sc", previews: "pv" }, {}));
-    const plan = stagePlan("scene3d_code", "short", f);
-    expect(chainPrev(plan, plan.findIndex((x) => x.stage === "render"))?.stage).toBe("scene3d_review");
-  });
-  it("the review round and the owner's send-back count make the author run again, and change no other hash", () => {
-    const v = base({ kind: "scene3d_code", content: { script: "s", beats: "b", narration: "n", scenes: "sc", previews: "pv" } });
-    const plain = expectedInputHash(v, "scene3d_author", "t");
-    expect(expectedInputHash({ ...v, reviewRound: 0, lookFeedback: null }, "scene3d_author", "t")).toBe(plain); // nothing asked for: the hash is the pre-existing one
-    const r1 = expectedInputHash({ ...v, reviewRound: 1 }, "scene3d_author", "t");
-    const r2 = expectedInputHash({ ...v, reviewRound: 2 }, "scene3d_author", "t");
-    expect(new Set([plain, r1, r2]).size).toBe(3);
-    expect(r1).toBe(stageInputHash("scene3d_author", { prev: "t", script: "s", narration: "n", review_round: "1" }, {}));
-    const n1 = expectedInputHash({ ...v, lookFeedback: { count: 1, note: "more water" } }, "scene3d_author", "t");
-    expect(n1).not.toBe(plain);
-    expect(expectedInputHash({ ...v, lookFeedback: { count: 2, note: "more water" } }, "scene3d_author", "t")).not.toBe(n1); // the same note twice still runs again
-    for (const stage of ["draft", "tts", "scene3d_stills", "scene3d_review", "render", "voice", "qa"] as const) {
-      expect(expectedInputHash({ ...v, reviewRound: 2, lookFeedback: { count: 1, note: "x" } }, stage, "p"), stage).toBe(expectedInputHash(v, stage, "p"));
-    }
-    // the director of the other 3D kind and every other kind ignore the review round
-    expect(expectedInputHash({ ...v, kind: "scene3d", reviewRound: 3 }, "direct_scene3d", "d")).toBe(expectedInputHash({ ...v, kind: "scene3d" }, "direct_scene3d", "d"));
-  });
-  it("a review that asks for a revision queues the author before anything else; once the author ran, the pictures and the review follow", () => {
-    const first = walk(base({ kind: "scene3d_code" }), { approve: true }).v;
-    const asked = { ...first, approved: new Set<GateId>(["script"]), reviewRound: 1 };
-    expect(nextActions(asked)).toMatchObject([{ kind: "enqueue", stage: "scene3d_author" }]);
-  });
-  it("tolerates a plan with no beats content: Render's hash uses the stable word 'none' and stays deterministic", () => {
-    const v = base({ kind: "scene3d_code", content: { script: "s", narration: "n", scenes: "sc" } });
-    const h = expectedInputHash(v, "render", "p");
-    expect(h).toBe(stageInputHash("render", { prev: "p", beats: "none", narration: "n", scenes: "sc" }, {}));
-    expect(expectedInputHash({ ...v, content: { ...v.content, scenes: "sc2" } }, "render", "p")).not.toBe(h);
-    expect(nextActions(walk(base({ kind: "scene3d_code", content: {} })).v).at(0)?.kind).toBe("done");
-  });
-  it("walks the gates in order and never queues Render before the look is approved", () => {
-    const { trail } = walk(base({ kind: "scene3d_code" }));
-    expect(trail).toEqual(["draft", "gate:script", "tts", "scene3d_author", "scene3d_stills", "scene3d_review", "gate:look", "render", "voice", "sfx", "qa", "gate:video", "gate:evidence", "gate:publish", "done"]);
-    const held = walk(base({ kind: "scene3d_code" }), { approve: false });
-    const stopped = walk({ ...held.v, approved: new Set<GateId>(["script"]) }, { approve: false });
-    expect(stopped.trail.slice(-2)).toEqual(["scene3d_review", "gate:look"]);
-    expect(stopped.v.runs.render).toBeUndefined();
   });
 });

@@ -12,7 +12,6 @@ import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { assertRealDir, daemonLimits, JOB_LABEL, lockFlags, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
 import { safeJoin } from "@/server/storage/paths";
 import { buildVideoProps } from "@/shared/scene/video-props";
-import { isCaptionStyleId, isStyleId } from "../../../../remotion/kit/presets";
 import { openRegular } from "@/worker/stages/attempt";
 import type { Renderer, RenderArgs } from "./index";
 
@@ -257,16 +256,8 @@ export function chapterProps(chapters: RenderArgs["chapters"]): Array<{ title: s
   return chapters!.map((c) => ({ title: c.title.trim(), startMs: c.startMs }));
 }
 
-/** props.json of the 3D scale composition: the checked scene, caption words (trimmed) and the chosen look. Shared with the native renderer. */
-export function scale3dProps(a: Pick<RenderArgs, "scale3d" | "captions" | "style" | "captionStyle">): unknown {
-  const caps = (a.captions ?? [])
-    .filter((w): w is { word: string; startS: number; endS: number } => typeof (w as { word?: unknown })?.word === "string" && Number.isFinite((w as { startS?: unknown }).startS) && Number.isFinite((w as { endS?: unknown }).endS))
-    .map((w) => ({ word: w.word.slice(0, 60), startS: w.startS, endS: w.endS }));
-  return { scene: a.scale3d, ...(caps.length ? { captions: caps } : {}), ...(isStyleId(a.style) ? { style: a.style } : {}), ...(isCaptionStyleId(a.captionStyle) ? { captionStyle: a.captionStyle } : {}) };
-}
-
 /**
- * The output checks both renderers share: copies <outDir>/out.mp4 (plain file, size-capped) into the attempt folder as
+ * The output checks of a render: copies <outDir>/out.mp4 (plain file, size-capped) into the attempt folder as
  * a.outFile, then probes it: readable, the asked size, not empty, sound when narration was muxed in. A duration far from
  * the scenes is only logged. Returns the path of the copy.
  */
@@ -292,7 +283,7 @@ export async function collectOutput(
   if (!(p.durationS > 0)) throw new KnownFailure("The rendered video is empty.");
   if (expectAudio && !p.hasAudio) throw new KnownFailure("The rendered video has no sound although narration was given.");
   if (a.chunk) return outPath; // one chapter of a long render: no narration, and its length is checked against the joined video by the stage
-  const docS = a.scene3dCode ? a.scene3dCode.props.durationS : a.scene3d ? a.scene3d.shots.reduce((t, s) => t + s.duration_s, 0) : a.scale3d ? a.scale3d.beats.reduce((t, b) => t + b.duration_s, 0) : Math.max(...a.doc!.scenes.map((s) => s.startMs + s.durationMs)) / 1000;
+  const docS = Math.max(...a.doc!.scenes.map((s) => s.startMs + s.durationMs)) / 1000;
   if (Math.abs(p.durationS - docS) > 1) ctx.log(`render: warning: the video is ${p.durationS.toFixed(1)} s but the scenes add up to ${docS.toFixed(1)} s`);
   return outPath;
 }
@@ -301,8 +292,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
   return {
     async render(ctx: StageContext, a) {
       if (a.outFile === "" || a.outFile !== path.basename(a.outFile) || a.outFile.startsWith(".")) throw new Error("outFile must be a plain file name");
-      if (a.scene3d || a.scene3dCode) throw new KnownFailure("3D scene videos are drawn on this Mac's GPU only, never in the container. Nothing was rendered.");
-      if (!a.doc && !a.scale3d) throw new KnownFailure("The render step needs the checked scenes. Run the build step again.");
+      if (!a.doc) throw new KnownFailure("The render step needs the checked scenes. Run the build step again.");
       const inDir = mountable(path.join(ctx.attemptDir, "render-in"));
       const outDir = mountable(path.join(ctx.attemptDir, "render-out"));
       const kitDir = mountable(deps.kitDir);
@@ -335,16 +325,13 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
           assets[id] = `assets/${id}${ext}`;
         }
         let audioSrc: string | undefined;
-        if (a.audioFile && !a.scale3d && !a.chunk) { // the 3D composition has no sound of its own: the voice step lays the narration over it
+        if (a.audioFile && !a.chunk) {
           const ext = path.extname(a.audioFile).toLowerCase();
           if (!AUDIO_EXT.has(ext)) throw new KnownFailure("The narration has a file type the renderer does not take.");
           audioSrc = `narration${ext}`;
           await copyRegular(a.audioFile, path.join(inDir, audioSrc));
         }
-        let props: { ok: true; props: unknown } | { ok: false; errors: string[] };
-        if (a.scale3d) {
-          props = { ok: true, props: scale3dProps(a) };
-        } else props = buildVideoProps(JSON.stringify(a.doc), { fps: FPS, audioSrc, assets, captionsText: a.captions ? JSON.stringify(a.captions) : undefined, seed: a.videoId, title: a.title, style: a.style, captionStyle: a.captionStyle, ...(a.layout === "landscape" ? { long: true } : {}) });
+        let props: { ok: true; props: unknown } | { ok: false; errors: string[] } = buildVideoProps(JSON.stringify(a.doc), { fps: FPS, audioSrc, assets, captionsText: a.captions ? JSON.stringify(a.captions) : undefined, seed: a.videoId, title: a.title, style: a.style, captionStyle: a.captionStyle, ...(a.layout === "landscape" ? { long: true } : {}) });
         if (!props.ok) throw new KnownFailure(`The scenes or captions are not valid: ${props.errors.slice(0, 3).join("; ")}`.slice(0, 600));
         if (a.layout === "landscape") {
           if (a.size.width !== 1920 || a.size.height !== 1080) throw new KnownFailure("A landscape render must be 1920x1080.");
@@ -358,7 +345,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         const host = await (deps.hostLimits ?? daemonLimits)();
         const image = deps.image ? await deps.image() : { ref: RENDER_IMAGE, pinned: false };
         if (!image.pinned) ctx.log(`render: image not pinned (could not resolve its id); running the tag ${image.ref}`);
-        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, ...(a.scale3d ? { entry: ["/in", "/out/out.mp4", "--scale3d"] } : a.layout === "landscape" ? { entry: ["/in", "/out/out.mp4", "--landscape", ...(a.chunk ? [chunkArg(a.chunk), "--muted"] : [])] } : {}) });
+        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, ...(a.layout === "landscape" ? { entry: ["/in", "/out/out.mp4", "--landscape", ...(a.chunk ? [chunkArg(a.chunk), "--muted"] : [])] } : {}) });
         const { r, tail } = await runRenderContainer(deps, ctx, { name, args, timeoutMs: lim.timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES });
         if (r.aborted) throw ctx.signal.reason ?? new Error("render aborted");
         if (r.timedOut) throw new KnownFailure(`The render took longer than its ${Math.ceil(lim.timeoutS / 60)} min limit and was stopped.`);

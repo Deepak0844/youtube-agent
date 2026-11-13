@@ -8,7 +8,6 @@ import type { Message } from "@/server/core/agent-loop";
 import type { LlmClient, LlmStageContext } from "@/server/llm/client";
 import type { AttemptHandler, OutContent } from "./attempt";
 import { approvedScript } from "@/server/db/stage-content";
-import { buildScale3dAttempt } from "./build-scale3d";
 import { DEFAULTS, loadVideo, plainScope, scopeHeadroom, videoMoneyScopes, type StageDeps } from "./deps";
 
 const SCENE_MAX_OUTPUT_TOKENS = 1500;
@@ -37,8 +36,6 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
     const video = await loadVideo(deps.db, ctx);
     const script = await approvedScript(deps.db, video.id);
     if (!script.ok) throw new KnownFailure(script.reason);
-    if (video.kind === "scene3d" || video.kind === "scene3d_code") throw new KnownFailure("A 3D story video has no build step: its scene is written by the director or author step."); // never queued: the route has no build
-    if (video.kind === "scale3d") return buildScale3dAttempt(deps, script.script)(ctx); // no cost plan, no pictures: the model plans the 3D beats
     const beatIds = script.beats.map((b, i) => (typeof b?.id === "string" && b.id !== "" ? b.id : `beat-${i + 1}`));
 
     // An AI video's cost plan is the shot plan's (clips, approved at the cost gate): Build never writes a plan for it, or it would replace the approved one.

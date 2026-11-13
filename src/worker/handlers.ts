@@ -27,8 +27,6 @@ import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
 import { createContainerRenderer, resolveRenderImage, sweepRenderContainers } from "@/server/providers/renderer/remotion-container";
 import { createThumbnailRenderer } from "@/server/providers/renderer/thumbnail-container";
-import { createNativeRenderer } from "@/server/providers/renderer/remotion-native";
-import { checkNativeRenderReady } from "@/server/providers/renderer/native-preflight";
 import { createTsxRenderer } from "@/server/providers/renderer/tsx-render";
 import { isWorkerAlive } from "@/server/db/child-processes";
 import type { WorkerHooks } from "./runtime";
@@ -58,11 +56,6 @@ import { outlineAttempt } from "./stages/outline";
 import { qaAttempt } from "./stages/qa";
 import { renderAttempt } from "./stages/render";
 import { tsxAuthorAttempt } from "./stages/tsx-author";
-import { directScene3dAttempt } from "./stages/direct-scene3d";
-import { scene3dStillsAttempt } from "./stages/scene3d-stills";
-import { scene3dAuthorAttempt } from "./stages/scene3d-author";
-import { scene3dReviewAttempt } from "./stages/scene3d-review";
-import { loadRepoCatalog } from "@/server/providers/renderer/scene3d-models";
 import { sfxHandler } from "./stages/sfx";
 import { ttsAttempt } from "./stages/tts";
 import { voiceAttempt } from "./stages/voice";
@@ -71,7 +64,7 @@ import { voiceAttempt } from "./stages/voice";
 export type StageHandlers = Partial<Record<StageName, StageHandler>>;
 export function createStageDispatcher(handlers: StageHandlers, concurrentRenders: number): StageHandler {
   const render = createSemaphore(concurrentRenders);
-  const resources = new Map([...stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }), ...stagePlan("tsx", "short", { paidGeneration: false, requireEvidence: false }), ...stagePlan("scene3d", "short", { paidGeneration: false, requireEvidence: false }), ...stagePlan("scene3d_code", "short", { paidGeneration: false, requireEvidence: false })].map((s) => [s.stage, s.resource]));
+  const resources = new Map([...stagePlan("scene_kit", "short", { paidGeneration: true, requireEvidence: true }), ...stagePlan("tsx", "short", { paidGeneration: false, requireEvidence: false })].map((s) => [s.stage, s.resource]));
   return async (ctx) => {
     const name = ctx.stage.name;
     if (!(STAGE_NAMES as readonly string[]).includes(name)) throw new KnownFailure("unknown stage");
@@ -107,10 +100,6 @@ export function dryRunHandlers(deps: StageDeps): StageHandlers {
     tts: withAttempt(fin, ttsAttempt(deps)),
     render: withAttempt(fin, renderAttempt(deps)),
     tsx_author: withAttempt(fin, tsxAuthorAttempt(deps)),
-    direct_scene3d: withAttempt(fin, directScene3dAttempt(deps)),
-    scene3d_stills: withAttempt(fin, scene3dStillsAttempt(deps)),
-    scene3d_author: withAttempt(fin, scene3dAuthorAttempt(deps)),
-    scene3d_review: withAttempt(fin, scene3dReviewAttempt(deps)),
     voice: withAttempt(fin, voiceAttempt(deps)),
     sfx: sfxHandler(fin, deps),
     qa: withAttempt(fin, qaAttempt(deps)),
@@ -157,11 +146,6 @@ const notWired = (): never => { throw new KnownFailure("This step is not wired i
 export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildRegistry; workerId?: string } = {}, root: string = storageRoot()): StageDeps {
   const run = (spec: Parameters<typeof runChild>[0]) => runChild(spec, { registry: env.childRegistry });
   const image = resolveRenderImage(); // once, at worker boot: renders run the image by its sha256 id (tag fallback is logged)
-  const nativeRenderer = createNativeRenderer({
-    root, kitDir: renderKitDir(), runChild: run, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
-    preflight: () => checkNativeRenderReady({ repoRoot: path.resolve(renderKitDir(), "..", ".."), storageRoot: root }),
-    catalog: () => loadRepoCatalog(path.resolve(renderKitDir(), "..", "..")),
-  });
   return {
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
     qaScan: scanVideo,
@@ -186,13 +170,6 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
       assetFile: async (id) => { const a = await getAsset(pool, id); return a && !a.deletedAt && (a.kind === "image" || a.kind === "video") ? a.storageRef : null; },
       probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
     }),
-    catalog3d: () => loadRepoCatalog(path.resolve(renderKitDir(), "..", "..")),
-    // 3D videos on this Mac's GPU, inside sandbox-exec (remotion-native.ts). Used only when render.native_3d is on and the preflight is ready.
-    native: {
-      renderer: nativeRenderer,
-      stills: nativeRenderer, // the preview pictures of 3D stories: the same sandboxed job, another mode
-      ready: () => checkNativeRenderReady({ repoRoot: path.resolve(renderKitDir(), "..", ".."), storageRoot: root }),
-    },
   };
 }
 
@@ -227,21 +204,6 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
   const tsxAuthor: StageHandler = async (ctx) => {
     const models = await defaultModelDeps(pool, () => loadKeyring());
     return withAttempt(fin, tsxAuthorAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
-  };
-  // 3D scene videos: the direct_scene3d model route and the same budget scopes as Build; the catalogue comes from the repo the worker runs in.
-  const directScene3d: StageHandler = async (ctx) => {
-    const models = await defaultModelDeps(pool, () => loadKeyring());
-    return withAttempt(fin, directScene3dAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
-  };
-  // 3D story, AI-written scene: the author_scene3d model route and the same budget scopes as Build; checks and the type-check run in this worker, nothing runs until the sandboxed render.
-  const scene3dAuthor: StageHandler = async (ctx) => {
-    const models = await defaultModelDeps(pool, () => loadKeyring());
-    return withAttempt(fin, scene3dAuthorAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
-  };
-  // Preview pictures of a 3D story: native pictures, then the optional (advisory) picture check through the review_frames vision route.
-  const scene3dStills: StageHandler = async (ctx) => {
-    const models = await defaultModelDeps(pool, () => loadKeyring());
-    return withAttempt(fin, scene3dStillsAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
   };
   // On demand only (never in the route): same model wiring and budget scopes as Build; saves its own scenes version.
   const repair: StageHandler = async (ctx) => {
@@ -292,10 +254,6 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     tts: refuseDryRunVideos(pool, withAttempt(fin, ttsAttempt(deps))),
     render: refuseDryRunVideos(pool, withAttempt(fin, renderAttempt(deps))),
     tsx_author: refuseDryRunVideos(pool, tsxAuthor),
-    direct_scene3d: refuseDryRunVideos(pool, directScene3d),
-    scene3d_stills: refuseDryRunVideos(pool, scene3dStills),
-    scene3d_author: refuseDryRunVideos(pool, scene3dAuthor),
-    scene3d_review: refuseDryRunVideos(pool, withAttempt(fin, scene3dReviewAttempt(deps))),
     voice: refuseDryRunVideos(pool, withAttempt(fin, voiceAttempt(deps))),
     sfx: refuseDryRunVideos(pool, sfxHandler(fin, deps)),
     qa: refuseDryRunVideos(pool, withAttempt(fin, qaAttempt(deps))),

@@ -9,7 +9,6 @@ import { StageAbort, type StageContext } from "@/server/core/stage-handler";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { copyRegular, createContainerRenderer, parseProgress, sweepRenderContainers, type ContainerRendererDeps } from "@/server/providers/renderer/remotion-container";
 
-import { SCALE3D_DEMO } from "@/shared/scale3d";
 
 const GOOD = path.resolve("tests/fixtures/video/good.mp4");
 const SIZE = { width: 1080, height: 1920 };
@@ -127,22 +126,6 @@ describe("container renderer", () => {
     expect(existsSync(path.join(attemptDir, "render-out"))).toBe(false);
   });
 
-  it("scale3d: renders the 3D composition from props.json (scene + captions), stages no assets, same locks", async () => {
-    let seen: Record<string, unknown> | undefined;
-    const scene = { ...SCALE3D_DEMO };
-    const r = await createContainerRenderer(deps((spec, outDir) => {
-      const inDir = mountOf(spec.args, "/in")!.split(":")[0]!;
-      seen = JSON.parse(readFileSync(path.join(inDir, "props.json"), "utf8"));
-      expect(existsSync(path.join(inDir, "narration.wav"))).toBe(false); // the voice step lays the narration over this video
-      copyFileSync(GOOD, path.join(outDir, "out.mp4"));
-      return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
-    })).render(ctx(), { ...args(), doc: undefined, scale3d: scene, style: "not-a-style" });
-    expect(r.outPath).toBe(path.join(attemptDir, "render.mp4"));
-    expect(run().args.slice(-4)).toEqual(["/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4", "--scale3d"]);
-    expect(run().args).toContain("--network");
-    expect(seen).toEqual({ scene, captions: [{ word: "hi", startS: 0, endS: 0.5 }] });
-  });
-
   const LANDSCAPE = { width: 1920, height: 1080 };
   const chapters = [{ title: "Hook", startMs: 0 }, { title: "How it works", startMs: 1000 }];
   const bigProbe = { probe: async () => ({ width: 1920, height: 1080, durationS: 2, hasAudio: true, meanDb: -20, peakDb: -1, loopDiff: 1 }) };
@@ -205,11 +188,6 @@ describe("container renderer", () => {
     }
     await expect(createContainerRenderer(deps()).render(ctx(), { ...args(), layout: "landscape", chapters })).rejects.toThrow(/1920x1080/);
     expect(calls.filter((c) => c.args[0] === "run")).toHaveLength(0);
-  });
-
-  it("scale3d: the same size check applies", async () => {
-    const probe = { probe: async () => ({ width: 720, height: 1920, durationS: 2, hasAudio: true, meanDb: -20, peakDb: -1, loopDiff: 1 }) };
-    await expect(createContainerRenderer(deps(undefined, probe)).render(ctx(), { ...args(), doc: undefined, scale3d: SCALE3D_DEMO })).rejects.toThrow(/720x1920/);
   });
 
   it("surfaces progress as stage log lines", async () => {
@@ -348,15 +326,13 @@ describe("copyRegular", () => {
 });
 
 describe("render-entry.mjs modes", () => {
-  // Regression: "--scale3d" was treated as a TSX mode, so the container looked for /in/meta.json (which the 3D stage never writes) and failed at once.
   const src = readFileSync(path.join(process.cwd(), "remotion/kit/render-entry.mjs"), "utf8");
   it("only the two TSX modes read meta.json and use the TSX bundle", () => {
     expect(src).toContain('const tsx = mode === "--tsx" || mode === "--tsx-stills";');
     expect(src).not.toMatch(/const tsx = mode !== "kit"/);
   });
-  it("scale3d renders the scale3d composition through the kit entry with props.json", () => {
-    expect(src).toContain('mode === "--scale3d" ? "scale3d" : "kit-video"');
-    expect(src).toContain('tsx ? "tsx-index.ts" : author ? "s3k-author-index.tsx" : "index.ts"'); // only the two TSX modes use the TSX bundle; the authored-scene modes have their own entry; every other mode keeps the kit entry
+  it("every non-TSX mode renders through the kit entry with props.json", () => {
+    expect(src).toContain('tsx ? "tsx-index.ts" : "index.ts"'); // only the two TSX modes use the TSX bundle
     expect(src).toContain('publicDir: tsx ? path.join(inDir, "public") : inDir');
   });
 });
