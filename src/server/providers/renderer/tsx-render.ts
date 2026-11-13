@@ -71,6 +71,8 @@ export interface TsxRenderInput {
    * A throw (budget refusal, unclear paid outcome) goes up untouched.
    */
   review?: (shots: ReviewShot[]) => Promise<string[] | null>;
+  /** Engine preview (ADR 0015): draw ONLY these frames (1-8) and stop; no review, no preflight checks, no video. */
+  stillsOnly?: readonly number[];
   reviewAt?: readonly number[];
 }
 export interface ReviewShot {
@@ -175,7 +177,11 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
   if (ctx.signal.aborted) throw aborted();
   if (typed.ok !== true) return failure("typecheck", "The scene file has type errors.", typed.problems);
 
-  const stillList = input.review ? reviewStillFrames(frames, input.reviewAt ?? []) : preflightFrames(frames);
+  if (input.stillsOnly) {
+    const bad = input.stillsOnly.find((f) => !Number.isInteger(f) || f < 0 || f >= frames);
+    if (input.stillsOnly.length < 1 || input.stillsOnly.length > 8 || bad !== undefined) return failure("check", bad !== undefined ? `Frame ${bad} is outside the video (0-${frames - 1}).` : "Ask for 1 to 8 frames.");
+  }
+  const stillList = input.stillsOnly ? [...new Set(input.stillsOnly)] : input.review ? reviewStillFrames(frames, input.reviewAt ?? []) : preflightFrames(frames);
   const inDir = mountable(path.join(ctx.attemptDir, "tsx-in"));
   const outDir = mountable(path.join(ctx.attemptDir, "tsx-out"));
   const stillsDir = path.join(ctx.attemptDir, "tsx-stills");
@@ -248,6 +254,21 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
     // 5. Preflight stills.
     const stillsRun = await runOnce("stills");
     if (stillsRun) return stillsRun;
+    if (input.stillsOnly) {
+      const names: string[] = [];
+      try {
+        for (const f of stillList) {
+          const name = `preview-${f}.png`;
+          const dest = path.join(ctx.attemptDir, name);
+          await rm(dest, { force: true });
+          await copyRegular(path.join(outDir, `still-${f}.png`), dest, MAX_STILL_BYTES);
+          names.push(name);
+        }
+      } catch {
+        return failure("render", "The preview frames were not drawn.");
+      }
+      return { ok: true, outPath: "", image: image.ref, stills: names };
+    }
     const stills: RgbFrame[] = [];
     const shots: ReviewShot[] = [];
     const problems: string[] = [];
@@ -342,4 +363,11 @@ async function readStill(deps: TsxRendererDeps, ctx: StageContext, outDir: strin
   if (!wantJpeg) return { rgb };
   const js = await lstat(jpg).catch(() => null);
   return { rgb, ...(js?.isFile() && js.size > 0 && js.size <= MAX_JPEG_BYTES ? { jpeg: new Uint8Array(await readFile(jpg)) } : {}) };
+}
+
+/** Engine preview frames (ADR 0015): the same checks and locked container as renderTsx, only the asked frames, as PNG paths. */
+export async function renderTsxStills(deps: TsxRendererDeps, ctx: StageContext, input: { source: string; frames: readonly number[]; style?: string | null }): Promise<{ ok: true; files: string[]; frameCount: number } | { ok: false; message: string; problems: string[] }> {
+  const r = await renderTsx(deps, ctx, { source: input.source, stillsOnly: input.frames, style: input.style ?? null, outFile: "preview.mp4" });
+  if (!r.ok) return { ok: false, message: r.error.message, problems: r.error.problems };
+  return { ok: true, files: r.stills.map((n) => path.join(ctx.attemptDir, n)), frameCount: tsxDuration(input.source) ?? 0 };
 }

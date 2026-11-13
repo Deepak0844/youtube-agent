@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildEngineConfig } from "@/server/core/engine-config";
 import type { StageContext } from "@/server/core/stage-handler";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
-import { renderTsx, scrub, type TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
+import { renderTsxStills, renderTsx, scrub, type TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 
 const GOOD_MP4 = path.resolve("tests/fixtures/video/good.mp4");
 const W = 1080;
@@ -274,5 +274,27 @@ describe("scrub", () => {
     expect(scrub("at   const opacity = interpolate(frame, [0, 30], [0, 1]", SCENE)).toMatch(/hidden/);
     expect(scrub("é\u0000ok", SCENE)).toBe("??ok");
     expect(scrub("zz ".repeat(400), SCENE)).toHaveLength(300);
+  });
+});
+
+describe("renderTsx stills only (engine preview frames)", () => {
+  it("runs ONLY the stills container with the asked frames, keeps them as preview-N.png and makes no video", async () => {
+    const d = deps({ stills: (outDir) => { for (const f of [5, 60]) writeFileSync(path.join(outDir, `still-${f}.png`), "png"); return OK; } });
+    const r = await renderTsxStills(d, ctx(), { source: SCENE, frames: [5, 60] });
+    expect(r).toEqual({ ok: true, files: [path.join(attemptDir, "preview-5.png"), path.join(attemptDir, "preview-60.png")], frameCount: 90 });
+    expect(seen.entries).toEqual([["/opt/render/kit/render-entry.mjs", "/in", "/out", "--tsx-stills"]]);
+    expect(JSON.parse(seen.meta!).stills).toEqual([5, 60]);
+    expect(runs()).toHaveLength(1);
+    expect(runs()[0]!.args[runs()[0]!.args.indexOf("--network") + 1]).toBe("none");
+    expect(existsSync(path.join(attemptDir, "preview.mp4"))).toBe(false);
+  });
+  it("refuses a frame outside the video before anything runs", async () => {
+    const r = await renderTsxStills(deps(), ctx(), { source: SCENE, frames: [0, 90] });
+    expect(r).toEqual({ ok: false, message: "Frame 90 is outside the video (0-89).", problems: [] });
+    expect(runs()).toHaveLength(0);
+  });
+  it("a frame the container did not draw is a plain failure", async () => {
+    const d = deps({ stills: () => OK });
+    expect(await renderTsxStills(d, ctx(), { source: SCENE, frames: [3] })).toEqual({ ok: false, message: "The preview frames were not drawn.", problems: [] });
   });
 });
