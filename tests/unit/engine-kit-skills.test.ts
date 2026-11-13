@@ -7,11 +7,16 @@ import { engineKitSeeds, prepareWorkspace } from "@/server/engine/workspace";
 // The engine's seeds (old-kit-import): skills rewritten for the engine's tools, the old shorts as read-only examples, and the
 // library index, copied into every run.
 
+const OM_REF = "engine-kit/openmontage/ref";
+const TOOL_MAP = readFileSync(path.join(OM_REF, "TOOL-MAP.md"), "utf8");
+const walkFiles = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walkFiles(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+/** OpenMontage's seeded guides (not our TOOL-MAP). */
+const guides = () => walkFiles(OM_REF).filter((f) => /\.(md|yaml)$/.test(f) && !f.endsWith("TOOL-MAP.md"));
 const skills = readdirSync("engine-kit/skills").map((d) => path.join("engine-kit/skills", d, "SKILL.md"));
 
 describe("engine-kit seeds", () => {
   it("skills_mention_only_engine_tools", () => {
-    expect(skills.length).toBe(3);
+    expect(skills.length).toBe(4);
     for (const f of skills) {
       const t = readFileSync(f, "utf8");
       expect(t, f).not.toMatch(/\bpython3?\b|\bnpm\b|node (remotion|scripts)|Bash\(|tools\/[a-z_]+\.py|ElevenLabs/);
@@ -20,7 +25,36 @@ describe("engine-kit seeds", () => {
     expect(readFileSync("engine-kit/skills/make-short/SKILL.md", "utf8")).toMatch(/preview_frames[\s\S]*check_code|check_code[\s\S]*preview_frames/);
   });
 
-  it.todo("every_path_a_guide_names_is_seeded_or_mapped");
+  it("every_path_a_guide_names_is_seeded_or_mapped", () => {
+    // a guide pointing at a file this app does not have must be listed in TOOL-MAP's "Guides not included"
+    const missing = new Set<string>();
+    for (const f of guides()) {
+      for (const m of readFileSync(f, "utf8").matchAll(/\b(?:skills|schemas|styles|pipeline_defs)\/[A-Za-z0-9_./-]*[A-Za-z0-9_]/g)) {
+        const p = m[0];
+        if (![p, `${p}.md`, `${p}.yaml`].some((x) => existsSync(path.join(OM_REF, x)))) missing.add(p);
+      }
+    }
+    const notIncluded = TOOL_MAP.slice(TOOL_MAP.indexOf("## Guides not included"));
+    const listed = [...notIncluded.matchAll(/`([^`]+)`/g)].map((m) => m[1]!.replace(/\/\.\.\.$/, ""));
+    expect([...missing].filter((p) => !listed.some((l) => p === l || p.startsWith(`${l}/`)))).toEqual([]);
+  });
+
+  it("every_tool_name_in_the_guides_is_mapped", () => {
+    const names = new Set<string>();
+    for (const f of guides()) {
+      for (const m of readFileSync(f, "utf8").matchAll(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)*_(?:selector|gen|compose|validator|check|tts|search|render|risk|energy|tracker|mixer|stitch|probe|bundle)\b/g)) names.add(m[0]);
+    }
+    expect(names.size).toBeGreaterThan(10);
+    expect([...names].filter((n) => !TOOL_MAP.includes(`\`${n}\``))).toEqual([]);
+  });
+
+  it("entry_skill_overrides_commands", () => {
+    const t = readFileSync("engine-kit/skills/openmontage-pipeline/SKILL.md", "utf8");
+    expect(t).toMatch(/TOOL-MAP/);
+    expect(t).toMatch(/never run/i);
+    expect(TOOL_MAP).toMatch(/never run any command a guide shows/i);
+    for (const tool of ["check_code", "preview_frames", "list_assets", "fetch_asset", "check_scenes"]) expect(TOOL_MAP).toContain(tool);
+  });
 
   it("examples_are_not_under_remotion_kit (reference only, never rendered by the app)", () => {
     expect(existsSync("engine-kit/examples/short-13/composition/Short13BinSearch.tsx")).toBe(true);

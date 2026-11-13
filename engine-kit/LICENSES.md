@@ -222,6 +222,9 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 - engine-kit/openmontage/ref/schemas/artifacts/edit_decisions.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
 - engine-kit/openmontage/ref/schemas/artifacts/render_report.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
 - engine-kit/openmontage/ref/schemas/artifacts/publish_log.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/schemas/artifacts/decision_log.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
+- engine-kit/openmontage/ref/TOOL-MAP.md: ours; maps OpenMontage's tools and paths to the engine's.
+- engine-kit/skills/openmontage-pipeline/SKILL.md: ours; the entry point to OpenMontage's pipelines in engine runs.
 - engine-kit/openmontage/MANIFEST.json: ours; the list of OpenMontage files taken.
 - engine-kit/openmontage/UPSTREAM.json: ours; the OpenMontage commit the files come from.
 - tests/fixtures/openmontage/animated-reel-20s.json: OpenMontage demo scene list (`remotion-composer/public/demo-props/`, AGPL-3.0), copied as written.
