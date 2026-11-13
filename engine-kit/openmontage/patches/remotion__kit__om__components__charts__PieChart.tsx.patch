@@ -1,0 +1,51 @@
+--- a/remotion/kit/om/components/charts/PieChart.tsx
++++ b/remotion/kit/om/components/charts/PieChart.tsx
+@@ -42,13 +42,18 @@
+   animationStyle = "expand",
+ }) => {
+   const frame = useCurrentFrame();
+-  const { fps, durationInFrames } = useVideoConfig();
++  const { fps, durationInFrames, width, height } = useVideoConfig();
+ 
+   const total = data.reduce((sum, d) => sum + d.value, 0) || 1;
+ 
+   // Layout
+-  const cx = showLegend ? 760 : 960;
+-  const cy = title ? 540 : 500;
++  // ytstudio: OpenMontage draws on a fixed 1920x1080 canvas, which a portrait frame shrinks to 56%. Portrait draws on a
++  // full-width 1080x1350 canvas instead; landscape keeps exactly 1920x1080.
++  const W = width >= height ? 1920 : 1080;
++  const H = width >= height ? 1080 : 1350;
++  const portrait = W < H; // portrait: pie centred, legend below it instead of beside it
++  const cx = portrait ? W / 2 : showLegend ? 760 : 960;
++  const cy = portrait ? (title ? 520 : 460) : title ? 540 : 500;
+   const outerRadius = 300;
+   const innerRadius = donut ? outerRadius * 0.55 : 0;
+ 
+@@ -98,13 +103,13 @@
+       }}
+     >
+       <svg
+-        viewBox="0 0 1920 1080"
++        viewBox={`0 0 ${W} ${H}`}
+         style={{ width: "100%", height: "100%" }}
+       >
+         {/* Title */}
+         {title && (
+           <text
+-            x={960}
++            x={W / 2}
+             y={80}
+             textAnchor="middle"
+             fill={textColor}
+@@ -251,8 +256,8 @@
+         {showLegend && (
+           <g opacity={fadeOut}>
+             {slices.map((slice, i) => {
+-              const legendY = cy - (slices.length * 44) / 2 + i * 44;
+-              const legendX = showLegend ? 1200 : cx + outerRadius + 80;
++              const legendY = portrait ? cy + outerRadius + 80 + i * 44 : cy - (slices.length * 44) / 2 + i * 44;
++              const legendX = portrait ? W / 2 - 156 : showLegend ? 1200 : cx + outerRadius + 80;
+               const legendOpacity = spring({
+                 frame: frame - 15 - i * 3,
+                 fps,
