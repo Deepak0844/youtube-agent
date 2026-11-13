@@ -16,6 +16,10 @@ const SCENE = path.join(path.dirname(NODE_MODULES), "__tsx_scene__", "video.tsx"
 const ALLOWED = new Set(["react", "react/jsx-runtime", "remotion", "@remotion/shapes", "@remotion/paths"]);
 // "yt-kit" (the vetted drawing library) is typed by its hand-written declaration file; the runtime code is not read here.
 const YT_KIT_DTS = fileURLToPath(new URL("../../../remotion/kit/tsxlib/yt-kit.d.ts", import.meta.url));
+// "yt-old/<lib>" (the old app's drawing libraries) is typed by the generated declarations in remotion/kit/oldlib/types. Only a
+// plain library name resolves; checkTsx has already refused any name outside the generated list before this runs.
+const OLDLIB_TYPES = fileURLToPath(new URL("../../../remotion/kit/oldlib/types/", import.meta.url));
+const YT_OLD = /^yt-old\/([a-z][a-z0-9]*)$/;
 const MAX_PROBLEMS = 10;
 const OPTIONS = {
   strict: true,
@@ -46,6 +50,11 @@ export function typeCheckTsx(source) {
   host.resolveModuleNameLiterals = (literals, containing, redirected, options) =>
     literals.map((l) => {
       if (containing === SCENE && l.text === "yt-kit") return { resolvedModule: { resolvedFileName: YT_KIT_DTS, extension: ts.Extension.Dts, isExternalLibraryImport: false } };
+      const old = containing === SCENE ? YT_OLD.exec(l.text) : null;
+      if (old) {
+        const file = path.join(OLDLIB_TYPES, `${old[1]}.d.ts`);
+        return fileExists(file) ? { resolvedModule: { resolvedFileName: file, extension: ts.Extension.Dts, isExternalLibraryImport: false } } : { resolvedModule: undefined };
+      }
       return containing === SCENE && !ALLOWED.has(l.text) ? { resolvedModule: undefined } : ts.resolveModuleName(l.text, containing, options, host, undefined, redirected);
     });
   host.resolveTypeReferenceDirectiveReferences = (refs, containing, redirected, options) =>

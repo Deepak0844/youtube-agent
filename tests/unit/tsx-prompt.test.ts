@@ -40,7 +40,9 @@ describe("examples", () => {
 describe("system prompt", () => {
   const sys = tsxSystemPrompt();
   it("lists every allowed import and the key rules", () => {
-    for (const [mod, names] of Object.entries(TSX_IMPORTS)) {
+    // yt-old/* (the old app's libraries) belong to the new engine, which documents them in its own workspace; not listed here.
+    expect(sys).not.toContain('"yt-old/');
+    for (const [mod, names] of Object.entries(TSX_IMPORTS).filter(([m]) => !m.startsWith("yt-old/"))) {
       expect(sys).toContain(`"${mod}"`);
       for (const n of names) expect(sys).toContain(n);
     }
