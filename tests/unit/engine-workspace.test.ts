@@ -31,7 +31,7 @@ describe("prepareWorkspace", () => {
     const ws = await prepareWorkspace(root, VID, seeds());
     expect(ws.dir).toBe(path.join(root, "videos", VID, "engine"));
     expect(ws.workDir).toBe(path.join(ws.dir, "work"));
-    expect(await readFile(path.join(ws.dir, ".claude", "skills", "make-short", "SKILL.md"), "utf8")).toBe("# make a short");
+    expect(await readFile(path.join(ws.workDir, ".claude", "skills", "make-short", "SKILL.md"), "utf8")).toBe("# make a short");
     const ref = path.join(ws.workDir, "ref", "brand", "brand.md");
     expect(await readFile(ref, "utf8")).toBe("colours");
     expect((await stat(ref)).mode & 0o222).toBe(0); // no write bits
@@ -68,8 +68,8 @@ describe("checkAfterRun", () => {
   it("write_into_dot_claude_is_reported", async () => {
     const ws = await prepareWorkspace(root, VID, seeds());
     const before = await ws.snapshot();
-    await chmod(path.join(ws.dir, ".claude", "skills", "make-short", "SKILL.md"), 0o644);
-    await writeFile(path.join(ws.dir, ".claude", "skills", "make-short", "SKILL.md"), "evil");
+    await chmod(path.join(ws.workDir, ".claude", "skills", "make-short", "SKILL.md"), 0o644);
+    await writeFile(path.join(ws.workDir, ".claude", "skills", "make-short", "SKILL.md"), "evil");
     expect(checkAfterRun(before, await ws.snapshot()).join(" ")).toMatch(/\.claude/);
   });
 

@@ -4,7 +4,7 @@ import { SETTINGS, SAFETY_KEYS } from "@/server/core/settings-registry";
 import { engineArgs } from "@/server/engine/args";
 
 // The two Claude Code run kinds of the new video engine (ADR 0015, engine-core spec). The exact flags were probed against
-// claude 2.1.207: file writes follow Edit(...) rules, reads follow Read(...) rules, both relative to the workspace (./work).
+// claude 2.1.207 with Claude started INSIDE work/: writes follow Edit(...) rules; .claude and ref are denied.
 const flag = (args: string[], name: string): string | undefined => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : undefined;
@@ -14,19 +14,19 @@ const list = (args: string[], name: string): string[] => (flag(args, name) ?? ""
 describe("engineArgs", () => {
   it("research_run_has_web_and_no_shell_or_mcp", () => {
     const a = engineArgs("research", { maxTurns: 40 });
-    expect(list(a, "--tools")).toEqual(expect.arrayContaining(["Read", "Glob", "Grep", "Write", "Edit", "WebSearch", "WebFetch"]));
+    expect(list(a, "--tools")).toEqual(expect.arrayContaining(["Read", "Glob", "Grep", "Write", "Edit", "Skill", "WebSearch", "WebFetch"]));
     expect(list(a, "--tools")).not.toContain("Bash");
-    expect(list(a, "--allowedTools")).toEqual(["Read(./work/**)", "Edit(./work/draft/**)", "WebSearch", "WebFetch"]);
-    expect(list(a, "--disallowedTools")).toEqual(expect.arrayContaining(["Bash", "Agent", "Task"]));
+    expect(list(a, "--allowedTools")).toEqual(["Edit(./draft/**)", "Skill", "WebSearch", "WebFetch"]);
+    expect(list(a, "--disallowedTools")).toEqual(expect.arrayContaining(["Bash", "Agent", "Task", "Edit(./.claude/**)", "Edit(./ref/**)"]));
     expect(a).not.toContain("--mcp-config");
     expect(a.join(" ")).not.toMatch(/mcp__/);
   });
 
   it("build_run_has_engine_tools_and_no_web_or_shell", () => {
     const a = engineArgs("build", { maxTurns: 80, mcpConfigPath: "/ws/mcp.json" });
-    expect(list(a, "--tools")).toEqual(["Read", "Glob", "Grep", "Write", "Edit", "mcp__engine__*"]);
-    expect(list(a, "--allowedTools")).toEqual(["Read(./work/**)", "Edit(./work/**)", "mcp__engine__*"]);
-    expect(list(a, "--disallowedTools")).toEqual(expect.arrayContaining(["Bash", "WebSearch", "WebFetch", "Agent", "Task"]));
+    expect(list(a, "--tools")).toEqual(["Read", "Glob", "Grep", "Write", "Edit", "Skill", "mcp__engine__*"]);
+    expect(list(a, "--allowedTools")).toEqual(["Edit(./**)", "Skill", "mcp__engine__*"]);
+    expect(list(a, "--disallowedTools")).toEqual(expect.arrayContaining(["Bash", "WebSearch", "WebFetch", "Agent", "Task", "Edit(./.claude/**)", "Edit(./ref/**)"]));
     expect(flag(a, "--mcp-config")).toBe("/ws/mcp.json");
     expect(a).toContain("--strict-mcp-config");
   });
