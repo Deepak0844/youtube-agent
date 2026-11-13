@@ -8,6 +8,7 @@
     "start": "next start -H 127.0.0.1",
     "db:bootstrap": "tsx scripts/db-bootstrap.ts",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db-migrate.ts",
+    "engine:smoke": "tsx --env-file-if-exists=.env.local scripts/engine-smoke.ts",
     "dry-run": "tsx --env-file-if-exists=.env.local scripts/dry-run.ts",
     "check": "tsx scripts/check-tools.ts",
     "backup:list": "tsx --env-file-if-exists=.env.local scripts/backup-restore.ts --list",
