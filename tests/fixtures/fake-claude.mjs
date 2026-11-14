@@ -18,6 +18,15 @@ process.stdin.on("end", () => {
     case "args":
       done({ result: JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2) }) });
       break;
+    case "usage":
+      // what the real CLI reports: the model in the init line, tool calls in assistant messages, cache tokens and per-model use in the result
+      out({ type: "system", subtype: "init", model: "claude-sonnet-5" });
+      for (const name of ["mcp__engine__check_code", "mcp__engine__preview_frames", "mcp__engine__preview_frames", "mcp__engine__check_frames", "Write"]) {
+        out({ type: "assistant", message: { model: "claude-sonnet-5", content: [{ type: "tool_use", name, input: {} }], usage: { input_tokens: 1 } } });
+      }
+      out({ type: "assistant", message: { model: "<synthetic>", content: [{ type: "text", text: "hi" }] } });
+      done({ duration_ms: 90_000, duration_api_ms: 60_000, usage: { input_tokens: 1200, output_tokens: 300, cache_read_input_tokens: 50_000, cache_creation_input_tokens: 7_000 }, modelUsage: { "claude-sonnet-5": { inputTokens: 1200, outputTokens: 300 } } });
+      break;
     case "env":
       done({ result: JSON.stringify(Object.keys(process.env).sort()) });
       break;
