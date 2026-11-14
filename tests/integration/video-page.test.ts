@@ -263,4 +263,24 @@ describe("forceRerunStageById", () => {
       expect((await loadVideoPage(db.pool, old.id))!.voice.stored).toBeNull();
     });
   });
+
+  it("engine_usage_section_has_a_row_per_run_and_a_total", async () => {
+    const v = await mk("usage");
+    const stage = await run(v.id, "tsx_author", "succeeded");
+    const startRun = async (status: string, o: { model: string | null; out: number }) => {
+      await db.pool.query(
+        `insert into engine_runs (video_id, stage_run_id, kind, status, ended_at, model, turns, input_tokens, output_tokens, cache_read_tokens, cost_usd_equiv, duration_ms, tool_calls, started_at)
+         values ($1, $2, 'build', $3, now(), $4, 10, 100, $5, 4000, 1.5, 60000, '{"preview_frames": 3}'::jsonb, now() - interval '1 hour' * $6)`,
+        [v.id, stage, status, o.model, o.out, status === "succeeded" ? 1 : 2],
+      );
+    };
+    await startRun("killed", { model: null, out: 500 });
+    await startRun("succeeded", { model: "claude-sonnet-5", out: 2500 });
+    const p = (await loadVideoPage(db.pool, v.id))!;
+    expect(p.engineRuns.map((r) => [r.statusWord, r.model])).toEqual([["Stopped", "model not reported"], ["Succeeded", "claude-sonnet-5"]]); // oldest first
+    expect(p.engineRuns[1]).toMatchObject({ stage: "tsx_author", turns: "10 turns", tokens: "output 2.5k, input 100, cache read 4.0k", tools: "preview_frames 3", duration: "1 min 0 s" });
+    expect(p.engineRuns[1]!.apiEquivalent).toMatch(/^\$1\.50 \(₹/); // dollars first, rupees in brackets, as everywhere
+    expect(p.engineTotals).toMatchObject({ runs: 2, turns: 20, models: ["claude-sonnet-5"], tokens: "output 3.0k, input 200, cache read 8.0k" });
+    expect((await loadVideoPage(db.pool, (await mk("none")).id))!.engineRuns).toEqual([]);
+  });
 });

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildEngineConfig } from "@/server/core/engine-config";
-import { killStaleEngineRuns } from "@/server/db/engine-runs";
+import { engineRunsOfVideo, killStaleEngineRuns } from "@/server/db/engine-runs";
 import { createVideoRow } from "@/server/db/videos";
 import { runEngine, type EngineDeps } from "@/server/engine/run";
 import { withTestDb, type TestDb } from "../support/db";
@@ -54,6 +54,37 @@ describe("runEngine", () => {
     expect(seen.args[seen.args.indexOf("--allowedTools") + 1]).toBe("Edit(./**),Skill,mcp__engine__*");
     expect(r.usage).toEqual({ inputTokens: 1200, outputTokens: 300, costUsdEquiv: 0.25 });
     expect(await row(v)).toMatchObject({ status: "succeeded", input_tokens: "1200", output_tokens: "300", cost: "0.250000", turns: 3 });
+  });
+
+  it("records_the_model_cache_tokens_time_and_tool_calls", async () => {
+    const v = await video();
+    const r = await runEngine(deps(), req(v, { mode: "usage" }));
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    expect(r.usage).toMatchObject({ inputTokens: 1200, outputTokens: 300, cacheReadTokens: 50_000, cacheCreationTokens: 7_000 });
+    const row = (await db.pool.query("select model, cache_read_tokens, cache_creation_tokens, duration_ms, duration_api_ms, tool_calls from engine_runs where video_id = $1", [v])).rows[0];
+    expect(row).toMatchObject({ model: "claude-sonnet-5", cache_read_tokens: "50000", cache_creation_tokens: "7000", duration_ms: 90_000, duration_api_ms: 60_000 });
+    // our own tools by short name, everything else under "other"; counted from the assistant messages
+    expect(row.tool_calls).toEqual({ check_code: 1, preview_frames: 2, check_frames: 1, other: 1 });
+  });
+
+  it("a run that reports no model or cache figures still records its tokens", async () => {
+    const v = await video();
+    await runEngine(deps(), req(v, { mode: "ok" }));
+    const row = (await db.pool.query("select model, cache_read_tokens, tool_calls, input_tokens from engine_runs where video_id = $1", [v])).rows[0];
+    expect(row).toMatchObject({ model: null, cache_read_tokens: null, tool_calls: {}, input_tokens: "1200" });
+  });
+
+  it("lists_a_videos_runs_for_the_video_page", async () => {
+    const v = await video();
+    await db.pool.query("insert into stage_runs (id, video_id, name, status, input_hash) values ($1, $2, 'tsx_author', 'succeeded', 'h')", [STAGE, v]);
+    await runEngine(deps(), req(v, { mode: "usage" }));
+    const other = await video();
+    await runEngine(deps(), req(other, { mode: "ok" }));
+    const rows = await engineRunsOfVideo(db.pool, v);
+    expect(rows).toHaveLength(1); // only this video's runs
+    expect(rows[0]).toMatchObject({ stage: "tsx_author", status: "succeeded", model: "claude-sonnet-5", turns: 3, inputTokens: 1200, outputTokens: 300, cacheReadTokens: 50_000, cacheCreationTokens: 7_000, durationMs: 90_000, toolCalls: { check_code: 1, preview_frames: 2, check_frames: 1, other: 1 } });
+    expect(rows[0]!.costUsdEquiv).toBeCloseTo(0.25);
+    expect(rows[0]!.startedAt).toBeInstanceOf(Date);
   });
 
   it("env_has_no_secrets", async () => {

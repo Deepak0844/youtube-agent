@@ -210,6 +210,43 @@ function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
 const Empty = ({ children }: { children: React.ReactNode }) => <p data-testid="empty" className="m-0 rounded-card border border-dashed border-border p-pad text-body text-muted">{children}</p>;
 const H = ({ children }: { children: React.ReactNode }) => <h2 className="m-0 text-title font-semibold">{children}</h2>;
 
+/** Claude engine usage of this video: one card per run (model, tokens, time, tools, API-equivalent) and a total. Nothing here is billed. */
+function EngineUsageSection({ p }: { p: VideoPage }) {
+  if (p.engineRuns.length === 0 || !p.engineTotals) return null;
+  const t = p.engineTotals;
+  return (
+    <section aria-labelledby="engine-usage-h" data-testid="engine-usage" className="flex min-w-0 flex-col gap-3">
+      <h2 id="engine-usage-h" className="m-0 text-title font-semibold">Claude engine</h2>
+      <p className="m-0 max-w-[68ch] text-body text-muted">
+        Runs on your Claude subscription, so nothing here is billed. The dollar figure is what the same tokens would cost at API prices; the real limit is your Claude usage window.
+      </p>
+      <p data-testid="engine-total" className="m-0 text-body">
+        <span className="font-semibold">Total:</span> {t.runs} run{t.runs === 1 ? "" : "s"}, {t.turns} turns, {t.duration}, {t.tokens}; {t.apiEquivalent} at API prices.{" "}
+        {t.models.length ? `Model${t.models.length === 1 ? "" : "s"}: ${t.models.join(", ")}.` : "Model not reported."}
+      </p>
+      <ul className="m-0 flex list-none flex-col gap-3 p-0">
+        {p.engineRuns.map((r) => (
+          <li key={r.id} data-testid="engine-run" className="flex min-w-0 flex-col gap-1 rounded-card border border-border p-pad text-body">
+            <p className="m-0 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="font-medium">{STAGE_LABELS[r.stage as StageName] ?? r.stage}</span>
+              <Pill tone={r.statusWord === "Succeeded" ? "positive" : r.statusWord === "Failed" ? "negative" : "neutral"}>{r.statusWord}</Pill>
+              <span className="text-muted">{r.when}</span>
+            </p>
+            <dl className="m-0 grid min-w-0 grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-muted [&_dd]:m-0 [&_dd]:text-text [&_dd]:[overflow-wrap:anywhere]">
+              <dt>Model</dt><dd>{r.model}</dd>
+              <dt>Time</dt><dd>{r.duration}, {r.turns}</dd>
+              <dt>Tokens</dt><dd>{r.tokens}</dd>
+              <dt>API price</dt><dd>{r.apiEquivalent}</dd>
+              <dt>Tools used</dt><dd>{r.tools}</dd>
+            </dl>
+            {r.note ? <p className="m-0 text-muted">{r.note}</p> : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: PreviewData | null }) {
   const lang = p.head.language;
   switch (tab) {
@@ -270,6 +307,7 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
               {items.length === 0 ? <p className="m-0 text-body text-muted">No paid items: everything is free.</p> : <ul className="m-0 flex list-none flex-col gap-1 p-0 text-body">{items.map((it, i) => <li key={i} className="flex justify-between gap-4"><span>{String(it.kind)} from {String(it.provider)}</span><span className="tabular-nums text-muted">{usd(Number(it.quoteMicroUsd) || 0)}</span></li>)}</ul>}
             </div>
           )}
+          <EngineUsageSection p={p} />
           <H>Spend by step</H>
           {p.spend.rows.length === 0 ? <p className="m-0 text-body text-muted">Nothing has been spent on this video.</p> : (
             <ul className="m-0 flex list-none flex-col gap-1 p-0 text-body">{p.spend.rows.map((r) => <li key={r.stage} className="flex justify-between gap-4"><span>{STAGE_LABELS[r.stage as StageName] ?? r.stage}</span><span className="tabular-nums text-muted">{usd(r.spentMicroUsd)}</span></li>)}</ul>

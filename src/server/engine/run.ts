@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type pg from "pg";
 import type { EngineConfig } from "@/server/core/engine-config";
-import { closeStaleRunsOf, finishEngineRun, startEngineRun, type EngineUsage } from "@/server/db/engine-runs";
+import { closeStaleRunsOf, finishEngineRun, startEngineRun, type EngineRunDetails, type EngineUsage } from "@/server/db/engine-runs";
 import { minimalEnv } from "@/server/llm/claude-code";
 import type { ChildRegistry } from "@/server/render/child";
 import { argsHash, commandLabelOf, readProcInfo } from "@/server/render/proc-info";
@@ -58,7 +58,9 @@ export type EngineResult =
 const say = (message: string): EngineResult => ({ ok: false, limit: false, message });
 const MAX_STDOUT = 32 * 1024 * 1024;
 
-interface Exit { code: number | null; timedOut: boolean; aborted: boolean; result: Record<string, unknown> | null }
+interface Exit { code: number | null; timedOut: boolean; aborted: boolean; result: Record<string, unknown> | null; model: string | null; toolCalls: Record<string, number> }
+
+const ENGINE_TOOL = /^mcp__engine__([a-z_]{1,40})$/;
 
 function launch(d: EngineDeps, ws: Workspace, args: string[], prompt: string, timeoutMs: number, signal: AbortSignal, stageRunId: string): Promise<Exit> {
   return new Promise((resolve) => {
@@ -68,6 +70,8 @@ function launch(d: EngineDeps, ws: Workspace, args: string[], prompt: string, ti
     let timedOut = false;
     let aborted = false;
     let result: Record<string, unknown> | null = null;
+    let model: string | null = null;
+    const toolCalls: Record<string, number> = {};
     let size = 0;
     let buf = "";
     const killGroup = () => {
@@ -105,6 +109,16 @@ function launch(d: EngineDeps, ws: Workspace, args: string[], prompt: string, ti
         try {
           const m = JSON.parse(line) as Record<string, unknown>;
           if (m.type === "result") result = m;
+          else if (m.type === "system" && m.subtype === "init" && typeof m.model === "string") model = m.model.slice(0, 80);
+          else if (m.type === "assistant") {
+            // tool use, counted by our engine tools' short names; any other tool is "other" (never the model's own text)
+            const content = (m.message as { content?: unknown } | undefined)?.content;
+            for (const c of Array.isArray(content) ? content : []) {
+              if ((c as { type?: unknown })?.type !== "tool_use") continue;
+              const name = ENGINE_TOOL.exec(String((c as { name?: unknown }).name))?.[1] ?? "other";
+              toolCalls[name] = (toolCalls[name] ?? 0) + 1;
+            }
+          }
         } catch { /* not a message */ }
       }
     });
@@ -113,7 +127,7 @@ function launch(d: EngineDeps, ws: Workspace, args: string[], prompt: string, ti
       clearTimeout(timer);
       signal.removeEventListener("abort", onAbort);
       if (child.pid && d.registry && registered) void d.registry.unregister(child.pid, startedAtEpoch).catch(() => undefined);
-      resolve({ code, timedOut, aborted, result });
+      resolve({ code, timedOut, aborted, result, model, toolCalls });
     });
     child.stdin.on("error", () => undefined);
     child.stdin.end(prompt);
@@ -147,10 +161,16 @@ export async function runEngine(d: EngineDeps, req: EngineRequest): Promise<Engi
     await host?.close();
     host = null;
     const r = exit.result;
-    const usage: EngineUsage = { inputTokens: num((r?.usage as Record<string, unknown> | undefined)?.input_tokens), outputTokens: num((r?.usage as Record<string, unknown> | undefined)?.output_tokens), costUsdEquiv: num(r?.total_cost_usd) };
+    const u = r?.usage as Record<string, unknown> | undefined;
+    const usage: EngineUsage = {
+      inputTokens: num(u?.input_tokens), outputTokens: num(u?.output_tokens), costUsdEquiv: num(r?.total_cost_usd),
+      ...(u && Object.hasOwn(u, "cache_read_input_tokens") ? { cacheReadTokens: num(u.cache_read_input_tokens) } : {}),
+      ...(u && Object.hasOwn(u, "cache_creation_input_tokens") ? { cacheCreationTokens: num(u.cache_creation_input_tokens) } : {}),
+    };
+    const details: EngineRunDetails = { model: exit.model, durationMs: r && Object.hasOwn(r, "duration_ms") ? Math.round(num(r.duration_ms)) : null, durationApiMs: r && Object.hasOwn(r, "duration_api_ms") ? Math.round(num(r.duration_api_ms)) : null, toolCalls: exit.toolCalls };
     const turns = num(r?.num_turns);
     const end = async (status: "succeeded" | "failed" | "killed", message: string | null, ok?: EngineResult): Promise<EngineResult> => {
-      await finishEngineRun(d.db, runId, { status, usage, turns, ...(message ? { error: message } : {}) });
+      await finishEngineRun(d.db, runId, { status, usage, turns, details, ...(message ? { error: message } : {}) });
       return ok ?? say(message ?? "Claude Code stopped with an error.");
     };
     if (exit.aborted) return end("killed", "The run was cancelled.");
@@ -163,7 +183,7 @@ export async function runEngine(d: EngineDeps, req: EngineRequest): Promise<Engi
       if (lim.limit) {
         const now = (d.now ?? (() => new Date()))();
         const resumeAt = lim.resumeAt ?? new Date(now.getTime() + d.config.limitRetryS * 1000);
-        await finishEngineRun(d.db, runId, { status: "limit", usage, turns, resumeAt });
+        await finishEngineRun(d.db, runId, { status: "limit", usage, turns, resumeAt, details });
         return { ok: false, limit: true, resumeAt };
       }
     }

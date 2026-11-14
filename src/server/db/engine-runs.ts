@@ -1,6 +1,6 @@
 import type pg from "pg";
 import type { EngineRunKind } from "@/server/engine/args";
-import { estimateVideosLeft, WINDOW_MS } from "@/server/engine/usage";
+import { estimateVideosLeft, WINDOW_MS, type EngineRunRow } from "@/server/engine/usage";
 
 // Rows of the new video engine's Claude Code runs (ADR 0015, migration 0086): usage per run and the usage-limit pauses.
 
@@ -11,6 +11,18 @@ export interface EngineUsage {
   outputTokens: number;
   /** The API-equivalent cost Claude Code reports. Nothing is billed: the run uses the owner's subscription. */
   costUsdEquiv: number;
+  /** Tokens read from and written to Claude's prompt cache; absent when Claude Code reported none. */
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+}
+
+/** What else a run reports: the model Claude Code ran, how long it took, and how many times each tool was used. */
+export interface EngineRunDetails {
+  model?: string | null;
+  durationMs?: number | null;
+  durationApiMs?: number | null;
+  /** Our engine tools by short name (check_code, preview_frames, ...), every other tool counted under "other". */
+  toolCalls?: Record<string, number>;
 }
 
 /** Starts a run. Refused ("busy") while another run of the same video is still running (unique partial index). */
@@ -24,12 +36,14 @@ export async function startEngineRun(db: Q, r: { videoId: string; stageRunId: st
 }
 
 /** Ends a running run. A `limit` run must carry its resume time (checked by the table too). */
-export async function finishEngineRun(db: Q, id: string, r: { status: EngineRunStatus; usage?: EngineUsage; turns?: number; resumeAt?: Date; error?: string }): Promise<void> {
+export async function finishEngineRun(db: Q, id: string, r: { status: EngineRunStatus; usage?: EngineUsage; turns?: number; resumeAt?: Date; error?: string; details?: EngineRunDetails }): Promise<void> {
   if (r.status === "limit" && !r.resumeAt) throw new Error("a limit run needs a resume time");
   await db.query(
-    `update engine_runs set status = $2, ended_at = clock_timestamp(), input_tokens = $3, output_tokens = $4, cost_usd_equiv = $5, turns = $6, resume_at = $7, error = $8
+    `update engine_runs set status = $2, ended_at = clock_timestamp(), input_tokens = $3, output_tokens = $4, cost_usd_equiv = $5, turns = $6, resume_at = $7, error = $8,
+            cache_read_tokens = $9, cache_creation_tokens = $10, model = $11, duration_ms = $12, duration_api_ms = $13, tool_calls = $14::jsonb
       where id = $1 and status = 'running'`,
-    [id, r.status, r.usage?.inputTokens ?? null, r.usage?.outputTokens ?? null, r.usage?.costUsdEquiv ?? null, r.turns ?? null, r.status === "limit" ? r.resumeAt : null, r.error?.slice(0, 500) ?? null],
+    [id, r.status, r.usage?.inputTokens ?? null, r.usage?.outputTokens ?? null, r.usage?.costUsdEquiv ?? null, r.turns ?? null, r.status === "limit" ? r.resumeAt : null, r.error?.slice(0, 500) ?? null,
+     r.usage?.cacheReadTokens ?? null, r.usage?.cacheCreationTokens ?? null, r.details?.model?.slice(0, 80) ?? null, r.details?.durationMs ?? null, r.details?.durationApiMs ?? null, JSON.stringify(r.details?.toolCalls ?? {})],
   );
 }
 
@@ -92,6 +106,24 @@ export async function engineUsageSummary(db: Q, now: Date = new Date()): Promise
   );
   const tokens = win.inputTokens + win.outputTokens;
   return { runs: win.runs, tokens, costUsdEquiv: win.costUsdEquiv, videosLeft: estimateVideosLeft({ capacityTokens: capacity, usedTokens: tokens, perVideoTokens: per.rows.map((r) => Number(r.t)) }) };
+}
+
+/** Every engine run of one video, oldest first, with the step it belonged to, for the video page's usage section. */
+export async function engineRunsOfVideo(db: Q, videoId: string): Promise<EngineRunRow[]> {
+  const r = await db.query<{
+    id: string; stage: string; status: string; started_at: Date; ended_at: Date | null; model: string | null; turns: number | null; input_tokens: string | null; output_tokens: string | null;
+    cache_read_tokens: string | null; cache_creation_tokens: string | null; cost: string | null; duration_ms: number | null; duration_api_ms: number | null; tool_calls: Record<string, number>; error: string | null;
+  }>(
+    `select e.id, coalesce(s.name, e.kind) as stage, e.status, e.started_at, e.ended_at, e.model, e.turns, e.input_tokens::text, e.output_tokens::text, e.cache_read_tokens::text, e.cache_creation_tokens::text,
+            e.cost_usd_equiv::text as cost, e.duration_ms, e.duration_api_ms, e.tool_calls, e.error
+       from engine_runs e left join stage_runs s on s.id = e.stage_run_id where e.video_id = $1 order by e.started_at, e.id`,
+    [videoId],
+  );
+  const n = (v: string | null) => (v === null ? null : Number(v));
+  return r.rows.map((x) => ({
+    id: x.id, stage: x.stage, status: x.status, startedAt: x.started_at, endedAt: x.ended_at, model: x.model, turns: x.turns, inputTokens: n(x.input_tokens), outputTokens: n(x.output_tokens),
+    cacheReadTokens: n(x.cache_read_tokens), cacheCreationTokens: n(x.cache_creation_tokens), costUsdEquiv: n(x.cost), durationMs: x.duration_ms, durationApiMs: x.duration_api_ms, toolCalls: x.tool_calls ?? {}, error: x.error,
+  }));
 }
 
 /** Usage per engine step of one video (summed over its runs), for the video page. */

@@ -1,6 +1,7 @@
 import type pg from "pg";
-import { engineUsageByStage } from "@/server/db/engine-runs";
-import { usageLine } from "@/server/engine/usage";
+import { engineRunsOfVideo, engineUsageByStage } from "@/server/db/engine-runs";
+import { engineRunView, engineTotals, usageLine } from "@/server/engine/usage";
+import { loadInrRate } from "@/server/db/system-settings";
 import { redactLine } from "@/server/core/log-redact";
 import { STAGE_NAMES, stagePlan, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
 import { reframeFileName, type ReframeFormat } from "@/server/core/reframe";
@@ -41,6 +42,9 @@ export interface VideoPage {
   tsxLibrary: TsxLibraryState | null;
   /** Claude engine usage per step (ADR 0015), only steps that ran on the engine. */
   engineUsage: Array<{ stage: string; line: string }>;
+  /** One row per engine run of this video (the Cost tab's Claude engine section), and the sum; empty when the engine never ran. */
+  engineRuns: Array<ReturnType<typeof engineRunView>>;
+  engineTotals: ReturnType<typeof engineTotals> | null;
   /** The frame check of a code scene as one plain sentence (a warning when it found problems or did not run), or null. */
   frameReviewNote: { text: string; warn: boolean } | null;
   stages: StageView[];
@@ -109,6 +113,14 @@ const EVENT_TEXT: Record<string, string> = {
   "stage.started": "started", "stage.succeeded": "finished", "stage.failed": "failed", "stage.needs_decision": "needs your decision", "stage.cancelled": "cancelled",
   "gate.waiting": "waiting for you", "gate.approved": "approved", "gate.sent_back": "sent back", "video.created": "video created", "video.done": "video finished", "video.failed": "video failed",
 };
+
+/** The Claude engine section of the Cost tab: money shown as everywhere else (dollars, rupees in brackets), times in IST. */
+async function engineSection(db: pg.Pool, videoId: string): Promise<{ engineRuns: VideoPage["engineRuns"]; engineTotals: VideoPage["engineTotals"] }> {
+  const runs = await engineRunsOfVideo(db, videoId).catch(() => []);
+  if (runs.length === 0) return { engineRuns: [], engineTotals: null };
+  const rate = await loadInrRate(db).catch(() => null);
+  return { engineRuns: runs.map((r) => engineRunView(r, rate)), engineTotals: engineTotals(runs, rate) };
+}
 
 export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<VideoPage | null> {
   const vr = await db.query("select id, topic, language, kind, kind_origin, format, status, created_at, style, caption_style from videos where id = $1", [videoId]);
@@ -211,7 +223,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   return {
-    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, engineUsage: (await engineUsageByStage(db, videoId).catch(() => [])).map((u) => ({ stage: u.stage, line: usageLine(u) })), frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
+    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, engineUsage: (await engineUsageByStage(db, videoId).catch(() => [])).map((u) => ({ stage: u.stage, line: usageLine(u) })), ...(await engineSection(db, videoId)), frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
     beats: beats?.body ?? null,
     evidence: evidence ? { body: evidence.body, fileSrc: sign?.(evidence.filePath) ?? null } : null,
     titles: titles?.body ?? null,
