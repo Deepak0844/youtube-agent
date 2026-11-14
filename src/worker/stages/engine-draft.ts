@@ -62,6 +62,9 @@ function suggestion(raw: unknown): { kind: (typeof KINDS)[number]; reason: strin
   return reason ? { kind: s.kind as (typeof KINDS)[number], reason } : null;
 }
 
+/** The Draft step is done by the engine only when it is switched on (Settings) and the video is a Short; everything else keeps the paid draft. */
+export const usesEngineDraft = (config: { engine: { enabled: boolean } }, format: string): boolean => config.engine.enabled && format === "short";
+
 export function engineDraftHandler(d: EngineDraftDeps): StageHandler {
   return async (ctx) => {
     const videoId = ctx.stage.videoId;
