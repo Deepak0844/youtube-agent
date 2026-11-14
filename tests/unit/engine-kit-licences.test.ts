@@ -12,7 +12,7 @@ const walk = (dir: string): string[] =>
     return statSync(p).isDirectory() ? walk(p) : [p];
   });
 const LICENCES = readFileSync("engine-kit/LICENSES.md", "utf8");
-const imported = () => [...walk("remotion/kit/oldlib"), ...walk("remotion/kit/om"), ...walk("tests/fixtures/openmontage"), ...walk("engine-kit")].filter((f) => f !== path.join("engine-kit", "LICENSES.md") && !f.includes(`${path.sep}types${path.sep}`));
+const imported = () => [...walk("remotion/kit/oldlib"), ...walk("remotion/kit/om"), ...walk("remotion/kit/om-types"), ...walk("tests/fixtures/openmontage"), ...walk("engine-kit")].filter((f) => f !== path.join("engine-kit", "LICENSES.md") && !f.includes(`${path.sep}types${path.sep}`));
 
 describe("engine kit licences", () => {
   it("every_imported_file_has_a_licence_line", () => {

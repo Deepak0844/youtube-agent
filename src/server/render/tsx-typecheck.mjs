@@ -20,6 +20,9 @@ const YT_KIT_DTS = fileURLToPath(new URL("../../../remotion/kit/tsxlib/yt-kit.d.
 // plain library name resolves; checkTsx has already refused any name outside the generated list before this runs.
 const OLDLIB_TYPES = fileURLToPath(new URL("../../../remotion/kit/oldlib/types/", import.meta.url));
 const YT_OLD = /^yt-old\/([a-z][a-z0-9]*)$/;
+// "yt-om/<Component>" (OpenMontage's composer components) is typed by the generated declarations in remotion/kit/om-types.
+const OM_TYPES = fileURLToPath(new URL("../../../remotion/kit/om-types/", import.meta.url));
+const YT_OM = /^yt-om\/([A-Z][A-Za-z]*)$/;
 const MAX_PROBLEMS = 10;
 const OPTIONS = {
   strict: true,
@@ -53,6 +56,11 @@ export function typeCheckTsx(source) {
       const old = containing === SCENE ? YT_OLD.exec(l.text) : null;
       if (old) {
         const file = path.join(OLDLIB_TYPES, `${old[1]}.d.ts`);
+        return fileExists(file) ? { resolvedModule: { resolvedFileName: file, extension: ts.Extension.Dts, isExternalLibraryImport: false } } : { resolvedModule: undefined };
+      }
+      const om = containing === SCENE ? YT_OM.exec(l.text) : null;
+      if (om) {
+        const file = path.join(OM_TYPES, `${om[1]}.d.ts`);
         return fileExists(file) ? { resolvedModule: { resolvedFileName: file, extension: ts.Extension.Dts, isExternalLibraryImport: false } } : { resolvedModule: undefined };
       }
       return containing === SCENE && !ALLOWED.has(l.text) ? { resolvedModule: undefined } : ts.resolveModuleName(l.text, containing, options, host, undefined, redirected);

@@ -53,6 +53,33 @@ describe("old shorts through the engine renderer", () => {
     for (const f of r.files) expect(size(f)).toEqual([1080, 1920]);
   }, 600_000);
 
+  it("a_code_scene_using_yt_om_HeroTitle_renders", async () => {
+    // the bespoke path: a code scene drawing with OpenMontage's own HeroTitle and BarChart (yt-om), in the locked renderer
+    const c = ctx("yt-om");
+    await import("node:fs").then((fs) => fs.mkdirSync(c.attemptDir, { recursive: true }));
+    const src = `import { AbsoluteFill, Sequence } from "remotion";
+import { HeroTitle } from "yt-om/HeroTitle";
+import { BarChart } from "yt-om/BarChart";
+export default function Scene() {
+  return (
+    <AbsoluteFill style={{ backgroundColor: "#0B1020" }}>
+      <Sequence durationInFrames={60}><HeroTitle title="Bespoke" subtitle="with OpenMontage parts" accentColor="#FF0000" /></Sequence>
+      <Sequence from={60} durationInFrames={60}><BarChart data={[{ label: "A", value: 3 }, { label: "B", value: 5 }]} colors={["#FF0000"]} /></Sequence>
+    </AbsoluteFill>
+  );
+}
+export const meta = { durationInFrames: 120, fps: 30, width: 1080, height: 1920 };
+`;
+    const r = await renderTsxStills(deps, c, { source: src, frames: [45, 90] }); // not the last 15 frames: OpenMontage's charts fade out there
+    if (!r.ok) throw new Error(`${r.message} ${r.problems.join(" | ")}`);
+    for (const f of r.files) {
+      const png = PNG.sync.read(readFileSync(f));
+      let red = 0;
+      for (let i = 0; i < png.data.length; i += 4) if (png.data[i]! > 200 && png.data[i + 1]! < 60 && png.data[i + 2]! < 60) red++;
+      expect(red, f).toBeGreaterThan(500); // the accent letters, then the bars, are drawn
+    }
+  }, 600_000);
+
   it("short-13 renders as a full video of its length", async () => {
     const c = ctx("short-13-full");
     await import("node:fs").then((fs) => fs.mkdirSync(c.attemptDir, { recursive: true }));

@@ -72,6 +72,11 @@ const withScene = (r) => {
   // top-level library files become aliases; the host's checkTsx has already allowed only the generated names.
   const oldDir = path.join(import.meta.dirname, "oldlib");
   const old = readdirSync(oldDir).filter((f) => /^[a-z][a-z0-9]*\.tsx?$/.test(f)).map((f) => ({ name: "yt-old/" + f.replace(/\.tsx?$/, ""), file: path.join(oldDir, f) }));
+  // "yt-om/<Component>" (exactly) resolves to OpenMontage's composer component of that name (om/components and
+  // om/components/charts, read-only kit mount); only component files become aliases, never index files or other folders.
+  const omDir = path.join(import.meta.dirname, "om", "components");
+  const omComponents = ["", "charts"].flatMap((sub) => readdirSync(path.join(omDir, sub)).filter((f) => /^[A-Z][A-Za-z]*\.tsx$/.test(f)).map((f) => ({ name: "yt-om/" + f.replace(/\.tsx$/, ""), file: path.join(omDir, sub, f) })));
+  old.push(...omComponents);
   const a = r.alias;
   return {
     ...r,
