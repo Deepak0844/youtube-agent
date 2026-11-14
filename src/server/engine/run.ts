@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import type pg from "pg";
 import type { EngineConfig } from "@/server/core/engine-config";
 import { closeStaleRunsOf, finishEngineRun, startEngineRun, type EngineRunDetails, type EngineUsage } from "@/server/db/engine-runs";
-import { minimalEnv } from "@/server/llm/claude-code";
+import { isLoginProblem, LOGIN_MESSAGE, minimalEnv } from "@/server/llm/claude-code";
 import type { ChildRegistry } from "@/server/render/child";
 import { argsHash, commandLabelOf, readProcInfo } from "@/server/render/proc-info";
 import { engineArgs, type EngineRunKind } from "./args";
@@ -187,6 +187,7 @@ export async function runEngine(d: EngineDeps, req: EngineRequest): Promise<Engi
         return { ok: false, limit: true, resumeAt };
       }
     }
+    if (r?.is_error === true && isLoginProblem(text)) return end("failed", `${LOGIN_MESSAGE.replace(/\.$/, "")}, then run the step again.`);
     if (r?.subtype === "error_max_turns") return end("failed", "Claude used all its turns without finishing.");
     if (!r || r.is_error === true || r.subtype !== "success" || exit.code !== 0) return end("failed", "Claude Code stopped with an error.");
     return end("succeeded", null, { ok: true, text, usage, turns, workDir: ws.workDir });
