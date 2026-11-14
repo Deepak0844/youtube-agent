@@ -3,7 +3,8 @@ import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { localServiceBlockers, MAX_LOCAL_SERVICES, ownServiceConfigProblem } from "@/server/core/local-services";
 import { getPool } from "@/server/db/pool";
-import { loadEngineModel, loadEngineSwitch, loadInrRate, loadSystemSettings } from "@/server/db/system-settings";
+import { FX_SOURCES, fxNote } from "@/server/core/fx-rate";
+import { loadEngineModel, loadEngineSwitch, loadInrAuto, loadInrRate, loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
 import { engineUsageSummary } from "@/server/db/engine-runs";
 import { Pill } from "@/ui/primitives/pill";
@@ -24,6 +25,12 @@ export default function SystemSettings() {
   );
 }
 
+/** The rupee card's switch and its one-line note ("From Frankfurter ..., rate of 2026-11-13, fetched 2026-11-14 10:30 IST"). */
+async function rateCard(db: ReturnType<typeof getPool>) {
+  const { auto, meta } = await loadInrAuto(db);
+  return { auto, note: meta ? fxNote(meta) : null, credits: FX_SOURCES.map((s) => s.credit).join("; ") };
+}
+
 async function Owned() {
   await requireOwner();
   const db = getPool();
@@ -37,7 +44,7 @@ async function Owned() {
       <h1 className="text-page-title font-semibold tracking-tight xl:col-span-2">System</h1>
       <div className="min-w-0 xl:col-span-2"><Status s={status} engine={engine} /></div>
       <BackupSection />
-      <RateForm rate={await loadInrRate(db)} />
+      <RateForm rate={await loadInrRate(db)} {...await rateCard(db)} />
       <section aria-labelledby="limits-h" className="rounded-card border border-border bg-surface p-pad xl:col-span-2">
         <h2 id="limits-h" className="text-title font-semibold">Limits</h2>
         <p className="mt-1 mb-5 text-body text-muted">How much the studio does at once, and how long a video may run.</p>

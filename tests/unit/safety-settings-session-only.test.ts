@@ -99,6 +99,7 @@ describe("no code path in src writes a safety setting as anything but a session"
       "src/server/db/pipeline.ts": ["getSetting"],
       "src/server/db/notify.ts": ["getSetting"],
       "src/server/db/backup.ts": ["getSetting", "setSessionSettings"],
+      "src/server/db/fx-rate.ts": ["getSetting", "setSessionSettings"],
       "src/server/db/notify-settings.ts": ["getSetting", "setSessionSettings"],
       "src/server/db/publish.ts": ["getSetting"],
       "src/server/db/upload-actions.ts": ["getSetting"],

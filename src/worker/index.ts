@@ -22,6 +22,7 @@ import { throttledScheduler } from "@/server/db/scheduler";
 import { checkTargetPause } from "@/server/db/targets";
 import { defaultGoogleHttp } from "@/server/db/youtube-channels";
 import { throttledBackup } from "@/server/db/backup";
+import { throttledFxRate } from "@/server/db/fx-rate";
 import { throttledRetention } from "@/server/db/retention";
 import { runNextCutout } from "@/server/db/cutout-runner";
 import { runChild } from "@/server/render/child";
@@ -69,6 +70,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         let purgeTick: (() => Promise<void>) | undefined;
         // Backups (Phase 9): a database dump and a storage archive every 6 hours (an hour after a failure), one at a time. Asks the database at most every few minutes.
         let backupTick: (() => Promise<void>) | undefined;
+        // The rupee rate: once a day from 09:00 IST, from a free public rate service (no AI, no browser); a failure keeps the last rate and retries in an hour.
+        let fxTick: (() => Promise<void>) | undefined;
         // Cut-outs (Phase 8): picture cut-outs the owner asked for, one at a time, in the background (the model runs in its own process).
         let cutoutBusy = false;
         const cutoutTick = () => {
@@ -111,6 +114,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           void purgeTick();
           backupTick ??= throttledBackup(p);
           void backupTick();
+          fxTick ??= throttledFxRate(p);
+          void fxTick();
           cutoutTick();
           return r;
         };

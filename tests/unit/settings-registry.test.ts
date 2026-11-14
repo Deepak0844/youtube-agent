@@ -71,6 +71,8 @@ describe("settings registry", () => {
       "claude_code.daily_cap": 200,
       "ai.previous_routes": null,
       "display.currency": "USD",
+      "display.inr_auto": true,
+      "display.inr_meta": null,
       "display.inr_rate": 95.05,
     });
   });

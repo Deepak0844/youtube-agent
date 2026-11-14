@@ -36,6 +36,8 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
   "src/server/db/notify.ts": ["getSetting"],
   // Back up now (session-only action): writes backup.last_run (not a safety key) through setSessionSettings, reads it for the page.
   "src/server/db/backup.ts": ["getSetting", "setSessionSettings"],
+  // The daily rupee-rate refresh (worker job and the owner's Update now): writes display.inr_rate and display.inr_meta (not safety keys) through setSessionSettings in one transaction with an audit row, as the backup result is written.
+  "src/server/db/fx-rate.ts": ["getSetting", "setSessionSettings"],
   // Notification settings page writer: setSessionSettings in one transaction with an audit row (webhook address audited as host only); called only from the notifications page action after requireOwner.
   "src/server/db/notify-settings.ts": ["getSetting", "setSessionSettings"],
   // Reads policy.allow_public and policy.require_evidence for the publish checks (approval time and job time); never writes.

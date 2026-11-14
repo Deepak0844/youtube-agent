@@ -136,6 +136,21 @@ export async function loadInrRate(db: pg.Pool): Promise<number> {
   return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : DEFAULT_INR_RATE;
 }
 
+/** The automatic-update switch (on unless the owner turned it off) and where and when the current rate was fetched (null = typed by hand or never fetched). */
+export async function loadInrAuto(db: pg.Pool): Promise<{ auto: boolean; meta: { source: string; rateDate: string; fetchedAt: string } | null }> {
+  const [a, m] = await Promise.all([getSetting(db, "display.inr_auto"), getSetting(db, "display.inr_meta")]);
+  return { auto: a !== false, meta: (m as { source: string; rateDate: string; fetchedAt: string } | null) ?? null };
+}
+
+/** Turns the daily automatic rupee-rate update on or off. Session only, audited. */
+export async function saveInrAuto(db: pg.Pool, on: boolean): Promise<SaveResult> {
+  try {
+    return { ok: true, changed: await writeAudited(db, [{ key: "display.inr_auto", value: on }]) };
+  } catch {
+    return { ok: false, error: GENERIC };
+  }
+}
+
 /** Saves the rupees-per-dollar rate used for display only. Text must be a plain positive decimal. */
 export async function saveInrRate(db: pg.Pool, raw: unknown): Promise<SaveResult> {
   const bad = { ok: false, error: "Enter a rate above 0, such as 95.05." } as const;
@@ -143,7 +158,8 @@ export async function saveInrRate(db: pg.Pool, raw: unknown): Promise<SaveResult
   const rate = Number(raw.trim());
   if (!(rate > 0) || rate > 10_000) return bad;
   try {
-    return { ok: true, changed: await writeAudited(db, [{ key: "display.inr_rate", value: rate }]) };
+    // A rate typed by hand has no source or fetch time: the note under the field goes back to "typed by you".
+    return { ok: true, changed: await writeAudited(db, [{ key: "display.inr_rate", value: rate }, { key: "display.inr_meta", value: null }]) };
   } catch {
     return { ok: false, error: GENERIC };
   }
