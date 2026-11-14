@@ -21,6 +21,13 @@ const ZONE_BOTTOM = 1380 / 1920;
 const EDGE_LEVEL = 24;
 /** Frame 0 needs at least this share of edge pixels in the objects zone (measured: an empty gradient 0.0%, one big disc 0.5%, real scenes 0.8% to 8%). */
 const EDGE_SHARE_MIN = 0.003;
+/** The content area for the empty-band check, as fractions of the frame height (200 to 1650 of 1920: above the captions). */
+const BAND_TOP = 200 / 1920;
+const BAND_BOTTOM = 1650 / 1920;
+/** A row is empty when fewer than this share of its pixels sit on an edge. */
+const ROW_EDGE_MIN = 0.004;
+/** The largest empty band of a frame's content area must stay under this share (measured: good scenes 0.15 to 0.36, an empty lower half 0.45 and more). */
+export const EMPTY_BAND_MAX = 0.4;
 /** The retry feedback for an empty first frame (rule + alternative). */
 export const EMPTY_FRAME0 = "frame 0: objects zone looks empty; draw the hero objects at full strength from frame 0";
 
@@ -122,10 +129,42 @@ export function zoneEdgeShare(f: RgbFrame): number {
 }
 
 /**
+ * The share (0..1) of the content area taken by its largest run of rows with no sharp edge: how much of the picture's height
+ * is an empty band. Soft glows and gradients do not count as content. 0 for an unusable frame. Never throws.
+ */
+export function longestEmptyBand(f: RgbFrame): number {
+  try {
+    if (!validFrame(f)) return 0;
+    const y0 = Math.floor(f.height * BAND_TOP);
+    const y1 = Math.min(f.height - 1, Math.floor(f.height * BAND_BOTTOM));
+    if (y1 <= y0) return 0;
+    const step = Math.max(1, Math.round(f.width / 360));
+    let best = 0;
+    let run = 0;
+    for (let y = y0; y < y1; y++) {
+      let edges = 0;
+      for (let x = 0; x < f.width - step; x++) {
+        const i = (y * f.width + x) * 3;
+        const j = i + step * 3;
+        const k = i + step * f.width * 3;
+        let hit = false;
+        for (let c = 0; c < 3 && !hit; c++) hit = Math.abs(f.rgb[i + c]! - f.rgb[j + c]!) > EDGE_LEVEL || (k + c < f.rgb.length && Math.abs(f.rgb[i + c]! - f.rgb[k + c]!) > EDGE_LEVEL);
+        if (hit) edges++;
+      }
+      if (edges / f.width < ROW_EDGE_MIN) best = Math.max(best, ++run);
+      else run = 0;
+    }
+    return best / (y1 - y0);
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Checks the sampled stills: each must be a readable frame of the expected size, not black and not one flat colour, and
  * (with two or more stills) at least one pair must differ, i.e. something moves. The last frame may equal frame 0 (a loop).
  */
-export function checkPreflight(frames: unknown, size: { width: number; height: number }): { ok: boolean; problems: string[] } {
+export function checkPreflight(frames: unknown, size: { width: number; height: number }, opts: { maxEmptyBand?: number } = {}): { ok: boolean; problems: string[] } {
   const problems: string[] = [];
   try {
     if (!Array.isArray(frames) || frames.length === 0) return { ok: false, problems: ["No preview frames were rendered."] };
@@ -136,6 +175,10 @@ export function checkPreflight(frames: unknown, size: { width: number; height: n
       if (isBlack(f)) problems.push(`Frame ${f.frame} is black.`);
       else if (isFlat(f)) problems.push(`Frame ${f.frame} is blank (one flat colour).`);
       else if (f.frame === 0 && zoneEdgeShare(f) < EDGE_SHARE_MIN) problems.push(EMPTY_FRAME0);
+      else if (opts.maxEmptyBand !== undefined) {
+        const band = longestEmptyBand(f);
+        if (band > opts.maxEmptyBand) problems.push(`Frame ${f.frame}: an empty band covers ${Math.round(band * 100)}% of the picture's height; spread the objects over the whole height (the largest empty band must stay under ${Math.round(opts.maxEmptyBand * 100)}%).`);
+      }
       good.push(f);
     }
     if (problems.length === 0 && good.length >= 2) {

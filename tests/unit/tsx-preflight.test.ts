@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedShare, checkPreflight, EMPTY_FRAME0, isBlack, isFlat, preflightFrames, zoneEdgeShare, type RgbFrame } from "@/server/core/tsx-preflight";
+import { changedShare, checkPreflight, EMPTY_BAND_MAX, EMPTY_FRAME0, isBlack, longestEmptyBand, isFlat, preflightFrames, zoneEdgeShare, type RgbFrame } from "@/server/core/tsx-preflight";
 
 const W = 100;
 const H = 200;
@@ -121,5 +121,29 @@ describe("checkPreflight", () => {
     const t = performance.now();
     expect(checkPreflight(fr, { width: 1080, height: 1920 }).ok).toBe(true);
     expect(performance.now() - t).toBeLessThan(500);
+  });
+});
+
+// Engine frame check: spread the objects over the whole height. The largest empty horizontal band of the content area
+// (200 to 1650 of 1920) must stay under EMPTY_BAND_MAX. Measured on real frames: good scenes 0.15 to 0.36, empty lower half 0.45+.
+describe("longestEmptyBand", () => {
+  const bar = (n: number, rows: Array<[number, number]>) => frame(n, (x, y) => (rows.some(([a, b]) => y >= a && y < b && x >= 10 && x < 90) ? [255, 255, 255] : [20, 30, 60]), 200, 384);
+  it("is_small_when_objects_cover_the_height_and_large_when_the_lower_half_is_empty", () => {
+    expect(longestEmptyBand(bar(1, [[60, 80], [140, 160], [220, 240], [300, 320]]))).toBeLessThan(0.3);
+    expect(longestEmptyBand(bar(2, [[60, 80], [100, 120]]))).toBeGreaterThan(0.5);
+  });
+  it("ignores_the_top_and_bottom_margins_and_never_throws_on_junk", () => {
+    expect(longestEmptyBand(bar(3, [[40, 60], [330, 350]]))).toBeGreaterThan(0.5); // content only at the edges of the area: the middle is empty
+    expect(longestEmptyBand({ frame: 0, width: 0, height: 0, rgb: new Uint8Array(0) })).toBe(0);
+  });
+  it("checkPreflight_flags_an_empty_band_only_when_asked", () => {
+    const f1 = frame(0, (x, y) => (y >= 40 && y < 60 && x < 90 ? [255, 255, 255] : [20, 30, 60]), 200, 384);
+    const f2 = frame(1, (x, y) => (y >= 40 && y < 60 && x < 70 ? [255, 255, 255] : [20, 30, 60]), 200, 384);
+    const size = { width: 200, height: 384 };
+    expect(checkPreflight([f1, f2], size).problems.join()).not.toMatch(/empty band/i);
+    const r = checkPreflight([f1, f2], size, { maxEmptyBand: EMPTY_BAND_MAX });
+    expect(r.ok).toBe(false);
+    expect(r.problems.join()).toMatch(/Frame 0: .*empty band/i);
+    expect(r.problems.join()).toMatch(/under 40%/);
   });
 });
