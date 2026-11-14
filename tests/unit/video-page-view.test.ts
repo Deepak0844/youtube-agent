@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateLabel, forceRerunOffered, voiceChanged, fmtDuration, headline, median, parseFindings, parseTab, rerunCostNote, rerunOffered, reframedFormats, stageViews, TABS, type RunFact } from "@/server/core/video-page-view";
+import { scriptSuggestion, estimateLabel, forceRerunOffered, voiceChanged, fmtDuration, headline, median, parseFindings, parseTab, rerunCostNote, rerunOffered, reframedFormats, stageViews, TABS, type RunFact } from "@/server/core/video-page-view";
 
 const run = (o: Partial<RunFact>): RunFact => ({ status: "succeeded", createdAt: 0, updatedAt: 0, retryNumber: 0, error: null, percent: null, ...o });
 const plan = ["draft", "build", "tts", "render"] as const;
@@ -133,5 +133,15 @@ describe("stepBar (UI redesign step bar)", async () => {
   });
   it("a long video with a failed render and a running step keeps both visible", () => {
     expect(stepBar([s("Outline", "done"), s("Render", "failed"), s("Sound", "running")]).map((x) => x.state)).toEqual(["done", "failed", "running"]);
+  });
+});
+
+describe("scriptSuggestion", () => {
+  it("shows_a_known_kind_with_a_short_reason", () => {
+    expect(scriptSuggestion({ suggestedKind: "tsx", suggestedReason: "  Objects explain it.\n" })).toEqual({ kind: "tsx", name: "Custom animation", reason: "Objects explain it." });
+    expect(scriptSuggestion({ suggestedKind: "ai", suggestedReason: "x".repeat(400) })!.reason).toHaveLength(160);
+  });
+  it("drops_anything_unusable", () => {
+    for (const bad of [null, undefined, "x", {}, { suggestedKind: "evil", suggestedReason: "r" }, { suggestedKind: "tsx" }, { suggestedKind: "tsx", suggestedReason: "  " }, { suggestedKind: "__proto__", suggestedReason: "r" }]) expect(scriptSuggestion(bad)).toBeNull();
   });
 });

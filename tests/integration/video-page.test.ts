@@ -36,6 +36,20 @@ const run = async (videoId: string, name: string, status: string, seconds = 10) 
   return id;
 };
 
+describe("script type suggestion", () => {
+  it("shows_the_engines_suggestion_only_from_a_finished_draft_and_never_changes_the_type", async () => {
+    const v = await mk("suggest");
+    expect((await loadVideoPage(db.pool, v.id))!.scriptSuggestion).toBeNull();
+    const id = await run(v.id, "draft", "succeeded");
+    await db.pool.query("update stage_runs set result = $2::jsonb where id = $1", [id, JSON.stringify({ suggestedKind: "tsx", suggestedReason: "Objects and diagrams explain it best." })]);
+    const p = (await loadVideoPage(db.pool, v.id))!;
+    expect(p.scriptSuggestion).toEqual({ kind: "tsx", name: "Custom animation", reason: "Objects and diagrams explain it best." });
+    expect(p.head.kind).toBe("collage"); // a suggestion only
+    await db.pool.query("update stage_runs set status = 'failed' where id = $1", [id]);
+    expect((await loadVideoPage(db.pool, v.id))!.scriptSuggestion).toBeNull();
+  });
+});
+
 describe("loadVideoPage", () => {
   it("returns null for an unknown video and honest empties for a new one", async () => {
     expect(await loadVideoPage(db.pool, "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4eff")).toBeNull();

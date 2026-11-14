@@ -5,7 +5,7 @@ import { loadInrRate } from "@/server/db/system-settings";
 import { redactLine } from "@/server/core/log-redact";
 import { STAGE_NAMES, stagePlan, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
 import { reframeFileName, type ReframeFormat } from "@/server/core/reframe";
-import { median, parseFindings, reframedFormats, stageViews, type QaFinding, type RunFact, type StageGate, type StageView, type VoiceId } from "@/server/core/video-page-view";
+import { median, parseFindings, reframedFormats, scriptSuggestion, stageViews, type QaFinding, type RunFact, type StageGate, type StageView, type VoiceId } from "@/server/core/video-page-view";
 import type { GateId } from "@/server/core/gates";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { approvalState } from "@/server/db/approvals";
@@ -58,6 +58,8 @@ export interface VideoPage {
   estimates: Partial<Record<StageName, number | null>>;
   openGate: GateId | null;
   script: { body: unknown; approved: boolean; version: number } | null;
+  /** The engine's suggested video type for this script (suggestion only), from the newest finished draft step; null when none. */
+  scriptSuggestion: ReturnType<typeof scriptSuggestion>;
   beats: unknown;
   evidence: { body: unknown; fileSrc: string | null } | null;
   titles: unknown;
@@ -148,6 +150,8 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
     facts[name as StageName] = { status: r.status, createdAt: r.created_at.getTime(), updatedAt: r.updated_at.getTime(), retryNumber: retries, error: err ? clip(redactLine(err)) : null, percent: num(res.percent) };
     runStatus[name as StageName] = r.status;
   }
+  const draftRun = newest.get("draft");
+  const suggestion = draftRun?.status === "succeeded" ? scriptSuggestion(draftRun.result) : null;
 
   const hasUpload = ((await db.query("select 1 from uploads where video_id = $1 and status <> 'upload_failed' limit 1", [videoId])).rowCount ?? 0) > 0;
   const narr = asObj((await latestContent(db, videoId, "narration"))?.body);
@@ -223,7 +227,7 @@ export async function loadVideoPage(db: pg.Pool, videoId: string): Promise<Video
   }
 
   return {
-    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, engineUsage: (await engineUsageByStage(db, videoId).catch(() => [])).map((u) => ({ stage: u.stage, line: usageLine(u) })), ...(await engineSection(db, videoId)), frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script,
+    head, kindNote: v.kind_origin === "tsx" ? KIND_NOTE_TSX_FALLBACK : null, tsxLibrary: head.kind === "tsx" ? await tsxLibraryState(db, videoId) : null, engineUsage: (await engineUsageByStage(db, videoId).catch(() => [])).map((u) => ({ stage: u.stage, line: usageLine(u) })), ...(await engineSection(db, videoId)), frameReviewNote: head.kind === "tsx" ? frameReviewNote((await latestContent(db, videoId, "frame_review"))?.body) : null, stages, runStatus, hasUpload, voice, estimates, openGate, script, scriptSuggestion: suggestion,
     beats: beats?.body ?? null,
     evidence: evidence ? { body: evidence.body, fileSrc: sign?.(evidence.filePath) ?? null } : null,
     titles: titles?.body ?? null,
