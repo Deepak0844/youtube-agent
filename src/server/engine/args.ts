@@ -2,7 +2,8 @@
 // work/: its starting folder is trusted for reading (Read, Glob AND Grep), everything above it is denied in dontAsk mode (probed:
 // a Grep of the starting folder read a file a Read(...) rule did not allow, so nothing secret may sit in the starting folder).
 // Writes follow Edit(...) rules: allowed in ./** (build) or ./draft/** (research), denied for the read-only ./.claude (skills)
-// and ./ref (brand, libraries, examples), with the after-run check as the backstop. No shell is
+// and ./ref (brand, libraries, examples) and ./input (this run's own inputs: script, word times), with the after-run check
+// as the backstop. No shell is
 // offered or allowed in either kind; only a build run gets the app's engine tools (MCP server "engine"), and only a research
 // run gets the web. Both get the Skill tool so the read-only skills in .claude/skills load (probed). No --disable-slash-commands:
 // it also switches skills off (probed). Claude Code's own bundled skills then appear too; they are instructions only, and
@@ -10,7 +11,7 @@
 
 export type EngineRunKind = "research" | "build";
 
-const READ_ONLY = ["Edit(./.claude/**)", "Edit(./ref/**)"];
+const READ_ONLY = ["Edit(./.claude/**)", "Edit(./ref/**)", "Edit(./input/**)"];
 const NEVER = ["Bash", "BashOutput", "KillShell", "Agent", "Task", "NotebookEdit", "SlashCommand", "TodoWrite"];
 
 export function engineArgs(kind: EngineRunKind, o: { mcpConfigPath?: string; maxTurns: number; model?: string }): string[] {

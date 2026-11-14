@@ -47,6 +47,8 @@ export interface EngineRequest {
   long: boolean;
   signal: AbortSignal;
   model?: string;
+  /** This run's own read-only files (work/input/<name>): the approved script, word times. */
+  inputs?: Record<string, string>;
 }
 export type EngineResult =
   | { ok: true; text: string; usage: EngineUsage; turns: number; workDir: string }
@@ -127,7 +129,7 @@ export async function runEngine(d: EngineDeps, req: EngineRequest): Promise<Engi
   const runId = started.id;
   let host: ToolsHost | null = null;
   try {
-    const ws = await prepareWorkspace(d.root, req.videoId, d.seeds ?? engineKitSeeds(REPO_ROOT));
+    const ws = await prepareWorkspace(d.root, req.videoId, d.seeds ?? engineKitSeeds(REPO_ROOT), req.inputs ?? {});
     if (req.kind === "build") host = await startToolsHost({ runDir: ws.dir, tools: d.tools?.(ws) ?? [] });
     const before = await ws.snapshot();
     const args = engineArgs(req.kind, { maxTurns: d.config.maxTurns, model: req.model, ...(host ? { mcpConfigPath: host.mcpConfigPath } : {}) });

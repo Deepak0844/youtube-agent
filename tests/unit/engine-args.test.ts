@@ -17,7 +17,7 @@ describe("engineArgs", () => {
     expect(list(a, "--tools")).toEqual(expect.arrayContaining(["Read", "Glob", "Grep", "Write", "Edit", "Skill", "WebSearch", "WebFetch"]));
     expect(list(a, "--tools")).not.toContain("Bash");
     expect(list(a, "--allowedTools")).toEqual(["Edit(./draft/**)", "Skill", "WebSearch", "WebFetch"]);
-    expect(list(a, "--disallowedTools")).toEqual(expect.arrayContaining(["Bash", "Agent", "Task", "Edit(./.claude/**)", "Edit(./ref/**)"]));
+    expect(list(a, "--disallowedTools")).toEqual(expect.arrayContaining(["Bash", "Agent", "Task", "Edit(./.claude/**)", "Edit(./ref/**)", "Edit(./input/**)"]));
     expect(a).not.toContain("--mcp-config");
     expect(a.join(" ")).not.toMatch(/mcp__/);
   });
@@ -26,7 +26,7 @@ describe("engineArgs", () => {
     const a = engineArgs("build", { maxTurns: 80, mcpConfigPath: "/ws/mcp.json" });
     expect(list(a, "--tools")).toEqual(["Read", "Glob", "Grep", "Write", "Edit", "Skill", "mcp__engine__*"]);
     expect(list(a, "--allowedTools")).toEqual(["Edit(./**)", "Skill", "mcp__engine__*"]);
-    expect(list(a, "--disallowedTools")).toEqual(expect.arrayContaining(["Bash", "WebSearch", "WebFetch", "Agent", "Task", "Edit(./.claude/**)", "Edit(./ref/**)"]));
+    expect(list(a, "--disallowedTools")).toEqual(expect.arrayContaining(["Bash", "WebSearch", "WebFetch", "Agent", "Task", "Edit(./.claude/**)", "Edit(./ref/**)", "Edit(./input/**)"]));
     expect(flag(a, "--mcp-config")).toBe("/ws/mcp.json");
     expect(a).toContain("--strict-mcp-config");
   });

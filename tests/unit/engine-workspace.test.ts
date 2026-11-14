@@ -116,3 +116,27 @@ describe("checkAfterRun", () => {
     expect(WORK_LIMITS).toEqual({ maxBytes: 200 * 1024 * 1024, maxFiles: 5000 });
   });
 });
+
+describe("per-run input files", () => {
+  it("inputs_are_written_to_work_input_read_only", async () => {
+    const ws = await prepareWorkspace(root, VID, seeds(), { "script.json": '{"beats":[]}', "words.json": "[]" });
+    expect(await readFile(path.join(ws.workDir, "input", "script.json"), "utf8")).toBe('{"beats":[]}');
+    expect((await stat(path.join(ws.workDir, "input", "words.json"))).mode & 0o222).toBe(0);
+  });
+
+  it("bad_input_names_or_sizes_are_refused", async () => {
+    for (const name of ["../x.json", "a/b.json", ".hidden.json", "x.tsx", "", "X.json"]) {
+      await expect(prepareWorkspace(root, VID, seeds(), { [name]: "{}" }), name).rejects.toThrow(/input/);
+    }
+    await expect(prepareWorkspace(root, VID, seeds(), { "big.json": "x".repeat(512 * 1024 + 1) })).rejects.toThrow(/512 KB/);
+  });
+
+  it("a_changed_input_file_is_reported", async () => {
+    const ws = await prepareWorkspace(root, VID, seeds(), { "script.json": "{}" });
+    const before = await ws.snapshot();
+    const f = path.join(ws.workDir, "input", "script.json");
+    await chmod(f, 0o644);
+    await writeFile(f, '{"changed":true}');
+    expect(checkAfterRun(before, await ws.snapshot()).join(" ")).toMatch(/input file changed: work\/input\/script\.json/);
+  });
+});

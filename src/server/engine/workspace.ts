@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, cp, lstat, mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { chmod, cp, lstat, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -93,8 +93,14 @@ export function defaultEngineRoot(): string {
   return path.join(realpathSync(tmpdir()), "ytstudio-engine");
 }
 
-/** Creates (or re-creates, empty) the run folder of one video and copies the seeds in, read-only. */
-export async function prepareWorkspace(root: string, videoId: string, seeds: WorkspaceSeeds = {}): Promise<Workspace> {
+const INPUT_NAME = /^[a-z0-9][a-z0-9_.-]{0,60}\.(json|md|txt)$/;
+const MAX_INPUT_BYTES = 512 * 1024;
+
+/** Creates (or re-creates, empty) the run folder of one video and copies the seeds in, read-only; `inputs` are this run's own files (work/input/<name>, read-only). */
+export async function prepareWorkspace(root: string, videoId: string, seeds: WorkspaceSeeds = {}, inputs: Record<string, string> = {}): Promise<Workspace> {
+  const entries = Object.entries(inputs);
+  for (const [name] of entries) if (!INPUT_NAME.test(name)) throw new Error(`engine workspace: bad input file name ${JSON.stringify(name.slice(0, 40))}`);
+  if (entries.reduce((n, [, text]) => n + Buffer.byteLength(text), 0) > MAX_INPUT_BYTES) throw new Error("engine workspace: the input files are over 512 KB");
   if (!UUID.test(videoId)) throw new Error("engine workspace: bad video id");
   const above = claudeProjectAbove(root);
   if (above) throw new Error(`engine workspace: ${above} holds Claude Code project settings; engine runs must not live inside it`);
@@ -111,6 +117,12 @@ export async function prepareWorkspace(root: string, videoId: string, seeds: Wor
     if (!/^[a-z0-9][a-z0-9_-]{0,40}$/.test(r.to)) throw new Error("engine workspace: bad reference folder name");
     const to = path.join(workDir, "ref", r.to);
     await cp(r.from, to, { recursive: true, dereference: false, verbatimSymlinks: true });
+    await readOnlyFiles(to);
+  }
+  if (entries.length > 0) {
+    const to = path.join(workDir, "input");
+    await mkdir(to);
+    for (const [name, text] of entries) await writeFile(path.join(to, name), text, { flag: "wx" });
     await readOnlyFiles(to);
   }
   return { dir, workDir, snapshot: () => takeSnapshot(dir) };
@@ -131,6 +143,7 @@ export function checkAfterRun(before: Snapshot, after: Snapshot): string[] {
     if (b?.type === "link") continue; // already reported
     if (r === "work/ref" || r.startsWith("work/ref/")) problems.push(`reference file changed: ${r}`);
     else if (r === "work/.claude" || r.startsWith("work/.claude/")) problems.push(`the skills folder (.claude) changed: ${r}`);
+    else if (r === "work/input" || r.startsWith("work/input/")) problems.push(`input file changed: ${r}`);
     else if (r === "work" || r.startsWith("work/")) continue;
     else problems.push(`outside the work folder: ${r}`);
   }
