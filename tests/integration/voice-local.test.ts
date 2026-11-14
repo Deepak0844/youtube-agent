@@ -283,3 +283,39 @@ describe("custom http", () => {
     expect(await v.listVoices!()).toEqual(["a", "b"]);
   });
 });
+
+describe("VoiceStudio keeps one voice through a video", () => {
+  // "alloy" and the other OpenAI names are not real VoiceStudio voices: it uses its engine's default voice, picked afresh on
+  // every unseeded call, so a video's lines could each sound different. A saved profile keeps its own remembered seed.
+  const speechBodies = () => seen.filter((s) => s.url === "/v1/audio/speech").map((s) => JSON.parse(s.body) as Record<string, unknown>);
+  const vctx = (videoId: string) => ({ ...ctx(), stage: { name: "tts", videoId } }) as unknown as StageContext;
+  const run = async (voice: string, videoId: string, lines: string[], seed?: number) => {
+    handler = (q, res) => {
+      if (q.url === "/v1/audio/speech") return ok(res, wav(1));
+      return ok(res, Buffer.from(JSON.stringify({ words: [] })), "application/json");
+    };
+    seen.length = 0;
+    const v = createVoiceStudioVoice({ budgetScopes: SC, baseUrl: base, localServices: listed(), voice, ...(seed !== undefined ? { seed } : {}) });
+    for (const text of lines) await v.synthesise(vctx(videoId), { lang: "en", voice, text }).catch(() => undefined);
+    return speechBodies();
+  };
+  const A = "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91";
+  const B = "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e92";
+
+  it("an_openai_name_gets_one_seed_for_every_line_of_a_video", async () => {
+    const a = await run("alloy", A, ["Your code works on your laptop.", "Then it crashes in production."]);
+    expect(a.length).toBe(2);
+    expect(typeof a[0]!.seed).toBe("number");
+    expect(new Set(a.map((b) => b.seed)).size).toBe(1);
+    expect((await run("Alloy", A, ["Again."]))[0]!.seed).toBe(a[0]!.seed); // the same video always gets the same seed
+    expect((await run("alloy", B, ["Other video."]))[0]!.seed).not.toBe(a[0]!.seed);
+  });
+
+  it("a_saved_profile_keeps_its_own_seed", async () => {
+    for (const b of await run("Demo Voice", A, ["Line one.", "Line two."])) expect(b).not.toHaveProperty("seed");
+  });
+
+  it("a_configured_seed_wins", async () => {
+    for (const b of await run("alloy", A, ["Line one."], 42)) expect(b.seed).toBe(42);
+  });
+});

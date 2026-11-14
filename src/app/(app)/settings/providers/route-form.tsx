@@ -36,7 +36,11 @@ export function RouteForm({ providers, scopes, videoModels }: { providers: { id:
       </div>
       <div className="flex min-w-0 flex-col gap-2">
         <Label htmlFor="route-voice">Narration voice (voice providers only)</Label>
-        <Input id="route-voice" name="voice" maxLength={100} autoComplete="off" />
+        <Input id="route-voice" name="voice" maxLength={100} autoComplete="off" aria-describedby="route-voice-help" />
+        <p id="route-voice-help" className="m-0 text-small text-muted">
+          VoiceStudio: type a saved voice profile&apos;s name or id (such as Demo Voice) so every line sounds the same. Names like
+          alloy use VoiceStudio&apos;s default voice.
+        </p>
       </div>
       <div className="flex min-w-0 flex-col gap-2 md:col-span-3">
         <Label htmlFor="route-model">AI video model (AI video providers only; pick the one that matches the provider)</Label>
