@@ -32,6 +32,13 @@ describe("engine-kit seeds", () => {
     expect(t).toMatch(/at least 40 px/);
   });
 
+  it("draw_objects_sets_pacing_and_fill_rules", () => {
+    const t = readFileSync("engine-kit/skills/draw-objects/SKILL.md", "utf8");
+    expect(t).toMatch(/at least 36\s+frames \(1\.2 s\)/);
+    expect(t).toMatch(/Do not hard-cut between sections/);
+    expect(t).toMatch(/under 45 frames/);
+  });
+
   it("every_path_a_guide_names_is_seeded_or_mapped", () => {
     // a guide pointing at a file this app does not have must be listed in TOOL-MAP's "Guides not included"
     const missing = new Set<string>();

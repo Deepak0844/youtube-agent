@@ -75,6 +75,8 @@ export interface TsxRenderInput {
   stillsOnly?: readonly number[];
   /** Engine frame check: draw and check the preflight frames (first, middle, last) exactly as a full render does, then stop; no video. */
   preflightOnly?: boolean;
+  /** Engine frame check: also refuse a frame whose largest empty band is over this share of the picture's height (EMPTY_BAND_MAX). */
+  maxEmptyBand?: number;
   reviewAt?: readonly number[];
 }
 export interface ReviewShot {
@@ -272,7 +274,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       }
     }
     if (problems.length > 0) return failure("preflight", "The preview frames could not be read.", problems);
-    const pre = checkPreflight(stills, SIZE);
+    const pre = checkPreflight(stills, SIZE, input.maxEmptyBand === undefined ? {} : { maxEmptyBand: input.maxEmptyBand });
     if (!pre.ok) return failure("preflight", "The preview frames show a problem.", pre.problems);
     if (input.review && shots.length > 0) {
       const found = await input.review(shots); // throws go up: a budget refusal or an unclear paid outcome is never swallowed here

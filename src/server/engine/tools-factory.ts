@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { StageContext } from "@/server/core/stage-handler";
 import { checkTsx } from "@/server/core/tsx-check";
+import { EMPTY_BAND_MAX } from "@/server/core/tsx-preflight";
 import { engineAssetFile, engineListAssets } from "@/server/db/engine-assets";
 import type { Db } from "@/server/db/stages";
 import { omDurationFrames, renderOm } from "@/server/providers/renderer/om-render";
@@ -35,7 +36,7 @@ export function buildEngineTools(o: EngineToolsOptions): McpTool[] {
       return c.ok ? typeCheckInThread(src, 60_000) : c;
     },
     preflight: async (src) => {
-      const r = await renderTsx(o.render, o.ctx, { source: src, outFile: "preflight.mp4", style: o.style ?? null, preflightOnly: true });
+      const r = await renderTsx(o.render, o.ctx, { source: src, outFile: "preflight.mp4", style: o.style ?? null, preflightOnly: true, maxEmptyBand: EMPTY_BAND_MAX });
       return r.ok ? { ok: true, problems: [] } : { ok: false, problems: [r.error.message, ...r.error.problems] };
     },
     stills: (src, frames) => renderTsxStills(o.render, o.ctx, { source: src, frames, style: o.style ?? null }),
