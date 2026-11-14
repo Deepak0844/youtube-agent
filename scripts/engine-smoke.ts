@@ -4,7 +4,6 @@
 //   npm run engine:smoke
 //   npm run engine:smoke -- --openmontage ["topic"]   OpenMontage parity, Phase B: one Explainer through the openmontage-pipeline
 //     skill up to the edit stage; the om/ artifacts are copied to .data/compare/om-phase-b/om (check: scripts/om-phase-b-check.ts)
-import { execFile } from "node:child_process";
 import { cp, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -20,20 +19,11 @@ import { probeVideo } from "@/server/render/probe";
 import { runChild } from "@/server/render/child";
 import { renderTsxStills, typeCheckInThread, type TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 import { omDurationFrames, renderOm } from "@/server/providers/renderer/om-render";
+import { mediaDurationS } from "@/server/render/media-duration";
 import { resolveRenderImage } from "@/server/providers/renderer/remotion-container";
 import { storageRoot } from "@/server/storage/paths";
 import { renderKitDir } from "@/worker/handlers";
 import { GOOD_SCENE } from "../tests/fixtures/tsx-good-scene";
-
-/** Length of a staged media file in seconds (ffprobe, local files only), or null. */
-function probeDurationS(file: string): Promise<number | null> {
-  return new Promise((resolve) => {
-    execFile("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=duration", "-of", "csv=p=0", file], { timeout: 20_000 }, (err, out) => {
-      const d = Number(String(out).trim());
-      resolve(!err && Number.isFinite(d) && d > 0 ? d : null);
-    });
-  });
-}
 
 async function main(): Promise<void> {
   const db = getPool();
@@ -83,7 +73,7 @@ async function main(): Promise<void> {
           stills: (src, frames) => renderTsxStills(tsxDeps, ctx, { source: src, frames }),
           listAssets: async () => [],
           assetFile: async () => null,
-          probeDuration: (file) => probeDurationS(file),
+          probeDuration: (file) => mediaDurationS(file, { runChild: (spec) => runChild(spec), signal: ac.signal, stageRunId: ctx.claim.stageRunId }),
           orientation: "portrait",
           omStills: async (props, orientation, frames, assets) => {
             const r = await renderOm(tsxDeps, ctx, { props, orientation, stills: frames, assets, outFile: "om.mp4" });
