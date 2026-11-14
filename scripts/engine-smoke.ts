@@ -2,7 +2,7 @@
 // tools (code check, preview frames drawn in the locked render container). Uses a throwaway video row that is deleted at the
 // end. Needs: claude logged in, Docker with the render image, migrations applied.
 //   npm run engine:smoke
-//   npm run engine:smoke -- --openmontage ["topic"]   OpenMontage parity, Phase B: one Explainer through the openmontage-pipeline
+//   npm run engine:smoke -- --openmontage ["topic"] [--out <dir>]   OpenMontage parity, Phase B: one Explainer through the openmontage-pipeline
 //     skill up to the edit stage; the om/ artifacts are copied to .data/compare/om-phase-b/om (check: scripts/om-phase-b-check.ts)
 import { cp, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -57,7 +57,8 @@ async function main(): Promise<void> {
       "- Where a stage asks for human approval, pick the recommended option yourself, note it in the checkpoint, and go on (do not stop).",
       "- Style playbook: flat-motion-graphics. There is no narration audio yet: leave audio empty.",
       "- Run check_scenes and fix the files until its last line is VERDICT: pass.",
-      "Finish with a short summary: the stages done, the files written, which guides you read, and the last check_scenes verdict.",
+      "- Then preview the composition with preview_scenes (about one frame per scene), look at every frame as the compose director asks, revise what looks wrong, and preview again until you are satisfied.",
+      "Finish with a short summary: the stages done, the files written, which guides you read, what you changed after looking at the previews, and the last check_scenes verdict.",
     ].join("\n");
     const prompt = omTopic ? omPrompt : toolsPrompt;
     const started = Date.now();
@@ -71,7 +72,8 @@ async function main(): Promise<void> {
     console.log(`\nresult after ${Math.round((Date.now() - started) / 1000)} s:`);
     console.log(JSON.stringify(r, null, 2));
     if (omTopic && workDir) {
-      const out = path.resolve(".data/compare/om-phase-b");
+      const outAt = process.argv.indexOf("--out");
+      const out = path.resolve(outAt > 0 ? process.argv[outAt + 1]! : ".data/compare/om-phase-b");
       await rm(out, { recursive: true, force: true });
       await cp(path.join(workDir, "om"), path.join(out, "om"), { recursive: true }).catch((e) => console.log(`no om/ folder: ${e}`));
       await cp(path.join(workDir, "assets"), path.join(out, "assets"), { recursive: true }).catch(() => undefined);
