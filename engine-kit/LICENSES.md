@@ -236,6 +236,7 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 - engine-kit/openmontage/ref/schemas/checkpoints/checkpoint.schema.json: OpenMontage guide (AGPL-3.0), copied as written; seeded read-only into engine runs as ref/openmontage.
 - engine-kit/openmontage/ref/TOOL-MAP.md: ours; maps OpenMontage's tools and paths to the engine's.
 - engine-kit/skills/draw-objects/SKILL.md: ours (OpenMontage parity, Phase D1): how engine runs draw any object in code.
+- engine-kit/skills/write-script/SKILL.md: ours (OpenMontage parity, Phase D3): how a research run writes a Short's script from sources with the app's web tools.
 - engine-kit/skills/openmontage-pipeline/SKILL.md: ours; the entry point to OpenMontage's pipelines in engine runs.
 - engine-kit/openmontage/MANIFEST.json: ours; the list of OpenMontage files taken.
 - engine-kit/openmontage/UPSTREAM.json: ours; the OpenMontage commit the files come from.

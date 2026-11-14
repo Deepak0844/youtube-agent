@@ -56,7 +56,7 @@ ${fenceUntrusted("approved outline", chapters)}
 const SYSTEM_QUERIES = `You plan web searches for a short faceless video. ${RULES}
 Reply with ONLY JSON: {"queries":["..."]} with 1 to 4 short search queries that would find reliable sources for the topic.`;
 
-function system(i: DraftPromptInput): string {
+export function draftSystem(i: DraftPromptInput): string {
   const { min, max } = wordRange(i.lang);
   const tail = draftInstruction(i.lang);
   return `You are the DRAFT step of an automated faceless-${i.format} pipeline (video kind: ${i.kind}). ${RULES}
@@ -82,7 +82,7 @@ function topicBlocks(i: DraftPromptInput): string {
 }
 
 /** Topic blocks plus what past shorts showed (for the writing prompts; the search-query prompt does not need it). */
-function writeBlocks(i: DraftPromptInput): string {
+export function writeBlocks(i: DraftPromptInput): string {
   const notes = (i.learning ?? []).filter((n) => n.trim()).slice(0, 5);
   if (!notes.length) return topicBlocks(i);
   return `${topicBlocks(i)}\n\nWHAT PAST SHORTS ON THIS CHANNEL SHOWED (computed from viewer retention; use it to keep viewers watching):\n${fenceUntrusted("learning", notes.map((n) => `- ${n}`).join("\n"))}`;
@@ -100,7 +100,7 @@ export function writeMessages(i: DraftPromptInput & { pages: PageExcerpt[] }): M
     ? i.pages.map((p, n) => `[${n + 1}] ${p.url}\n${fenceUntrusted(`excerpt ${n + 1}`, p.text)}`).join("\n\n")
     : "(no web pages could be fetched; use computed evidence only)";
   return [
-    { role: "system", content: system(i) },
+    { role: "system", content: draftSystem(i) },
     { role: "user", content: `${writeBlocks(i)}\n\nEXCERPTS:\n${excerpts}` },
   ];
 }
@@ -110,7 +110,7 @@ export function agentMessages(i: DraftPromptInput): Message[] {
   return [
     {
       role: "system",
-      content: `${system(i)}\n\nFirst research with the webSearch and fetchPage tools (fetchPage only takes a URL that webSearch returned). Cite only pages you fetched.`,
+      content: `${draftSystem(i)}\n\nFirst research with the webSearch and fetchPage tools (fetchPage only takes a URL that webSearch returned). Cite only pages you fetched.`,
     },
     { role: "user", content: writeBlocks(i) },
   ];
