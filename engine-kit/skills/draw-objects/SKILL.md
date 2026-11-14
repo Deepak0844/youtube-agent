@@ -17,7 +17,15 @@ randomness) apply to every drawing here.
 - Colours and fonts come from the video's style: `ref/openmontage/themes/<style>.json` (`primaryColor`, `accentColor`,
   `backgroundColor`, `surfaceColor`, `textColor`, `mutedTextColor`, `chartColors`, `headingFont`, `bodyFont`). Copy the hex
   values into constants at the top of the file. No other colours except tints of these.
-- One idea per scene, big and centred, readable on a phone: the main object fills about half the frame's width.
+- Fill the tall frame (1080 x 1920). One idea per scene, big and readable on a phone:
+  - The main object is 60-85% of the frame's width (650-920 px) and sits in the middle band (y 450-1450). Small icons
+    and labels go around it, never instead of it.
+  - Use the whole height: a title or label above (y 200-420), the object in the middle, a second object, arrow or result
+    below it. No more than about a third of any frame is empty background.
+  - Text: titles 64-96 px, labels at least 40 px, never under 32 px. Keep 80 px from the left and right edges and leave the
+    bottom 300 px for the app's captions.
+  - Two things side by side (before and after, VM and container) each get about 420 px of width; stack them vertically
+    instead when they need more room.
 
 ## 2. Build an object
 
@@ -64,5 +72,6 @@ const Server = ({ x, y, s = 1, lit = 0 }: { x: number; y: number; s?: number; li
 ## 5. Look at it
 
 Run `check_code`, then `preview_frames` with about one frame per beat (mid-beat). Look at every frame: is each object
-recognisable at phone size, on-style, inside the safe area, not overlapping text? Redraw anything that is not, and preview
+recognisable at phone size, big enough (the sizes above), filling the frame, on-style, inside the safe area, not
+overlapping text? Redraw anything that is not, and preview
 again. Finish only when every beat's frame shows the thing its words talk about.
