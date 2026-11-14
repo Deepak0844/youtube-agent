@@ -131,6 +131,10 @@ export const SETTINGS = {
     safety: true,
     label: "Routes to restore when Claude Code is switched off",
   },
+  // The rupee rate is refreshed once a day from a free public rate service (src/server/core/fx-rate.ts); off = only the typed rate is used.
+  "display.inr_auto": { schema: z.boolean(), default: true, safety: false, label: "Update the rupee rate automatically each day" },
+  // Where and when the automatic rate came from (null until the first fetch). Written only by the refresh.
+  "display.inr_meta": { schema: z.object({ source: z.string().min(1).max(40), rateDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), fetchedAt: z.string().min(10).max(40) }).strict().nullable(), default: null, safety: false, label: "Where and when the rupee rate was fetched" },
   "display.inr_rate": { schema: z.number().positive().max(10_000), default: 95.05, safety: false, label: "Rupees per US dollar (display only)" },
   "display.currency": { schema: z.string().min(1), default: "USD", safety: false, label: "Display currency" },
 } satisfies Record<string, SettingDef>;

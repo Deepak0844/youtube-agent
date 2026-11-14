@@ -60,6 +60,8 @@ export const SESSION_BATCH_KEYS: readonly string[] = [
   "targets.rpm_usd",
   "targets.pause_fired",
   "display.inr_rate",
+  "display.inr_auto", // the rupee card's "update automatically" switch (saveInrAuto); the daily refresh writes display.inr_meta itself
+  "display.inr_meta", // cleared when the owner types a rate by hand (saveInrRate)
   "voice.voicestudio_url",
   "voice.local_url",
   "voice.azure_region",
