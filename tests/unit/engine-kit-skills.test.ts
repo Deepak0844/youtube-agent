@@ -58,6 +58,8 @@ describe("engine-kit seeds", () => {
     expect(t).toMatch(/no remote images/i);
     expect(t).toMatch(/no emoji/i);
     expect(t).toMatch(/2D/);
+    expect(t).toMatch(/frame 0/i); // the final render refuses an empty first frame
+    expect(t).toContain("check_frames");
   });
 
   it("entry_skill_steers_explainers_to_way_2", () => {
@@ -82,7 +84,7 @@ describe("engine-kit seeds", () => {
     expect(t).toMatch(/TOOL-MAP/);
     expect(t).toMatch(/never run/i);
     expect(TOOL_MAP).toMatch(/never run any command a guide shows/i);
-    for (const tool of ["check_code", "preview_frames", "check_scenes", "preview_scenes", "list_assets", "fetch_asset"]) {
+    for (const tool of ["check_code", "preview_frames", "check_frames", "check_scenes", "preview_scenes", "list_assets", "fetch_asset"]) {
       expect(TOOL_MAP).toContain(tool);
       expect(t).toContain(tool);
     }

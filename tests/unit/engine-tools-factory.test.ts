@@ -18,7 +18,7 @@ describe("buildEngineTools", () => {
     const render = { kitDir: "/k", runChild: async () => ({ code: 0, signal: null, truncated: false, timedOut: false, aborted: false }), probe: async () => ({}) } as unknown as TsxRendererDeps;
     try {
       const tools = buildEngineTools({ db: db as never, ctx, workDir: work, orientation: "portrait", storageRoot: "/s", render });
-      expect(tools.map((t) => t.name)).toEqual(["check_code", "preview_frames", "check_scenes", "preview_scenes", "list_assets", "fetch_asset"]);
+      expect(tools.map((t) => t.name)).toEqual(["check_code", "preview_frames", "check_frames", "check_scenes", "preview_scenes", "list_assets", "fetch_asset"]);
       const out = await tools.find((t) => t.name === "list_assets")!.run({ kind: "sfx", query: "x' or 1=1" });
       expect(JSON.parse((out[0] as { text: string }).text)).toEqual([{ id: "audio:00000000-0000-0000-0000-000000000001", kind: "sfx", name: "whoosh", licence: "CC0", durationS: 1.5 }]);
       expect(queries[0]!.values).toEqual(["sfx", "x' or 1=1"]);

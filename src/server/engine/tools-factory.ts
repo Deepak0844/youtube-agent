@@ -4,12 +4,12 @@ import { checkTsx } from "@/server/core/tsx-check";
 import { engineAssetFile, engineListAssets } from "@/server/db/engine-assets";
 import type { Db } from "@/server/db/stages";
 import { omDurationFrames, renderOm } from "@/server/providers/renderer/om-render";
-import { renderTsxStills, typeCheckInThread, type TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
+import { renderTsx, renderTsxStills, typeCheckInThread, type TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 import { mediaDurationS } from "@/server/render/media-duration";
 import { engineTools } from "./mcp/tools";
 import type { McpTool } from "./mcp/protocol";
 
-// The six engine tools with their production dependencies (ADR 0015, OpenMontage parity Phase C): the code check and
+// The seven engine tools with their production dependencies (ADR 0015, OpenMontage parity Phase C): the code check and
 // type-check, previews of code scenes and of OpenMontage compositions in the locked render box, the app's licence-checked
 // libraries, and the safe media probe. Phase D's video steps call this for each build run.
 
@@ -33,6 +33,10 @@ export function buildEngineTools(o: EngineToolsOptions): McpTool[] {
     check: async (src) => {
       const c = checkTsx(src);
       return c.ok ? typeCheckInThread(src, 60_000) : c;
+    },
+    preflight: async (src) => {
+      const r = await renderTsx(o.render, o.ctx, { source: src, outFile: "preflight.mp4", style: o.style ?? null, preflightOnly: true });
+      return r.ok ? { ok: true, problems: [] } : { ok: false, problems: [r.error.message, ...r.error.problems] };
     },
     stills: (src, frames) => renderTsxStills(o.render, o.ctx, { source: src, frames, style: o.style ?? null }),
     omStills: async (props, orientation, frames, assets) => {

@@ -8,7 +8,7 @@ description: Make Explainer or Animation videos the OpenMontage way - stage by s
 OpenMontage's pipelines and guides are in `ref/openmontage/` (read-only). Follow them the way OpenMontage does.
 
 1. Read `ref/openmontage/TOOL-MAP.md` first. Every tool, command and path in the guides maps through it. Never run a command a
-   guide shows; use only the engine tools (`check_code`, `preview_frames`, `check_scenes`, `preview_scenes`, `list_assets`, `fetch_asset`).
+   guide shows; use only the engine tools (`check_code`, `preview_frames`, `check_frames`, `check_scenes`, `preview_scenes`, `list_assets`, `fetch_asset`).
 2. Pick the pipeline: `animated-explainer` (teach a topic) or `animation` (motion-led story). Read
    `ref/openmontage/pipeline_defs/<pipeline>.yaml`, then its executive producer
    (`ref/openmontage/skills/pipelines/explainer/executive-producer.md` or `.../animation/executive-producer.md`).
@@ -26,5 +26,5 @@ OpenMontage's pipelines and guides are in `ref/openmontage/` (read-only). Follow
    `ref/openmontage/remotion-composer/public/demo-props/`; see TOOL-MAP "Writing the Explainer scene list"). Run
    `check_scenes` and fix the files until its last line is `VERDICT: pass`; then `preview_scenes` (about one frame per
    scene), look at every frame as OpenMontage's compose director asks, and revise. Never render the video; the app does.
-   Bespoke path: write `scene/video.tsx`, then `check_code` and `preview_frames` (see `draw-objects`).
+   Bespoke path: write `scene/video.tsx`, then `check_code`, `preview_frames` and, last, `check_frames` (see `draw-objects`).
 7. Human approvals in the guides are the app's gates: finish the artifact and checkpoint, then stop and report.

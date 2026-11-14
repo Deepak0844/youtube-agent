@@ -5,7 +5,7 @@ written for OpenMontage's own Python tools and project folders. Those do not exi
 in a guide through this map. **Never run any command a guide shows** (scripts, CLIs, registry calls, installers): the engine's
 tools below are the only way to check, preview or fetch anything.
 
-Engine tools you have: `check_code`, `preview_frames`, `check_scenes`, `preview_scenes`, `list_assets`, `fetch_asset`.
+Engine tools you have: `check_code`, `preview_frames`, `check_frames`, `check_scenes`, `preview_scenes`, `list_assets`, `fetch_asset`.
 
 ## Paths
 
