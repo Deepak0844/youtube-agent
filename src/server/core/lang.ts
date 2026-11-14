@@ -25,6 +25,8 @@ export function wordCount(text: string): number {
 
 /** Spoken words per second at the language's normal pace. */
 export const langName = (lang: Lang): string => INFO[lang].name;
+/** Spoken words a Short aims for in English: about 45 s at the usual pace (the old 100 gave about 35 s on the local voice). */
+export const SHORT_TARGET_WORDS = 120;
 export const speakingRate = (lang: Lang): number => INFO[lang].wps;
 
 export function wordRange(lang: Lang, speakingRate: number = INFO[lang].wps): { min: number; max: number } {
@@ -37,7 +39,7 @@ export function draftInstruction(lang: Lang): string {
   if (lang === "en") return "";
   const { name, script } = INFO[lang];
   const { min, max } = wordRange(lang);
-  const target = Math.round((100 * INFO[lang].wps) / EN_WPS);
+  const target = Math.round((SHORT_TARGET_WORDS * INFO[lang].wps) / EN_WPS);
   return (
     `LANGUAGE: write ALL viewer-facing text (narration, on-screen words, the title) in ${name} using the ${script} script. ` +
     `Keep beat ids and file names in English. Aim for about ${target} spoken words (${min}-${max}); ${name} words are longer than English ones. ` +

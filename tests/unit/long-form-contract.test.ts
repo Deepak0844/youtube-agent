@@ -62,7 +62,7 @@ describe("the long script contract", () => {
     expect(sys).toContain("pattern interrupt about every 45 seconds");
     const short = writeMessages({ topic: "t", lang: "en", kind: "collage", format: "short", pages: [] })[0]!.content;
     expect(short).not.toContain("LONG VIDEO");
-    expect(short).toContain("About 100 spoken words in English (60-150 in the chosen language)");
+    expect(short).toContain("About 120 spoken words in English (60-150 in the chosen language)");
   });
   it("the outline prompt fences the topic, notes and send-back note", () => {
     const m = outlineMessages({ topic: "t", lang: "ta", range: { min: 3, max: 8 }, notes: "n", feedback: "f" });
