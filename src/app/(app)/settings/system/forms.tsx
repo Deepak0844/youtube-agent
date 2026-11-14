@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
 import { Label } from "@/ui/primitives/label";
-import { saveCutoverAction, saveKillSwitchAction, saveLimitsAction, saveLocalServicesAction, type FormState } from "./actions";
+import { saveCutoverAction, saveEngineSwitchAction, saveKillSwitchAction, saveLimitsAction, saveLocalServicesAction, type FormState } from "./actions";
 
 const field = "flex min-w-0 flex-col gap-2";
 
@@ -70,6 +70,22 @@ export function KillSwitchForm({ on }: { on: boolean }) {
       <label className="flex min-h-11 items-center gap-3 text-body">
         <input type="checkbox" name="kill" defaultChecked={on} className="size-5 accent-[var(--text)]" />
         Stop every upload (kill switch)
+      </label>
+      <div className="flex flex-wrap items-center gap-4">
+        <Button type="submit" loading={pending}>Save</Button>
+        <Result state={state} />
+      </div>
+    </form>
+  );
+}
+
+export function EngineSwitchForm({ on }: { on: boolean }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveEngineSwitchAction, {});
+  return (
+    <form action={action} className="flex flex-col gap-4">
+      <label className="flex min-h-11 items-center gap-3 text-body">
+        <input type="checkbox" name="engine" defaultChecked={on} className="size-5 accent-[var(--text)]" />
+        Claude Code draws Custom animation videos
       </label>
       <div className="flex flex-wrap items-center gap-4">
         <Button type="submit" loading={pending}>Save</Button>

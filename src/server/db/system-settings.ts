@@ -83,6 +83,20 @@ export async function saveSystemSettings(db: pg.Pool, input: unknown): Promise<S
 }
 
 /** The two global upload switches. Turning the kill switch ON or the cutover OFF needs nothing more; turning the cutover ON needs the typed phrase. */
+/** The new video engine's switch (engine.enabled, a safety setting): off unless the owner turned it on. */
+export async function loadEngineSwitch(db: pg.Pool): Promise<boolean> {
+  return (await getSetting(db, "engine.enabled")) === true;
+}
+
+/** Turns the new video engine on or off. Session only (writeAudited), audited as setting.changed. */
+export async function saveEngineSwitch(db: pg.Pool, on: boolean): Promise<SaveResult> {
+  try {
+    return { ok: true, changed: await writeAudited(db, [{ key: "engine.enabled", value: on }]) };
+  } catch {
+    return { ok: false, error: GENERIC };
+  }
+}
+
 export async function saveUploadSwitches(db: pg.Pool, input: { killSwitch?: boolean; cutover?: boolean; typed?: string; commentsDryRun?: boolean; typedLive?: string; allowPublic?: boolean; typedPublic?: string }): Promise<SaveResult> {
   const writes: Array<{ key: string; value: unknown }> = [];
   // Comment replies: dry run is the default; false lets the owner's "Approve and post" really post. Session only, audited as setting.changed.
