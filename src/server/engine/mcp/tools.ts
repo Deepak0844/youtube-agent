@@ -43,7 +43,7 @@ export function safeWorkPath(workDir: string, rel: string): string | null {
 }
 
 /** Refuses a path whose file or any folder on the way (inside work/) is a link. */
-async function noLinks(workDir: string, full: string): Promise<void> {
+export async function noLinks(workDir: string, full: string): Promise<void> {
   for (let p = full; p.startsWith(workDir + path.sep); p = path.dirname(p)) {
     const st = await lstat(p).catch(() => null);
     if (st?.isSymbolicLink()) throw new ToolMessage("Links are not allowed in the work folder.");
