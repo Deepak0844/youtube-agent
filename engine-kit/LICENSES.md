@@ -284,3 +284,4 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 - tests/fixtures/openmontage/goldens/theme-flat-motion-graphics.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
 - tests/fixtures/openmontage/goldens/theme-minimalist-diagram.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
 - tests/fixtures/openmontage/goldens/theme-premium-minimalist.json: test inputs of ours with the answers OpenMontage's Python gave for them (AGPL-3.0 output, test only).
+- src/server/engine/om-checks/compose.ts: TypeScript port of OpenMontage tools/video/video_compose.py render preparation (_remotion_render props, theme metadata fallback) (AGPL-3.0).
