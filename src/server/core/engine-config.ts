@@ -69,8 +69,9 @@ export function buildEngineConfig(stored: ReadonlyMap<string, unknown>): EngineC
   return c;
 }
 
-/** Seconds a step may run. The code-scene step done by the engine (engine.enabled) gets the engine's build limit plus 15 minutes for the final render, never less than the stage limit. */
+/** Seconds a step may run. The script step done by the engine gets the engine's run limit plus 5 minutes to check and save. The code-scene step done by the engine (engine.enabled) gets the engine's build limit plus 15 minutes for the final render, never less than the stage limit. */
 export function stageTimeoutS(config: EngineConfig, stageName: string): number {
   if (stageName === "tsx_author" && config.engine.enabled) return Math.max(config.timeoutStageS, config.engine.buildTimeoutS + 900);
+  if (stageName === "draft" && config.engine.enabled) return Math.max(config.timeoutStageS, config.engine.buildTimeoutS + 300);
   return config.timeoutStageS;
 }

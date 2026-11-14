@@ -57,6 +57,8 @@ import { qaAttempt } from "./stages/qa";
 import { renderAttempt } from "./stages/render";
 import { tsxAuthorAttempt } from "./stages/tsx-author";
 import { codeSceneAttempt } from "./stages/engine-build";
+import { engineDraftHandler, usesEngineDraft } from "./stages/engine-draft";
+import { loadDraftVideo } from "@/server/db/draft-store";
 import { defaultEngineRoot } from "@/server/engine/workspace";
 import type { TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 import { sfxHandler } from "./stages/sfx";
@@ -186,6 +188,9 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
   const draft: StageHandler = async (ctx) => {
     const searxUrl = process.env.SEARXNG_URL;
     if (!searxUrl) throw new KnownFailure("Web search is not set up (SEARXNG_URL), so a draft cannot be written.");
+    // With engine.enabled on (Settings), a Short's script is written by the engine (engine-draft.ts); Long videos and the engine off keep the paid draft.
+    const format = ctx.stage.videoId ? (await loadDraftVideo(pool, ctx.stage.videoId))?.format : undefined;
+    if (usesEngineDraft(ctx.config, format ?? "")) return engineDraftHandler({ db: pool, root: defaultEngineRoot(), makeWeb: () => createWebTools({ searxUrl }), registry: env.childRegistry })(ctx);
     const models = await defaultModelDeps(pool, () => loadKeyring());
     return createDraftHandler({
       db: pool,
