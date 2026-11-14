@@ -355,9 +355,12 @@ export function startRuntime(opts: WorkerOptions = {}) {
             if (stopping) return;
             // The whole job (run, commit/settle, notice) is tracked, so a clean stop waits for it before the pool closes.
             const whole = (async () => {
+              // The settings as they are now (a switch flipped while the worker runs, such as engine.enabled, reaches the next
+              // step); the values read at start are kept if this read fails.
+              const now = await hooks.loadSettings(db).catch(() => settings);
               // An unrecognised error leaves the row running until the lease expires; say why, redacted, then rethrow as before.
               const outcome = await hooks.runStage(db, {
-                workerId, ttlMs: settings.config.leaseS * 1000, config: settings.config,
+                workerId, ttlMs: now.config.leaseS * 1000, config: now.config,
                 concurrencyLimit: settings.concurrentJobs,
                 renderConcurrencyLimit: settings.concurrentRenders, renderStageNames,
                 handler: dispatch, shutdownSignal: shutdown.signal,

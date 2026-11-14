@@ -120,6 +120,7 @@ describe("worker runtime", () => {
     });
     await worker.ready;
     void processor({ stageRunId: "stage", inputHash: "h1" }, "job");
+    await vi.advanceTimersByTimeAsync(0); // the job reads the current settings before it starts the step
     const stopped = worker.stop(); expect(worker.stop()).toBe(stopped);
     expect(pause).toHaveBeenCalledTimes(1); expect(signal.aborted).toBe(false); // graceful first
     await vi.advanceTimersByTimeAsync(50); expect(signal.aborted).toBe(true);
@@ -127,6 +128,31 @@ describe("worker runtime", () => {
     await vi.advanceTimersByTimeAsync(1); await stopped;
     expect(closeConsumer).toHaveBeenCalledWith(true); expect(closeQueue).toHaveBeenCalledWith(true);
     expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it("each_job_reads_the_settings_as_they_are_now", async () => {
+    // a switch the owner flips while the worker runs (engine.enabled) must reach the next step without a restart
+    let processor!: (job: StageJob, id: string) => Promise<void>;
+    const queue = { startWorker: (h: typeof processor) => { processor = h; return { pause: async () => {}, close: async () => {} }; }, close: async () => {} } as unknown as StageQueue;
+    let enabled = false;
+    const seen: boolean[] = [];
+    const worker = startWorker({
+      pool: { end: async () => {} } as unknown as WorkerOptions["pool"], redisUrl: "redis://unused", log: vi.fn(), shutdownTimeoutMs: 100, handlers: { render: async () => ({}) },
+      hooks: {
+        sweepOrphans: async () => 0, holdWorkerLock: async () => ({ release: async () => {} }), createChildRegistry: () => ({}) as never,
+        connectQueue: async () => queue,
+        loadSettings: async () => ({ config: buildEngineConfig(new Map<string, unknown>([["engine.enabled", enabled]])), concurrentJobs: 2, concurrentRenders: 1 }),
+        checkVault: async () => "missing_key", reconcile: async () => {}, advanceAll: async () => {},
+        markStalled: async () => {}, prune: async () => {},
+        runStage: async (_db, deps) => { seen.push(deps.config!.engine.enabled); return { kind: "noop" } as never; },
+      },
+    });
+    await worker.ready;
+    await processor({ stageRunId: "s1", inputHash: "h1" }, "j1");
+    enabled = true;
+    await processor({ stageRunId: "s2", inputHash: "h2" }, "j2");
+    expect(seen).toEqual([false, true]);
+    await worker.stop();
   });
 
   it("teardown_gets_its_own_fresh_timeout_after_a_slow_drain", async () => {
