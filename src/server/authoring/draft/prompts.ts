@@ -1,8 +1,8 @@
 import type { Message } from "@/server/core/agent-loop";
-import { draftInstruction, wordRange, type Lang } from "@/server/core/lang";
+import { draftInstruction, SHORT_TARGET_WORDS, wordRange, type Lang } from "@/server/core/lang";
 import { longWordRange, type LengthRange, type Outline } from "@/server/core/long-form";
 
-// Draft prompts, ported from the old author.py draft_prompt: same rules (about 100 spoken words, hook at frame 0, no
+// Draft prompts, ported from the old author.py draft_prompt: same rules (about 120 spoken words, hook at frame 0, no
 // engagement-CTA outro, one claim per factual statement, the author never verifies). Everything the owner typed and
 // everything fetched from the web is DATA inside a fence, never instructions. Pure: no IO.
 
@@ -62,7 +62,7 @@ function system(i: DraftPromptInput): string {
   return `You are the DRAFT step of an automated faceless-${i.format} pipeline (video kind: ${i.kind}). ${RULES}
 
 Write the script for ONE video. Rules:
-- ${i.format === "long" && i.long ? "The words and length are set by the long-video rule below" : `About 100 spoken words in English (${min}-${max} in the chosen language)`}; the hook is fully composed at the start with the payoff already visible.
+- ${i.format === "long" && i.long ? "The words and length are set by the long-video rule below" : `About ${SHORT_TARGET_WORDS} spoken words in English (${min}-${max} in the chosen language)`}; the hook is fully composed at the start with the payoff already visible.
 - NO engagement call-to-action outro (no "comment below", no "subscribe", no "what should I do next"). End on the payoff.
 - Facts must come from the numbered excerpts you were given. One evidence claim per factual statement.
 - A "sourced" claim needs the excerpt's exact URL in source_url and a quote copied word for word from that excerpt: a full sentence or clause of at least 5 words (25 characters) that backs the claim text. A "computed" claim (arithmetic; the old app called it "derived") needs a reproducible method. Never cite a page you were not given.

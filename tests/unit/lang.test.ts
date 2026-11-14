@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LANGS, draftInstruction, wordCount, wordRange } from "@/server/core/lang";
+import { LANGS, SHORT_TARGET_WORDS, draftInstruction, speakingRate, wordCount, wordRange } from "@/server/core/lang";
 
 describe("lang", () => {
   it("all_six_languages_are_defined", () => {
@@ -27,5 +27,12 @@ describe("lang", () => {
     expect(draftInstruction("hi")).toContain("Devanagari");
     expect(draftInstruction("kn")).toContain("Kannada");
     expect(draftInstruction("kn")).toContain(`${wordRange("kn").min}-${wordRange("kn").max}`);
+  });
+  it("short_target_is_about_45_seconds_and_scales_by_language_pace", () => {
+    expect(SHORT_TARGET_WORDS).toBe(120);
+    const aim = Math.round((SHORT_TARGET_WORDS * speakingRate("hi")) / speakingRate("en"));
+    expect(draftInstruction("hi")).toContain(`about ${aim} spoken words`);
+    expect(SHORT_TARGET_WORDS).toBeGreaterThanOrEqual(wordRange("en").min);
+    expect(SHORT_TARGET_WORDS).toBeLessThanOrEqual(wordRange("en").max);
   });
 });
