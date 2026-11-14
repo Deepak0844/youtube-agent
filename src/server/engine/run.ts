@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type pg from "pg";
 import type { EngineConfig } from "@/server/core/engine-config";
-import { finishEngineRun, startEngineRun, type EngineUsage } from "@/server/db/engine-runs";
+import { closeStaleRunsOf, finishEngineRun, startEngineRun, type EngineUsage } from "@/server/db/engine-runs";
 import { minimalEnv } from "@/server/llm/claude-code";
 import type { ChildRegistry } from "@/server/render/child";
 import { argsHash, commandLabelOf, readProcInfo } from "@/server/render/proc-info";
@@ -120,13 +120,21 @@ function launch(d: EngineDeps, ws: Workspace, args: string[], prompt: string, ti
   });
 }
 
+/** Engine runs this process is driving right now (one worker runs, under the worker lock). */
+const ACTIVE_RUNS = new Set<string>();
+
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
 
 export async function runEngine(d: EngineDeps, req: EngineRequest): Promise<EngineResult> {
   if (!d.config.enabled) return say("The new engine is switched off in Settings.");
-  const started = await startEngineRun(d.db, { videoId: req.videoId, stageRunId: req.stageRunId, kind: req.kind });
+  let started = await startEngineRun(d.db, { videoId: req.videoId, stageRunId: req.stageRunId, kind: req.kind });
+  // A run marked running that this process is not driving was left by a crashed try (see closeStaleRunsOf): close it, try once more.
+  if (!started.ok && (await closeStaleRunsOf(d.db, req.videoId, ACTIVE_RUNS)) > 0) {
+    started = await startEngineRun(d.db, { videoId: req.videoId, stageRunId: req.stageRunId, kind: req.kind });
+  }
   if (!started.ok) return say("Another engine run of this video is still going.");
   const runId = started.id;
+  ACTIVE_RUNS.add(runId);
   let host: ToolsHost | null = null;
   try {
     const ws = await prepareWorkspace(d.root, req.videoId, d.seeds ?? engineKitSeeds(REPO_ROOT), req.inputs ?? {});
@@ -166,6 +174,7 @@ export async function runEngine(d: EngineDeps, req: EngineRequest): Promise<Engi
     await finishEngineRun(d.db, runId, { status: "failed", error: "The engine run could not be set up." }).catch(() => undefined);
     return say("The engine run could not be set up.");
   } finally {
+    ACTIVE_RUNS.delete(runId);
     await host?.close().catch(() => undefined);
   }
 }

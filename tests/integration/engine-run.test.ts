@@ -117,6 +117,19 @@ describe("runEngine", () => {
     await first;
   }, 20_000);
 
+  it("a run left marked running by a crashed try is closed, and the step runs again", async () => {
+    // the database dropped after Claude finished, so the run was never ended; the retry of the step must not be blocked
+    const v = await video();
+    await db.pool.query("insert into engine_runs (video_id, stage_run_id, kind) values ($1, $2, 'build')", [v, STAGE]);
+    const r = await runEngine(deps(), req(v, { mode: "ok" }));
+    expect(r.ok).toBe(true);
+    const rows = (await db.pool.query("select status, error from engine_runs where video_id = $1 order by started_at", [v])).rows;
+    expect(rows).toEqual([
+      { status: "killed", error: "An earlier try of this step stopped without finishing; the step ran again." },
+      { status: "succeeded", error: null },
+    ]);
+  }, 20_000);
+
   it("registers Claude with the identity the orphan sweep checks, and unregisters it at the end", async () => {
     const v = await video();
     const reg: Array<{ pid: number; startedAtEpoch: number; commandLabel: string; argsSha256: string }> = [];
