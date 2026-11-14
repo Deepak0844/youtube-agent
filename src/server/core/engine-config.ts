@@ -68,3 +68,9 @@ export function buildEngineConfig(stored: ReadonlyMap<string, unknown>): EngineC
   if (c.qa.short.minS > c.qa.short.maxS || c.qa.long.minS > c.qa.long.maxS) throw new Error("qa min seconds must not exceed max seconds");
   return c;
 }
+
+/** Seconds a step may run. The code-scene step done by the engine (engine.enabled) gets the engine's build limit plus 15 minutes for the final render, never less than the stage limit. */
+export function stageTimeoutS(config: EngineConfig, stageName: string): number {
+  if (stageName === "tsx_author" && config.engine.enabled) return Math.max(config.timeoutStageS, config.engine.buildTimeoutS + 900);
+  return config.timeoutStageS;
+}

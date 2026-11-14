@@ -6,6 +6,7 @@ import { getBudget } from "@/server/db/spend";
 import { latestContent, type ContentKind, type VideoFormat, type VideoKind, type VideoLanguage } from "@/server/db/videos";
 import type { ImageProvider } from "@/server/providers/media";
 import type { Renderer, TsxRenderer } from "@/server/providers/renderer";
+import type { TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 import type { ThumbnailRenderer } from "@/server/providers/renderer/thumbnail-container";
 import type { CaptionsBody } from "@/server/core/alignment";
 import type { Lang } from "@/server/core/lang";
@@ -53,6 +54,8 @@ export interface StageDeps {
   thumbnails?: ThumbnailRenderer;
   /** The sandboxed code-scene renderer (tsx_author only). Absent = that stage refuses with a plain sentence. */
   tsx?: TsxRenderer;
+  /** The same renderer's dependencies, for the engine's preview tools (engine code-scene step only). */
+  tsxDeps?: TsxRendererDeps;
   /** Defaults to the real ffprobe-based probe. */
   probe?: typeof probeVideo;
   /** Full ffmpeg QA scan (black/frozen frames, loudness, codecs, stills). Absent = dry run: only the basic probe runs. */

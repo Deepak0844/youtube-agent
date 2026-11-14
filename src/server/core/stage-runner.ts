@@ -10,7 +10,7 @@ import {
   type PaidCallOutput,
   type PaidCallPorts,
 } from "./paid-call";
-import type { EngineConfig } from "./engine-config";
+import { stageTimeoutS, type EngineConfig } from "./engine-config";
 import { classifyError, type ErrorClass } from "./error-class";
 import { createStageContext, StageAbort, type StageHandler, type StageLogHandle } from "./stage-handler";
 
@@ -184,6 +184,7 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
   if (deps.shutdownSignal?.aborted) onShutdown();
 
   let stageTimer: ReturnType<typeof setTimeout> | undefined;
+  const startedAt = Date.now();
   if (deps.handler) {
     stageTimer = setTimeout(() => abort("stage_timeout"), handlerConfig!.timeoutStageS * 1000);
   }
@@ -202,6 +203,14 @@ export async function runStageWith(ports: StageRunnerPorts, deps: StageRunnerDep
       const stage = await ports.getStage(job.stageRunId);
       checkActive();
       if (!stage) throw new Error(`stage ${job.stageRunId} vanished after claim`);
+      // A step with a longer limit (the engine's code-scene step) gets it now that its name is known, counted from the start.
+      if (deps.handler && stageTimer) {
+        const longer = stageTimeoutS(handlerConfig!, stage.name);
+        if (longer > handlerConfig!.timeoutStageS) {
+          clearTimeout(stageTimer);
+          stageTimer = setTimeout(() => abort("stage_timeout"), Math.max(0, longer * 1000 - (Date.now() - startedAt)));
+        }
+      }
       if (deps.handler) {
         let log: StageLogHandle | undefined;
         try { log = deps.openLog?.(stage, claim); } catch { log = undefined; }

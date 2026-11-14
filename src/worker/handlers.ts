@@ -56,6 +56,9 @@ import { outlineAttempt } from "./stages/outline";
 import { qaAttempt } from "./stages/qa";
 import { renderAttempt } from "./stages/render";
 import { tsxAuthorAttempt } from "./stages/tsx-author";
+import { codeSceneAttempt } from "./stages/engine-build";
+import { defaultEngineRoot } from "@/server/engine/workspace";
+import type { TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 import { sfxHandler } from "./stages/sfx";
 import { ttsAttempt } from "./stages/tts";
 import { voiceAttempt } from "./stages/voice";
@@ -146,6 +149,7 @@ const notWired = (): never => { throw new KnownFailure("This step is not wired i
 export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildRegistry; workerId?: string } = {}, root: string = storageRoot()): StageDeps {
   const run = (spec: Parameters<typeof runChild>[0]) => runChild(spec, { registry: env.childRegistry });
   const image = resolveRenderImage(); // once, at worker boot: renders run the image by its sha256 id (tag fallback is logged)
+  const tsxDeps: TsxRendererDeps = { kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
   return {
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
     qaScan: scanVideo,
@@ -161,7 +165,8 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     ingest: { runChild: run },
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
     // Code scenes (tsx_author): the same container locks plus tighter limits (tsx-sandbox.ts); the model's file never touches the host shell.
-    tsx: createTsxRenderer({ kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) }),
+    tsx: createTsxRenderer(tsxDeps),
+    tsxDeps,
     // The long-video thumbnail card: the same container locks, mode --thumbnail (thumbnail-container.ts).
     thumbnails: createThumbnailRenderer({ root, kitDir: renderKitDir(), runChild: run, image: () => image, workerId: env.workerId }),
     // Render runs in the locked-down render container (remotion-container.ts). The kit is read from the repo the worker runs in.
@@ -201,9 +206,11 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     return withAttempt(fin, outlineAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
   };
   // Code scenes: the Build model route and budget scopes (so Claude Code at $0 or any priced model works); refuses before anything is reserved when none is routed.
+  // With engine.enabled on (Settings), the engine (Claude Code with the six engine tools, ADR 0015) writes the scene instead (engine-build.ts).
   const tsxAuthor: StageHandler = async (ctx) => {
     const models = await defaultModelDeps(pool, () => loadKeyring());
-    return withAttempt(fin, tsxAuthorAttempt({ ...deps, makeLlm: (scopes) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) }))(ctx);
+    const paidDeps = { ...deps, makeLlm: (scopes: string[]) => createLlmClient({ db: pool, ...models, budgetScopes: () => scopes }) };
+    return withAttempt(fin, codeSceneAttempt(paidDeps, { root: defaultEngineRoot(), render: deps.tsxDeps!, registry: env.childRegistry }))(ctx);
   };
   // On demand only (never in the route): same model wiring and budget scopes as Build; saves its own scenes version.
   const repair: StageHandler = async (ctx) => {
