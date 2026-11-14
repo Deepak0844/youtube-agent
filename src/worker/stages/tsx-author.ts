@@ -22,6 +22,47 @@ export function tsxAsk(llm: LlmClient, ctx: LlmStageContext): (messages: Message
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
+export interface TsxInputs {
+  beats: PromptBeat[];
+  words: PromptWord[];
+  narrationS: number;
+  topic: string;
+}
+
+/**
+ * What a code scene is written against: the approved script's beats, the narration's word times and length, and the topic.
+ * Shared by the paid-model step and the engine step. Refuses with one plain sentence when an earlier step's output is missing,
+ * and when the narration is over the 90 s limit of a custom animation.
+ */
+export async function loadTsxInputs(deps: StageDeps, ctx: Parameters<AttemptHandler>[0], videoId: string, narrationSeconds?: (file: string) => Promise<number>): Promise<TsxInputs> {
+  const video = { id: videoId };
+  const script = await approvedScript(deps.db, video.id);
+  if (!script.ok) throw new KnownFailure(script.reason);
+
+  const narration = await contentBody<{ file?: unknown }>(deps.db, video.id, "narration");
+  if (typeof narration.file !== "string") throw new KnownFailure("The narration record has no audio file. Run the voice step again.");
+  const audioFile = await promotedPath(deps.root, video.id, narration.file);
+  if (!(await lstat(audioFile).catch(() => null))?.isFile()) throw new KnownFailure(`The file ${narration.file} from an earlier stage is missing. Run that stage again.`);
+  const captions = await contentBody<{ words?: unknown }>(deps.db, video.id, "captions").catch(() => null);
+  const words: PromptWord[] = (Array.isArray(captions?.words) ? captions.words : []).flatMap((w: unknown) => {
+    const x = w as { word?: unknown; startS?: unknown; endS?: unknown };
+    return typeof x?.word === "string" && typeof x.startS === "number" && typeof x.endS === "number" ? [{ word: x.word, startS: x.startS, endS: x.endS }] : [];
+  });
+  const lastEnd = words.length > 0 ? Math.max(...words.map((w) => w.endS)) + 0.3 : 0;
+  const narrationS = await (narrationSeconds ? narrationSeconds(audioFile) : audioSeconds(deps.mix, ctx, audioFile)).catch(() => lastEnd);
+  if (!(narrationS > 0)) throw new KnownFailure("The length of the narration is not known. Run the voice step again.");
+
+  // The scene file is capped at 90 s. Narration longer than that is not clipped: the stage fails and the owner shortens the script.
+  if (tooLongForTsx(narrationS)) throw new KnownFailure(`The narration is ${narrationS.toFixed(1)} s, over the 90 s limit of a custom animation. Shorten the script and draft again.`);
+
+  const beats: PromptBeat[] = script.beats.map((b, i) => {
+    const x = b as { id?: unknown; text?: unknown; visual?: unknown };
+    return { id: str(x.id) || `beat-${i + 1}`, text: str(x.text), ...(str(x.visual) ? { visual: str(x.visual) } : {}) };
+  });
+  const topic = (await deps.db.query<{ topic: string }>("select topic from videos where id = $1", [video.id])).rows[0]?.topic ?? "";
+  return { beats, words, narrationS, topic };
+}
+
 /**
  * tsx_author: the code-scene stage. It replaces Build and Render for a video of kind 'tsx', and runs after narration so the
  * word times exist. The model writes one Remotion file; authorTsx checks it, previews it and renders it through renderTsx
@@ -35,30 +76,7 @@ export function tsxAuthorAttempt(deps: StageDeps): AttemptHandler {
     if (video.kind !== "tsx") throw new KnownFailure("This video is not a code-scene video.");
     if (!deps.makeLlm) throw new KnownFailure("No scene model is wired, so the code scene cannot be written.");
     if (!deps.tsx) throw new KnownFailure("Code scenes are not set up on this worker.");
-    const script = await approvedScript(deps.db, video.id);
-    if (!script.ok) throw new KnownFailure(script.reason);
-
-    const narration = await contentBody<{ file?: unknown }>(deps.db, video.id, "narration");
-    if (typeof narration.file !== "string") throw new KnownFailure("The narration record has no audio file. Run the voice step again.");
-    const audioFile = await promotedPath(deps.root, video.id, narration.file);
-    if (!(await lstat(audioFile).catch(() => null))?.isFile()) throw new KnownFailure(`The file ${narration.file} from an earlier stage is missing. Run that stage again.`);
-    const captions = await contentBody<{ words?: unknown }>(deps.db, video.id, "captions").catch(() => null);
-    const words: PromptWord[] = (Array.isArray(captions?.words) ? captions.words : []).flatMap((w: unknown) => {
-      const x = w as { word?: unknown; startS?: unknown; endS?: unknown };
-      return typeof x?.word === "string" && typeof x.startS === "number" && typeof x.endS === "number" ? [{ word: x.word, startS: x.startS, endS: x.endS }] : [];
-    });
-    const lastEnd = words.length > 0 ? Math.max(...words.map((w) => w.endS)) + 0.3 : 0;
-    const narrationS = await audioSeconds(deps.mix, ctx, audioFile).catch(() => lastEnd);
-    if (!(narrationS > 0)) throw new KnownFailure("The length of the narration is not known. Run the voice step again.");
-
-    // The scene file is capped at 90 s. Narration longer than that is not clipped: the stage fails and the owner shortens the script.
-    if (tooLongForTsx(narrationS)) throw new KnownFailure(`The narration is ${narrationS.toFixed(1)} s, over the 90 s limit of a custom animation. Shorten the script and draft again.`);
-
-    const beats: PromptBeat[] = script.beats.map((b, i) => {
-      const x = b as { id?: unknown; text?: unknown; visual?: unknown };
-      return { id: str(x.id) || `beat-${i + 1}`, text: str(x.text), ...(str(x.visual) ? { visual: str(x.visual) } : {}) };
-    });
-    const topic = (await deps.db.query<{ topic: string }>("select topic from videos where id = $1", [video.id])).rows[0]?.topic ?? "";
+    const { beats, words, narrationS, topic } = await loadTsxInputs(deps, ctx, video.id);
 
     const llm = deps.makeLlm(await videoMoneyScopes(deps.db, video));
     // Frame review: key frames of each rendered attempt are read by a vision model. With no usable route it is skipped up front

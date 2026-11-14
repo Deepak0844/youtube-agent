@@ -1,4 +1,4 @@
-import { beatTimings, type PromptBeat, type PromptWord } from "@/server/core/tsx-prompt";
+import { beatTimings, targetFrames, type PromptBeat, type PromptWord } from "@/server/core/tsx-prompt";
 import { omThemeConfig } from "@/server/engine/om-checks/theme";
 
 // OpenMontage parity, Phase D1: the engine build request for a code-drawn Explainer (owner decision 2026-11-14, "Way 2"):
@@ -24,7 +24,7 @@ export function playbookFor(style: string | null | undefined): string {
 const round = (n: number) => Math.round(n * 100) / 100;
 
 export function explainerBuildRequest(v: { topic: string; beats: PromptBeat[]; words: PromptWord[]; narrationS: number; style: string | null; format: "short" }): { prompt: string; inputs: Record<string, string> } {
-  const frames = Math.ceil(v.narrationS * 30);
+  const frames = targetFrames(v.narrationS); // the narration plus a short tail: exactly what the code-scene step checks
   const playbook = playbookFor(v.style);
   const timed = beatTimings(v.beats, v.words, v.narrationS).map((b, i) => ({
     id: v.beats[i]!.id,

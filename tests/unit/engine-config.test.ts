@@ -68,3 +68,15 @@ describe("engine numbers", () => {
     expect(c.heartbeatS).toBe(5);
   });
 });
+
+describe("stageTimeoutS", () => {
+  it("gives the engine build step its run limit plus the final render; every other step keeps the stage limit", async () => {
+    const { buildEngineConfig, stageTimeoutS } = await import("@/server/core/engine-config");
+    const off = buildEngineConfig(new Map());
+    const on = buildEngineConfig(new Map<string, unknown>([["engine.enabled", true]]));
+    expect(stageTimeoutS(off, "tsx_author")).toBe(1800);
+    expect(stageTimeoutS(on, "tsx_author")).toBe(2700 + 900);
+    expect(stageTimeoutS(on, "render")).toBe(1800);
+    expect(stageTimeoutS(buildEngineConfig(new Map<string, unknown>([["engine.enabled", true], ["engine.build_timeout_s", 600]])), "tsx_author")).toBe(1800); // never shorter than the stage limit
+  });
+});

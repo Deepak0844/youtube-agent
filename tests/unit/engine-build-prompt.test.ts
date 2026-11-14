@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { targetFrames } from "@/server/core/tsx-prompt";
 import { explainerBuildRequest } from "@/server/engine/build-prompt";
 
 // OpenMontage parity, Phase D1: the engine's build request for a code-drawn Explainer, made from the approved script and the
@@ -18,7 +19,7 @@ describe("explainerBuildRequest", () => {
   it("prompt_names_the_skills_and_the_exact_length", () => {
     const { prompt } = explainerBuildRequest({ topic: "Why we need Docker", beats, words, narrationS: 4.2, style: "flat-motion-graphics", format: "short" });
     for (const s of ["openmontage-pipeline", "draw-objects", "vidtsx-2d-generator", "scene/video.tsx", "check_code", "preview_frames", "input/script.json", "input/words.json", "ref/openmontage/themes/flat-motion-graphics.json"]) expect(prompt).toContain(s);
-    expect(prompt).toContain("durationInFrames: 126"); // ceil(4.2 * 30)
+    expect(prompt).toContain(`durationInFrames: ${targetFrames(4.2)}`); // the narration plus the tail the code-scene step checks for
     expect(prompt).toContain("1080");
     expect(prompt).toMatch(/do not render/i);
     expect(prompt).toContain("Why we need Docker");
