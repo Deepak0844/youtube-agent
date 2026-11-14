@@ -22,6 +22,12 @@ const clip = z.object({
   source: z.string().optional(),
   model: z.string().optional(),
   prompt: z.string().optional(),
+  // A clip that is not the owner's own carries its own licence line (e.g. CC0 from Kenney) and where it came from.
+  licence: z.string().trim().min(1).optional(),
+  source_url: z.string().optional(),
+  original_file: z.string().optional(),
+  ffmpeg_filter: z.string().optional(),
+  recipe: z.string().optional(),
 });
 const catalog = z.object({
   clips: z.array(
@@ -54,7 +60,7 @@ export function mapCatalog(
       file: c.file,
       tags: [...new Set([...c.tags, category])],
       source: "shipped",
-      licence: SHIPPED_LICENCE,
+      licence: c.licence ?? SHIPPED_LICENCE,
       provenance: {
         catalogId: c.id,
         category,
@@ -62,6 +68,10 @@ export function mapCatalog(
         model: c.model,
         prompt: c.prompt,
         desc: c.desc,
+        ...(c.source_url ? { sourceUrl: c.source_url } : {}),
+        ...(c.original_file ? { originalFile: c.original_file } : {}),
+        ...(c.ffmpeg_filter ? { ffmpegFilter: c.ffmpeg_filter } : {}),
+        ...(c.recipe ? { recipe: c.recipe } : {}),
       },
     };
   });
