@@ -152,7 +152,7 @@ export async function runEngine(d: EngineDeps, req: EngineRequest): Promise<Engi
   let host: ToolsHost | null = null;
   try {
     const ws = await prepareWorkspace(d.root, req.videoId, d.seeds ?? engineKitSeeds(REPO_ROOT), req.inputs ?? {});
-    if (req.kind === "build") host = await startToolsHost({ runDir: ws.dir, tools: d.tools?.(ws) ?? [] });
+    host = await startToolsHost({ runDir: ws.dir, tools: d.tools?.(ws) ?? [] });
     const before = await ws.snapshot();
     const args = engineArgs(req.kind, { maxTurns: d.config.maxTurns, model: req.model, ...(host ? { mcpConfigPath: host.mcpConfigPath } : {}) });
     const limitS = req.long ? d.config.longBuildTimeoutS : d.config.buildTimeoutS;

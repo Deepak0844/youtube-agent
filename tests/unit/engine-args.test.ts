@@ -12,14 +12,18 @@ const flag = (args: string[], name: string): string | undefined => {
 const list = (args: string[], name: string): string[] => (flag(args, name) ?? "").split(",").filter(Boolean);
 
 describe("engineArgs", () => {
-  it("research_run_has_web_and_no_shell_or_mcp", () => {
-    const a = engineArgs("research", { maxTurns: 40 });
-    expect(list(a, "--tools")).toEqual(expect.arrayContaining(["Read", "Glob", "Grep", "Write", "Edit", "Skill", "WebSearch", "WebFetch"]));
+  it("research_args_use_engine_tools_not_builtin_web", () => {
+    const a = engineArgs("research", { maxTurns: 40, mcpConfigPath: "/ws/mcp.json" });
+    expect(list(a, "--tools")).toEqual(["Read", "Glob", "Grep", "Write", "Edit", "Skill", "mcp__engine__*"]);
     expect(list(a, "--tools")).not.toContain("Bash");
-    expect(list(a, "--allowedTools")).toEqual(["Edit(./draft/**)", "Skill", "WebSearch", "WebFetch"]);
-    expect(list(a, "--disallowedTools")).toEqual(expect.arrayContaining(["Bash", "Agent", "Task", "Edit(./.claude/**)", "Edit(./ref/**)", "Edit(./input/**)"]));
-    expect(a).not.toContain("--mcp-config");
-    expect(a.join(" ")).not.toMatch(/mcp__/);
+    expect(list(a, "--allowedTools")).toEqual(["Edit(./draft/**)", "Skill", "mcp__engine__*"]);
+    expect(list(a, "--disallowedTools")).toEqual(expect.arrayContaining(["Bash", "WebSearch", "WebFetch", "Agent", "Task", "Edit(./.claude/**)", "Edit(./ref/**)", "Edit(./input/**)"]));
+    expect(flag(a, "--mcp-config")).toBe("/ws/mcp.json");
+    expect(a).toContain("--strict-mcp-config");
+  });
+
+  it("research_run_without_a_tools_server_is_refused", () => {
+    expect(() => engineArgs("research", { maxTurns: 40 })).toThrow(/tools server/);
   });
 
   it("build_run_has_engine_tools_and_no_web_or_shell", () => {
@@ -36,7 +40,7 @@ describe("engineArgs", () => {
   });
 
   it("both_runs_are_headless_dontAsk_no_session", () => {
-    for (const a of [engineArgs("research", { maxTurns: 40 }), engineArgs("build", { maxTurns: 80, mcpConfigPath: "/m.json" })]) {
+    for (const a of [engineArgs("research", { maxTurns: 40, mcpConfigPath: "/r.json" }), engineArgs("build", { maxTurns: 80, mcpConfigPath: "/m.json" })]) {
       expect(a.slice(0, 1)).toEqual(["-p"]);
       expect(flag(a, "--output-format")).toBe("stream-json");
       expect(a).toContain("--verbose");
@@ -49,9 +53,9 @@ describe("engineArgs", () => {
   });
 
   it("adds a model only when one is named", () => {
-    expect(engineArgs("research", { maxTurns: 1 })).not.toContain("--model");
-    expect(flag(engineArgs("research", { maxTurns: 1, model: "claude-opus-5-5" }), "--model")).toBe("claude-opus-5-5");
-    expect(engineArgs("research", { maxTurns: 1, model: "default" })).not.toContain("--model");
+    expect(engineArgs("research", { maxTurns: 1, mcpConfigPath: "/m.json" })).not.toContain("--model");
+    expect(flag(engineArgs("research", { maxTurns: 1, mcpConfigPath: "/m.json", model: "claude-opus-5-5" }), "--model")).toBe("claude-opus-5-5");
+    expect(engineArgs("research", { maxTurns: 1, mcpConfigPath: "/m.json", model: "default" })).not.toContain("--model");
   });
 });
 
