@@ -25,7 +25,7 @@ const arg = (name: string) => {
 const upstream = arg("--upstream") ?? path.join(homedir(), "Personal/openmontage-upstream");
 const git = (...a: string[]) => execFileSync("git", ["-C", upstream, ...a], { encoding: "utf8", maxBuffer: 256 << 20 }).trim();
 const STYLES = path.join(KIT, "ref", "styles");
-const THEMES = path.join(KIT, "themes");
+const THEMES = path.join(KIT, "ref", "themes");
 
 /** Pre-computes OpenMontage's themeConfig for every style playbook (the app never parses YAML at run time). */
 function writeThemes(): string[] {
