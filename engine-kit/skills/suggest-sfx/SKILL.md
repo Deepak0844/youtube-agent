@@ -51,3 +51,28 @@ always under the voice. Not loud, not trailer-like.
 - Function over vibe; the same few sounds do the heavy lifting; more is not better.
 - A cue that sits fully under continuous speech will not be heard: put it in a word gap or cut it.
 - No static, glitch or hum textures under narration.
+
+## In an engine build: write `sfx-cues.json` (by sound name, not by id)
+
+When your scene passes `check_frames`, write ONE more file in the work folder, `sfx-cues.json`. Name each sound by its
+recipe (the list below); the app finds a matching clip in its free library, drops any cue it cannot match, and mixes the
+rest under the voice. You do not call `list_assets` for this and never write a clip id.
+
+```json
+{ "cues": [
+  { "id": "c1", "sound": "whoosh-soft", "atS": 4.9, "gainDb": -3, "optional": false },
+  { "id": "c2", "sound": "pop-reveal", "atS": 6.4, "gainDb": 0, "optional": true }
+] }
+```
+
+- `atS`: seconds on the video's timeline, the exact moment the picture changes (`(frame + sequence_from) / 30`), inside the video.
+- `gainDb`: -3 for whooshes and transitions, 0 to +3 for pops and impacts, 0 to +6 for stamps and snaps. Never above +6.
+- `optional`: true for texture you could lose, false for the few cues the story needs.
+- Light touch: about one cue every 4 seconds, at most 12 in a 45-second Short. A whoosh on a scene change, a pop when
+  something appears, an impact on the twist, a chime on the payoff. Silence is part of the mix.
+- Never two cues within 0.3 s unless they are a deliberate pair (whoosh then pop).
+
+Sounds you can name: `whoosh-soft`, `whoosh-wind`, `whoosh-reverse` (rewinds, suck-ins), `riser-soft` (build before a reveal),
+`impact-soft`, `impact-deep-soft` (the twist or payoff), `pop-reveal` (something appears), `ui-click-soft`, `ui-toggle-on`,
+`ui-send`, `chime-reward` (a win), `chime-magic`, `sparkle-soft`, `stamp-hit` (a verdict or label lands), `knock-solid`,
+`trap-snap`, `glitch-zap` (an error; use once at most). A name not in this list is ignored.

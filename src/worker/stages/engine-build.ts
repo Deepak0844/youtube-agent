@@ -1,7 +1,8 @@
-import { lstat, readFile } from "node:fs/promises";
+import { lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { reviewRecord } from "@/server/core/frame-review";
 import { KnownFailure } from "@/server/core/paid-call";
+import { sanitizeCueSheet } from "@/server/core/sfx-plan";
 import { checkTsx, TSX_MAX_BYTES, tsxDuration } from "@/server/core/tsx-check";
 import { tsxCaptionWords } from "@/server/core/tsx-captions";
 import { targetFrames } from "@/server/core/tsx-prompt";
@@ -46,6 +47,22 @@ async function readScene(workDir: string): Promise<string> {
   return readFile(path.join(workDir, SCENE), "utf8");
 }
 
+const CUES = "sfx-cues.json";
+const CUES_MAX_BYTES = 64 * 1024;
+
+/** The engine's sound cues, made safe (see sanitizeCueSheet). A missing, linked, oversized or unreadable file is an empty sheet: sound is never a reason to fail the video.
+ * The result is always written, so an older attempt's cues never stay behind for a video whose timing changed. */
+async function engineCues(workDir: string, durationS: number): Promise<{ json: string; count: number }> {
+  let raw: unknown = null;
+  try {
+    const f = path.join(workDir, CUES);
+    const st = await lstat(f);
+    if (st.isFile() && st.size <= CUES_MAX_BYTES) raw = JSON.parse(await readFile(f, "utf8"));
+  } catch { /* none or not JSON: no cues */ }
+  const sheet = sanitizeCueSheet(raw, durationS);
+  return { json: JSON.stringify(sheet), count: sheet.cues.length };
+}
+
 export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): AttemptHandler {
   return async (ctx) => {
     const video = await loadVideo(deps.db, ctx);
@@ -77,14 +94,17 @@ export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Attempt
 
     const rendered = await deps.tsx.renderTsx(ctx, { source, captions: tsxCaptionWords(words), style: video.style, outFile: "render.mp4" });
     if (!rendered.ok) throw new KnownFailure(`The engine's scene did not render: ${[rendered.error.message, ...rendered.error.problems.slice(0, 3)].join(" ")}`);
+    const cues = await engineCues(r.workDir, narrationS);
+    await writeFile(path.join(ctx.attemptDir, CUES), cues.json);
+    ctx.log(`engine: ${cues.count} sound cues`);
     const review = reviewRecord({ status: "skipped", reason: "frame review skipped: the engine looked at its own previews" }, 1);
     return {
-      files: ["render.mp4", ...rendered.stills],
+      files: ["render.mp4", ...rendered.stills, CUES],
       content: [
         { kind: "tsx", body: { source, durationInFrames: frames, attempts: 1, image: rendered.image, stills: rendered.stills, engine: { turns: r.turns, usage: r.usage, summary: r.text.slice(0, 2000) } } },
         { kind: "frame_review", body: review },
       ],
-      result: { rendered: "render.mp4", attempts: 1, durationInFrames: frames, image: rendered.image, frameReview: review, engine: { turns: r.turns } },
+      result: { rendered: "render.mp4", attempts: 1, durationInFrames: frames, image: rendered.image, frameReview: review, engine: { turns: r.turns }, soundCues: cues.count },
     };
   };
 }

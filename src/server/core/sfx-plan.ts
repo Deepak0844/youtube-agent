@@ -27,6 +27,8 @@ export function cueSheet(plan: SfxPlan): string {
   return ["time(s)  name                      gain      optional", ...rows, ...bed].join("\n") + "\n";
 }
 
+const CueSheetItem = z.object({ id: z.string().min(1).max(80), sound: z.string().min(1).max(60), atS: z.number().finite(), gainDb: z.number().finite().default(-12), optional: z.boolean().default(true) });
+
 // A cue sheet is what an author writes: a recipe id from the sfx palette and a time. The plan needs library item ids.
 export const CueSheet = z.object({
   cues: z.array(z.object({ id: z.string().min(1), sound: z.string().min(1), atS: z.number().min(0), gainDb: z.number().min(-30).max(6).default(-12), optional: z.boolean().default(true) })).max(60),
@@ -42,4 +44,23 @@ export async function planFromCueSheet(sheet: CueSheet, palette: Palette, find: 
     if (itemId) cues.push({ id: c.id, itemId, atS: c.atS, gainDb: c.gainDb, optional: c.optional });
   }
   return SfxPlan.parse({ version: 1, cues });
+}
+
+/** A cue sheet written by an engine run, made safe: anything that is not valid is dropped (never a failure: the video just has fewer effects).
+ * Keeps cues with a real time inside the video, clamps gain to what the plan allows, drops a repeat of the same sound within 0.15 s, caps at 60. */
+export function sanitizeCueSheet(raw: unknown, durationS: number): z.infer<typeof CueSheet> {
+  const list = (raw as { cues?: unknown } | null)?.cues;
+  if (!Array.isArray(list) || !(durationS > 0)) return { cues: [] };
+  const cues: z.infer<typeof CueSheet>["cues"] = [];
+  for (const item of list) {
+    const c = CueSheetItem.safeParse(item);
+    if (!c.success) continue;
+    const { id, sound, atS, optional } = c.data;
+    if (atS < 0 || atS > durationS - 0.1) continue;
+    const gainDb = Math.min(6, Math.max(-30, c.data.gainDb));
+    if (cues.some((o) => o.sound === sound && Math.abs(o.atS - atS) < 0.15)) continue;
+    cues.push({ id, sound, atS: Math.round(atS * 1000) / 1000, gainDb, optional });
+    if (cues.length === 60) break;
+  }
+  return { cues: cues.sort((a, b) => a.atS - b.atS) };
 }
