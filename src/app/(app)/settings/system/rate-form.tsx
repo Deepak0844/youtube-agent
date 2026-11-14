@@ -27,11 +27,11 @@ export function RateForm({ rate, auto, note, credits }: { rate: number; auto: bo
       <p data-testid="rate-note" className="mt-3 mb-0 max-w-[60ch] text-body text-muted">{note ?? "This rate was typed by you."}</p>
       <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4">
         <form action={autoAction} className="flex flex-wrap items-center gap-4">
+          {/* Applies the moment it is ticked or cleared (no second Save button next to the rate's own) */}
           <label className="flex min-h-11 items-center gap-3 text-body">
-            <input type="checkbox" name="auto" defaultChecked={auto} className="size-5 accent-[var(--text)]" />
+            <input type="checkbox" name="auto" defaultChecked={auto} disabled={autoPending} onChange={(e) => e.currentTarget.form?.requestSubmit()} className="size-5 accent-[var(--text)]" />
             Update the rate automatically each day (about 9 am IST)
           </label>
-          <Button type="submit" loading={autoPending}>Save</Button>
           {autoState.error ? <p role="alert" className="text-body text-pill-negative-ink">{autoState.error}</p> : autoState.ok ? <p role="status" className="text-body text-pill-positive-ink">Saved.</p> : null}
         </form>
         <form action={nowAction} className="flex flex-wrap items-center gap-4">

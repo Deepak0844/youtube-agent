@@ -133,3 +133,18 @@ test("the rupee rate is editable, refuses bad values, and costs show a rupee fig
   await open(page);
   await save("95.05");
 });
+
+test("the rupee rate card has an automatic switch that applies at once, and says a typed rate is typed", async ({ page }) => {
+  await open(page);
+  const card = page.getByRole("region", { name: "Rupee rate" });
+  await expect(card.getByTestId("rate-note")).toContainText("typed by you");
+  const auto = card.getByLabel(/Update the rate automatically/);
+  await expect(auto).toBeChecked(); // on by default
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/settings/system")), auto.uncheck()]);
+  await expect(card.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+  await open(page);
+  await expect(card.getByLabel(/Update the rate automatically/)).not.toBeChecked();
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/settings/system")), card.getByLabel(/Update the rate automatically/).check()]);
+  await expect(card.getByRole("button", { name: "Update now" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Save" })).toHaveCount(1); // the rate's own button only
+});
