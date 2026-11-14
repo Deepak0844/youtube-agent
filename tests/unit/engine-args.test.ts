@@ -57,11 +57,15 @@ describe("engineArgs", () => {
 
 describe("engine settings", () => {
   it("settings_defaults_match_spec", () => {
-    expect(buildEngineConfig(new Map()).engine).toEqual({ enabled: false, buildTimeoutS: 2700, longBuildTimeoutS: 5400, maxTurns: 150, limitRetryS: 1800 });
-    for (const k of ["engine.enabled", "engine.build_timeout_s", "engine.long_build_timeout_s", "engine.max_turns", "engine.limit_retry_s"]) {
+    expect(buildEngineConfig(new Map()).engine).toEqual({ enabled: false, buildTimeoutS: 2700, longBuildTimeoutS: 5400, maxTurns: 150, limitRetryS: 1800, model: "sonnet" });
+    for (const k of ["engine.enabled", "engine.build_timeout_s", "engine.long_build_timeout_s", "engine.max_turns", "engine.limit_retry_s", "engine.model"]) {
       expect(Object.hasOwn(SETTINGS, k), k).toBe(true);
       expect(SAFETY_KEYS as string[], k).toContain(k);
     }
+  });
+  it("engine_model_is_sonnet_or_opus", () => {
+    expect(buildEngineConfig(new Map<string, unknown>([["engine.model", "opus"]])).engine.model).toBe("opus");
+    expect(() => buildEngineConfig(new Map<string, unknown>([["engine.model", "haiku"]]))).toThrow(/engine\.model/);
   });
   it("refuses an invalid stored switch or limit", () => {
     expect(() => buildEngineConfig(new Map([["engine.enabled", "yes"]]))).toThrow(/engine\.enabled/);

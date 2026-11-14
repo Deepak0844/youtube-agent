@@ -121,6 +121,7 @@ describe("engine code-scene step", () => {
     expect(out.kind).toBe("committed");
     expect(eng.calls).toHaveLength(1);
     expect(eng.calls[0]!.req.kind).toBe("build");
+    expect(eng.calls[0]!.req.model).toBe("sonnet"); // engine.model, Sonnet unless the owner picks Opus
     expect(Object.keys(eng.calls[0]!.req.inputs ?? {}).sort()).toEqual(["script.json", "words.json"]);
     expect(eng.calls[0]!.req.prompt).toContain("draw-objects");
     expect(eng.calls[0]!.toolNames).toEqual(["check_code", "preview_frames", "check_frames", "check_scenes", "preview_scenes", "list_assets", "fetch_asset"]);

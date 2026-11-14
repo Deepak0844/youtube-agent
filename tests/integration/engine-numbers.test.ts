@@ -4,7 +4,7 @@ import { ENGINE_NUMBER_FIELDS } from "@/server/core/engine-numbers";
 import { SETTINGS } from "@/server/core/settings-registry";
 import { getSetting, setSetting } from "@/server/db/settings";
 import { listAudit } from "@/server/db/audit";
-import { loadEngineNumbers, loadEngineSwitch, saveEngineNumbers, saveEngineSwitch } from "@/server/db/system-settings";
+import { loadEngineModel, loadEngineNumbers, loadEngineSwitch, saveEngineNumbers, saveEngineSwitch } from "@/server/db/system-settings";
 
 let db: TestDb;
 beforeAll(async () => {
@@ -60,5 +60,14 @@ describe("the engine switch (engine.enabled)", () => {
     expect(audit.find((d) => d.setting === "engine.enabled")).toMatchObject({ from: false, to: true });
     expect(await saveEngineSwitch(db.pool, false)).toMatchObject({ ok: true });
     expect(await loadEngineSwitch(db.pool)).toBe(false);
+  });
+
+  it("the engine model is Sonnet until the owner picks Opus, and only those two", async () => {
+    expect(await loadEngineModel(db.pool)).toBe("sonnet");
+    expect(await saveEngineSwitch(db.pool, true, "opus")).toMatchObject({ ok: true });
+    expect(await loadEngineModel(db.pool)).toBe("opus");
+    expect((await db.pool.query("select updated_by from settings where key = 'engine.model'")).rows[0].updated_by).toBe("session");
+    expect(await saveEngineSwitch(db.pool, true, "haiku" as never)).toMatchObject({ ok: false });
+    expect(await loadEngineModel(db.pool)).toBe("opus");
   });
 });

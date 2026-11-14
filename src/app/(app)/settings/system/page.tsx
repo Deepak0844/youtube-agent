@@ -3,7 +3,7 @@ import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { localServiceBlockers, MAX_LOCAL_SERVICES, ownServiceConfigProblem } from "@/server/core/local-services";
 import { getPool } from "@/server/db/pool";
-import { loadEngineSwitch, loadInrRate, loadSystemSettings } from "@/server/db/system-settings";
+import { loadEngineModel, loadEngineSwitch, loadInrRate, loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
 import { engineUsageSummary } from "@/server/db/engine-runs";
 import { Pill } from "@/ui/primitives/pill";
@@ -27,7 +27,7 @@ export default function SystemSettings() {
 async function Owned() {
   await requireOwner();
   const db = getPool();
-  const [status, view, engine, engineOn] = await Promise.all([getSystemStatus(db), loadSystemSettings(db), engineUsageSummary(db).catch(() => null), loadEngineSwitch(db)]);
+  const [status, view, engine, engineOn, engineModel] = await Promise.all([getSystemStatus(db), loadSystemSettings(db), engineUsageSummary(db).catch(() => null), loadEngineSwitch(db), loadEngineModel(db)]);
   const { renders, jobs, warnGb, longMinutes, services } = view;
   const blockers = localServiceBlockers();
   const configProblem = ownServiceConfigProblem();
@@ -56,7 +56,7 @@ async function Owned() {
           On: Claude Code on your subscription writes the scenes of Custom animation videos, drawing the objects in code and
           checking its own preview frames. Off: the paid model writes them, as before. The script, voice and approvals are the same.
         </p>
-        <EngineSwitchForm on={engineOn} />
+        <EngineSwitchForm on={engineOn} model={engineModel} />
       </section>
       <section aria-labelledby="uploads-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="uploads-h" className="text-title font-semibold">Uploads to YouTube</h2>

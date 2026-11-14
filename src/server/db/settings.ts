@@ -96,6 +96,7 @@ export const SESSION_BATCH_KEYS: readonly string[] = [
   ...ENGINE_NUMBER_KEYS,
   // The new video engine's switch on /settings/system (saveEngineSwitch, after requireOwner). A safety key: session only.
   "engine.enabled",
+  "engine.model",
 ];
 
 export interface SessionWrite {
