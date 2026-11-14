@@ -36,6 +36,15 @@ describe("settings table and seed", () => {
     expect((await db.pool.query("select cap_micro_usd::text c from budgets where scope='day'")).rows[0].c).toBe("1");
   });
 
+  it("migration_0088_raises_the_turn_limit_only_when_never_edited", async () => {
+    const m = await readFile("src/server/db/migrations/0088_engine_max_turns.sql", "utf8");
+    expect(await getSetting(db.pool, "engine.max_turns")).toBe(150); // fresh database: seeded 80, raised to 150
+    await setSetting(db.pool, "engine.max_turns", 80, { actor: "session" }); // the owner sets 80 on purpose
+    await db.ownerPool.query(m);
+    expect(await getSetting(db.pool, "engine.max_turns")).toBe(80);
+    await setSetting(db.pool, "engine.max_turns", 150, { actor: "session" });
+  });
+
   it("set_returns_old_and_new_and_stamps_actor", async () => {
     const r = await setSetting(db.pool, "jobs.concurrent_jobs", 3, { actor: "token" });
     expect(r).toEqual({ old: 2, new: 3 });

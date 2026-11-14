@@ -57,7 +57,7 @@ describe("engineArgs", () => {
 
 describe("engine settings", () => {
   it("settings_defaults_match_spec", () => {
-    expect(buildEngineConfig(new Map()).engine).toEqual({ enabled: false, buildTimeoutS: 2700, longBuildTimeoutS: 5400, maxTurns: 80, limitRetryS: 1800 });
+    expect(buildEngineConfig(new Map()).engine).toEqual({ enabled: false, buildTimeoutS: 2700, longBuildTimeoutS: 5400, maxTurns: 150, limitRetryS: 1800 });
     for (const k of ["engine.enabled", "engine.build_timeout_s", "engine.long_build_timeout_s", "engine.max_turns", "engine.limit_retry_s"]) {
       expect(Object.hasOwn(SETTINGS, k), k).toBe(true);
       expect(SAFETY_KEYS as string[], k).toContain(k);
