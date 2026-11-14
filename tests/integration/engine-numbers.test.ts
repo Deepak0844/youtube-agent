@@ -4,7 +4,7 @@ import { ENGINE_NUMBER_FIELDS } from "@/server/core/engine-numbers";
 import { SETTINGS } from "@/server/core/settings-registry";
 import { getSetting, setSetting } from "@/server/db/settings";
 import { listAudit } from "@/server/db/audit";
-import { loadEngineNumbers, saveEngineNumbers } from "@/server/db/system-settings";
+import { loadEngineNumbers, loadEngineSwitch, saveEngineNumbers, saveEngineSwitch } from "@/server/db/system-settings";
 
 let db: TestDb;
 beforeAll(async () => {
@@ -47,5 +47,18 @@ describe("engine numbers (app role)", () => {
   it("is session-only: a token cannot write an engine number", async () => {
     await expect(setSetting(db.pool, "engine.timeout_stage_s", 900, { actor: "token" })).rejects.toThrow();
     expect(await getSetting(db.pool, "engine.timeout_stage_s")).toBe(1800);
+  });
+});
+
+describe("the engine switch (engine.enabled)", () => {
+  it("starts off, turns on and off as a session, and is audited", async () => {
+    expect(await loadEngineSwitch(db.pool)).toBe(false);
+    expect(await saveEngineSwitch(db.pool, true)).toMatchObject({ ok: true });
+    expect(await getSetting(db.pool, "engine.enabled")).toBe(true);
+    expect((await db.pool.query("select updated_by from settings where key = 'engine.enabled'")).rows[0].updated_by).toBe("session");
+    const audit = (await listAudit(db.pool, { eventPrefix: "setting.changed" })).rows.map((x) => x.detail as { setting: string; from: unknown; to: unknown });
+    expect(audit.find((d) => d.setting === "engine.enabled")).toMatchObject({ from: false, to: true });
+    expect(await saveEngineSwitch(db.pool, false)).toMatchObject({ ok: true });
+    expect(await loadEngineSwitch(db.pool)).toBe(false);
   });
 });

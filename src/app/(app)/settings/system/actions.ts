@@ -5,7 +5,7 @@ import { requireOwner } from "@/lib/auth/require-owner";
 import { getPool } from "@/server/db/pool";
 import { ENGINE_NUMBER_FIELDS } from "@/server/core/engine-numbers";
 import { hostPortOf, isVoiceField } from "@/server/providers/voice/endpoints";
-import { loadLocalServices, loadVoiceServers, saveEngineNumbers, saveLocalServices, saveSystemSettings, saveUploadSwitches } from "@/server/db/system-settings";
+import { loadLocalServices, loadVoiceServers, saveEngineNumbers, saveEngineSwitch, saveLocalServices, saveSystemSettings, saveUploadSwitches } from "@/server/db/system-settings";
 
 export interface FormState {
   ok?: boolean;
@@ -33,6 +33,14 @@ export async function saveLimitsAction(_prev: FormState, form: FormData): Promis
 export async function saveKillSwitchAction(_prev: FormState, form: FormData): Promise<FormState> {
   await requireOwner();
   const r = await saveUploadSwitches(getPool(), { killSwitch: form.get("kill") === "on" });
+  if (r.ok) revalidatePath("/settings/system");
+  return r.ok ? { ok: true } : { error: r.error };
+}
+
+// Owner session only. The new video engine (Claude Code with tools) for Custom animation videos: one click either way.
+export async function saveEngineSwitchAction(_prev: FormState, form: FormData): Promise<FormState> {
+  await requireOwner();
+  const r = await saveEngineSwitch(getPool(), form.get("engine") === "on");
   if (r.ok) revalidatePath("/settings/system");
   return r.ok ? { ok: true } : { error: r.error };
 }

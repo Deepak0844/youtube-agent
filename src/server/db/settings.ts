@@ -94,6 +94,8 @@ export const SESSION_BATCH_KEYS: readonly string[] = [
   "backup.extra_dir",
   // The engine numbers form on /settings/system (src/server/core/engine-numbers.ts).
   ...ENGINE_NUMBER_KEYS,
+  // The new video engine's switch on /settings/system (saveEngineSwitch, after requireOwner). A safety key: session only.
+  "engine.enabled",
 ];
 
 export interface SessionWrite {
