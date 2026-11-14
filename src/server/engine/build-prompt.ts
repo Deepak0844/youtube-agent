@@ -52,6 +52,7 @@ export function explainerBuildRequest(v: { topic: string; beats: PromptBeat[]; w
     "- Frame 0 must already show the first beat's main object at full strength (do not fade or pop it in from nothing): the app's final render checks frames 0, middle and last and refuses an empty first frame, a black or blank frame, or a video where nothing moves.",
     "- Shape it as a Short (draw-objects section 5b): a hook at frame 0, a setup, a reveal in steps, a twist near the end that changes the picture, and a loop: the last frame matches frame 0 so the replay is seamless. No call to action at the end.",
     "- Last, run check_frames on scene/video.tsx and fix the file until it passes; only then finish.",
+    "- When check_frames passes, read the suggest-sfx skill's engine section and write sfx-cues.json next to scene/ (light sound effects named by sound, timed to the frames you drew). Sound is never a reason to fail: if unsure, write {\"cues\":[]}.",
     "- Do not render the video: the app renders scene/video.tsx after you finish.",
     "",
     "Finish with one line per beat: its id and what is drawn in it.",

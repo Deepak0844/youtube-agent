@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -92,7 +92,7 @@ async function tsxVideoWithNarration(): Promise<{ id: string; frames: number }> 
 }
 
 /** A scripted engine: writes `source` (or nothing) into its own work folder, or reports the usage limit. Records the requests. */
-function fakeEngine(o: { source?: string; limit?: Date }) {
+function fakeEngine(o: { source?: string; limit?: Date; cues?: string }) {
   const calls: Array<{ req: EngineRequest; toolNames: string[] }> = [];
   const run = async (deps: EngineDeps, req: EngineRequest): Promise<EngineResult> => {
     const workDir = mkdtempSync(path.join(root, "work-"));
@@ -102,6 +102,7 @@ function fakeEngine(o: { source?: string; limit?: Date }) {
       mkdirSync(path.join(workDir, "scene"));
       writeFileSync(path.join(workDir, "scene", "video.tsx"), o.source);
     }
+    if (o.cues !== undefined) writeFileSync(path.join(workDir, "sfx-cues.json"), o.cues);
     return { ok: true, text: "b1: a laptop\nb2: a container", usage: { inputTokens: 1, outputTokens: 1, costUsdEquiv: 0 } as never, turns: 12, workDir };
   };
   return { run, calls };
@@ -130,6 +131,22 @@ describe("engine code-scene step", () => {
     expect(saved.source).toBe(withFrames(frames));
     expect(saved.durationInFrames).toBe(frames);
     expect(saved.engine.turns).toBe(12);
+  });
+
+  it("engine_sound_cues_are_made_safe_and_saved_with_the_step", async () => {
+    const { id, frames } = await tsxVideoWithNarration();
+    const cues = JSON.stringify({ cues: [{ id: "a", sound: "whoosh-soft", atS: 1, gainDb: 99 }, { id: "b", sound: "pop-reveal", atS: 9999 }, { id: "c", sound: "../../etc", atS: -2 }, "junk"] });
+    const out = await play(id, "tsx_author", withAttempt({ db: db.pool, root }, codeSceneAttempt(mkDeps({ tsx: fakeTsx() }), engineDeps(fakeEngine({ source: withFrames(frames), cues }).run))));
+    expect(out.kind).toBe("committed");
+    const saved = JSON.parse(readFileSync(path.join(root, "videos", id, "sfx-cues.json"), "utf8")) as { cues: { id: string; sound: string; gainDb: number }[] };
+    expect(saved.cues).toEqual([{ id: "a", sound: "whoosh-soft", atS: 1, gainDb: 6, optional: true }]); // late, negative and junk cues dropped, gain clamped
+  });
+
+  it("no_sound_cues_means_an_empty_sheet_that_replaces_older_cues", async () => {
+    const { id, frames } = await tsxVideoWithNarration();
+    const out = await play(id, "tsx_author", withAttempt({ db: db.pool, root }, codeSceneAttempt(mkDeps({ tsx: fakeTsx() }), engineDeps(fakeEngine({ source: withFrames(frames) }).run))));
+    expect(out.kind).toBe("committed");
+    expect(JSON.parse(readFileSync(path.join(root, "videos", id, "sfx-cues.json"), "utf8"))).toEqual({ cues: [] });
   });
 
   it("no_or_bad_scene_fails_with_one_sentence_and_renders_nothing", async () => {

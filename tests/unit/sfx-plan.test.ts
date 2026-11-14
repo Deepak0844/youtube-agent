@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parsePalette } from "@/server/core/sfx-palette";
-import { cueSheet, planFromCueSheet, SfxPlan } from "@/server/core/sfx-plan";
+import { readFileSync } from "node:fs";
+import { cueSheet, planFromCueSheet, sanitizeCueSheet, SfxPlan } from "@/server/core/sfx-plan";
 
 const cue = (id: string, atS: number, optional = false) => ({ id, itemId: "i" + id, atS, gainDb: -12, optional });
 
@@ -31,5 +32,30 @@ describe("plan from a cue sheet", () => {
   it("drops a cue with no library clip, optional or not, and never fails", async () => {
     expect((await planFromCueSheet({ cues: [{ id: "a", sound: "boom", atS: 1 }] }, palette, hit)).cues).toEqual([]);
     expect((await planFromCueSheet({ cues: [{ id: "a", sound: "boom", atS: 1, optional: false }] }, palette, hit)).cues).toEqual([]);
+  });
+});
+
+describe("sanitizing an engine's cue sheet", () => {
+  const c = (o: object) => ({ id: "a", sound: "whoosh-soft", atS: 2, ...o });
+  it("keeps good cues in time order and fills defaults", () => {
+    expect(sanitizeCueSheet({ cues: [c({ id: "b", atS: 5 }), c({ id: "a", atS: 1 })] }, 40).cues.map((x) => [x.id, x.gainDb, x.optional])).toEqual([["a", -12, true], ["b", -12, true]]);
+  });
+  it("drops junk, bad times and a repeat within 0.15 s; clamps gain", () => {
+    const r = sanitizeCueSheet({ cues: [c({}), c({ id: "dup", atS: 2.1 }), c({ id: "late", atS: 40 }), c({ id: "neg", atS: -1 }), c({ id: "nan", atS: "x" }), "x", null, c({ id: "hot", sound: "pop-reveal", gainDb: 50 }), c({ id: "cold", sound: "riser-soft", atS: 3, gainDb: -90 })] }, 40);
+    expect(r.cues.map((x) => [x.id, x.gainDb])).toEqual([["a", -12], ["hot", 6], ["cold", -30]]);
+  });
+  it("caps at 60 and treats a bad document as no cues", () => {
+    const many = Array.from({ length: 80 }, (_, i) => c({ id: "i" + i, atS: i * 0.4 }));
+    expect(sanitizeCueSheet({ cues: many }, 100).cues).toHaveLength(60);
+    for (const bad of [null, "x", 3, {}, { cues: "no" }]) expect(sanitizeCueSheet(bad, 40).cues).toEqual([]);
+    expect(sanitizeCueSheet({ cues: [c({})] }, 0).cues).toEqual([]);
+  });
+  it("every sound the engine skill names is a palette recipe with a clip in the library catalog", () => {
+    const skill = readFileSync("engine-kit/skills/suggest-sfx/SKILL.md", "utf8").split("Sounds you can name:")[1]!;
+    const named = [...skill.matchAll(/`([a-z][a-z-]+)`/g)].map((m) => m[1]!);
+    const recipes = new Set((JSON.parse(readFileSync("assets-builtin/audio/sfx/palette.json", "utf8")) as { sounds: { id: string }[] }).sounds.map((s) => s.id));
+    const clipped = new Set((JSON.parse(readFileSync("assets-builtin/audio/sfx/catalog.json", "utf8")) as { clips: { recipe?: string }[] }).clips.map((x) => x.recipe));
+    expect(named.length).toBeGreaterThan(10);
+    for (const n of named) { expect(recipes.has(n), n).toBe(true); expect(clipped.has(n), n).toBe(true); }
   });
 });
