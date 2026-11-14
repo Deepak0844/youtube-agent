@@ -38,12 +38,23 @@ describe("tsxRenderPlan", () => {
       const om = tsxRenderPlan({ ...base, mode, config: kitConfig });
       expect(om.args.slice(-3)).toEqual(tail);
       expect(om.args.slice(0, -3)).toEqual(p.args.slice(0, -3));
-      expect(om.timeoutMs).toBe(p.timeoutMs);
+      if (mode === "om-stills") expect(om.timeoutMs).toBe(p.timeoutMs);
     }
     expect(() => tsxRenderPlan({ ...base, mode: "toString" as never, config: kitConfig })).toThrow();
     expect(p.timeoutMs).toBe(300_000);
     expect(p.maxVideoBytes).toBe(512 * 1024 * 1024);
     expect(p.maxOutputBytes).toBe(256 * 1024);
+  });
+
+  it("om_video_uses_the_kit_render_limit_and_nothing_else_changes", () => {
+    // a full OpenMontage video may be long: it gets the kit's own render limit (at most 1800 s); stills and TSX keep 300 s
+    const video = tsxRenderPlan({ ...base, mode: "om-video", config: kitConfig });
+    expect(video.timeoutMs).toBe(1_800_000);
+    expect(tsxRenderPlan({ ...base, mode: "om-video", config: { ...kitConfig, timeoutS: 900 } }).timeoutMs).toBe(900_000);
+    expect(tsxRenderPlan({ ...base, mode: "om-video", config: { ...kitConfig, timeoutS: 99_999 } }).timeoutMs).toBe(1_800_000);
+    expect(tsxRenderPlan({ ...base, mode: "om-stills", config: kitConfig }).timeoutMs).toBe(300_000);
+    expect(tsxRenderPlan({ ...base, mode: "video", config: kitConfig }).timeoutMs).toBe(300_000);
+    expect(video.args.slice(0, -3)).toEqual(tsxRenderPlan({ ...base, mode: "video", config: kitConfig }).args.slice(0, -3));
   });
 
   it("keeps every kit flag and only adds", () => {

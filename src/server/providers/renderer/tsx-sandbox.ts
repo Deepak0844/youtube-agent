@@ -13,6 +13,8 @@ export const TSX_SANDBOX = {
   pids: 256,
   /** Hard wall-clock cap; also never more than half the kit render limit. */
   timeoutS: 300,
+  /** A full OpenMontage video (om-video) may be long: it gets the kit's own render limit, at most this. Same flags otherwise. */
+  omVideoTimeoutS: 1800,
   /** Largest file any process in the container may write (ulimit fsize); also the cap on the copied-out video. */
   maxFileBytes: 512 * MiB,
   /** Cap on what the docker CLI may print back. */
@@ -59,7 +61,7 @@ export function tsxRenderPlan(o: TsxRenderPlanInput): TsxRenderPlan {
     memoryMb: Math.min(c.memoryMb, TSX_SANDBOX.memoryMb),
     pids: Math.min(c.pids, TSX_SANDBOX.pids),
   };
-  const timeoutS = Math.max(1, Math.min(TSX_SANDBOX.timeoutS, Math.floor(c.timeoutS / 2)));
+  const timeoutS = mode === "om-video" ? Math.max(1, Math.min(TSX_SANDBOX.omVideoTimeoutS, Math.floor(c.timeoutS))) : Math.max(1, Math.min(TSX_SANDBOX.timeoutS, Math.floor(c.timeoutS / 2)));
   return {
     args: renderArgs({ ...rest, limits, extra: TSX_EXTRA_FLAGS, entry: TSX_ENTRY[mode] }),
     timeoutMs: timeoutS * 1000,
