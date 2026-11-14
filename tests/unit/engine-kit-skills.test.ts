@@ -25,6 +25,13 @@ describe("engine-kit seeds", () => {
     expect(readFileSync("engine-kit/skills/make-short/SKILL.md", "utf8")).toMatch(/preview_frames[\s\S]*check_code|check_code[\s\S]*preview_frames/);
   });
 
+  it("draw_objects_keeps_labels_off_the_picture", () => {
+    const t = readFileSync("engine-kit/skills/draw-objects/SKILL.md", "utf8");
+    expect(t).toMatch(/Labels never touch the picture/);
+    expect(t).toMatch(/labelY = objectBottom \+ 28 \+ fontSize/);
+    expect(t).toMatch(/at least 40 px/);
+  });
+
   it("every_path_a_guide_names_is_seeded_or_mapped", () => {
     // a guide pointing at a file this app does not have must be listed in TOOL-MAP's "Guides not included"
     const missing = new Set<string>();
