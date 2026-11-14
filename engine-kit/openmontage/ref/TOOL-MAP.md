@@ -17,10 +17,10 @@ Engine tools you have: `check_code`, `preview_frames`, `check_scenes`, `preview_
 | `composition.json`, `composition_path` (the Remotion props the compose stage assembles) | `om/composition.json` |
 | `projects/<id>/checkpoint_<stage>.json`, `write_checkpoint(...)` | write `om/checkpoint_<stage>.json` yourself, with the fields the checkpoint protocol lists |
 | `projects/<slug>/assets/...`, `public/...` | `assets/` (filled by `fetch_asset`); refer to files by their name inside `assets/` |
-| `projects/<slug>/index.tsx` (a bespoke or "atelier" composition) | `scene/video.tsx`, checked with `check_code` and previewed with `preview_frames` |
+| `projects/<slug>/index.tsx` (a bespoke or "atelier" composition) | `scene/video.tsx`, checked with `check_code` and previewed with `preview_frames`; it may use the composer's own components as `yt-om/<Component>` (list and props: `ref/openmontage/COMPONENTS.md`) |
 | `projects/<project-name>/skills/<name>.md` (project skills) | not used |
 | `remotion-composer/public/...` (where OpenMontage stages files) | `assets/` |
-| `remotion-composer/src/...`, `src/Explainer.tsx`, `src/components/...` | not readable here; `ref/openmontage/remotion-composer/SCENE_TYPES.md` is the contract of what the composer draws |
+| `remotion-composer/src/...`, `src/Explainer.tsx`, `src/components/...` | not readable here; `ref/openmontage/remotion-composer/SCENE_TYPES.md` is the contract of what the composer draws, and `ref/openmontage/COMPONENTS.md` lists the components a bespoke scene may import (`yt-om/<Component>`) |
 | `AGENT_GUIDE.md` | `ref/openmontage/AGENT_GUIDE.md`; where it conflicts with this map (tools, runtimes, commands), this map wins |
 
 ## Tools
