@@ -9,6 +9,7 @@ import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { themeFromPlaybook } from "@/server/engine/om-checks/theme";
+import { syncOmDts } from "./sync-om-dts";
 
 const KIT = "engine-kit/openmontage";
 const PATCHES = path.join(KIT, "patches");
@@ -98,6 +99,7 @@ function sync(ref: string): void {
     const watched = ["remotion-composer/src", "styles", "skills", "pipeline_defs"];
     const unseen = git("ls-tree", "-r", "--name-only", commit, "--", ...watched).split("\n").filter((f) => f && !kept.has(f));
     console.log(`themes: ${writeThemes().join(", ")}`);
+    syncOmDts(); // yt-om declarations, names and COMPONENTS.md follow the components
     writeFileSync(path.join(KIT, "UPSTREAM.json"), `${JSON.stringify({ repo: manifest.repo, commit, date }, null, 2)}\n`);
     console.log(`OpenMontage ${pin.commit.slice(0, 7)} -> ${commit.slice(0, 7)} (${date})`);
     console.log(`changed (${changed.length}):\n  ${changed.join("\n  ") || "-"}`);

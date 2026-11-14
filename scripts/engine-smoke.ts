@@ -7,19 +7,16 @@
 import { cp, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { checkTsx } from "@/server/core/tsx-check";
 import type { StageContext } from "@/server/core/stage-handler";
 import { getEngineConfig } from "@/server/db/engine-config";
 import { getPool } from "@/server/db/pool";
 import { createVideoRow } from "@/server/db/videos";
-import { engineTools } from "@/server/engine/mcp/tools";
 import { runEngine } from "@/server/engine/run";
 import { defaultEngineRoot } from "@/server/engine/workspace";
 import { probeVideo } from "@/server/render/probe";
 import { runChild } from "@/server/render/child";
-import { renderTsxStills, typeCheckInThread, type TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
-import { omDurationFrames, renderOm } from "@/server/providers/renderer/om-render";
-import { mediaDurationS } from "@/server/render/media-duration";
+import type { TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
+import { buildEngineTools } from "@/server/engine/tools-factory";
 import { resolveRenderImage } from "@/server/providers/renderer/remotion-container";
 import { storageRoot } from "@/server/storage/paths";
 import { renderKitDir } from "@/worker/handlers";
@@ -67,19 +64,7 @@ async function main(): Promise<void> {
     const r = await runEngine(
       {
         db, root: defaultEngineRoot(), config: { ...config.engine, enabled: true },
-        tools: (ws) => (workDir = ws.workDir, engineTools({
-          workDir: ws.workDir,
-          check: async (src) => { const c = checkTsx(src); return c.ok ? typeCheckInThread(src, 60_000) : c; },
-          stills: (src, frames) => renderTsxStills(tsxDeps, ctx, { source: src, frames }),
-          listAssets: async () => [],
-          assetFile: async () => null,
-          probeDuration: (file) => mediaDurationS(file, { runChild: (spec) => runChild(spec), signal: ac.signal, stageRunId: ctx.claim.stageRunId }),
-          orientation: "portrait",
-          omStills: async (props, orientation, frames, assets) => {
-            const r = await renderOm(tsxDeps, ctx, { props, orientation, stills: frames, assets, outFile: "om.mp4" });
-            return r.ok ? { ok: true, files: r.stills.map((n) => path.join(attemptDir, n)), frameCount: omDurationFrames(props) } : { ok: false, message: r.message, problems: r.problems };
-          },
-        })),
+        tools: (ws) => ((workDir = ws.workDir), buildEngineTools({ db, ctx, workDir: ws.workDir, orientation: "portrait", storageRoot: root, render: tsxDeps })),
       },
       { videoId: video.id, stageRunId: "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91", kind: "build", prompt, long: false, signal: ac.signal },
     );
