@@ -38,7 +38,7 @@ describe("engine numbers", () => {
         durationToleranceS: 1.5,
       },
       render: { timeoutS: 600, cpus: 4, memoryMb: 4096, pids: 512 },
-      engine: { enabled: false, buildTimeoutS: 2700, longBuildTimeoutS: 5400, maxTurns: 80, limitRetryS: 1800 },
+      engine: { enabled: false, buildTimeoutS: 2700, longBuildTimeoutS: 5400, maxTurns: 150, limitRetryS: 1800 },
     });
     expect(d("engine.retry_backoff_seconds")).toEqual([30, 120, 480]);
   });
