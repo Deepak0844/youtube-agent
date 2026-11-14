@@ -146,6 +146,15 @@ describe("claude code adapter", () => {
     expect(e.message).toMatch(/not logged in/i);
   });
 
+  it("a not authenticated error reply (anywhere in the text) says to log in, not that a limit was hit", async () => {
+    for (const said of ["Not authenticated", "Failed to authenticate. API Error: 401 OAuth account not authenticated"]) {
+      const e = await caught(run(harness(({ child }) => child.finish(JSON.stringify({ type: "result", subtype: "error_during_execution", is_error: true, result: said }), 1))));
+      expect(e, said).toBeInstanceOf(NotProcessedError);
+      expect(classifyError(e), said).toBe("permanent");
+      expect(e.message, said).toMatch(/not logged in/i);
+    }
+  });
+
   it("a missing binary is a clear KnownFailure", async () => {
     const h = harness(({ child }) => setImmediate(() => child.emit("error", Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" }))));
     const e = await caught(run(h));

@@ -55,6 +55,9 @@ process.stdin.on("end", () => {
     case "limit":
       out({ type: "result", subtype: "success", is_error: true, result: "You've hit your limit · resets 8pm (Asia/Kolkata)", num_turns: 1, total_cost_usd: 0, usage: { input_tokens: 10, output_tokens: 0 } });
       break;
+    case "auth":
+      out({ type: "result", subtype: "success", is_error: true, result: "Failed to authenticate. API Error: 401 {\"error\":{\"message\":\"OAuth account not authenticated\"}}", num_turns: 1, total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } });
+      break;
     case "turns":
       out({ type: "result", subtype: "error_max_turns", is_error: true, num_turns: 80, total_cost_usd: 1, usage: { input_tokens: 10, output_tokens: 10 } });
       break;

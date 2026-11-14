@@ -243,6 +243,9 @@ async function runOnce(deps: ClaudeCodeDeps, args: string[], input: string, sign
 // Anchored to the CLI's own error sentences (the start of its `result` field, or of stderr): a stray "429" in text is not a refusal.
 export const LIMIT = /^(?:Claude AI usage limit reached|You(?:'|\u2019)ve (?:hit|reached) your [\w\s-]*limit|API Error: 429\b|API Error: Rate limit)/i;
 const LOGIN = /^(?:Invalid API key|Not logged in|Please run \/login|OAuth token (?:has expired|has been revoked)|API Error: 401\b)/i;
+/** The text of an ERROR reply that means "log in again". "not authenticated" may sit anywhere in it (the CLI wraps it in other words). Only ever called on an is_error reply, never on an answer. */
+export const isLoginProblem = (said: string): boolean => LOGIN.test(said.trimStart()) || /\bnot authenticated\b/i.test(said);
+export const LOGIN_MESSAGE = "Claude Code is not logged in on this machine. Run `claude` once and log in.";
 
 const CANCELLED = "The stage was cancelled, so Claude Code was stopped.";
 export const BUSY = "Claude Code is busy with another call right now. Nothing was started. Try again in a minute.";
@@ -262,7 +265,7 @@ function interpret(r: Ran): Interpreted {
   const said = (typeof j?.result === "string" ? j.result : r.stderr).trimStart();
   if (!j || j.is_error === true || j.subtype !== "success" || r.code !== 0) {
     if (LIMIT.test(said)) throw own(new NotProcessedError("Claude Code says the subscription usage limit or rate limit is reached. Try again later.", { status: 429 }));
-    if (LOGIN.test(said)) throw own(new NotProcessedError("Claude Code is not logged in on this machine. Run `claude` once and log in.", { status: 401 }));
+    if (isLoginProblem(said)) throw own(new NotProcessedError(LOGIN_MESSAGE, { status: 401 }));
     throw own(new Error(UNKNOWN));
   }
   if (typeof j.result !== "string") throw own(new Error(UNKNOWN));

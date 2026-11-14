@@ -114,6 +114,12 @@ describe("runEngine", () => {
     expect(r).toMatchObject({ ok: false, limit: true });
   });
 
+  it("a not authenticated reply says to log in, and is neither a limit nor a vague error", async () => {
+    const v = await video();
+    expect(await runEngine(deps(), req(v, { mode: "auth" }))).toEqual({ ok: false, limit: false, message: "Claude Code is not logged in on this machine. Run `claude` once and log in, then run the step again." });
+    expect(await row(v)).toMatchObject({ status: "failed" });
+  });
+
   it("running out of turns and a crash are plain failures", async () => {
     const v = await video();
     expect(await runEngine(deps(), req(v, { mode: "turns" }))).toEqual({ ok: false, limit: false, message: "Claude used all its turns without finishing." });
