@@ -58,6 +58,20 @@ export async function usageWindow(db: Q, since: Date): Promise<{ runs: number; i
   return { runs: r.runs, inputTokens: Number(r.i), outputTokens: Number(r.o), costUsdEquiv: Number(r.c) };
 }
 
+/**
+ * Runs of this video still marked running that no engine in this process is driving (`active`): a try that crashed before it
+ * could end its run (a dropped database connection, say). Only one worker runs (the worker lock), so such a run is stale; it is
+ * closed so the step can run again. A run this process is still driving is never touched. Returns how many were closed.
+ */
+export async function closeStaleRunsOf(db: Q, videoId: string, active: ReadonlySet<string>): Promise<number> {
+  const res = await db.query(
+    `update engine_runs set status = 'killed', ended_at = clock_timestamp(), error = 'An earlier try of this step stopped without finishing; the step ran again.'
+      where video_id = $1 and status = 'running' and not (id::text = any($2::text[]))`,
+    [videoId, [...active]],
+  );
+  return res.rowCount ?? 0;
+}
+
 /** At worker start: runs still marked running belong to a worker that is gone (its process group was swept). */
 export async function killStaleEngineRuns(db: Q): Promise<number> {
   const res = await db.query("update engine_runs set status = 'killed', ended_at = clock_timestamp(), error = 'The worker restarted during this run.' where status = 'running'");
