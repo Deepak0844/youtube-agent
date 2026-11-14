@@ -19,6 +19,7 @@ import { defaultEngineRoot } from "@/server/engine/workspace";
 import { probeVideo } from "@/server/render/probe";
 import { runChild } from "@/server/render/child";
 import { renderTsxStills, typeCheckInThread, type TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
+import { omDurationFrames, renderOm } from "@/server/providers/renderer/om-render";
 import { resolveRenderImage } from "@/server/providers/renderer/remotion-container";
 import { storageRoot } from "@/server/storage/paths";
 import { renderKitDir } from "@/worker/handlers";
@@ -83,6 +84,11 @@ async function main(): Promise<void> {
           listAssets: async () => [],
           assetFile: async () => null,
           probeDuration: (file) => probeDurationS(file),
+          orientation: "portrait",
+          omStills: async (props, orientation, frames, assets) => {
+            const r = await renderOm(tsxDeps, ctx, { props, orientation, stills: frames, assets, outFile: "om.mp4" });
+            return r.ok ? { ok: true, files: r.stills.map((n) => path.join(attemptDir, n)), frameCount: omDurationFrames(props) } : { ok: false, message: r.message, problems: r.problems };
+          },
         })),
       },
       { videoId: video.id, stageRunId: "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91", kind: "build", prompt, long: false, signal: ac.signal },

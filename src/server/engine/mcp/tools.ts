@@ -2,6 +2,8 @@ import { copyFile, lstat, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { TSX_MAX_BYTES } from "@/server/core/tsx-check";
 import { checkScenes, referencedAssets } from "@/server/engine/om-checks";
+import { composeOmProps } from "@/server/engine/om-checks/compose";
+import { checkOmProps, omDurationFrames } from "@/server/providers/renderer/om-render";
 import { ToolMessage, type McpContent, type McpTool } from "./protocol";
 
 // The engine tools of a build run (ADR 0015). Paths are relative to work/ and checked (no absolute, no "..", no link
@@ -21,6 +23,10 @@ export interface EngineToolDeps {
   assetFile(id: string): Promise<string | null>;
   /** Length in seconds of an audio or video file inside work/assets (ffprobe), or null when it cannot be read. */
   probeDuration(file: string): Promise<number | null>;
+  /** The video's orientation (short = portrait), for OpenMontage previews. */
+  orientation: "portrait" | "landscape";
+  /** Draws frames of composed OpenMontage props in the locked render box; assets maps staticFile names to files in work/assets. */
+  omStills(props: Record<string, unknown>, orientation: "portrait" | "landscape", frames: number[], assets: Record<string, string>): Promise<{ ok: true; files: string[]; frameCount: number } | { ok: false; message: string; problems: string[] }>;
 }
 
 const MAX_FRAMES = 8;
@@ -75,6 +81,30 @@ async function readJson(d: EngineToolDeps, rel: string, optional: boolean): Prom
   return v as Record<string, unknown>;
 }
 
+/** The file behind an asset name: inside work/assets, a plain file, no link on the way; else null. */
+async function stagedAsset(d: EngineToolDeps, name: string): Promise<string | null> {
+  const full = safeWorkPath(path.join(d.workDir, "assets"), name);
+  if (!full) return null;
+  if (await noLinks(d.workDir, full).then(() => false, () => true)) return null;
+  const st = await lstat(full).catch(() => null);
+  return st?.isFile() ? full : null;
+}
+
+/** PNG frames as MCP images (each capped), then one line naming the frames. */
+async function framesOut(files: string[], frames: number[], frameCount: number): Promise<McpContent[]> {
+  const out: McpContent[] = [];
+  for (const [i, f] of files.entries()) {
+    const bytes = await readFile(f);
+    if (bytes.length > MAX_IMAGE_BYTES) out.push({ type: "text", text: `Frame ${frames[i]} is too big to show.` });
+    else out.push({ type: "image", data: bytes.toString("base64"), mimeType: "image/png" });
+  }
+  out.push({ type: "text", text: `Frames ${frames.join(", ")} of ${frameCount}.` });
+  return out;
+}
+
+const framesOk = (frames: unknown): frames is number[] =>
+  Array.isArray(frames) && frames.length >= 1 && frames.length <= MAX_FRAMES && frames.every((f) => Number.isInteger(f) && f >= 0) && new Set(frames).size === frames.length;
+
 const obj = (a: unknown): Record<string, unknown> => (typeof a === "object" && a !== null && !Array.isArray(a) ? (a as Record<string, unknown>) : {});
 
 export function engineTools(d: EngineToolDeps): McpTool[] {
@@ -99,19 +129,10 @@ export function engineTools(d: EngineToolDeps): McpTool[] {
       },
       run: async (a) => {
         const { file, frames } = obj(a);
-        if (!Array.isArray(frames) || frames.length < 1 || frames.length > MAX_FRAMES || !frames.every((f) => Number.isInteger(f) && f >= 0) || new Set(frames).size !== frames.length) {
-          throw new ToolMessage(`Ask for 1 to ${MAX_FRAMES} different whole frame numbers, 0 or more.`);
-        }
-        const r = await d.stills(await readScene(d, file), frames as number[]);
+        if (!framesOk(frames)) throw new ToolMessage(`Ask for 1 to ${MAX_FRAMES} different whole frame numbers, 0 or more.`);
+        const r = await d.stills(await readScene(d, file), frames);
         if (!r.ok) throw new ToolMessage([r.message, ...r.problems.slice(0, 10).map((p) => `- ${p}`)].join("\n"));
-        const out: McpContent[] = [];
-        for (const [i, f] of r.files.entries()) {
-          const bytes = await readFile(f);
-          if (bytes.length > MAX_IMAGE_BYTES) out.push({ type: "text", text: `Frame ${frames[i]} is too big to show.` });
-          else out.push({ type: "image", data: bytes.toString("base64"), mimeType: "image/png" });
-        }
-        out.push({ type: "text", text: `Frames ${(frames as number[]).join(", ")} of ${r.frameCount}.` });
-        return out;
+        return framesOut(r.files, frames, r.frameCount);
       },
     },
     {
@@ -136,18 +157,49 @@ export function engineTools(d: EngineToolDeps): McpTool[] {
         const scenePlan = await readJson(d, rel(plan, "om/scene_plan.json"), true);
         const proposal = await readJson(d, rel(brief, "om/proposal_packet.json"), true);
         // Asset names resolve inside work/assets only; a name that climbs out or passes a link is simply missing.
-        const assetsDir = path.join(d.workDir, "assets");
         const found = new Map<string, number | null>();
         for (const name of referencedAssets(composition)) {
-          const full = safeWorkPath(assetsDir, name);
-          if (!full) continue;
-          const linked = await noLinks(d.workDir, full).then(() => false, () => true);
-          const st = linked ? null : await lstat(full).catch(() => null);
-          if (!st?.isFile()) continue;
-          found.set(name, /\.(wav|mp3|m4a|aac|flac|ogg|mp4|webm|mov)$/i.test(name) ? await d.probeDuration(full).catch(() => null) : null);
+          const full = await stagedAsset(d, name);
+          if (full) found.set(name, /\.(wav|mp3|m4a|aac|flac|ogg|mp4|webm|mov)$/i.test(name) ? await d.probeDuration(full).catch(() => null) : null);
         }
         const r = checkScenes({ composition, editDecisions, scenePlan, proposal, files: { exists: (n) => found.has(n), durationS: (n) => found.get(n) ?? null } });
         return [{ type: "text", text: r.report }];
+      },
+    },
+    {
+      name: "preview_scenes",
+      description: `Draw up to ${MAX_FRAMES} frames of the OpenMontage composition (om/composition.json, with its playbook theme) in the locked renderer, at the video's size, so you can look at them and revise.`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          file: { type: "string", description: "Default om/composition.json" },
+          edit: { type: "string", description: "Default om/edit_decisions.json (optional file; its caption look is used)" },
+          frames: { type: "array", items: { type: "integer", minimum: 0 }, minItems: 1, maxItems: MAX_FRAMES },
+        },
+        required: ["frames"],
+        additionalProperties: false,
+      },
+      run: async (a) => {
+        const { file, edit: editFile, frames } = obj(a);
+        if (!framesOk(frames)) throw new ToolMessage(`Ask for 1 to ${MAX_FRAMES} different whole frame numbers, 0 or more.`);
+        const rel = (v: unknown, def: string) => (v === undefined ? def : typeof v === "string" ? v : "");
+        const composition = (await readJson(d, rel(file, "om/composition.json"), false))!;
+        const editDecisions = await readJson(d, rel(editFile, "om/edit_decisions.json"), true);
+        const { props, assetNames } = composeOmProps(composition, editDecisions);
+        const shape = checkOmProps(props);
+        if (shape.length) throw new ToolMessage(["The composition cannot be drawn:", ...shape.map((p) => `- ${p}`)].join("\n"));
+        const n = omDurationFrames(props);
+        const bad = frames.find((f) => f >= n);
+        if (bad !== undefined) throw new ToolMessage(`Frame ${bad} is outside the video (0-${n - 1}).`);
+        const assets: Record<string, string> = {};
+        for (const name of assetNames) {
+          const full = await stagedAsset(d, name);
+          if (!full) throw new ToolMessage(`${name} is not in assets/. Use fetch_asset, or change the composition.`);
+          assets[name] = full;
+        }
+        const r = await d.omStills(props, d.orientation, frames, assets);
+        if (!r.ok) throw new ToolMessage([r.message, ...r.problems.slice(0, 10).map((p) => `- ${p}`)].join("\n"));
+        return framesOut(r.files, frames, r.frameCount);
       },
     },
     {

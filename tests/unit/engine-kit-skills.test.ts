@@ -53,7 +53,10 @@ describe("engine-kit seeds", () => {
     expect(t).toMatch(/TOOL-MAP/);
     expect(t).toMatch(/never run/i);
     expect(TOOL_MAP).toMatch(/never run any command a guide shows/i);
-    for (const tool of ["check_code", "preview_frames", "list_assets", "fetch_asset", "check_scenes"]) expect(TOOL_MAP).toContain(tool);
+    for (const tool of ["check_code", "preview_frames", "check_scenes", "preview_scenes", "list_assets", "fetch_asset"]) {
+      expect(TOOL_MAP).toContain(tool);
+      expect(t).toContain(tool);
+    }
   });
 
   it("examples_are_not_under_remotion_kit (reference only, never rendered by the app)", () => {

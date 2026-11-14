@@ -5,7 +5,7 @@ written for OpenMontage's own Python tools and project folders. Those do not exi
 in a guide through this map. **Never run any command a guide shows** (scripts, CLIs, registry calls, installers): the engine's
 tools below are the only way to check, preview or fetch anything.
 
-Engine tools you have: `check_code`, `preview_frames`, `list_assets`, `fetch_asset`, `check_scenes`.
+Engine tools you have: `check_code`, `preview_frames`, `check_scenes`, `preview_scenes`, `list_assets`, `fetch_asset`.
 
 ## Paths
 
@@ -28,7 +28,7 @@ Engine tools you have: `check_code`, `preview_frames`, `list_assets`, `fetch_ass
 | OpenMontage tool or command | Here | Available |
 |---|---|---|
 | `video_compose`, `remotion_render`, `npx remotion render Explainer` | Do the compose stage's "assemble composition JSON" step: write `om/composition.json` (the `cuts`, `overlays`, `captions`, `audio`, `theme` the Explainer composition takes) and run `check_scenes`. Do not render: the app renders it after your run. | yes, as described |
-| `npx remotion still`, `atelier_snapshots`, snapshots of a composition | `preview_frames` on `scene/video.tsx` | yes |
+| `npx remotion still`, `atelier_snapshots`, snapshots of a composition | `preview_scenes` (frames of `om/composition.json`, with its playbook theme, at the video's size); for a bespoke `scene/video.tsx`, `preview_frames` | yes |
 | `scaffold_atelier_project` | create `scene/video.tsx` yourself | yes |
 | `composition_validator`, `score_slideshow_risk`, `slideshow_risk`, delivery promise checks | `check_scenes` | yes |
 | `tts_selector`, `openai_tts`, `google_tts`, `elevenlabs_tts`, `azure_tts`, voice providers | not called by you: the app narrates the approved script in its voice step and gives you word times | app does it |
@@ -39,7 +39,7 @@ Engine tools you have: `check_code`, `preview_frames`, `list_assets`, `fetch_ass
 | `music_gen`, `music_search`, `pixabay_music` | `list_assets` kind `music` then `fetch_asset` | yes |
 | sound effects | `list_assets` kind `sfx` then `fetch_asset` | yes |
 | `web_search` | only in the app's research run (the draft step); not in a build run | research run only |
-| `visual_accuracy_check` | `preview_frames`, and look at the frames yourself | yes |
+| `visual_accuracy_check` | `preview_scenes` (or `preview_frames` for a bespoke scene), and look at the frames yourself | yes |
 | `audio_probe`, `audio_duration_seconds` | `check_scenes` reports narration and music lengths against the video | yes |
 | `audio_mixer`, `video_stitch`, `export_bundle` | not needed: the app mixes, joins and exports | app does it |
 | `hyperframes_compose`, any `npx hyperframes ...` | not available: Remotion only | no |
