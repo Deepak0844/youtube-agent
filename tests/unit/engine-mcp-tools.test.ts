@@ -42,6 +42,7 @@ function deps(over: Partial<EngineToolDeps> = {}): EngineToolDeps {
     assetFile: async (id) => (id === "a1" ? path.join(outside, "whoosh.wav") : null),
     probeDuration: async (file) => (file.endsWith(".wav") ? 18 : null),
     orientation: "portrait",
+    preflight: async (src) => (src.includes("EMPTY0") ? { ok: false, problems: ["frame 0: objects zone looks empty; draw the hero objects at full strength from frame 0"] } : { ok: true, problems: [] }),
     omStills: async (props, orientation, frames, assets) => {
       omCalls.push({ props, orientation, frames, assets });
       const files = [];
@@ -67,9 +68,9 @@ describe("safeWorkPath", () => {
 });
 
 describe("engine tools", () => {
-  it("lists exactly the six tools with closed schemas", () => {
+  it("lists exactly the seven tools with closed schemas", () => {
     const ts = engineTools(deps());
-    expect(ts.map((t) => t.name)).toEqual(["check_code", "preview_frames", "check_scenes", "preview_scenes", "list_assets", "fetch_asset"]);
+    expect(ts.map((t) => t.name)).toEqual(["check_code", "preview_frames", "check_frames", "check_scenes", "preview_scenes", "list_assets", "fetch_asset"]);
     for (const t of ts) expect(t.inputSchema.additionalProperties, t.name).toBe(false);
   });
 
@@ -247,5 +248,18 @@ describe("preview_scenes", () => {
     await put("om/composition.json", { ...reel, cuts: [{ id: "a", source: "linked.png", in_seconds: 0, out_seconds: 1 }] });
     await expect(tool(deps(), "preview_scenes").run({ frames: [0] })).rejects.toThrow(/is not in assets/);
     expect(omCalls).toHaveLength(0);
+  });
+});
+
+describe("check_frames", () => {
+  it("runs_the_final_render_frame_check_and_reports_problems", async () => {
+    expect(await tool(deps(), "check_frames").run({ file: "scene/video.tsx" })).toEqual([{ type: "text", text: "The frame check passed (frames 0, middle and last, as the final render checks them)." }]);
+    await writeFile(path.join(work, "scene", "video.tsx"), "export const meta = { durationInFrames: 60 }; // EMPTY0");
+    const out = await tool(deps(), "check_frames").run({ file: "scene/video.tsx" });
+    expect((out[0] as { text: string }).text).toMatch(/^The final render would refuse this file:\n- frame 0: objects zone looks empty/);
+  });
+
+  it("refuses_paths_outside_work", async () => {
+    await expect(tool(deps(), "check_frames").run({ file: "../x.tsx" })).rejects.toThrow(ToolMessage);
   });
 });

@@ -73,6 +73,8 @@ export interface TsxRenderInput {
   review?: (shots: ReviewShot[]) => Promise<string[] | null>;
   /** Engine preview (ADR 0015): draw ONLY these frames (1-8) and stop; no review, no preflight checks, no video. */
   stillsOnly?: readonly number[];
+  /** Engine frame check: draw and check the preflight frames (first, middle, last) exactly as a full render does, then stop; no video. */
+  preflightOnly?: boolean;
   reviewAt?: readonly number[];
 }
 export interface ReviewShot {
@@ -293,6 +295,8 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
     await rm(stillsDir, { recursive: true, force: true });
     await Promise.all(stillList.map((f) => rm(path.join(outDir, `still-${f}.png`), { force: true })));
     await rm(path.join(outDir, "out.mp4"), { force: true });
+
+    if (input.preflightOnly) return { ok: true, outPath: "", image: image.ref, stills: kept };
 
     // 6. The video.
     const videoRun = await runOnce("video");

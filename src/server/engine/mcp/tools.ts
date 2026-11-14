@@ -16,6 +16,8 @@ export interface EngineToolDeps {
   workDir: string;
   /** Safety check + type-check of a scene file (no running). */
   check(source: string): Promise<{ ok: boolean; problems: string[] }>;
+  /** The final render's own frame check (first, middle and last frame) in the locked render container; no video is made. */
+  preflight(source: string): Promise<{ ok: boolean; problems: string[] }>;
   /** Draws the given frames in the locked render container; files are PNGs outside work/. */
   stills(source: string, frames: number[]): Promise<{ ok: true; files: string[]; frameCount: number } | { ok: false; message: string; problems: string[] }>;
   listAssets(kind: AssetKind, query?: string): Promise<Array<{ id: string; kind: AssetKind; name: string; licence: string; durationS?: number }>>;
@@ -133,6 +135,15 @@ export function engineTools(d: EngineToolDeps): McpTool[] {
         const r = await d.stills(await readScene(d, file), frames);
         if (!r.ok) throw new ToolMessage([r.message, ...r.problems.slice(0, 10).map((p) => `- ${p}`)].join("\n"));
         return framesOut(r.files, frames, r.frameCount);
+      },
+    },
+    {
+      name: "check_frames",
+      description: "Run the final render's own frame check on a scene file (frames 0, middle and last: not black or blank, frame 0 already shows the objects, something moves). The app refuses to render a file that fails it. Run it before you finish.",
+      inputSchema: { type: "object", properties: { file: { type: "string", description: "Path inside the work folder, e.g. scene/video.tsx" } }, required: ["file"], additionalProperties: false },
+      run: async (a) => {
+        const r = await d.preflight(await readScene(d, obj(a).file));
+        return [{ type: "text", text: r.ok ? "The frame check passed (frames 0, middle and last, as the final render checks them)." : `The final render would refuse this file:\n${r.problems.slice(0, 10).map((p) => `- ${p}`).join("\n")}` }];
       },
     },
     {

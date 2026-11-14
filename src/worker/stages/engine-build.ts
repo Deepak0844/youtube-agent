@@ -76,7 +76,7 @@ export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Attempt
     if (frames !== want) throw new KnownFailure(`The engine's scene file is ${frames ?? "an unknown number of"} frames; meta.durationInFrames must be ${want} (the narration length). Run the step again.`);
 
     const rendered = await deps.tsx.renderTsx(ctx, { source, captions: tsxCaptionWords(words), style: video.style, outFile: "render.mp4" });
-    if (!rendered.ok) throw new KnownFailure(`The engine's scene did not render: ${rendered.error.message}`);
+    if (!rendered.ok) throw new KnownFailure(`The engine's scene did not render: ${[rendered.error.message, ...rendered.error.problems.slice(0, 3)].join(" ")}`);
     const review = reviewRecord({ status: "skipped", reason: "frame review skipped: the engine looked at its own previews" }, 1);
     return {
       files: ["render.mp4", ...rendered.stills],

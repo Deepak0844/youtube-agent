@@ -69,9 +69,17 @@ const Server = ({ x, y, s = 1, lit = 0 }: { x: number; y: number; s?: number; li
 - No emoji (the render box has no emoji font; they draw as boxes): draw icons as shapes.
 - No text as a picture: text is for labels and short captions only.
 
-## 5. Look at it
+## 5. The first frame
+
+Frame 0 is the poster and the first thing the app checks: it must already show the first beat's main object at full
+strength. Do not fade or pop it in from nothing; start it visible and animate from there (a small move, a glow, the next
+part arriving). The final render refuses an empty or one-colour frame 0, a black or blank frame, and a video in which
+frames 0, middle and last look the same.
+
+## 6. Look at it
 
 Run `check_code`, then `preview_frames` with about one frame per beat (mid-beat). Look at every frame: is each object
 recognisable at phone size, big enough (the sizes above), filling the frame, on-style, inside the safe area, not
 overlapping text? Redraw anything that is not, and preview
-again. Finish only when every beat's frame shows the thing its words talk about.
+again. Then run `check_frames` (the final render's own check) and fix the file until it passes. Finish only when every beat's
+frame shows the thing its words talk about and `check_frames` passes.

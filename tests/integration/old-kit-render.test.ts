@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -78,6 +78,26 @@ export const meta = { durationInFrames: 120, fps: 30, width: 1080, height: 1920 
       for (let i = 0; i < png.data.length; i += 4) if (png.data[i]! > 200 && png.data[i + 1]! < 60 && png.data[i + 2]! < 60) red++;
       expect(red, f).toBeGreaterThan(500); // the accent letters, then the bars, are drawn
     }
+  }, 600_000);
+
+  it("preflight_only_checks_the_frames_like_a_render_and_makes_no_video", async () => {
+    // the engine's check_frames: the same first/middle/last check the final render applies, without rendering the video
+    const c = ctx("preflight-only");
+    await import("node:fs").then((fs) => fs.mkdirSync(c.attemptDir, { recursive: true }));
+    const empty0 = `import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
+export default function Scene() {
+  const f = useCurrentFrame();
+  return <AbsoluteFill style={{ backgroundColor: "#0B1020" }}><div style={{ position: "absolute", left: 140, top: 700, width: 800, height: 500, borderRadius: 40, background: "#7C3AED", opacity: interpolate(f, [0, 20], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) }} /></AbsoluteFill>;
+}
+export const meta = { durationInFrames: 90, fps: 30, width: 1080, height: 1920 };
+`;
+    const bad = await renderTsx(deps, c, { source: empty0, outFile: "x.mp4", preflightOnly: true });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.error.problems.join(" ")).toMatch(/[Ff]rame 0 (is blank|: objects zone looks empty)/);
+    const good = await renderTsx(deps, c, { source: source("short-13"), outFile: "x.mp4", preflightOnly: true });
+    if (!good.ok) throw new Error(`${good.error.message} ${good.error.problems.join(" | ")}`);
+    expect(good.outPath).toBe("");
+    expect(existsSync(path.join(c.attemptDir, "x.mp4"))).toBe(false);
   }, 600_000);
 
   it("short-13 renders as a full video of its length", async () => {

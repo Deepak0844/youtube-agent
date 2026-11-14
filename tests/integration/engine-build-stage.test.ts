@@ -123,7 +123,7 @@ describe("engine code-scene step", () => {
     expect(eng.calls[0]!.req.kind).toBe("build");
     expect(Object.keys(eng.calls[0]!.req.inputs ?? {}).sort()).toEqual(["script.json", "words.json"]);
     expect(eng.calls[0]!.req.prompt).toContain("draw-objects");
-    expect(eng.calls[0]!.toolNames).toEqual(["check_code", "preview_frames", "check_scenes", "preview_scenes", "list_assets", "fetch_asset"]);
+    expect(eng.calls[0]!.toolNames).toEqual(["check_code", "preview_frames", "check_frames", "check_scenes", "preview_scenes", "list_assets", "fetch_asset"]);
     expect(tsx.sources).toEqual([withFrames(frames)]); // the engine's file, rendered once by the sandboxed renderer
     const saved = (await latestContent(db.pool, id, "tsx"))!.body as { source: string; durationInFrames: number; engine: { turns: number } };
     expect(saved.source).toBe(withFrames(frames));

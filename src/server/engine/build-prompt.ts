@@ -49,6 +49,8 @@ export function explainerBuildRequest(v: { topic: string; beats: PromptBeat[]; w
     `- Write one file, scene/video.tsx, with \`export const meta = { durationInFrames: ${frames}, fps: 30, width: 1080, height: 1920 };\` and a default export. 1080 x 1920 portrait.`,
     "- Time every beat to its seconds in input/script.json (frame = seconds x 30); bring each object in when its word is spoken. Captions are added by the app: leave the bottom 300 px free of important drawing.",
     "- Run check_code, then preview_frames with about one frame per beat (mid-beat). Look at every frame and fix what is wrong; preview again until every beat shows what its words say.",
+    "- Frame 0 must already show the first beat's main object at full strength (do not fade or pop it in from nothing): the app's final render checks frames 0, middle and last and refuses an empty first frame, a black or blank frame, or a video where nothing moves.",
+    "- Last, run check_frames on scene/video.tsx and fix the file until it passes; only then finish.",
     "- Do not render the video: the app renders scene/video.tsx after you finish.",
     "",
     "Finish with one line per beat: its id and what is drawn in it.",
