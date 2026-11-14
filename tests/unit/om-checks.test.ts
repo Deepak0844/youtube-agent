@@ -7,6 +7,7 @@ import { classifyFromBrief, validateCuts } from "@/server/engine/om-checks/deliv
 import { checkAlignment, traceTerminalSteps } from "@/server/engine/om-checks/scene-pacing";
 import { pyFixed, pyRound } from "@/server/engine/om-checks/py";
 import { omThemeConfig, themeFromPlaybook } from "@/server/engine/om-checks/theme";
+import { composeOmProps } from "@/server/engine/om-checks/compose";
 import { parse as parseYaml } from "yaml";
 
 // OpenMontage parity, Phase B: the TypeScript ports of OpenMontage's pre-render checks give the same answers as its Python on
@@ -84,5 +85,45 @@ describe("playbook theme port", () => {
 
   it("unknown_or_path_style_gives_null", () => {
     for (const bad of ["made-up", "../themes/clean-professional", "", "Clean-Professional", "a".repeat(41)]) expect(omThemeConfig(bad), bad).toBeNull();
+  });
+});
+
+describe("composeOmProps (video_compose's render preparation)", () => {
+  const cuts = [{ id: "a", type: "hero_title", text: "Hi", in_seconds: 0, out_seconds: 2 }];
+
+  it("adds_the_playbook_theme_like_openmontage", () => {
+    for (const comp of [{ cuts, theme: "flat-motion-graphics" }, { cuts, playbook: "flat-motion-graphics" }, { cuts, metadata: { playbook: "flat-motion-graphics" } }]) {
+      expect(composeOmProps(comp).props.themeConfig).toEqual(omThemeConfig("flat-motion-graphics"));
+    }
+    expect(composeOmProps({ cuts, theme: "made-up" }).props.themeConfig).toBeUndefined(); // the composer's own theme lookup decides
+  });
+
+  it("falls_back_to_metadata_colours_like_openmontage", () => {
+    const t = composeOmProps({ cuts, metadata: { primary_color: "#112233", heading_font: "Inter" } }).props.themeConfig as Record<string, unknown>;
+    expect(t).toMatchObject({ primaryColor: "#112233", accentColor: "#F59E0B", backgroundColor: "#FFFFFF", headingFont: "Inter", captionHighlightColor: "#112233" });
+  });
+
+  it("keeps_an_explicit_themeConfig_and_does_not_change_the_input", () => {
+    const comp = { cuts, theme: "flat-motion-graphics", themeConfig: { primaryColor: "#000000" } };
+    expect(composeOmProps(comp).props.themeConfig).toEqual({ primaryColor: "#000000" });
+    const plain = { cuts, theme: "flat-motion-graphics" };
+    composeOmProps(plain);
+    expect(plain).not.toHaveProperty("themeConfig");
+  });
+
+  it("copies_caption_props", () => {
+    const cp = { wordsPerPage: 3, highlightColor: "#FACC15" };
+    expect(composeOmProps({ cuts }, { subtitles: { caption_props: cp } }).props.captionProps).toEqual(cp);
+    expect(composeOmProps({ cuts, subtitles: { caption_props: cp } }).props.captionProps).toEqual(cp);
+    expect(composeOmProps({ cuts }).props).not.toHaveProperty("captionProps");
+  });
+
+  it("lists_media_names_from_every_media_key_and_ignores_urls", () => {
+    const comp = {
+      cuts: [{ id: "a", source: "clip.mp4", in_seconds: 0, out_seconds: 2, backgroundImage: "bg.png", backgroundVideo: "loop.mp4" }, { id: "b", images: ["one.png", "two.png"], source: "https://x.test/a.png", in_seconds: 2, out_seconds: 3 }],
+      audio: { narration: { src: "voice.wav" }, music: { src: "data:audio/wav;base64,AA" } },
+      overlays: [{ type: "hero_title", backgroundSrc: "card.webp", text: "x", in_seconds: 0, out_seconds: 1 }],
+    };
+    expect(composeOmProps(comp).assetNames.sort()).toEqual(["bg.png", "card.webp", "clip.mp4", "loop.mp4", "one.png", "two.png", "voice.wav"]);
   });
 });
