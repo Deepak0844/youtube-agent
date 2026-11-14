@@ -87,6 +87,20 @@ function recognisedWords(json: unknown): Recognised[] {
   });
 }
 
+/** OpenAI voice names VoiceStudio does not have: it maps them to its engine's default voice, picked afresh on every unseeded call. */
+const OPENAI_VOICE_NAMES = new Set(["alloy", "ash", "ballad", "cedar", "coral", "echo", "fable", "marin", "nova", "onyx", "sage", "shimmer", "verse"]);
+
+/**
+ * The seed sent with every line of one video: the configured seed, else for an OpenAI voice name one seed made from the video's
+ * id (so every line of that video gets the same default voice), else none (a saved profile keeps its own remembered seed,
+ * which a request seed would override).
+ */
+export function voiceStudioSeed(voice: string, videoId: string | undefined, configured?: number): number | undefined {
+  if (configured !== undefined) return configured;
+  if (!videoId || !OPENAI_VOICE_NAMES.has(voice.trim().toLowerCase())) return undefined;
+  return parseInt(createHash("sha256").update(`voicestudio-seed\0${videoId}`).digest("hex").slice(0, 8), 16) % 2_147_483_647;
+}
+
 /** VoiceStudio over its OpenAI-style API: chunked speech, then word times from the same server mapped onto the script. Free. */
 export function createVoiceStudioVoice(cfg: VoiceStudioCfg): VoiceProvider {
   const base = cfg.baseUrl.replace(/\/+$/, "");
@@ -97,6 +111,7 @@ export function createVoiceStudioVoice(cfg: VoiceStudioCfg): VoiceProvider {
     async synthesise(ctx: StageContext, a) {
       assertVoiceStudioUrl(cfg.baseUrl, Boolean(await cfg.getKey?.()));
       const chunks = chunkText(a.text);
+      const seed = voiceStudioSeed(a.voice || cfg.voice, ctx.stage?.videoId ?? undefined, cfg.seed);
       const stem = path.join(ctx.attemptDir, `voice-${createHash("sha256").update(`${a.lang}\0${a.voice}\0${a.text}`).digest("hex").slice(0, 12)}`);
       const audioPath = `${stem}.wav`;
       const partPaths = chunks.map((_c, i) => `${stem}-${i}.part`);
@@ -110,7 +125,7 @@ export function createVoiceStudioVoice(cfg: VoiceStudioCfg): VoiceProvider {
           for (const [i, chunk] of chunks.entries()) {
             const speech = JSON.stringify({
               model: cfg.speechModel ?? "tts-1", input: chunk, voice: a.voice || cfg.voice, response_format: "wav", language: cfg.language ?? a.lang,
-              ...(cfg.speed !== undefined && { speed: cfg.speed }), ...(cfg.seed !== undefined && { seed: cfg.seed }),
+              ...(cfg.speed !== undefined && { speed: cfg.speed }), ...(seed !== undefined && { seed }),
             });
             await saveCapped(await postJson(`${base}/v1/audio/speech`, speech, cfg, signal), partPaths[i]!, MAX_AUDIO_BYTES - used);
             const bytes = await readFile(partPaths[i]!);
