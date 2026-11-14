@@ -1,7 +1,7 @@
 // Port of OpenMontage tools/video/video_compose.py VideoCompose._build_theme_from_playbook (playbook branch; AGPL-3.0,
 // https://github.com/calesthio/OpenMontage) at the commit in engine-kit/openmontage/UPSTREAM.json: the Remotion themeConfig a
 // style playbook gives (colours, fonts, chart colours, captions, spring). The sync command pre-computes one file per style in
-// engine-kit/openmontage/themes/, so the app never parses YAML at run time. Proven equal on goldens/theme-*.json.
+// engine-kit/openmontage/ref/themes/, so the app never parses YAML at run time. Proven equal on goldens/theme-*.json.
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -12,7 +12,7 @@ const has = (o: Obj, k: string) => Object.hasOwn(o, k);
 const get = (o: Obj, k: string, fallback: unknown) => (has(o, k) ? o[k] : fallback);
 const first = (v: unknown) => (Array.isArray(v) ? v[0] : v);
 
-export const OM_THEMES_DIR = fileURLToPath(new URL("../../../../engine-kit/openmontage/themes/", import.meta.url));
+export const OM_THEMES_DIR = fileURLToPath(new URL("../../../../engine-kit/openmontage/ref/themes/", import.meta.url));
 
 export function themeFromPlaybook(playbook: Obj): Obj | null {
   if (Object.keys(playbook).length === 0) return null;

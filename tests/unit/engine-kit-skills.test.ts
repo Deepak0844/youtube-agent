@@ -16,7 +16,7 @@ const skills = readdirSync("engine-kit/skills").map((d) => path.join("engine-kit
 
 describe("engine-kit seeds", () => {
   it("skills_mention_only_engine_tools", () => {
-    expect(skills.length).toBe(4);
+    expect(skills.length).toBe(5);
     for (const f of skills) {
       const t = readFileSync(f, "utf8");
       expect(t, f).not.toMatch(/\bpython3?\b|\bnpm\b|node (remotion|scripts)|Bash\(|tools\/[a-z_]+\.py|ElevenLabs/);
@@ -46,6 +46,35 @@ describe("engine-kit seeds", () => {
     }
     expect(names.size).toBeGreaterThan(10);
     expect([...names].filter((n) => !TOOL_MAP.includes(`\`${n}\``))).toEqual([]);
+  });
+
+  it("draw_objects_skill_covers_any_object_and_the_rules", () => {
+    const t = readFileSync("engine-kit/skills/draw-objects/SKILL.md", "utf8");
+    expect(t).toMatch(/any object/i);
+    expect(t).toMatch(/<svg/);
+    expect(t).toContain("ref/openmontage/themes/");
+    expect(t).toContain("preview_frames");
+    expect(t).toContain("vidtsx-2d-generator"); // the crash and flicker rules live there
+    expect(t).toMatch(/no remote images/i);
+    expect(t).toMatch(/no emoji/i);
+    expect(t).toMatch(/2D/);
+  });
+
+  it("entry_skill_steers_explainers_to_way_2", () => {
+    const t = readFileSync("engine-kit/skills/openmontage-pipeline/SKILL.md", "utf8");
+    expect(t).toMatch(/Explainer[^\n]*(bespoke|drawn)/i);
+    expect(t).toContain("draw-objects");
+    expect(TOOL_MAP).toContain("draw-objects");
+  });
+
+  it("themes_are_seeded_for_drawing", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kit-themes-"));
+    try {
+      const ws = await prepareWorkspace(root, "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e92", engineKitSeeds(process.cwd()));
+      expect(JSON.parse(readFileSync(path.join(ws.workDir, "ref/openmontage/themes/flat-motion-graphics.json"), "utf8"))).toMatchObject({ primaryColor: "#7C3AED" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("entry_skill_overrides_commands", () => {

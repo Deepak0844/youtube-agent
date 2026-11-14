@@ -49,6 +49,13 @@ Engine tools you have: `check_code`, `preview_frames`, `check_scenes`, `preview_
 | `technical_probe` (a field of `source_media_review`) | not used: Explainer and Animation videos have no footage of yours to review | n/a |
 | the tool registry (`tools.tool_registry`, `install_instructions`) | this map is the registry | n/a |
 
+## Explainers are drawn
+
+In this app an Explainer is drawn in code by default (owner decision): `scene/video.tsx` with the objects the script talks
+about, built with the `draw-objects` skill, in the style's colours (`ref/openmontage/themes/<style>.json`). Where a guide
+says the runtime selector should pick the templated Explainer composition, prefer the bespoke path unless the video is
+data-only. OpenMontage's stage structure, pacing, style playbook and checks still apply.
+
 ## Writing the Explainer composition (`om/composition.json`)
 
 `om/edit_decisions.json` is the edit artifact and must stay valid against its schema (its cuts carry timing, `reason` and
