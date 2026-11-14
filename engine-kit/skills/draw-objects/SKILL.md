@@ -54,6 +54,19 @@ const Server = ({ x, y, s = 1, lit = 0 }: { x: number; y: number; s?: number; li
 - Reuse what exists when it fits: `yt-old/<lib>` (the old app's drawings, see `ref/lib/index.md`) and `yt-om/<Component>`
   (OpenMontage's components, see `ref/openmontage/COMPONENTS.md`). Draw your own for everything else.
 
+### Labels never touch the picture
+
+A label under or beside an object must not overlap it. Typing a label's y by hand is how text ends up drawn on top of the
+bottom of an icon (a past video printed TEST, SHIP and SCALE over their icons).
+
+- Draw each object and its label as ONE component: `<Labeled label="TEST" size={...}>` where the label position is
+  computed from the object's own size: `labelY = objectBottom + 28 + fontSize`, with `objectBottom = y + (height / 2) * s`
+  for an icon drawn around its centre, or `y + height * s` for one drawn from its top-left. Write the object's height as a
+  named constant next to its drawing; do not guess it.
+- Label text is at least 40 px. A row of icons with labels is also an object row: each icon is at least 220 px wide and the
+  row sits in the middle band, not in the last 400 px of the frame.
+- Neighbouring labels need at least 40 px of space between them (compare their widths, about `0.6 x fontSize x letters`).
+
 ## 3. Make it move with the words
 
 - Each beat's start and end times are in `input/script.json`; word times are in `input/words.json`. A thing appears when
@@ -80,6 +93,6 @@ frames 0, middle and last look the same.
 
 Run `check_code`, then `preview_frames` with about one frame per beat (mid-beat). Look at every frame: is each object
 recognisable at phone size, big enough (the sizes above), filling the frame, on-style, inside the safe area, not
-overlapping text? Redraw anything that is not, and preview
+overlapping text (check every label against the bottom of its object, with the numbers above)? Redraw anything that is not, and preview
 again. Then run `check_frames` (the final render's own check) and fix the file until it passes. Finish only when every beat's
 frame shows the thing its words talk about and `check_frames` passes.
