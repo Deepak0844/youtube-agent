@@ -21,7 +21,7 @@ export interface EngineConfig {
   qa: { short: QaTrack; long: QaTrack; meanDbMin: number; peakDbMax: number; loopDiffMax: number; durationToleranceS: number };
   render: { timeoutS: number; cpus: number; memoryMb: number; pids: number };
   /** The new video engine (ADR 0015). */
-  engine: { enabled: boolean; buildTimeoutS: number; longBuildTimeoutS: number; maxTurns: number; limitRetryS: number };
+  engine: { enabled: boolean; buildTimeoutS: number; longBuildTimeoutS: number; maxTurns: number; limitRetryS: number; model: "sonnet" | "opus" };
 }
 
 export const ENGINE_KEYS = (Object.keys(SETTINGS) as SettingKey[]).filter((k) => /^(engine|breaker|qa|render)\./.test(k) || k === "uploads.concurrent");
@@ -60,7 +60,7 @@ export function buildEngineConfig(stored: ReadonlyMap<string, unknown>): EngineC
       durationToleranceS: get("qa.duration_tolerance_s"),
     },
     render: { timeoutS: get("render.timeout_s"), cpus: get("render.cpus"), memoryMb: get("render.memory_mb"), pids: get("render.pids") },
-    engine: { enabled: get("engine.enabled"), buildTimeoutS: get("engine.build_timeout_s"), longBuildTimeoutS: get("engine.long_build_timeout_s"), maxTurns: get("engine.max_turns"), limitRetryS: get("engine.limit_retry_s") },
+    engine: { enabled: get("engine.enabled"), buildTimeoutS: get("engine.build_timeout_s"), longBuildTimeoutS: get("engine.long_build_timeout_s"), maxTurns: get("engine.max_turns"), limitRetryS: get("engine.limit_retry_s"), model: get("engine.model") },
   };
   // Same cross-checks as the old config.py validate().
   if (c.leaseS <= c.heartbeatS * 2) throw new Error("engine.lease_s must be more than twice engine.heartbeat_s");

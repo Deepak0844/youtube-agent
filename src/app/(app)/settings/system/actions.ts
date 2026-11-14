@@ -40,7 +40,8 @@ export async function saveKillSwitchAction(_prev: FormState, form: FormData): Pr
 // Owner session only. The new video engine (Claude Code with tools) for Custom animation videos: one click either way.
 export async function saveEngineSwitchAction(_prev: FormState, form: FormData): Promise<FormState> {
   await requireOwner();
-  const r = await saveEngineSwitch(getPool(), form.get("engine") === "on");
+  const model = form.get("model");
+  const r = await saveEngineSwitch(getPool(), form.get("engine") === "on", model === "opus" ? "opus" : "sonnet");
   if (r.ok) revalidatePath("/settings/system");
   return r.ok ? { ok: true } : { error: r.error };
 }

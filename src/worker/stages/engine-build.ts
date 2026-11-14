@@ -60,7 +60,7 @@ export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Attempt
         db: deps.db, root: e.root, config: ctx.config.engine, registry: e.registry,
         tools: (ws) => buildEngineTools({ db: deps.db, ctx, workDir: ws.workDir, orientation: "portrait", storageRoot: deps.root, render: e.render, style: video.style }),
       },
-      { videoId: video.id, stageRunId: ctx.claim.stageRunId, kind: "build", prompt, inputs, long: false, signal: ctx.signal },
+      { videoId: video.id, stageRunId: ctx.claim.stageRunId, kind: "build", prompt, inputs, long: false, signal: ctx.signal, model: ctx.config.engine.model },
     );
     if (!r.ok) {
       if (r.limit) throw new EngineLimitError(r.resumeAt);

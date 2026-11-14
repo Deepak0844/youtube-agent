@@ -88,10 +88,16 @@ export async function loadEngineSwitch(db: pg.Pool): Promise<boolean> {
   return (await getSetting(db, "engine.enabled")) === true;
 }
 
-/** Turns the new video engine on or off. Session only (writeAudited), audited as setting.changed. */
-export async function saveEngineSwitch(db: pg.Pool, on: boolean): Promise<SaveResult> {
+/** The Claude model engine runs use: Sonnet unless the owner picked Opus. */
+export async function loadEngineModel(db: pg.Pool): Promise<"sonnet" | "opus"> {
+  return (await getSetting(db, "engine.model")) === "opus" ? "opus" : "sonnet";
+}
+
+/** Turns the new video engine on or off and, when given, sets its model (Sonnet or Opus). Session only (writeAudited), audited as setting.changed. */
+export async function saveEngineSwitch(db: pg.Pool, on: boolean, model?: "sonnet" | "opus"): Promise<SaveResult> {
+  if (model !== undefined && model !== "sonnet" && model !== "opus") return { ok: false, error: "Pick Sonnet or Opus. Nothing was saved." };
   try {
-    return { ok: true, changed: await writeAudited(db, [{ key: "engine.enabled", value: on }]) };
+    return { ok: true, changed: await writeAudited(db, [{ key: "engine.enabled", value: on }, ...(model ? [{ key: "engine.model", value: model }] : [])]) };
   } catch {
     return { ok: false, error: GENERIC };
   }

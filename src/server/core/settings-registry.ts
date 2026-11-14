@@ -80,6 +80,7 @@ export const SETTINGS = {
   "engine.build_timeout_s": { schema: posInt.min(60).max(14_400), default: 2700, safety: true, label: "Engine build run limit for a Short, seconds" },
   "engine.long_build_timeout_s": { schema: posInt.min(60).max(28_800), default: 5400, safety: true, label: "Engine build run limit for a long video, seconds" },
   "engine.max_turns": { schema: posInt.max(500), default: 150, safety: true, label: "Engine run turn limit (150: room to draw and redraw objects; owner 2026-11-14)" },
+  "engine.model": { schema: z.enum(["sonnet", "opus"]), default: "sonnet", safety: true, label: "Claude model the engine runs on (owner 2026-11-14: Sonnet by default; Opus draws more carefully and uses the usage limit faster)" },
   "engine.limit_retry_s": { schema: posInt.min(60).max(86_400), default: 1800, safety: true, label: "Retry gap after the Claude usage limit when no reset time is given, seconds" },
   "engine.timeout_live_s": { schema: posInt.min(60).max(172_800), default: 43200, safety: true, label: "Live stage timeout, seconds (Doc 02 4.7: 12 h)" },
   "engine.lease_s": { schema: posInt.min(5).max(3600), default: 60, safety: true, label: "Stage lease, seconds (config.py:29)" },

@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/ui/primitives/button";
 import { Input } from "@/ui/primitives/input";
 import { Label } from "@/ui/primitives/label";
+import { cn, control, focusRing } from "@/ui/lib/cn";
 import { saveCutoverAction, saveEngineSwitchAction, saveKillSwitchAction, saveLimitsAction, saveLocalServicesAction, type FormState } from "./actions";
 
 const field = "flex min-w-0 flex-col gap-2";
@@ -79,7 +80,9 @@ export function KillSwitchForm({ on }: { on: boolean }) {
   );
 }
 
-export function EngineSwitchForm({ on }: { on: boolean }) {
+const selectClass = cn("w-full rounded-control border border-control bg-surface px-4 text-body text-text", control, focusRing);
+
+export function EngineSwitchForm({ on, model }: { on: boolean; model: "sonnet" | "opus" }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveEngineSwitchAction, {});
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -87,6 +90,13 @@ export function EngineSwitchForm({ on }: { on: boolean }) {
         <input type="checkbox" name="engine" defaultChecked={on} className="size-5 accent-[var(--text)]" />
         Claude Code draws Custom animation videos
       </label>
+      <div className={field}>
+        <Label htmlFor="engine-model">Model</Label>
+        <select id="engine-model" name="model" defaultValue={model} className={selectClass}>
+          <option value="sonnet">Sonnet (default)</option>
+          <option value="opus">Opus: draws more carefully, uses your Claude limit faster</option>
+        </select>
+      </div>
       <div className="flex flex-wrap items-center gap-4">
         <Button type="submit" loading={pending}>Save</Button>
         <Result state={state} />
