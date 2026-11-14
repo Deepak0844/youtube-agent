@@ -111,7 +111,8 @@
     "tailwindcss": "^4",
     "testcontainers": "^12.2.1",
     "tsx": "^4.23.15",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "yaml": "2.9.1"
   },
   "overrides": {
     "@imgly/background-removal-node": {

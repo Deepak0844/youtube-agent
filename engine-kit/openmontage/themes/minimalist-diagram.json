@@ -1,0 +1,25 @@
+{
+  "primaryColor": "#1A1A2E",
+  "accentColor": "#E94560",
+  "backgroundColor": "#FAFAFA",
+  "surfaceColor": "#FAFAFA",
+  "textColor": "#1A1A2E",
+  "mutedTextColor": "#6B7280",
+  "headingFont": "IBM Plex Sans",
+  "bodyFont": "IBM Plex Sans",
+  "monoFont": "IBM Plex Mono",
+  "chartColors": [
+    "#E94560",
+    "#1A1A2E",
+    "#0F3460",
+    "#6B7280"
+  ],
+  "springConfig": {
+    "damping": 20,
+    "stiffness": 120,
+    "mass": 1
+  },
+  "transitionDuration": 0.4,
+  "captionHighlightColor": "#1A1A2E",
+  "captionBackgroundColor": "rgba(255, 255, 255, 0.85)"
+}

@@ -6,6 +6,8 @@ import { scoreSlideshowRisk } from "@/server/engine/om-checks/slideshow-risk";
 import { classifyFromBrief, validateCuts } from "@/server/engine/om-checks/delivery-promise";
 import { checkAlignment, traceTerminalSteps } from "@/server/engine/om-checks/scene-pacing";
 import { pyFixed, pyRound } from "@/server/engine/om-checks/py";
+import { omThemeConfig, themeFromPlaybook } from "@/server/engine/om-checks/theme";
+import { parse as parseYaml } from "yaml";
 
 // OpenMontage parity, Phase B: the TypeScript ports of OpenMontage's pre-render checks give the same answers as its Python on
 // golden cases (tests/fixtures/openmontage/goldens, made once by running the Python in the upstream clone).
@@ -64,5 +66,23 @@ describe("Python number formatting", () => {
     // exact binary halves go to even; values just below a half (1.015 is 1.01499...) go down
     expect([pyRound(1.25, 1), pyRound(0.125, 2), pyRound(2.5), pyRound(3.5), pyRound(1.015, 2), pyRound(2.675, 2), pyRound(-1.25, 1)]).toEqual([1.2, 0.12, 2, 4, 1.01, 2.67, -1.2]);
     expect([pyFixed(12.125, 2), pyFixed(1.005, 2), pyFixed(-4.125, 2), pyFixed(0, 1)]).toEqual(["12.12", "1.00", "-4.12", "0.0"]);
+  });
+});
+
+describe("playbook theme port", () => {
+  const playbook = (style: string) => parseYaml(readFileSync(`engine-kit/openmontage/ref/styles/${style}.yaml`, "utf8")) as Record<string, unknown>;
+
+  it.each(goldens("theme-"))("theme_matches_openmontage %s", (_name, g) => {
+    expect(themeFromPlaybook(playbook(g.style))).toEqual(g.expected);
+  });
+
+  it("theme_files_match_the_styles", () => {
+    // the sync command pre-computes these; a style changed without re-syncing fails here
+    for (const [, g] of goldens("theme-")) expect(omThemeConfig(g.style)).toEqual(themeFromPlaybook(playbook(g.style)));
+    expect(goldens("theme-").length).toBe(5);
+  });
+
+  it("unknown_or_path_style_gives_null", () => {
+    for (const bad of ["made-up", "../themes/clean-professional", "", "Clean-Professional", "a".repeat(41)]) expect(omThemeConfig(bad), bad).toBeNull();
   });
 });
