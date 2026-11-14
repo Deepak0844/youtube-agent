@@ -94,6 +94,22 @@ bottom of an icon (a past video printed TEST, SHIP and SCALE over their icons).
 - No emoji (the render box has no emoji font; they draw as boxes): draw icons as shapes.
 - No text as a picture: text is for labels and short captions only.
 
+## 5b. The shape of a Short: hook, twist, loop
+
+A Short has a shape, not just a list of beats. Map the script's beats onto it:
+
+1. **Hook (first ~3 s):** frame 0 already shows the payoff or the surprising object, fully drawn. No build-up from nothing.
+2. **Setup:** the problem or starting situation, one object, one idea.
+3. **Reveal (2-4 steps):** show how it works, one step per spoken idea, each landing on its word.
+4. **Twist (near the end):** one turn that changes how the viewer sees it ("but it fails when...", "and the surprise is..."):
+   change the picture here (colour shift, the object breaks or flips, a second object arrives), not only the words.
+5. **Loop (last ~1 s):** the last frame matches frame 0, so the replay has no seam. Reverse the hook's entrance: settle the
+   zoom or position back to frame 0's, bring the first beat's main object back to where it started, dissolve the twist away.
+   `check_frames` allows a last frame equal to frame 0 (a loop); the middle frame must still differ so something moves.
+
+Never end on a call to action ("like", "subscribe", "follow"). End on the payoff, then loop. If the script has no twist, loop
+anyway and give the final beat a small turn of its own; do not invent facts the script does not say.
+
 ## 5. The first frame
 
 Frame 0 is the poster and the first thing the app checks: it must already show the first beat's main object at full
@@ -106,5 +122,5 @@ frames 0, middle and last look the same.
 Run `check_code`, then `preview_frames` with about one frame per beat (mid-beat). Look at every frame: is each object
 recognisable at phone size, big enough (the sizes above), filling the frame, on-style, inside the safe area, not
 overlapping text (check every label against the bottom of its object, with the numbers above)? Redraw anything that is not, and preview
-again. Then run `check_frames` (the final render's own check) and fix the file until it passes. Finish only when every beat's
+again. Then run `check_frames` (the final render's own check) and fix the file until it passes. Finish only when the hook, twist and loop are drawn (section 5b), every beat's
 frame shows the thing its words talk about and `check_frames` passes.

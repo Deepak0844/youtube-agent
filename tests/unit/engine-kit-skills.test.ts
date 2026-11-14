@@ -65,6 +65,8 @@ describe("engine-kit seeds", () => {
   it("draw_objects_skill_covers_any_object_and_the_rules", () => {
     const t = readFileSync("engine-kit/skills/draw-objects/SKILL.md", "utf8");
     expect(t).toMatch(/any object/i);
+    expect(t).toMatch(/hook, twist, loop/i);
+    expect(t).toMatch(/last frame matches frame 0/i);
     expect(t).toMatch(/<svg/);
     expect(t).toContain("ref/openmontage/themes/");
     expect(t).toContain("preview_frames");
