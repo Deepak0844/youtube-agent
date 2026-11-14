@@ -24,6 +24,7 @@ afterEach(async () => {
 });
 
 const PNG = Buffer.from("89504e470d0a1a0a", "hex");
+let omCalls: Array<{ props: Record<string, unknown>; orientation: string; frames: number[]; assets: Record<string, string> }> = [];
 function deps(over: Partial<EngineToolDeps> = {}): EngineToolDeps {
   return {
     workDir: work,
@@ -40,6 +41,17 @@ function deps(over: Partial<EngineToolDeps> = {}): EngineToolDeps {
     listAssets: async () => [{ id: "a1", kind: "sfx", name: "whoosh", licence: "CC0", durationS: 1.2 }],
     assetFile: async (id) => (id === "a1" ? path.join(outside, "whoosh.wav") : null),
     probeDuration: async (file) => (file.endsWith(".wav") ? 18 : null),
+    orientation: "portrait",
+    omStills: async (props, orientation, frames, assets) => {
+      omCalls.push({ props, orientation, frames, assets });
+      const files = [];
+      for (const f of frames) {
+        const p = path.join(outside, `om-${f}.png`);
+        await writeFile(p, PNG);
+        files.push(p);
+      }
+      return { ok: true, files, frameCount: 630 };
+    },
     ...over,
   };
 }
@@ -55,9 +67,9 @@ describe("safeWorkPath", () => {
 });
 
 describe("engine tools", () => {
-  it("lists exactly the five tools with closed schemas", () => {
+  it("lists exactly the six tools with closed schemas", () => {
     const ts = engineTools(deps());
-    expect(ts.map((t) => t.name)).toEqual(["check_code", "preview_frames", "check_scenes", "list_assets", "fetch_asset"]);
+    expect(ts.map((t) => t.name)).toEqual(["check_code", "preview_frames", "check_scenes", "preview_scenes", "list_assets", "fetch_asset"]);
     for (const t of ts) expect(t.inputSchema.additionalProperties, t.name).toBe(false);
   });
 
@@ -185,5 +197,55 @@ describe("check_scenes", () => {
     await expect(run()).rejects.toThrow(/512 KB/);
     await put("om/composition.json", "{nope");
     await expect(run()).rejects.toThrow(/not valid JSON/);
+  });
+});
+
+describe("preview_scenes", () => {
+  const reel = JSON.parse(readFileSync("tests/fixtures/openmontage/animated-reel-20s.json", "utf8")) as Record<string, unknown> & { cuts: Array<Record<string, unknown>> };
+  const put = async (rel: string, v: unknown) => {
+    await mkdir(path.dirname(path.join(work, rel)), { recursive: true });
+    await writeFile(path.join(work, rel), typeof v === "string" ? v : JSON.stringify(v));
+  };
+  beforeEach(() => {
+    omCalls = [];
+  });
+
+  it("preview_scenes_draws_frames_of_the_composition", async () => {
+    await put("om/composition.json", { ...reel, cuts: [...reel.cuts, { id: "clip", source: "intro.mp4", in_seconds: 20, out_seconds: 21 }] });
+    await put("assets/intro.mp4", "x");
+    const out = await tool(deps(), "preview_scenes").run({ frames: [0, 300] });
+    expect(out.filter((c) => c.type === "image")).toHaveLength(2);
+    expect(out.at(-1)).toEqual({ type: "text", text: "Frames 0, 300 of 630." });
+    expect(omCalls).toHaveLength(1);
+    expect(omCalls[0]!.orientation).toBe("portrait");
+    expect(omCalls[0]!.props.themeConfig).toMatchObject({ primaryColor: "#7C3AED" }); // composed: flat-motion-graphics theme
+    expect(omCalls[0]!.assets).toEqual({ "intro.mp4": path.join(work, "assets", "intro.mp4") }); // only staged names, inside work/assets
+  });
+
+  it("refuses_a_composition_that_fails_the_shape_check", async () => {
+    await put("om/composition.json", { cuts: [{ id: "a", type: "anime_scene", in_seconds: 0, out_seconds: 1 }] });
+    await expect(tool(deps(), "preview_scenes").run({ frames: [0] })).rejects.toThrow(/not a scene type/);
+    expect(omCalls).toHaveLength(0);
+  });
+
+  it("refuses_a_missing_asset_and_out_of_range_frames", async () => {
+    await put("om/composition.json", { ...reel, cuts: [...reel.cuts, { id: "clip", source: "nope.mp4", in_seconds: 20, out_seconds: 21 }] });
+    await expect(tool(deps(), "preview_scenes").run({ frames: [0] })).rejects.toThrow(/nope\.mp4 is not in assets/);
+    await put("om/composition.json", reel);
+    await expect(tool(deps(), "preview_scenes").run({ frames: [630] })).rejects.toThrow(/outside the video \(0-629\)/);
+    await expect(tool(deps(), "preview_scenes").run({ frames: [] })).rejects.toThrow(ToolMessage);
+    await expect(tool(deps(), "preview_scenes").run({ frames: [1, 2, 3, 4, 5, 6, 7, 8, 9] })).rejects.toThrow(ToolMessage);
+    expect(omCalls).toHaveLength(0);
+  });
+
+  it("refuses_paths_outside_work_and_links", async () => {
+    await expect(tool(deps(), "preview_scenes").run({ file: "../x.json", frames: [0] })).rejects.toThrow(ToolMessage);
+    await put("om/composition.json", { ...reel, cuts: [{ id: "a", source: "../secret.png", in_seconds: 0, out_seconds: 1 }] });
+    await expect(tool(deps(), "preview_scenes").run({ frames: [0] })).rejects.toThrow(/is not in assets/);
+    await mkdir(path.join(work, "assets"), { recursive: true });
+    await symlink(path.join(outside, "secret.txt"), path.join(work, "assets", "linked.png"));
+    await put("om/composition.json", { ...reel, cuts: [{ id: "a", source: "linked.png", in_seconds: 0, out_seconds: 1 }] });
+    await expect(tool(deps(), "preview_scenes").run({ frames: [0] })).rejects.toThrow(/is not in assets/);
+    expect(omCalls).toHaveLength(0);
   });
 });
