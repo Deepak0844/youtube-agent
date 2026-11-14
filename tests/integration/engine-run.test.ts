@@ -123,7 +123,7 @@ describe("runEngine", () => {
   it("running out of turns and a crash are plain failures", async () => {
     const v = await video();
     expect(await runEngine(deps(), req(v, { mode: "turns" }))).toEqual({ ok: false, limit: false, message: "Claude used all its turns without finishing." });
-    expect(await runEngine(deps(), req(v, { mode: "crash" }))).toEqual({ ok: false, limit: false, message: "Claude Code stopped with an error." });
+    expect(await runEngine(deps(), req(v, { mode: "crash" }))).toEqual({ ok: false, limit: false, message: "Claude Code was cut off before it finished (the app restarted, the computer slept, or it crashed). Press Run again." });
   });
 
   it("timeout_kills_the_group", async () => {

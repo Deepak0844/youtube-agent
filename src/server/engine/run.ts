@@ -189,7 +189,9 @@ export async function runEngine(d: EngineDeps, req: EngineRequest): Promise<Engi
     }
     if (r?.is_error === true && isLoginProblem(text)) return end("failed", `${LOGIN_MESSAGE.replace(/\.$/, "")}, then run the step again.`);
     if (r?.subtype === "error_max_turns") return end("failed", "Claude used all its turns without finishing.");
-    if (!r || r.is_error === true || r.subtype !== "success" || exit.code !== 0) return end("failed", "Claude Code stopped with an error.");
+    // No result line at all: Claude was cut off (app restart, laptop sleep, crash), not a Claude-side error. Say so, and that Run again is safe.
+    if (!r) return end("failed", "Claude Code was cut off before it finished (the app restarted, the computer slept, or it crashed). Press Run again.");
+    if (r.is_error === true || r.subtype !== "success" || exit.code !== 0) return end("failed", "Claude Code stopped with an error.");
     return end("succeeded", null, { ok: true, text, usage, turns, workDir: ws.workDir });
   } catch {
     await finishEngineRun(d.db, runId, { status: "failed", error: "The engine run could not be set up." }).catch(() => undefined);
