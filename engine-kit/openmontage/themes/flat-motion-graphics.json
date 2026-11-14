@@ -1,0 +1,27 @@
+{
+  "primaryColor": "#7C3AED",
+  "accentColor": "#EC4899",
+  "backgroundColor": "#0F172A",
+  "surfaceColor": "#0F172A",
+  "textColor": "#F8FAFC",
+  "mutedTextColor": "#64748B",
+  "headingFont": "Space Grotesk",
+  "bodyFont": "Space Grotesk",
+  "monoFont": "Fira Code",
+  "chartColors": [
+    "#7C3AED",
+    "#EC4899",
+    "#06B6D4",
+    "#F59E0B",
+    "#10B981",
+    "#EF4444"
+  ],
+  "springConfig": {
+    "damping": 12,
+    "stiffness": 80,
+    "mass": 1
+  },
+  "transitionDuration": 0.3,
+  "captionHighlightColor": "#7C3AED",
+  "captionBackgroundColor": "rgba(15, 23, 42, 0.75)"
+}

@@ -1,0 +1,27 @@
+{
+  "primaryColor": "#2D5016",
+  "accentColor": "#FFB347",
+  "backgroundColor": "#0A0A1A",
+  "surfaceColor": "#0A0A1A",
+  "textColor": "#F5F0E8",
+  "mutedTextColor": "#8B9A7E",
+  "headingFont": "Noto Serif JP",
+  "bodyFont": "Noto Sans",
+  "monoFont": "Fira Code",
+  "chartColors": [
+    "#A8E6CF",
+    "#FFB347",
+    "#FF6B9D",
+    "#87CEEB",
+    "#DDA0DD",
+    "#F5F0E8"
+  ],
+  "springConfig": {
+    "damping": 25,
+    "stiffness": 150,
+    "mass": 1
+  },
+  "transitionDuration": 0.6,
+  "captionHighlightColor": "#2D5016",
+  "captionBackgroundColor": "rgba(15, 23, 42, 0.75)"
+}

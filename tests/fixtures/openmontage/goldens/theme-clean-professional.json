@@ -1,0 +1,30 @@
+{
+ "style": "clean-professional",
+ "expected": {
+  "primaryColor": "#2563EB",
+  "accentColor": "#F59E0B",
+  "backgroundColor": "#FFFFFF",
+  "surfaceColor": "#FFFFFF",
+  "textColor": "#1F2937",
+  "mutedTextColor": "#6B7280",
+  "headingFont": "Inter",
+  "bodyFont": "Inter",
+  "monoFont": "JetBrains Mono",
+  "chartColors": [
+   "#2563EB",
+   "#F59E0B",
+   "#10B981",
+   "#8B5CF6",
+   "#EF4444",
+   "#06B6D4"
+  ],
+  "springConfig": {
+   "damping": 20,
+   "stiffness": 120,
+   "mass": 1
+  },
+  "transitionDuration": 0.4,
+  "captionHighlightColor": "#2563EB",
+  "captionBackgroundColor": "rgba(255, 255, 255, 0.85)"
+ }
+}

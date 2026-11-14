@@ -7,6 +7,8 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
+import { parse as parseYaml } from "yaml";
+import { themeFromPlaybook } from "@/server/engine/om-checks/theme";
 
 const KIT = "engine-kit/openmontage";
 const PATCHES = path.join(KIT, "patches");
@@ -21,6 +23,20 @@ const arg = (name: string) => {
 };
 const upstream = arg("--upstream") ?? path.join(homedir(), "Personal/openmontage-upstream");
 const git = (...a: string[]) => execFileSync("git", ["-C", upstream, ...a], { encoding: "utf8", maxBuffer: 256 << 20 }).trim();
+const STYLES = path.join(KIT, "ref", "styles");
+const THEMES = path.join(KIT, "themes");
+
+/** Pre-computes OpenMontage's themeConfig for every style playbook (the app never parses YAML at run time). */
+function writeThemes(): string[] {
+  mkdirSync(THEMES, { recursive: true });
+  const names = readdirSync(STYLES).filter((f) => f.endsWith(".yaml")).map((f) => f.replace(/\.yaml$/, ""));
+  for (const n of names) {
+    const theme = themeFromPlaybook(parseYaml(readFileSync(path.join(STYLES, `${n}.yaml`), "utf8")) as Record<string, unknown>);
+    writeFileSync(path.join(THEMES, `${n}.json`), `${JSON.stringify(theme, null, 2)}\n`);
+  }
+  return names;
+}
+
 const patchName = (to: string) => `${to.replace(/\//g, "__")}.patch`;
 const isText = (f: string) => !/\.(woff2?|ttf|otf|png|jpe?g|webp|mp3|wav|mp4)$/i.test(f);
 
@@ -81,6 +97,7 @@ function sync(ref: string): void {
     const kept = new Set(manifest.files.map((f) => f.from));
     const watched = ["remotion-composer/src", "styles", "skills", "pipeline_defs"];
     const unseen = git("ls-tree", "-r", "--name-only", commit, "--", ...watched).split("\n").filter((f) => f && !kept.has(f));
+    console.log(`themes: ${writeThemes().join(", ")}`);
     writeFileSync(path.join(KIT, "UPSTREAM.json"), `${JSON.stringify({ repo: manifest.repo, commit, date }, null, 2)}\n`);
     console.log(`OpenMontage ${pin.commit.slice(0, 7)} -> ${commit.slice(0, 7)} (${date})`);
     console.log(`changed (${changed.length}):\n  ${changed.join("\n  ") || "-"}`);
