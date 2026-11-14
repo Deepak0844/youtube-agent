@@ -179,3 +179,12 @@ const STEP_BAR: Record<UiState, StepBarState> = { done: "done", needs_you: "wait
 export function stepBar(stages: ReadonlyArray<{ label: string; state: UiState }>): Array<{ label: string; state: StepBarState }> {
   return stages.map((s) => ({ label: s.label, state: STEP_BAR[s.state] }));
 }
+
+const KIND_NAMES: Record<string, string> = { tsx: "Custom animation", collage: "Picture collage", ai: "AI video" };
+/** The engine's video-type suggestion stored on a finished draft step, as plain text for the Script tab. A suggestion only: it never changes the video's type. Anything unusable is null. */
+export function scriptSuggestion(result: unknown): { kind: string; name: string; reason: string } | null {
+  const r = typeof result === "object" && result !== null ? (result as Record<string, unknown>) : {};
+  if (typeof r.suggestedKind !== "string" || !Object.hasOwn(KIND_NAMES, r.suggestedKind) || typeof r.suggestedReason !== "string") return null;
+  const reason = r.suggestedReason.replace(/\s+/g, " ").trim().slice(0, 160);
+  return reason ? { kind: r.suggestedKind, name: KIND_NAMES[r.suggestedKind]!, reason } : null;
+}

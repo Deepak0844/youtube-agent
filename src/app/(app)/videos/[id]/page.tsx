@@ -256,6 +256,7 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
       return (
         <>
           <p className="m-0 flex flex-wrap items-center gap-2"><Pill tone={p.script.approved ? "positive" : "warning"}>{p.script.approved ? "Approved script" : "Draft, not approved yet"}</Pill><span className="text-small text-muted">version {p.script.version}</span></p>
+          {p.scriptSuggestion ? <p data-testid="type-suggestion" className="m-0 text-small text-muted [overflow-wrap:anywhere]">Suggested video type: {p.scriptSuggestion.name}. {p.scriptSuggestion.reason} This is only a suggestion; the type is not changed.</p> : null}
           {s.success ? (
             <>
               <H>{s.data.title}</H>
