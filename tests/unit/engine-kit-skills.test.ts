@@ -148,7 +148,9 @@ describe("engine-kit seeds", () => {
     const t = readFileSync("engine-kit/skills/draw-objects/SKILL.md", "utf8");
     expect(t).toContain("## 5d. Landscape (1920 x 1080)");
     expect(t).toMatch(/55-75% of the width/);
-    expect(t).toMatch(/bottom 220 px free/);
+    expect(t).toMatch(/bottom 220 px stays free of important drawing/);
+    expect(t).toMatch(/Use the whole frame, edge to edge/);
+    expect(t).toMatch(/Big main object, from frame 0/);
   });
 
 });
