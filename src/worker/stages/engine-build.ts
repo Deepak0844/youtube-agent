@@ -3,7 +3,7 @@ import path from "node:path";
 import { reviewRecord } from "@/server/core/frame-review";
 import { KnownFailure } from "@/server/core/paid-call";
 import { sanitizeCueSheet } from "@/server/core/sfx-plan";
-import { checkTsx, TSX_MAX_BYTES, tsxDuration } from "@/server/core/tsx-check";
+import { checkTsx, TSX_MAX_BYTES, tsxDuration, type TsxOrientation } from "@/server/core/tsx-check";
 import { tsxCaptionWords } from "@/server/core/tsx-captions";
 import { targetFrames } from "@/server/core/tsx-prompt";
 import { explainerBuildRequest } from "@/server/engine/build-prompt";
@@ -28,6 +28,8 @@ export interface EngineBuildDeps {
   /** The locked renderer's dependencies, for the engine's preview tools. */
   render: TsxRendererDeps;
   registry?: ChildRegistry;
+  /** Frame orientation of the scene (L1). Production passes nothing: portrait. Landscape is off until its real run passes (no video can ask for it yet). */
+  orientation?: TsxOrientation;
   /** Test seams. */
   runEngine?: typeof runEngine;
   narrationSeconds?: (file: string) => Promise<number>;
@@ -70,12 +72,13 @@ export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Attempt
     if (!deps.tsx) throw new KnownFailure("Code scenes are not set up on this worker.");
     const { beats, words, narrationS, topic } = await loadTsxInputs(deps, ctx, video.id, e.narrationSeconds);
     const want = targetFrames(narrationS);
-    const { prompt, inputs } = explainerBuildRequest({ topic, beats, words, narrationS, style: video.style, format: "short" });
+    const orientation: TsxOrientation = e.orientation ?? "portrait";
+    const { prompt, inputs } = explainerBuildRequest({ topic, beats, words, narrationS, style: video.style, format: "short", orientation });
 
     const r = await (e.runEngine ?? runEngine)(
       {
         db: deps.db, root: e.root, config: ctx.config.engine, registry: e.registry,
-        tools: (ws) => buildEngineTools({ db: deps.db, ctx, workDir: ws.workDir, orientation: "portrait", storageRoot: deps.root, render: e.render, style: video.style }),
+        tools: (ws) => buildEngineTools({ db: deps.db, ctx, workDir: ws.workDir, orientation, storageRoot: deps.root, render: e.render, style: video.style }),
       },
       { videoId: video.id, stageRunId: ctx.claim.stageRunId, kind: "build", prompt, inputs, long: false, signal: ctx.signal, model: ctx.config.engine.model },
     );
@@ -87,12 +90,12 @@ export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Attempt
 
     // Checked again here, before anything renders (the engine's own check_code ran on its side of the boundary).
     const source = await readScene(r.workDir);
-    const checked = checkTsx(source);
+    const checked = checkTsx(source, orientation);
     if (!checked.ok) throw new KnownFailure(`The engine's scene file did not pass the safety check: ${checked.problems.slice(0, 3).join(" ")}`);
     const frames = tsxDuration(source);
     if (frames !== want) throw new KnownFailure(`The engine's scene file is ${frames ?? "an unknown number of"} frames; meta.durationInFrames must be ${want} (the narration length). Run the step again.`);
 
-    const rendered = await deps.tsx.renderTsx(ctx, { source, captions: tsxCaptionWords(words), style: video.style, outFile: "render.mp4" });
+    const rendered = await deps.tsx.renderTsx(ctx, { source, captions: tsxCaptionWords(words), style: video.style, orientation, outFile: "render.mp4" });
     if (!rendered.ok) throw new KnownFailure(`The engine's scene did not render: ${[rendered.error.message, ...rendered.error.problems.slice(0, 3)].join(" ")}`);
     const cues = await engineCues(r.workDir, narrationS);
     await writeFile(path.join(ctx.attemptDir, CUES), cues.json);

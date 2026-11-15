@@ -147,3 +147,23 @@ describe("longestEmptyBand", () => {
     expect(r.problems.join()).toMatch(/under 40%/);
   });
 });
+
+describe("landscape frames (L1)", () => {
+  const LW = 200;
+  const LH = 112; // 16:9ish, wider than tall
+  const lsize = { width: LW, height: LH };
+  const lsquare = (n: number, sy: number) => frame(n, (x, y) => (x >= 90 && x < 110 && y >= sy && y < sy + 20 ? [255, 255, 255] : [20, 30, 60]), LW, LH);
+  it("an_object_in_the_landscape_zone_counts_as_content_on_frame_0", () => {
+    expect(checkPreflight([lsquare(0, 40), lsquare(10, 45)], lsize).problems).toEqual([]);
+  });
+  it("an_empty_landscape_frame_0_is_refused", () => {
+    const r = checkPreflight([frame(0, (x) => [20 + Math.floor(x / 2), 30, 60], LW, LH), lsquare(10, 40)], lsize);
+    expect(r.problems).toContain(EMPTY_FRAME0);
+  });
+  it("the_empty_band_is_measured_against_the_landscape_content_area", () => {
+    // content only at the very top: below it, a long empty run in the 8%..80% area
+    const top = lsquare(5, 10);
+    expect(longestEmptyBand(top)).toBeGreaterThan(0.4);
+    expect(longestEmptyBand(lsquare(5, 45))).toBeLessThan(0.7);
+  });
+});

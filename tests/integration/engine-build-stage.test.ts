@@ -51,12 +51,15 @@ beforeEach(async () => {
   await db.pool.query("insert into budgets (scope, cap_micro_usd) values ('draft_run', 3000000), ('video:tsx', 2000000), ('day', 15000000), ('month', 100000000)");
 });
 
-function fakeTsx(): TsxRenderer & { sources: string[] } {
+function fakeTsx(): TsxRenderer & { sources: string[]; orientations: unknown[] } {
   const sources: string[] = [];
+  const orientations: unknown[] = [];
   return {
     sources,
+    orientations,
     async renderTsx(ctx, input): Promise<TsxRenderResult> {
       sources.push(input.source);
+      orientations.push(input.orientation);
       const outPath = path.join(ctx.attemptDir, input.outFile);
       copyFileSync(GOOD_MP4, outPath);
       const stills = ["tsx-frame-first.png", "tsx-frame-middle.png", "tsx-frame-last.png"];
@@ -131,6 +134,24 @@ describe("engine code-scene step", () => {
     expect(saved.source).toBe(withFrames(frames));
     expect(saved.durationInFrames).toBe(frames);
     expect(saved.engine.turns).toBe(12);
+  });
+
+  it("landscape_is_checked_and_rendered_as_landscape_and_portrait_as_before", async () => {
+    const { id, frames } = await tsxVideoWithNarration();
+    const land = fakeTsx();
+    const landSource = withFrames(frames).replace("width: 1080, height: 1920", "width: 1920, height: 1080");
+    const out = await play(id, "tsx_author", withAttempt({ db: db.pool, root }, codeSceneAttempt(mkDeps({ tsx: land }), { ...engineDeps(fakeEngine({ source: landSource }).run), orientation: "landscape" })));
+    expect(out.kind).toBe("committed");
+    expect(land.orientations).toEqual(["landscape"]);
+    const { id: id2, frames: f2 } = await tsxVideoWithNarration();
+    const port = fakeTsx();
+    const out2 = await play(id2, "tsx_author", withAttempt({ db: db.pool, root }, codeSceneAttempt(mkDeps({ tsx: port }), engineDeps(fakeEngine({ source: withFrames(f2) }).run))));
+    expect(out2.kind).toBe("committed");
+    expect(port.orientations).toEqual(["portrait"]);
+    // a portrait scene is refused when the build is landscape
+    const { id: id3, frames: f3 } = await tsxVideoWithNarration();
+    const out3 = await play(id3, "tsx_author", withAttempt({ db: db.pool, root }, codeSceneAttempt(mkDeps({ tsx: fakeTsx() }), { ...engineDeps(fakeEngine({ source: withFrames(f3) }).run), orientation: "landscape" })));
+    expect(out3.kind).not.toBe("committed");
   });
 
   it("engine_sound_cues_are_made_safe_and_saved_with_the_step", async () => {

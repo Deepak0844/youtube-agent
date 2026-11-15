@@ -25,6 +25,15 @@ describe("explainerBuildRequest", () => {
     expect(prompt).toContain("Why we need Docker");
   });
 
+  it("landscape_prompt_asks_for_a_1920x1080_meta_and_portrait_stays_the_same", () => {
+    const base = { topic: "t", beats, words, narrationS: 4.2, style: null, format: "short" as const };
+    expect(explainerBuildRequest(base).prompt).toContain("width: 1080, height: 1920 }");
+    expect(explainerBuildRequest({ ...base, orientation: "portrait" }).prompt).toBe(explainerBuildRequest(base).prompt);
+    const land = explainerBuildRequest({ ...base, orientation: "landscape" }).prompt;
+    expect(land).toContain("width: 1920, height: 1080 }");
+    expect(land).not.toContain("width: 1080, height: 1920");
+  });
+
   it("inputs_carry_beats_and_words", () => {
     const { inputs } = explainerBuildRequest({ topic: "t", beats, words, narrationS: 4.2, style: null, format: "short" });
     expect(Object.keys(inputs).sort()).toEqual(["script.json", "words.json"]);

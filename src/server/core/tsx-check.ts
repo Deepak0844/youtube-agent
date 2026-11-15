@@ -15,6 +15,11 @@ import { OM_LIBS } from "@/server/core/om-names";
 export const TSX_MAX_BYTES = 24 * 1024;
 export const TSX_MAX_FRAMES = 2700; // 90 s at 30 fps
 export const TSX_META = { fps: 30, width: 1080, height: 1920 } as const;
+/** The two frame orientations of a drawn scene: portrait (Shorts, the default) and landscape (16:9). */
+export type TsxOrientation = "portrait" | "landscape";
+export const TSX_LANDSCAPE_META = { fps: 30, width: 1920, height: 1080 } as const;
+/** The meta a scene must declare for an orientation. Anything but "landscape" is portrait. */
+export const tsxMetaFor = (o: TsxOrientation | undefined): { readonly fps: 30; readonly width: number; readonly height: number } => (o === "landscape" ? TSX_LANDSCAPE_META : TSX_META);
 const MAX_PROBLEMS = 20;
 const MAX_ECHO = 30;
 const MAX_DEPTH = 200;
@@ -168,7 +173,8 @@ export interface TsxCheckResult {
 }
 
 /** Statically checks one AI-written Remotion TSX file. Never throws; the problems are short, plain and safe to echo back. */
-export function checkTsx(source: unknown): TsxCheckResult {
+export function checkTsx(source: unknown, orientation?: TsxOrientation): TsxCheckResult {
+  const META = tsxMetaFor(orientation);
   const problems: string[] = [];
   try {
     if (typeof source !== "string") return fail(["file: the file must be text; send the TSX source."]);
@@ -176,7 +182,7 @@ export function checkTsx(source: unknown): TsxCheckResult {
     if (source.trim() === "") return fail(["file: the file is empty; send the whole scene."]);
     checkChars(source, problems);
     if (problems.length > 0) return fail(problems);
-    walk(source, problems);
+    walk(source, problems, META);
   } catch {
     problems.push("file: the file could not be checked; write simpler code.");
   }
@@ -238,7 +244,7 @@ function checkChars(source: string, problems: string[]): void {
   }
 }
 
-function walk(source: string, problems: string[]): void {
+function walk(source: string, problems: string[], META: { readonly fps: number; readonly width: number; readonly height: number }): void {
   const sf = ts.createSourceFile("scene.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const lineOf = (pos: number) => sf.getLineAndCharacterOfPosition(pos).line + 1;
   const add = (n: ts.Node, msg: string) => { if (problems.length < MAX_PROBLEMS * 2) problems.push(`line ${lineOf(n.getStart(sf))}: ${msg}`); };
@@ -366,7 +372,7 @@ function walk(source: string, problems: string[]): void {
   }
   checkRecursion();
   if (!hasDefault) problems.push("exports: the file must 'export default' the scene component; add export default function Scene().");
-  if (!hasMeta) problems.push(`meta: 'export const meta' is missing; add it as { durationInFrames: 90, fps: ${TSX_META.fps}, width: ${TSX_META.width}, height: ${TSX_META.height} }.`);
+  if (!hasMeta) problems.push(`meta: 'export const meta' is missing; add it as { durationInFrames: 90, fps: ${META.fps}, width: ${META.width}, height: ${META.height} }.`);
 
   function comments(n: ts.Node): void {
     if (n.kind === ts.SyntaxKind.JsxText) return;
@@ -540,7 +546,7 @@ function walk(source: string, problems: string[]): void {
     const dur = got.durationInFrames;
     if (dur !== undefined && !(Number.isInteger(dur) && dur >= 1 && dur <= TSX_MAX_FRAMES)) add(init, `meta: durationInFrames must be a whole number from 1 to ${TSX_MAX_FRAMES}; pick one in range.`);
     for (const k of ["fps", "width", "height"] as const) {
-      if (got[k] !== undefined && got[k] !== TSX_META[k]) add(init, `meta: meta.${k} must be ${TSX_META[k]}; set it to ${TSX_META[k]}.`);
+      if (got[k] !== undefined && got[k] !== META[k]) add(init, `meta: meta.${k} must be ${META[k]}; set it to ${META[k]}.`);
     }
   }
 

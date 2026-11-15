@@ -7,7 +7,7 @@ import { isTsxStyleId } from "../../../../remotion/kit/tsxlib/styledata";
 import { redactLine } from "@/server/core/log-redact";
 import type { ProbeResult } from "@/server/core/qa";
 import type { StageContext } from "@/server/core/stage-handler";
-import { checkTsx, echo, isStaticName, TSX_META, tsxDuration } from "@/server/core/tsx-check";
+import { checkTsx, echo, isStaticName, tsxDuration, tsxMetaFor, type TsxOrientation } from "@/server/core/tsx-check";
 import { checkPreflight, preflightFrames, reviewStillFrames, type RgbFrame } from "@/server/core/tsx-preflight";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { daemonLimits, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
@@ -38,7 +38,6 @@ const MAX_STILL_BYTES = 32 * 1024 * 1024;
 const MAX_JPEG_BYTES = 400 * 1024; // a 540x960 review picture; anything bigger is dropped, not sent to a model
 const MAX_MESSAGE = 600;
 const MAX_PROBLEMS = 10;
-const SIZE = { width: TSX_META.width, height: TSX_META.height };
 
 export type TsxFailureKind = "check" | "typecheck" | "render" | "timeout" | "preflight" | "output" | "review" | "infra";
 export interface TsxRenderFailure {
@@ -62,6 +61,8 @@ export interface TsxRenderInput {
   captions?: { word: string; startS: number; endS: number }[];
   /** The video's style id (one of the ten picker ids; null or unknown = ai_studio). Passed in meta.json; picks the yt-kit look. */
   style?: string | null;
+  /** Frame orientation: portrait (the default, 1080x1920) or landscape (1920x1080). Written to meta.json; the scene's meta must match. */
+  orientation?: TsxOrientation;
   /** A plain file name inside ctx.attemptDir. */
   outFile: string;
   /**
@@ -162,7 +163,9 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
   const aborted = () => ctx.signal.reason ?? new Error("render aborted");
 
   // 1. Static check, again.
-  const checked = checkTsx(input.source);
+  const META = tsxMetaFor(input.orientation);
+  const SIZE = { width: META.width, height: META.height };
+  const checked = checkTsx(input.source, input.orientation);
   if (!checked.ok) return failure("check", "The scene file did not pass the safety check.", checked.problems);
   const frames = tsxDuration(source);
   if (!frames) return failure("check", "The scene file has no usable meta.durationInFrames.");
@@ -206,7 +209,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       await mkdir(stillsDir, { mode: 0o700 });
       await writeFile(path.join(inDir, "video.tsx"), source, { mode: 0o644, flag: "wx" });
       await writeFile(path.join(inDir, "props.json"), propsJson, { mode: 0o644, flag: "wx" });
-      await writeFile(path.join(inDir, "meta.json"), JSON.stringify({ durationInFrames: frames, stills: stillList, captions: (input.captions ?? []).slice(0, 1500), ...(isTsxStyleId(input.style) ? { style: input.style } : {}) }), { mode: 0o644, flag: "wx" });
+      await writeFile(path.join(inDir, "meta.json"), JSON.stringify({ durationInFrames: frames, stills: stillList, ...(input.orientation === "landscape" ? { orientation: "landscape" } : {}), captions: (input.captions ?? []).slice(0, 1500), ...(isTsxStyleId(input.style) ? { style: input.style } : {}) }), { mode: 0o644, flag: "wx" });
     } catch (e) {
       return failure("infra", `The TSX render folders could not be prepared (${e instanceof Error ? e.message : "unknown"}).`);
     }
@@ -265,7 +268,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
     const problems: string[] = [];
     const base = new Set(preflightFrames(frames));
     for (const f of stillList) {
-      const got = await readStill(deps, ctx, outDir, stillsDir, f, input.review !== undefined);
+      const got = await readStill(deps, ctx, outDir, stillsDir, f, input.review !== undefined, SIZE);
       if (typeof got === "string") {
         if (base.has(f)) problems.push(got); // a missing extra frame only thins the review
       } else {
@@ -317,7 +320,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       if (ctx.signal.aborted) throw aborted();
       return failure("output", "The rendered file is not a readable video.");
     }
-    const wantS = frames / TSX_META.fps;
+    const wantS = frames / META.fps;
     if (p.width !== SIZE.width || p.height !== SIZE.height) return failure("output", `The render is ${p.width}x${p.height}, expected ${SIZE.width}x${SIZE.height}.`);
     if (!(p.durationS > 0)) return failure("output", "The rendered video is empty.");
     if (Math.abs(p.durationS - wantS) > 1) return failure("output", `The video is ${p.durationS.toFixed(1)} s but meta says ${wantS.toFixed(1)} s.`);
@@ -348,7 +351,7 @@ export async function stagePublicAssets(publicDir: string, assets: Record<string
 }
 
 /** Copies still-<f>.png out of the container folder (no symlink, size-capped) and decodes it in a child. A string is a problem. */
-async function readStill(deps: TsxRendererDeps, ctx: StageContext, outDir: string, stillsDir: string, f: number, wantJpeg: boolean): Promise<{ rgb: RgbFrame; jpeg?: Uint8Array } | string> {
+async function readStill(deps: TsxRendererDeps, ctx: StageContext, outDir: string, stillsDir: string, f: number, wantJpeg: boolean, SIZE: { width: number; height: number }): Promise<{ rgb: RgbFrame; jpeg?: Uint8Array } | string> {
   const png = path.join(stillsDir, `still-${f}.png`);
   const raw = path.join(stillsDir, `still-${f}.rgb`);
   const jpg = path.join(stillsDir, `still-${f}.jpg`);
@@ -379,8 +382,8 @@ async function readStill(deps: TsxRendererDeps, ctx: StageContext, outDir: strin
 }
 
 /** Engine preview frames (ADR 0015): the same checks and locked container as renderTsx, only the asked frames, as PNG paths. */
-export async function renderTsxStills(deps: TsxRendererDeps, ctx: StageContext, input: { source: string; frames: readonly number[]; style?: string | null }): Promise<{ ok: true; files: string[]; frameCount: number } | { ok: false; message: string; problems: string[] }> {
-  const r = await renderTsx(deps, ctx, { source: input.source, stillsOnly: input.frames, style: input.style ?? null, outFile: "preview.mp4" });
+export async function renderTsxStills(deps: TsxRendererDeps, ctx: StageContext, input: { source: string; frames: readonly number[]; style?: string | null; orientation?: TsxOrientation }): Promise<{ ok: true; files: string[]; frameCount: number } | { ok: false; message: string; problems: string[] }> {
+  const r = await renderTsx(deps, ctx, { source: input.source, stillsOnly: input.frames, style: input.style ?? null, orientation: input.orientation, outFile: "preview.mp4" });
   if (!r.ok) return { ok: false, message: r.error.message, problems: r.error.problems };
   return { ok: true, files: r.stills.map((n) => path.join(ctx.attemptDir, n)), frameCount: tsxDuration(input.source) ?? 0 };
 }

@@ -51,7 +51,9 @@ if (tsx) {
   // The video's style id for the yt-kit look (tsx-root checks it against the known ids; unknown = ai_studio). Written by the host.
   const style = meta.style ?? "ai_studio";
   if (typeof style !== "string" || !/^[a-z_]{1,32}$/.test(style)) throw new Error("meta.json: bad style");
-  inputProps = { props: readJson("props.json"), frames: n, captions: caps, style };
+  // Orientation: portrait unless meta.json says "landscape" (the host writes it only for landscape). Anything else is refused.
+  if (meta.orientation !== undefined && meta.orientation !== "landscape" && meta.orientation !== "portrait") throw new Error("meta.json: bad orientation");
+  inputProps = { props: readJson("props.json"), frames: n, captions: caps, style, orientation: meta.orientation === "landscape" ? "landscape" : "portrait" };
 } else if (om) {
   meta = readJson("meta.json");
   if (meta.orientation !== "landscape" && meta.orientation !== "portrait") throw new Error("meta.json: bad orientation");
@@ -106,7 +108,9 @@ if (om) {
   if (!meta.stills.every((f) => f < composition.durationInFrames)) throw new Error("meta.json: a still is outside the video");
   if (meta.orientation === "portrait") composition = { ...composition, width: 1080, height: 1920 };
 }
-if (tsx && (composition.durationInFrames !== meta.durationInFrames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) {
+const tsxW = meta?.orientation === "landscape" ? 1920 : 1080;
+const tsxH = meta?.orientation === "landscape" ? 1080 : 1920;
+if (tsx && (composition.durationInFrames !== meta.durationInFrames || composition.fps !== 30 || composition.width !== tsxW || composition.height !== tsxH)) {
   throw new Error("the TSX composition does not match meta.json");
 }
 
