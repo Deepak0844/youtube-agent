@@ -55,6 +55,8 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
   { path: "/setup", match: "prefix" },
   { path: "/healthz", match: "exact" },
   { path: "/readyz", match: "exact" },
+  { path: "/manifest.webmanifest", match: "exact" }, // PWA install: browsers fetch it without the session cookie
+  { path: "/icons", match: "prefix" }, // PWA icons (public/icons)
   { path: "/api/auth/login", match: "exact" }, // JSON login; does its own origin, lockout and admission checks
   { path: "/api/auth/logout", match: "exact" }, // idempotent: clears its own cookie, needs no valid session
   { path: "/api/media", match: "prefix" }, // signed URL (Phase 3)
