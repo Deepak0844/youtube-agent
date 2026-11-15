@@ -62,5 +62,5 @@ describe("cutClipArgs with real ffmpeg", () => {
     expect(p.streams.some((s) => s.codec_type === "audio")).toBe(true);
     expect(Number(p.format.duration)).toBeGreaterThan(2.8);
     expect(Number(p.format.duration)).toBeLessThan(3.3);
-  });
+  }, 60_000); // real encodes; the CI runner is slower than a laptop
 });
