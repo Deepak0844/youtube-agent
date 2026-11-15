@@ -171,6 +171,14 @@ A past landscape build drew small thin objects in the top two thirds and left th
 - **Use the width.** Two things side by side (before and after, cause and effect) each get about 800 px; a row of three or four
   items fits at 380-500 px each. Do not stack a column in the middle and leave both sides empty: if the left or right third
   of a frame has nothing but background, move or enlarge the objects.
+- **Labels sit in clear space.** No beam, line, tag, ray or object may pass through a label's box. Work the box out (width about
+  0.6 x font size x letters, height the font size) and keep 24 px clear of every shape that is on screen while the label shows.
+  Put labels in the title band or in empty space beside the thing they name, never on top of a sun, a beam or another tag.
+  A past landscape build printed "PRISM SPLITS LIGHT" under a red beam, "~10x" on top of "HOW MUCH SCATTERS" and "NEAR SUNSET"
+  on the sun: move the label instead.
+- **Both halves carry content.** Split the frame in thirds: the left third and the right third each hold part of the main
+  object, an object, a bar or a label. A set-up that only fills one side (bars at the left, nothing at the right) is
+  redrawn wider or re-centred.
 - Title or label above (y 50-150), objects in the middle band, a result or second object beside it.
 - Text: titles 72-110 px, labels at least 48 px (at least 40 px for tiny tags), never under 36 px. Keep 100 px from the left and
   right edges.

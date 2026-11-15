@@ -151,6 +151,8 @@ describe("engine-kit seeds", () => {
     expect(t).toMatch(/bottom 220 px stays free of important drawing/);
     expect(t).toMatch(/Use the whole frame, edge to edge/);
     expect(t).toMatch(/Big main object, from frame 0/);
+    expect(t).toMatch(/Labels sit in clear space/);
+    expect(t).toMatch(/Both halves carry content/);
   });
 
 });
