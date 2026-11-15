@@ -78,6 +78,16 @@ describe("engine-kit seeds", () => {
     expect(t).toContain("check_frames");
   });
 
+  it("draw_objects_skill_asks_for_a_readable_story_and_names_no_video", () => {
+    const t = readFileSync("engine-kit/skills/draw-objects/SKILL.md", "utf8");
+    expect(t).toMatch(/Show the idea, not a diagram of it/);
+    expect(t).toMatch(/everyday/i);
+    expect(t).toMatch(/sound off/i);
+    expect(t).toMatch(/never add facts/i);
+    // the rules are generic: a past test video's topic must not be written into them
+    for (const w of [/service worker/i, /background sync/i, /binary search/i, /\bgps\b/i, /without (mobile )?data/i]) expect(t).not.toMatch(w);
+  });
+
   it("entry_skill_steers_explainers_to_way_2", () => {
     const t = readFileSync("engine-kit/skills/openmontage-pipeline/SKILL.md", "utf8");
     expect(t).toMatch(/Explainer[^\n]*(bespoke|drawn)/i);

@@ -117,10 +117,35 @@ strength. Do not fade or pop it in from nothing; start it visible and animate fr
 part arriving). The final render refuses an empty or one-colour frame 0, a black or blank frame, and a video in which
 frames 0, middle and last look the same.
 
+## 5c. Show the idea, not a diagram of it
+
+A viewer with the sound off should follow the story from the pictures alone. Plan this before drawing anything.
+
+1. **Pick a picture people already know.** When the idea is abstract (software, networks, data, money, a process), do not draw
+   the technical parts. Choose an everyday scene that works the same way (a post box, a queue at a counter, a pipe and a
+   tap, a tunnel, a warehouse, a see-saw) and draw that. Write it in one line first: "this idea = <everyday scene>". Only
+   the picture is new: the facts stay the script's, never add facts it does not say.
+2. **One picture per idea.** Give each idea in the script its own picture with its own layout (what the main object is, or
+   where things sit), and never fewer than 4 different pictures in a Short of 25 s or more. Small changes inside one fixed
+   set-up (a bar moving, a clock ticking) are motion, not a new picture. When two beats carry the same idea, keep the
+   picture and show the change (a new state, a second object arriving).
+3. **Label the main things.** Each object that carries the story gets a label of at most 3 plain words, at least 48 px, and
+   so does each important state change (for example "NO SIGNAL", "WAITING"). Use the narration's own word when the viewer
+   will hear it; an everyday stand-in picture gets its plain name. Budget: at most 3 labels on screen at once, each inside
+   the 80 px side margins and clear of its object (see "Labels never touch the picture"); shorten the text rather than the
+   size.
+4. **Real objects with a face.** An object shows the feature people know it by (section 2). Grey bars, plain boxes or empty
+   cards that need explaining do not count.
+5. **Fill the frame.** The main object is large (section 1) and the other half of the picture holds the result, the second
+   object or the label.
+6. **Self-check before you finish:** look at the preview frames in a row, covering the words. Can you tell the story? Does
+   each picture change from the one before it, unless two beats share one idea? The first and last frames match on purpose
+   (the loop). If not, redraw the weak pictures.
+
 ## 6. Look at it
 
 Run `check_code`, then `preview_frames` with about one frame per beat (mid-beat). Look at every frame: is each object
 recognisable at phone size, big enough (the sizes above), filling the frame, on-style, inside the safe area, not
 overlapping text (check every label against the bottom of its object, with the numbers above)? Redraw anything that is not, and preview
-again. Then run `check_frames` (the final render's own check) and fix the file until it passes. Finish only when the hook, twist and loop are drawn (section 5b), every beat's
+again. Then run `check_frames` (the final render's own check) and fix the file until it passes. Finish only when the hook, twist and loop are drawn (section 5b), the story reads from the pictures alone (section 5c), every beat's
 frame shows the thing its words talk about and `check_frames` passes.
