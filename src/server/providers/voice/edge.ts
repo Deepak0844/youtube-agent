@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { EDGE_VOICES } from "@/server/core/edge-voices";
+import { EDGE_ALLOWED } from "@/server/core/edge-voices";
 import { LANGS } from "@/server/core/lang";
 import { KnownFailure } from "@/server/core/paid-call";
 import { StageAbort, type StageContext } from "@/server/core/stage-handler";
@@ -63,11 +63,11 @@ export function createEdgeVoice(deps: {
     capability: { id: "edge", wordTimings: "aligned", local: false, languages: [...LANGS], maxChars: 1000, formats: ["mp3"] },
     quote: () => 0,
     async synthesise(ctx: StageContext, a) {
-      if (!Object.values(EDGE_VOICES).includes(a.voice)) throw new KnownFailure("unsupported voice");
+      if (!EDGE_ALLOWED.includes(a.voice)) throw new KnownFailure("unsupported voice");
       const t0 = now();
       const url = `${URL_BASE}?TrustedClientToken=${TOKEN}&Sec-MS-GEC=${secMsGec(t0)}&Sec-MS-GEC-Version=1-${CHROMIUM}&ConnectionId=${randomUUID().replaceAll("-", "")}`;
       const ssml =
-        `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>` +
+        `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${a.voice.slice(0, 5)}'>` +
         `<voice name='${xmlEscape(a.voice)}'>${xmlEscape(a.text)}</voice></speak>`;
       const { chunks, words } = await new Promise<{ chunks: Buffer[]; words: WordTiming[] }>((resolve, reject) => {
         const chunks: Buffer[] = [];
