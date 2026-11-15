@@ -66,8 +66,9 @@ rest under the voice. You do not call `list_assets` for this and never write a c
 ```
 
 - `atS`: seconds on the video's timeline, the exact moment the picture changes (`(frame + sequence_from) / 30`), inside the video.
-- `gainDb`: -3 for whooshes and transitions, 0 to +3 for pops and impacts, 0 to +6 for stamps and snaps. Never above +6.
-- `optional`: true for texture you could lose, false for the few cues the story needs.
+- `gainDb`: the mix is checked against the narration, and a cue that would not be heard is dropped, so aim loud enough to be heard:
+  +2 to +4 for whooshes and transitions, +3 to +5 for pops, clicks and chimes, +4 to +6 for impacts, stamps and snaps. Never above +6.
+- `optional`: the app treats every engine cue as optional (a cue it cannot hear is dropped, never a failure); write true.
 - Light touch: about one cue every 4 seconds, at most 12 in a 45-second Short. A whoosh on a scene change, a pop when
   something appears, an impact on the twist, a chime on the payoff. Silence is part of the mix.
 - Never two cues within 0.3 s unless they are a deliberate pair (whoosh then pop).

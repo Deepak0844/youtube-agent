@@ -47,7 +47,7 @@ export async function planFromCueSheet(sheet: CueSheet, palette: Palette, find: 
 }
 
 /** A cue sheet written by an engine run, made safe: anything that is not valid is dropped (never a failure: the video just has fewer effects).
- * Keeps cues with a real time inside the video, clamps gain to what the plan allows, drops a repeat of the same sound within 0.15 s, caps at 60. */
+ * Every cue becomes optional. Keeps cues with a real time inside the video, clamps gain to what the plan allows, drops a repeat of the same sound within 0.15 s, caps at 60. */
 export function sanitizeCueSheet(raw: unknown, durationS: number): z.infer<typeof CueSheet> {
   const list = (raw as { cues?: unknown } | null)?.cues;
   if (!Array.isArray(list) || !(durationS > 0)) return { cues: [] };
@@ -55,11 +55,11 @@ export function sanitizeCueSheet(raw: unknown, durationS: number): z.infer<typeo
   for (const item of list) {
     const c = CueSheetItem.safeParse(item);
     if (!c.success) continue;
-    const { id, sound, atS, optional } = c.data;
+    const { id, sound, atS } = c.data;
     if (atS < 0 || atS > durationS - 0.1) continue;
     const gainDb = Math.min(6, Math.max(-30, c.data.gainDb));
     if (cues.some((o) => o.sound === sound && Math.abs(o.atS - atS) < 0.15)) continue;
-    cues.push({ id, sound, atS: Math.round(atS * 1000) / 1000, gainDb, optional });
+    cues.push({ id, sound, atS: Math.round(atS * 1000) / 1000, gainDb, optional: true }); // always optional: the Sound step drops a cue it cannot hear instead of failing the video
     if (cues.length === 60) break;
   }
   return { cues: cues.sort((a, b) => a.atS - b.atS) };

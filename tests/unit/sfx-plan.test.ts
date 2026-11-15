@@ -40,6 +40,9 @@ describe("sanitizing an engine's cue sheet", () => {
   it("keeps good cues in time order and fills defaults", () => {
     expect(sanitizeCueSheet({ cues: [c({ id: "b", atS: 5 }), c({ id: "a", atS: 1 })] }, 40).cues.map((x) => [x.id, x.gainDb, x.optional])).toEqual([["a", -12, true], ["b", -12, true]]);
   });
+  it("makes every cue optional, even one written as required", () => {
+    expect(sanitizeCueSheet({ cues: [c({ optional: false })] }, 40).cues[0]!.optional).toBe(true);
+  });
   it("drops junk, bad times and a repeat within 0.15 s; clamps gain", () => {
     const r = sanitizeCueSheet({ cues: [c({}), c({ id: "dup", atS: 2.1 }), c({ id: "late", atS: 40 }), c({ id: "neg", atS: -1 }), c({ id: "nan", atS: "x" }), "x", null, c({ id: "hot", sound: "pop-reveal", gainDb: 50 }), c({ id: "cold", sound: "riser-soft", atS: 3, gainDb: -90 })] }, 40);
     expect(r.cues.map((x) => [x.id, x.gainDb])).toEqual([["a", -12], ["hot", 6], ["cold", -30]]);
