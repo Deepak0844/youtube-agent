@@ -28,7 +28,7 @@ export interface MomentOpts {
 export const MOMENT_DEFAULTS = { minS: 15, maxS: 90, max: 10, gapS: 1.2 } as const;
 const SENTENCE_END = /[.!?।]["'”’)\]]*$/u;
 const ABBREVIATION = /^(dr|mr|mrs|ms|prof|st|vs|etc|e\.g|i\.e|u\.s)\.$/i; // shortcut: English abbreviations only, add more when a language needs them
-const LEADS_BACK = /^(and|but|because|also|then|which|however)\b/i; // a joining word: the sentence needs the one before it
+export const LEADS_BACK = /^(and|but|because|also|then|which|however)\b/i; // a joining word: the sentence needs the one before it
 const HOOK_WORDS = /\b(why|how|what|never|nobody|secret|surprising|mistake|wrong|actually|imagine|here's|biggest|truth|stop)\b/i;
 const PAD_BEFORE_S = 0.15;
 const PAD_AFTER_S = 0.25;
