@@ -27,7 +27,7 @@ export interface MomentOpts {
 }
 export const MOMENT_DEFAULTS = { minS: 15, maxS: 90, max: 10, gapS: 1.2 } as const;
 const SENTENCE_END = /[.!?।]["'”’)\]]*$/u;
-const ABBREVIATION = /^(dr|mr|mrs|ms|prof|st|vs|etc|e\.g|i\.e|u\.s|no)\.$/i; // shortcut: English abbreviations only, add more when a language needs them
+const ABBREVIATION = /^(dr|mr|mrs|ms|prof|st|vs|etc|e\.g|i\.e|u\.s)\.$/i; // shortcut: English abbreviations only, add more when a language needs them
 const LEADS_BACK = /^(and|but|because|also|then|which|however)\b/i; // a joining word: the sentence needs the one before it
 const HOOK_WORDS = /\b(why|how|what|never|nobody|secret|surprising|mistake|wrong|actually|imagine|here's|biggest|truth|stop)\b/i;
 const PAD_BEFORE_S = 0.15;
@@ -101,7 +101,7 @@ export function findMoments(words: readonly MomentWord[], opts: MomentOpts = {})
   const maxS = opts.maxS ?? MOMENT_DEFAULTS.maxS;
   const max = opts.max ?? MOMENT_DEFAULTS.max;
   const gapS = opts.gapS ?? MOMENT_DEFAULTS.gapS;
-  if (!(minS > 0) || !(maxS >= minS) || !Number.isInteger(max) || max < 1) return { ok: false, reason: "The clip length limits or the clip count are not valid." };
+  if (!(minS > 0) || !(maxS >= minS) || !Number.isFinite(maxS) || maxS > 600 || !Number.isInteger(max) || max < 1) return { ok: false, reason: "The clip length limits or the clip count are not valid." };
   const bad = validateWords(words);
   if (bad) return { ok: false, reason: bad };
 
@@ -109,13 +109,13 @@ export function findMoments(words: readonly MomentWord[], opts: MomentOpts = {})
   type Cand = Moment & { from: number; to: number };
   const cands: Cand[] = [];
   for (let i = 0; i < sentences.length; i++) {
+    const hook = hookScore(sentences[i]!);
     let best: Cand | undefined; // only the best window per start sentence is kept (keeps memory linear)
     for (let j = i; j < sentences.length; j++) {
       const dur = sentences[j]!.endS - sentences[i]!.startS;
       if (dur > maxS) break;
       if (dur < minS) continue;
       const nWords = sentences[j]!.lastWord - sentences[i]!.firstWord + 1;
-      const hook = hookScore(sentences[i]!);
       const pace = paceScore(nWords, dur);
       const len = lengthScore(dur, minS, maxS);
       const closes = SENTENCE_END.test(words[sentences[j]!.lastWord]!.word) ? 0.1 : 0; // a real full stop at the end

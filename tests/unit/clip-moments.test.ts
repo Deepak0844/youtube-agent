@@ -82,6 +82,14 @@ describe("findMoments", () => {
     for (const m of r.moments) expect(m.hook).not.toMatch(/^Why is the sky blue/);
   });
 
+  it("treats a spoken \"No.\" as a sentence end", () => {
+    // if "No." were an abbreviation, the strong question after it would be glued behind it and could not open a clip
+    const words = talk([sentence(1), "No.", "Why is the sky blue?", sentence(4), sentence(5), sentence(6)]);
+    const r = findMoments(words, { minS: 8, maxS: 30, max: 1 });
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.moments[0]!.hook).toBe("Why is the sky blue?");
+  });
+
   it("never cuts into its own first or last word when word times overlap", () => {
     const w: MomentWord[] = long.map((x, i) => (i % 12 === 0 && i > 0 ? { ...x, startS: x.startS - 0.4 } : x)); // each sentence's first word starts early, overlapping the one before
     const r = findMoments(w, { minS: 15, maxS: 40 });
@@ -107,6 +115,8 @@ describe("findMoments", () => {
     expect(validateWords([{ word: "a", startS: Number.NaN, endS: 2 }])).toMatch(/not valid/);
     expect(findMoments(long, { max: 0 })).toMatchObject({ ok: false });
     expect(findMoments(long, { minS: 50, maxS: 10 })).toMatchObject({ ok: false });
+    expect(findMoments(long, { maxS: Number.POSITIVE_INFINITY })).toMatchObject({ ok: false }); // an unbounded window would make the search quadratic
+    expect(findMoments(long, { maxS: 601 })).toMatchObject({ ok: false });
   });
 
   it("is deterministic", () => {
