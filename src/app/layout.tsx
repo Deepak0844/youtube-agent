@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: { template: "%s · YT Studio", default: "YT Studio" },
   description: "YT Studio",
   icons: { apple: "/icons/apple-touch-icon.png" },
-  appleWebApp: { capable: true, title: "YT Studio", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: "YT Studio", statusBarStyle: "default" },
 };
 
 // Browser/title-bar colour follows the system theme (the app's own toggle can't be known this early).
