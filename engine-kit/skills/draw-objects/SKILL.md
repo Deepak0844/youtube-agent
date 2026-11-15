@@ -125,10 +125,15 @@ A viewer with the sound off should follow the story from the pictures alone. Pla
    the technical parts. Choose an everyday scene that works the same way (a post box, a queue at a counter, a pipe and a
    tap, a tunnel, a warehouse, a see-saw) and draw that. Write it in one line first: "this idea = <everyday scene>". Only
    the picture is new: the facts stay the script's, never add facts it does not say.
-2. **One picture per idea.** Give each idea in the script its own picture with its own layout (what the main object is, or
-   where things sit), and never fewer than 4 different pictures in a Short of 25 s or more. Small changes inside one fixed
-   set-up (a bar moving, a clock ticking) are motion, not a new picture. When two beats carry the same idea, keep the
-   picture and show the change (a new state, a second object arriving).
+2. **One picture per idea.** Give each idea in the script its own picture, and never fewer than 4 different pictures in a Short
+   of 25 s or more. A new picture means the layout changes, not only the state of the same objects. Ways to change it:
+   - zoom in on one part (the part fills the frame and the rest leaves);
+   - split the frame in two (before and after, here and there, cause and effect);
+   - swap the main object (the phone leaves, the thing it talks to arrives);
+   - change the camera (a top view, a close-up, the same object turned or moved to another third of the frame).
+   The same device or box in the same place for more than about 12 s is a fixed set-up with moving parts: break it up at
+   the next idea. Small changes inside it (a bar moving, a clock ticking, an item added) are motion, not a new picture.
+   When two beats carry the same idea, keep the picture and show the change.
 3. **Label the main things.** Each object that carries the story gets a label of at most 3 plain words, at least 48 px, and
    so does each important state change (for example "NO SIGNAL", "WAITING"). Use the narration's own word when the viewer
    will hear it; an everyday stand-in picture gets its plain name. Budget: at most 3 labels on screen at once, each inside
@@ -136,8 +141,10 @@ A viewer with the sound off should follow the story from the pictures alone. Pla
    size.
 4. **Real objects with a face.** An object shows the feature people know it by (section 2). Grey bars, plain boxes or empty
    cards that need explaining do not count.
-5. **Fill the frame.** The main object is large (section 1) and the other half of the picture holds the result, the second
-   object or the label.
+5. **Fill the frame.** The main object is at least 60% of the frame's width, and what sits inside it is drawn large enough to
+   read on a phone: no item inside a screen or box narrower than 220 px. Do not leave the inside of a device empty: put
+   the things the narration talks about in it, large, or zoom in until they fill it. The other half of the picture holds
+   the result, the second object or the label.
 6. **Self-check before you finish:** look at the preview frames in a row, covering the words. Can you tell the story? Does
    each picture change from the one before it, unless two beats share one idea? The first and last frames match on purpose
    (the loop). If not, redraw the weak pictures.

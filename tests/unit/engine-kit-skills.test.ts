@@ -84,6 +84,9 @@ describe("engine-kit seeds", () => {
     expect(t).toMatch(/everyday/i);
     expect(t).toMatch(/sound off/i);
     expect(t).toMatch(/never add facts/i);
+    expect(t).toMatch(/layout changes/i);
+    expect(t).toMatch(/zoom in/i);
+    expect(t).toMatch(/at least 60%/i);
     // the rules are generic: a past test video's topic must not be written into them
     for (const w of [/service worker/i, /background sync/i, /binary search/i, /\bgps\b/i, /without (mobile )?data/i]) expect(t).not.toMatch(w);
   });
