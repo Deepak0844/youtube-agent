@@ -29,12 +29,14 @@ const [inDir, outArg, mode = "kit", ...extra] = process.argv.slice(2);
 const CHUNK = /^--frames=(\d{1,7})-(\d{1,7}|end)$/.exec(extra[0] ?? "");
 const chunkArgs = mode === "--landscape" && CHUNK !== null && (extra.length === 1 || (extra.length === 2 && extra[1] === "--muted"));
 const chunk = chunkArgs ? { from: Number(CHUNK[1]), to: CHUNK[2] === "end" ? "end" : Number(CHUNK[2]), muted: extra.length === 2 } : null;
-if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || (extra.length > 0 && !chunkArgs) || !["kit", "--landscape", "--thumbnail", "--tsx", "--tsx-stills", "--om", "--om-stills"].includes(mode)) {
-  throw new Error("usage: render-entry.mjs <abs inDir> <abs out> [--tsx | --tsx-stills | --om | --om-stills]");
+if (!inDir || !outArg || !path.isAbsolute(inDir) || !path.isAbsolute(outArg) || (extra.length > 0 && !chunkArgs) || !["kit", "--landscape", "--thumbnail", "--tsx", "--tsx-stills", "--om", "--om-stills", "--clip"].includes(mode)) {
+  throw new Error("usage: render-entry.mjs <abs inDir> <abs out> [--tsx | --tsx-stills | --om | --om-stills | --clip]");
 }
 // Only the two TSX modes use meta.json, video.tsx and the TSX bundle.
 const tsx = mode === "--tsx" || mode === "--tsx-stills";
 const om = mode === "--om" || mode === "--om-stills";
+const clip = mode === "--clip"; // a finished 1080x1920 clip (public/clip.mp4) with the app's captions drawn over it (Clip Factory)
+const CLIP_MAX_FRAMES = 30 * 180; // a short is at most 180 s
 const OM_MAX_FRAMES = 30 * 60 * 12; // 12 minutes
 const nodePath = (process.env.NODE_PATH ?? "").split(path.delimiter).filter(Boolean);
 const readJson = (name) => JSON.parse(readFileSync(path.join(inDir, name), "utf8"));
@@ -54,6 +56,15 @@ if (tsx) {
   // Orientation: portrait unless meta.json says "landscape" (the host writes it only for landscape). Anything else is refused.
   if (meta.orientation !== undefined && meta.orientation !== "landscape" && meta.orientation !== "portrait") throw new Error("meta.json: bad orientation");
   inputProps = { props: readJson("props.json"), frames: n, captions: caps, style, orientation: meta.orientation === "landscape" ? "landscape" : "portrait" };
+} else if (clip) {
+  meta = readJson("meta.json");
+  const n = meta.durationInFrames;
+  if (!Number.isInteger(n) || n < 1 || n > CLIP_MAX_FRAMES) throw new Error("meta.json: bad durationInFrames");
+  const caps = meta.captions ?? [];
+  if (!Array.isArray(caps) || caps.length > 1500 || !caps.every((w) => w && typeof w.word === "string" && w.word.length <= 60 && Number.isFinite(w.startS) && Number.isFinite(w.endS))) throw new Error("meta.json: bad captions");
+  const style = meta.style ?? "ai_studio";
+  if (typeof style !== "string" || !/^[a-z_]{1,32}$/.test(style)) throw new Error("meta.json: bad style");
+  inputProps = { frames: n, captions: caps, style };
 } else if (om) {
   meta = readJson("meta.json");
   if (meta.orientation !== "landscape" && meta.orientation !== "portrait") throw new Error("meta.json: bad orientation");
@@ -88,10 +99,10 @@ const withScene = (r) => {
   };
 };
 const serveUrl = await bundle({
-  entryPoint: path.join(import.meta.dirname, tsx ? "tsx-index.ts" : om ? "om-index.ts" : "index.ts"),
+  entryPoint: path.join(import.meta.dirname, tsx ? "tsx-index.ts" : om ? "om-index.ts" : clip ? "clip-index.ts" : "index.ts"),
   rootDir: "/opt/render",
   outDir: "/tmp/bundle", // the only writable places are /tmp (tmpfs) and the out dir
-  publicDir: tsx || om ? path.join(inDir, "public") : inDir,
+  publicDir: tsx || om || clip ? path.join(inDir, "public") : inDir,
   enableCaching: false,
   webpackOverride: (c) => ({
     ...c,
@@ -102,7 +113,7 @@ const serveUrl = await bundle({
 
 const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE;
 const chromiumOptions = { gl: "swangle", disableWebSecurity: false, ignoreCertificateErrors: false };
-let composition = await selectComposition({ serveUrl, id: mode === "--thumbnail" ? "thumbnail" : mode === "--landscape" ? "kit-video-landscape" : tsx ? "tsx-video" : om ? "Explainer" : "kit-video", inputProps, browserExecutable, chromiumOptions });
+let composition = await selectComposition({ serveUrl, id: mode === "--thumbnail" ? "thumbnail" : mode === "--landscape" ? "kit-video-landscape" : tsx ? "tsx-video" : om ? "Explainer" : clip ? "clip-video" : "kit-video", inputProps, browserExecutable, chromiumOptions });
 if (om) {
   if (composition.fps !== 30 || composition.durationInFrames < 1 || composition.durationInFrames > OM_MAX_FRAMES) throw new Error("the OpenMontage scene list is empty or longer than 12 minutes");
   if (!meta.stills.every((f) => f < composition.durationInFrames)) throw new Error("meta.json: a still is outside the video");
@@ -112,6 +123,10 @@ const tsxW = meta?.orientation === "landscape" ? 1920 : 1080;
 const tsxH = meta?.orientation === "landscape" ? 1080 : 1920;
 if (tsx && (composition.durationInFrames !== meta.durationInFrames || composition.fps !== 30 || composition.width !== tsxW || composition.height !== tsxH)) {
   throw new Error("the TSX composition does not match meta.json");
+}
+
+if (clip && (composition.durationInFrames !== meta.durationInFrames || composition.fps !== 30 || composition.width !== 1080 || composition.height !== 1920)) {
+  throw new Error("the clip composition does not match meta.json");
 }
 
 if (mode === "--thumbnail") {
