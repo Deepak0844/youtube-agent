@@ -6,8 +6,16 @@ import { probeVideo, ProbeError } from "@/server/render/probe";
 import { STILLS } from "@/server/render/qa-scan";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { StageContext } from "@/server/core/stage-handler";
 import { promotedPath, type AttemptHandler } from "./attempt";
-import { contentBody, loadVideo, type StageDeps } from "./deps";
+import { contentBody, LANDSCAPE_SIZE, loadVideo, type StageDeps } from "./deps";
+
+/** The frame size QA expects: the format's own, or 1920x1080 for a video the engine drew in landscape (its tsx content says so). */
+export function qaSizeFor(qa: StageContext["config"]["qa"], format: "short" | "long", orientation: unknown): { size: { width: number; height: number }; qaConfig: StageContext["config"]["qa"] } {
+  const from = orientation === "landscape" ? LANDSCAPE_SIZE : qa[format];
+  const size = { width: from.width, height: from.height };
+  return { size, qaConfig: { ...qa, [format]: { ...qa[format], width: size.width, height: size.height } } };
+}
 
 /**
  * QA: measures final.mp4 (Task 19 probe), judges it with the QA rules, and on a pass records it as the `video` content
@@ -23,7 +31,10 @@ export function qaAttempt(deps: StageDeps): AttemptHandler {
       try { return await f(); } catch (e) { if (e instanceof ProbeError) throw new KnownFailure(e.message); throw e; }
     };
     const probed = await run(() => (deps.probe ?? probeVideo)(file, ctx.signal, { storageRoot: deps.root, attemptDir: ctx.attemptDir }));
-    const verdict = evaluateQa(probed, ctx.config.qa, { expectAudio: true, format: video.format });
+    // A code-scene video the engine drew in landscape records it in its tsx content; every other video keeps the format's size.
+    const drawn = video.kind === "tsx" ? await contentBody<{ orientation?: unknown }>(deps.db, video.id, "tsx").catch(() => null) : null;
+    const { size, qaConfig } = qaSizeFor(ctx.config.qa, video.format, drawn?.orientation);
+    const verdict = evaluateQa(probed, qaConfig, { expectAudio: true, format: video.format });
 
     // Findings: the basic rules first (they own size/duration/audio ids), then the ffmpeg scan when wired. Block = qa_failed.
     const findings: Finding[] = verdict.checks.filter((c) => !c.ok).map((c) => ({ id: c.id, severity: c.level === "fail" ? "block" : "warn", text: c.detail }));
@@ -33,7 +44,7 @@ export function qaAttempt(deps: StageDeps): AttemptHandler {
       const narrationFile = narration ? await promotedPath(deps.root, video.id, narration.file).catch(() => undefined) : undefined;
       const scan = await run(() => deps.qaScan!(file, ctx.signal, { storageRoot: deps.root, attemptDir: ctx.attemptDir, narrationFile }));
       const known = new Set(findings.map((f) => f.id));
-      findings.push(...qaFindings(scan, { ...FINDING_DEFAULTS, stillMaxS: 2, width: ctx.config.qa[video.format].width, height: ctx.config.qa[video.format].height }).filter((f) => f.id !== "all_clear" && !known.has(f.id)));
+      findings.push(...qaFindings(scan, { ...FINDING_DEFAULTS, stillMaxS: 2, width: size.width, height: size.height }).filter((f) => f.id !== "all_clear" && !known.has(f.id)));
       files.push(...STILLS);
     }
     if (video.kind === "tsx") {

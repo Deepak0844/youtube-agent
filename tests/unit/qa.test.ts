@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildEngineConfig } from "@/server/core/engine-config";
 import { evaluateQa, type ProbeResult } from "@/server/core/qa";
+import { qaSizeFor } from "@/worker/stages/qa";
 
 const cfg = buildEngineConfig(new Map()).qa;
 const good: ProbeResult = { width: 1080, height: 1920, durationS: 30, hasAudio: true, meanDb: -20, peakDb: -3, loopDiff: 2 };
@@ -41,5 +42,19 @@ describe("evaluateQa", () => {
     const a = evaluateQa(good, cfg, short);
     expect(evaluateQa(good, cfg, short)).toEqual(a);
     expect(JSON.stringify(good)).toBe(frozen);
+  });
+});
+
+describe("qaSizeFor", () => {
+  it("keeps the format's size unless the engine drew the video in landscape", () => {
+    const portrait = qaSizeFor(cfg, "short", undefined);
+    expect(portrait.size).toEqual({ width: 1080, height: 1920 });
+    expect(evaluateQa(good, portrait.qaConfig, short).pass).toBe(true);
+    const land = qaSizeFor(cfg, "short", "landscape");
+    expect(land.size).toEqual({ width: 1920, height: 1080 });
+    expect(evaluateQa({ ...good, width: 1920, height: 1080 }, land.qaConfig, short).checks.find((c) => c.id === "size")?.ok).toBe(true);
+    expect(evaluateQa(good, land.qaConfig, short).checks.find((c) => c.id === "size")?.ok).toBe(false);
+    expect(qaSizeFor(cfg, "short", "sideways").size).toEqual({ width: 1080, height: 1920 }); // anything else is portrait
+    expect(cfg.short.width).toBe(1080); // the shared config is not changed
   });
 });

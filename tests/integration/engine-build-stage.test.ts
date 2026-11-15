@@ -1,4 +1,5 @@
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { contentBody } from "@/worker/stages/deps";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -143,11 +144,15 @@ describe("engine code-scene step", () => {
     const out = await play(id, "tsx_author", withAttempt({ db: db.pool, root }, codeSceneAttempt(mkDeps({ tsx: land }), { ...engineDeps(fakeEngine({ source: landSource }).run), orientation: "landscape" })));
     expect(out.kind).toBe("committed");
     expect(land.orientations).toEqual(["landscape"]);
+    // QA reads this to expect 1920x1080; a portrait video records nothing
+    const rec = (vid: string) => contentBody<{ orientation?: string }>(db.pool, vid, "tsx");
+    expect((await rec(id)).orientation).toBe("landscape");
     const { id: id2, frames: f2 } = await tsxVideoWithNarration();
     const port = fakeTsx();
     const out2 = await play(id2, "tsx_author", withAttempt({ db: db.pool, root }, codeSceneAttempt(mkDeps({ tsx: port }), engineDeps(fakeEngine({ source: withFrames(f2) }).run))));
     expect(out2.kind).toBe("committed");
     expect(port.orientations).toEqual(["portrait"]);
+    expect((await rec(id2)).orientation).toBeUndefined();
     // a portrait scene is refused when the build is landscape
     const { id: id3, frames: f3 } = await tsxVideoWithNarration();
     const out3 = await play(id3, "tsx_author", withAttempt({ db: db.pool, root }, codeSceneAttempt(mkDeps({ tsx: fakeTsx() }), { ...engineDeps(fakeEngine({ source: withFrames(f3) }).run), orientation: "landscape" })));
