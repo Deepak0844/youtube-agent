@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type pg from "pg";
 import { mapCatalog, unlistedFiles, type CatalogEntry } from "@/server/core/audio-catalog";
@@ -34,7 +34,30 @@ export async function measure(deps: AudioImportDeps, dir: string, file: string) 
   return { durationS, meanLufs: Number(lufs[1]), peakDbfs: Number(peak[1]) };
 }
 
-export async function importAudioLibrary(db: pg.Pool, root: string, deps: AudioImportDeps): Promise<{ added: number; existing: number }> {
+/** Copies the shipped palettes and clips into the folder the mixer and the sound stage read (`<storage>/audio`), whose paths are what the library rows store.
+ * A file already there with the same size is left alone. */
+export async function copyAudioFiles(root: string, destRoot: string): Promise<number> {
+  let copied = 0;
+  for (const kind of ["sfx", "music"] as const) {
+    const names = [
+      "palette.json",
+      ...(await readdir(path.join(root, kind, "clips")).catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT") return []; throw e; })).map((f) => `clips/${f}`),
+    ];
+    for (const rel of names) {
+      const from = path.join(root, kind, rel);
+      const to = path.join(destRoot, kind, rel);
+      const src = await stat(from).catch(() => null);
+      if (!src?.isFile()) continue;
+      if ((await stat(to).catch(() => null))?.size === src.size) continue;
+      await mkdir(path.dirname(to), { recursive: true });
+      await copyFile(from, to);
+      copied++;
+    }
+  }
+  return copied;
+}
+
+export async function importAudioLibrary(db: pg.Pool, root: string, deps: AudioImportDeps, destRoot?: string): Promise<{ added: number; existing: number; copied?: number }> {
   const plan: { entry: CatalogEntry; abs: string; rel: string }[] = [];
   for (const kind of ["sfx", "music"] as const) {
     const entries = mapCatalog(kind, JSON.parse(await readFile(path.join(root, kind, "catalog.json"), "utf8")));
@@ -53,5 +76,5 @@ export async function importAudioLibrary(db: pg.Pool, root: string, deps: AudioI
     if (before.rowCount) existing++;
     else added++;
   }
-  return { added, existing };
+  return destRoot ? { added, existing, copied: await copyAudioFiles(root, destRoot) } : { added, existing };
 }
