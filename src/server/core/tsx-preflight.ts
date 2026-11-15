@@ -24,6 +24,13 @@ const EDGE_SHARE_MIN = 0.003;
 /** The content area for the empty-band check, as fractions of the frame height (200 to 1650 of 1920: above the captions). */
 const BAND_TOP = 200 / 1920;
 const BAND_BOTTOM = 1650 / 1920;
+/** The same two areas for a landscape (16:9) frame, as fractions of its height: the objects zone below the title, and the content area above the captions. */
+const L_ZONE_TOP = 0.15;
+const L_ZONE_BOTTOM = 0.75;
+const L_BAND_TOP = 0.08;
+const L_BAND_BOTTOM = 0.8;
+/** The zone fractions for a frame: landscape when it is wider than tall. Portrait numbers are unchanged. */
+const zoneOf = (f: RgbFrame) => (f.width > f.height ? { zt: L_ZONE_TOP, zb: L_ZONE_BOTTOM, bt: L_BAND_TOP, bb: L_BAND_BOTTOM } : { zt: ZONE_TOP, zb: ZONE_BOTTOM, bt: BAND_TOP, bb: BAND_BOTTOM });
 /** A row is empty when fewer than this share of its pixels sit on an edge. */
 const ROW_EDGE_MIN = 0.004;
 /** The largest empty band of a frame's content area must stay under this share (measured: good scenes 0.15 to 0.36, an empty lower half 0.45 and more). */
@@ -109,8 +116,9 @@ export function changedShare(a: RgbFrame, b: RgbFrame): number | null {
 
 /** Share of pixels in the objects zone that sit on a sharp edge (0..1). A plain gradient with a soft glow scores about 0. */
 export function zoneEdgeShare(f: RgbFrame): number {
-  const y0 = Math.floor(f.height * ZONE_TOP);
-  const y1 = Math.min(f.height - 1, Math.floor(f.height * ZONE_BOTTOM));
+  const z = zoneOf(f);
+  const y0 = Math.floor(f.height * z.zt);
+  const y1 = Math.min(f.height - 1, Math.floor(f.height * z.zb));
   const step = Math.max(1, Math.round(f.width / 360)); // compare pixels a constant fraction of the width apart, whatever the resolution
   let edges = 0;
   let total = 0;
@@ -135,8 +143,9 @@ export function zoneEdgeShare(f: RgbFrame): number {
 export function longestEmptyBand(f: RgbFrame): number {
   try {
     if (!validFrame(f)) return 0;
-    const y0 = Math.floor(f.height * BAND_TOP);
-    const y1 = Math.min(f.height - 1, Math.floor(f.height * BAND_BOTTOM));
+    const z = zoneOf(f);
+    const y0 = Math.floor(f.height * z.bt);
+    const y1 = Math.min(f.height - 1, Math.floor(f.height * z.bb));
     if (y1 <= y0) return 0;
     const step = Math.max(1, Math.round(f.width / 360));
     let best = 0;

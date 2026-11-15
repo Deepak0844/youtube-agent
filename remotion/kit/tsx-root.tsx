@@ -10,7 +10,7 @@ import type { CaptionWord } from "./timeline";
 // inputProps (written by the host): { props: <the scene's props>, frames: meta.durationInFrames from the checked file, captions, style }.
 // The length comes from the host, not from the scene module, so the scene cannot change its own duration at run time. The style id
 // comes from the host too (the video's style; unknown or missing = ai_studio): it picks the yt-kit colours, fonts, motion and captions.
-type Input = { props?: Record<string, unknown>; frames?: number; captions?: CaptionWord[]; style?: string };
+type Input = { props?: Record<string, unknown>; frames?: number; captions?: CaptionWord[]; style?: string; orientation?: "portrait" | "landscape" };
 
 const Wrapped: React.FC<Input> = ({ props, captions, style }) => {
   const st = setActiveStyle(style); // before any child renders: PALETTE / FONTS / MOTION / PACE read this style for the whole render
@@ -31,6 +31,6 @@ export const TsxRoot: React.FC = () => (
     width={1080}
     height={1920}
     defaultProps={{ props: {}, frames: 1 } as Input}
-    calculateMetadata={({ props }) => ({ durationInFrames: Number(props.frames) })}
+    calculateMetadata={({ props }) => (props.orientation === "landscape" ? { durationInFrames: Number(props.frames), width: 1920, height: 1080 } : { durationInFrames: Number(props.frames) })}
   />
 );

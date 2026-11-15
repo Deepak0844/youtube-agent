@@ -919,3 +919,40 @@ describe("checkTsx: round 3 (mutated number arrays, overloads, nesting, entities
     }
   });
 });
+
+describe("orientation (L1)", () => {
+  it("portrait_is_the_default_and_refuses_a_landscape_meta", () => {
+    const land = GOOD.replace(META, "export const meta = { durationInFrames: 90, fps: 30, width: 1920, height: 1080 };");
+    expect(checkTsx(land).ok).toBe(false);
+    expect(checkTsx(land, "portrait").ok).toBe(false);
+    expect(checkTsx(land).problems.join(" ")).toContain("meta.width must be 1080");
+  });
+  it("landscape_accepts_only_1920x1080", () => {
+    const land = GOOD.replace(META, "export const meta = { durationInFrames: 90, fps: 30, width: 1920, height: 1080 };");
+    expect(checkTsx(land, "landscape").problems).toEqual([]);
+    expect(checkTsx(GOOD, "landscape").ok).toBe(false);
+    expect(checkTsx(GOOD, "landscape").problems.join(" ")).toContain("meta.width must be 1920");
+  });
+  it("a_missing_meta_message_names_the_orientations_size", () => {
+    const noMeta = GOOD.replace(META, "");
+    expect(checkTsx(noMeta, "landscape").problems.join(" ")).toContain("width: 1920, height: 1080");
+    expect(checkTsx(noMeta).problems.join(" ")).toContain("width: 1080, height: 1920");
+  });
+});
+
+describe("render-entry stays in step with the host sizes (L1)", () => {
+  it("render_entry_and_root_use_the_same_numbers_as_tsxMetaFor", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { tsxMetaFor } = await import("@/server/core/tsx-check");
+    const entry = readFileSync("remotion/kit/render-entry.mjs", "utf8");
+    const root = readFileSync("remotion/kit/tsx-root.tsx", "utf8");
+    for (const o of ["portrait", "landscape"] as const) {
+      const m = tsxMetaFor(o);
+      expect(entry).toContain(`meta?.orientation === "landscape" ? ${tsxMetaFor("landscape").width} : ${tsxMetaFor("portrait").width}`);
+      expect(entry).toContain(`meta?.orientation === "landscape" ? ${tsxMetaFor("landscape").height} : ${tsxMetaFor("portrait").height}`);
+      expect(root).toContain(`width={${tsxMetaFor("portrait").width}}`);
+      expect(m.fps).toBe(30);
+    }
+    expect(root).toContain(`width: ${tsxMetaFor("landscape").width}, height: ${tsxMetaFor("landscape").height}`);
+  });
+});
