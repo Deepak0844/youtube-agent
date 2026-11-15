@@ -2,6 +2,8 @@
 // The sharp picture is fitted inside the frame (never cropped, never stretched) over a blurred, dimmed copy of itself that
 // fills the frame, so a landscape source is not blindly centre-cropped. Pure: builds arguments only; the caller runs ffmpeg
 // through the child runner. Captions are not drawn here (CF2b).
+// shortcut: the source must be an app-made file, or an upload probed as a real container (mp4, mov, mkv, webm) first: the file-only
+// protocol list blocks the network but a crafted playlist file could still read other local files. The caller also clamps endS to the source length.
 
 export const CLIP_W = 1080;
 export const CLIP_H = 1920;
