@@ -32,6 +32,8 @@ describe("explainerBuildRequest", () => {
     const land = explainerBuildRequest({ ...base, orientation: "landscape" }).prompt;
     expect(land).toContain("width: 1920, height: 1080 }");
     expect(land).not.toContain("width: 1080, height: 1920");
+    expect(land).toContain("section 5d");
+    expect(explainerBuildRequest(base).prompt).not.toContain("5d");
   });
 
   it("inputs_carry_beats_and_words", () => {
