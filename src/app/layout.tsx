@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { fontVariables } from "@/ui/fonts";
 import { themeScript } from "@/ui/theme";
 import "./globals.css";
@@ -6,6 +6,16 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: { template: "%s · YT Studio", default: "YT Studio" },
   description: "YT Studio",
+  icons: { apple: "/icons/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "YT Studio", statusBarStyle: "default" },
+};
+
+// Browser/title-bar colour follows the system theme (the app's own toggle can't be known this early).
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "white" },
+    { media: "(prefers-color-scheme: dark)", color: "black" },
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

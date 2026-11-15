@@ -30,6 +30,7 @@ describe("public path policy", () => {
     ["/login", true], ["/login/", true], ["/login?x=1", true], ["/login-admin", false], ["/loginx", false], ["/login/x", false],
     ["/setup/x", true], ["/setup/", true], ["/setupx", false], ["/setup-x/y", false],
     ["/healthz", true], ["/healthz/x", false], ["/readyz", true],
+    ["/manifest.webmanifest", true], ["/manifest.webmanifest/x", false], ["/icons/icon-192.png", true], ["/iconsx", false], ["/icons/../api/me", false],
     ["/api/v1", true], ["/api/v1/shorts", true], ["/api/v1x", false], ["/api/media/abc", true], ["/api/webhooks/stripe", true], ["/api/oauth/callback", true],
     ["/api/auth/login", true], ["/api/auth/logout", true], ["/api/auth/logout/x", false], ["/api/me", false], ["/", false], ["/shorts", false],
     ["//login", true], ["/login/../api/me", false], ["/api/v1/../me", false], ["/%6Cogin", true], ["/%6cogin/..%2Fapi/me", false],
