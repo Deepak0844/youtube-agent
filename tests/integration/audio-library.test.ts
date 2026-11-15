@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -80,5 +80,17 @@ describe("audio library", () => {
     expect(Number(rows[0].duration_s)).toBeGreaterThan(0.9);
     expect(Number(rows[0].mean_lufs)).toBeLessThan(0);
     expect(Number(rows[0].peak_dbfs)).toBeLessThan(0);
+  });
+  it("import_copies_palette_and_clips_to_the_mixer_folder_once", async () => {
+    const dir = path.join(root, "copy-src");
+    const dest = path.join(root, "copy-dest");
+    execFileSync("mkdir", ["-p", `${dir}/sfx/clips`, `${dir}/music/clips`]);
+    execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=f=330:d=1", "-c:a", "libmp3lame", `${dir}/sfx/clips/c.mp3`]);
+    writeFileSync(path.join(dir, "sfx/catalog.json"), JSON.stringify({ clips: [{ id: "c", file: "clips/c.mp3", category: "c", tags: ["tone"], source: "x" }] }));
+    writeFileSync(path.join(dir, "sfx/palette.json"), "{}");
+    writeFileSync(path.join(dir, "music/catalog.json"), JSON.stringify({ clips: [] }));
+    expect((await importAudioLibrary(db.pool, dir, { runChild }, dest)).copied).toBe(2); // palette.json and the clip
+    expect(existsSync(path.join(dest, "sfx/clips/c.mp3")) && existsSync(path.join(dest, "sfx/palette.json"))).toBe(true);
+    expect((await importAudioLibrary(db.pool, dir, { runChild }, dest)).copied).toBe(0); // same size: left alone
   });
 });
