@@ -107,6 +107,11 @@ A Short has a shape, not just a list of beats. Map the script's beats onto it:
    zoom or position back to frame 0's, bring the first beat's main object back to where it started, dissolve the twist away.
    `check_frames` allows a last frame equal to frame 0 (a loop); the middle frame must still differ so something moves.
 
+**Loop fade, no ghost text:** the loop must not cross-fade two screens that both hold text. In the last ~1 s, fade the old
+heading, labels and counters out completely (opacity 0) before the first beat's title and labels fade in, so no two texts
+are ever visible on top of each other. Keep only the shared background and the main object during the cross-over. Check the
+last 2 preview frames: if any letters overlap, fix the timing.
+
 Never end on a call to action ("like", "subscribe", "follow"). End on the payoff, then loop. If the script has no twist, loop
 anyway and give the final beat a small turn of its own; do not invent facts the script does not say.
 
