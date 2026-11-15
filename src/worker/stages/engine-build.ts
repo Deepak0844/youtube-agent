@@ -104,7 +104,7 @@ export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Attempt
     return {
       files: ["render.mp4", ...rendered.stills, CUES],
       content: [
-        { kind: "tsx", body: { source, durationInFrames: frames, attempts: 1, image: rendered.image, stills: rendered.stills, engine: { turns: r.turns, usage: r.usage, summary: r.text.slice(0, 2000) } } },
+        { kind: "tsx", body: { source, durationInFrames: frames, ...(orientation === "landscape" ? { orientation } : {}), attempts: 1, image: rendered.image, stills: rendered.stills, engine: { turns: r.turns, usage: r.usage, summary: r.text.slice(0, 2000) } } },
         { kind: "frame_review", body: review },
       ],
       result: { rendered: "render.mp4", attempts: 1, durationInFrames: frames, image: rendered.image, frameReview: review, engine: { turns: r.turns }, soundCues: cues.count },
