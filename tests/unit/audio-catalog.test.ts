@@ -40,7 +40,7 @@ describe("audio catalog mapping", () => {
     for (const c of raw.clips.filter((x) => x.recipe)) {
       const e = entries.find((x) => x.name === c.id)!;
       expect(e.licence, c.id).not.toBe(SHIPPED_LICENCE);
-      expect(e.licence, c.id).toMatch(/CC0|ffmpeg/);
+      expect(e.licence, c.id).toMatch(/CC0|generated locally/);
       const recipe = palette.find((r) => r.id === c.recipe);
       expect(recipe, c.id).toBeDefined();
       expect(e.tags, c.id).toEqual(expect.arrayContaining(recipe!.tags));
