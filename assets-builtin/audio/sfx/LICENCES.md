@@ -7,8 +7,9 @@ Every clip has its licence line in catalog.json; this is the human-readable summ
   (https://kenney.nl/assets/ui-audio), Interface Sounds (https://kenney.nl/assets/interface-sounds) and Impact Sounds
   (https://kenney.nl/assets/impact-sounds) by Kenney (kenney.nl). Each was trimmed, normalised to about -20 LUFS and
   converted to mp3; the original file name is in catalog.json (`original_file`).
-- **ffmpeg clips (whoosh-*, riser-soft):** generated locally by ffmpeg from synthetic noise (the exact filter is in
-  catalog.json as `ffmpeg_filter`); no third-party material.
+- **whoosh-soft, whoosh-soft-2, whoosh-wind, whoosh-reverse:** generated locally by `gen_whoosh.py` (swept-band synthetic noise);
+  no third-party material.
+- **riser-soft:** generated locally by ffmpeg from synthetic noise (the filter is in catalog.json as `ffmpeg_filter`); no third-party material.
 
 | clip | origin | original file |
 |---|---|---|
@@ -26,8 +27,8 @@ Every clip has its licence line in catalog.json; this is the human-readable summ
 | knock-solid | Kenney CC0 | impactWood_light_001.ogg |
 | trap-snap | Kenney CC0 | impactMetal_light_001.ogg |
 | glitch-zap | Kenney CC0 | error_005.ogg |
-| whoosh-soft | ffmpeg | - |
-| whoosh-soft-2 | ffmpeg | - |
-| whoosh-wind | ffmpeg | - |
+| whoosh-soft | gen_whoosh.py | - |
+| whoosh-soft-2 | gen_whoosh.py | - |
+| whoosh-wind | gen_whoosh.py | - |
 | riser-soft | ffmpeg | - |
-| whoosh-reverse | ffmpeg | - |
+| whoosh-reverse | gen_whoosh.py | - |

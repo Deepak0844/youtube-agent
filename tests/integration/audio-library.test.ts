@@ -93,4 +93,15 @@ describe("audio library", () => {
     expect(existsSync(path.join(dest, "sfx/clips/c.mp3")) && existsSync(path.join(dest, "sfx/palette.json"))).toBe(true);
     expect((await importAudioLibrary(db.pool, dir, { runChild }, dest)).copied).toBe(0); // same size: left alone
   });
+  it("import_replaces_the_row_of_a_shipped_clip_whose_file_changed", async () => {
+    const dir = path.join(root, "swap");
+    execFileSync("mkdir", ["-p", `${dir}/sfx/clips`, `${dir}/music/clips`]);
+    writeFileSync(path.join(dir, "sfx/catalog.json"), JSON.stringify({ clips: [{ id: "s", file: "clips/s.mp3", category: "c", tags: ["tone"], source: "x" }] }));
+    writeFileSync(path.join(dir, "music/catalog.json"), JSON.stringify({ clips: [] }));
+    execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=f=500:d=1", "-c:a", "libmp3lame", `${dir}/sfx/clips/s.mp3`]);
+    await importAudioLibrary(db.pool, dir, { runChild });
+    execFileSync("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", "sine=f=900:d=1", "-c:a", "libmp3lame", `${dir}/sfx/clips/s.mp3`]);
+    expect(await importAudioLibrary(db.pool, dir, { runChild })).toEqual({ added: 1, existing: 0 });
+    expect((await db.pool.query("select count(*)::int n from audio_items where file_path = 'sfx/clips/s.mp3'")).rows[0].n).toBe(1);
+  });
 });

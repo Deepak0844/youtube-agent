@@ -71,6 +71,8 @@ export async function importAudioLibrary(db: pg.Pool, root: string, deps: AudioI
   for (const { entry, abs, rel } of plan) {
     const sha256 = createHash("sha256").update(await readFile(abs)).digest("hex");
     const m = await measure(deps, root, abs);
+    // A shipped clip whose file was replaced (same path, new bytes): the old row would point at the new file under old measurements.
+    await db.query("delete from audio_items where file_path = $1 and source = 'shipped' and sha256 <> $2", [rel, sha256]);
     const before = await db.query("select 1 from audio_items where sha256 = $1", [sha256]);
     await addAudioItem(db, { kind: entry.kind, name: entry.name, tags: entry.tags, source: entry.source, licence: entry.licence, provenance: entry.provenance, filePath: rel, sha256, ...m });
     if (before.rowCount) existing++;

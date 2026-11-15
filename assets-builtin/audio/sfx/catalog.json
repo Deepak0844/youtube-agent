@@ -333,7 +333,7 @@
       "id": "whoosh-soft",
       "file": "clips/whoosh-soft.mp3",
       "category": "motion",
-      "desc": "whoosh-soft — made with ffmpeg",
+      "desc": "whoosh-soft — made by gen_whoosh.py (swept-band noise)",
       "tags": [
         "whoosh",
         "transition",
@@ -342,17 +342,16 @@
         "swipe",
         "motion"
       ],
-      "licence": "generated locally with ffmpeg from synthetic noise, no third-party material; redistributable",
-      "duration_s": 0.7,
-      "source": "ffmpeg (synthetic noise)",
-      "ffmpeg_filter": "anoisesrc=d=0.7:c=pink:r=44100:seed=11,highpass=f=250,lowpass=f=2600,afade=t=in:d=0.28,afade=t=out:st=0.28:d=0.42",
+      "licence": "generated locally by assets-builtin/audio/sfx/gen_whoosh.py (numpy/scipy) from synthetic noise, no third-party material; redistributable",
+      "duration_s": 0.75,
+      "source": "gen_whoosh.py (synthetic noise)",
       "recipe": "whoosh-soft"
     },
     {
       "id": "whoosh-soft-2",
       "file": "clips/whoosh-soft-2.mp3",
       "category": "motion",
-      "desc": "whoosh-soft — made with ffmpeg",
+      "desc": "whoosh-soft — made by gen_whoosh.py (swept-band noise)",
       "tags": [
         "whoosh",
         "transition",
@@ -361,17 +360,16 @@
         "swipe",
         "motion"
       ],
-      "licence": "generated locally with ffmpeg from synthetic noise, no third-party material; redistributable",
-      "duration_s": 0.8,
-      "source": "ffmpeg (synthetic noise)",
-      "ffmpeg_filter": "anoisesrc=d=0.8:c=pink:r=44100:seed=23,highpass=f=350,lowpass=f=3200,afade=t=in:d=0.22,afade=t=out:st=0.22:d=0.58",
+      "licence": "generated locally by assets-builtin/audio/sfx/gen_whoosh.py (numpy/scipy) from synthetic noise, no third-party material; redistributable",
+      "duration_s": 0.85,
+      "source": "gen_whoosh.py (synthetic noise)",
       "recipe": "whoosh-soft"
     },
     {
       "id": "whoosh-wind",
       "file": "clips/whoosh-wind.mp3",
       "category": "motion",
-      "desc": "whoosh-wind — made with ffmpeg",
+      "desc": "whoosh-wind — made by gen_whoosh.py (swept-band noise)",
       "tags": [
         "whoosh",
         "wind",
@@ -381,10 +379,9 @@
         "drawn-out",
         "motion"
       ],
-      "licence": "generated locally with ffmpeg from synthetic noise, no third-party material; redistributable",
-      "duration_s": 1.2,
-      "source": "ffmpeg (synthetic noise)",
-      "ffmpeg_filter": "anoisesrc=d=1.2:c=brown:r=44100:seed=5,highpass=f=180,lowpass=f=1400,afade=t=in:d=0.5,afade=t=out:st=0.5:d=0.7",
+      "licence": "generated locally by assets-builtin/audio/sfx/gen_whoosh.py (numpy/scipy) from synthetic noise, no third-party material; redistributable",
+      "duration_s": 1.25,
+      "source": "gen_whoosh.py (synthetic noise)",
       "recipe": "whoosh-wind"
     },
     {
@@ -410,7 +407,7 @@
       "id": "whoosh-reverse",
       "file": "clips/whoosh-reverse.mp3",
       "category": "motion",
-      "desc": "whoosh-reverse — made with ffmpeg",
+      "desc": "whoosh-reverse — made by gen_whoosh.py (swept-band noise)",
       "tags": [
         "whoosh",
         "reverse",
@@ -419,10 +416,9 @@
         "suck",
         "motion"
       ],
-      "licence": "generated locally with ffmpeg from synthetic noise, no third-party material; redistributable",
-      "duration_s": 0.9,
-      "source": "ffmpeg (synthetic noise)",
-      "ffmpeg_filter": "anoisesrc=d=0.9:c=pink:r=44100:seed=31,highpass=f=300,lowpass=f=2400,afade=t=in:d=0.7,afade=t=out:st=0.78:d=0.12",
+      "licence": "generated locally by assets-builtin/audio/sfx/gen_whoosh.py (numpy/scipy) from synthetic noise, no third-party material; redistributable",
+      "duration_s": 0.95,
+      "source": "gen_whoosh.py (synthetic noise)",
       "recipe": "whoosh-reverse"
     }
   ]
