@@ -143,4 +143,12 @@ describe("engine-kit seeds", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("draw_objects_has_landscape_numbers", () => {
+    const t = readFileSync("engine-kit/skills/draw-objects/SKILL.md", "utf8");
+    expect(t).toContain("## 5d. Landscape (1920 x 1080)");
+    expect(t).toMatch(/55-75% of the width/);
+    expect(t).toMatch(/bottom 220 px free/);
+  });
+
 });

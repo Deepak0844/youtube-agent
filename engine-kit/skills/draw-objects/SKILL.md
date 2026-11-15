@@ -154,6 +154,22 @@ A viewer with the sound off should follow the story from the pictures alone. Pla
    each picture change from the one before it, unless two beats share one idea? The first and last frames match on purpose
    (the loop). If not, redraw the weak pictures.
 
+## 5d. Landscape (1920 x 1080)
+
+When the file's meta says width 1920, height 1080, the video is landscape and these numbers replace the tall-frame numbers in
+sections 1, 2 and 5c. Everything else (hook, twist, loop, one picture per idea, labels, no ghost text) is the same.
+
+- Fill the wide frame: the main object is 55-75% of the width (1050-1440 px) and sits in the middle band (y 160-810). Small
+  icons and labels go beside it or in its corners, never instead of it.
+- Use the width: two things side by side (before and after, cause and effect) each get about 800 px; a row of three or four
+  items fits at 380-500 px each. Do not stack a tall column in the middle and leave both sides empty.
+- Title or label above (y 50-150), objects in the middle band, a result or second object beside or below. No more than about
+  a third of the frame is empty background.
+- Text: titles 72-110 px, labels at least 48 px (at least 40 px for tiny tags), never under 36 px. Keep 100 px from the left and
+  right edges and leave the bottom 220 px free for the app's captions (they sit in the lower band).
+- Items inside a screen or box are at least 220 px wide, as in section 5c. Never lay out for the tall frame and just widen it.
+- Preview frames and look at them as a 16:9 picture: is the left or right third empty? Is anything cut off at the edge?
+
 ## 6. Look at it
 
 Run `check_code`, then `preview_frames` with about one frame per beat (mid-beat). Look at every frame: is each object
