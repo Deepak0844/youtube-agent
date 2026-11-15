@@ -158,17 +158,25 @@ A viewer with the sound off should follow the story from the pictures alone. Pla
 
 When the file's meta says width 1920, height 1080, the video is landscape and these numbers replace the tall-frame numbers in
 sections 1, 2 and 5c. Everything else (hook, twist, loop, one picture per idea, labels, no ghost text) is the same.
+A past landscape build drew small thin objects in the top two thirds and left the bottom third and both sides empty. Do not.
 
-- Fill the wide frame: the main object is 55-75% of the width (1050-1440 px) and sits in the middle band (y 160-810). Small
-  icons and labels go beside it or in its corners, never instead of it.
-- Use the width: two things side by side (before and after, cause and effect) each get about 800 px; a row of three or four
-  items fits at 380-500 px each. Do not stack a tall column in the middle and leave both sides empty.
-- Title or label above (y 50-150), objects in the middle band, a result or second object beside or below. No more than about
-  a third of the frame is empty background.
+- **Use the whole frame, edge to edge.** Draw down to y 860. Only the bottom 220 px (y 860-1080) is kept free for captions; do
+  not make the free band bigger than that, and never put a horizon, ground line or panel edge across the frame that turns
+  the lower part into a dead strip. The background colour or scene runs the full width and height; objects and labels stay
+  100 px from the left and right edges, and the bottom 220 px stays free of important drawing.
+- **Big main object, from frame 0.** The main object is 55-75% of the width (1050-1440 px) and at least 450 px tall, in the
+  middle band (y 160-860). Frame 0 shows it fully drawn and large (a sun, a device, a lake); clouds or small decoration alone
+  do not count. Thin lines, dots and small icons are accents, never the main picture: draw rays, waves, arrows and beams at
+  least 8 px thick, and show them as big shapes.
+- **Use the width.** Two things side by side (before and after, cause and effect) each get about 800 px; a row of three or four
+  items fits at 380-500 px each. Do not stack a column in the middle and leave both sides empty: if the left or right third
+  of a frame has nothing but background, move or enlarge the objects.
+- Title or label above (y 50-150), objects in the middle band, a result or second object beside it.
 - Text: titles 72-110 px, labels at least 48 px (at least 40 px for tiny tags), never under 36 px. Keep 100 px from the left and
-  right edges and leave the bottom 220 px free for the app's captions (they sit in the lower band).
+  right edges.
 - Items inside a screen or box are at least 220 px wide, as in section 5c. Never lay out for the tall frame and just widen it.
-- Preview frames and look at them as a 16:9 picture: is the left or right third empty? Is anything cut off at the edge?
+- Preview frames and look at them as a 16:9 picture: is a third of the frame empty? Is the main object under half the width?
+  Is frame 0 mostly background? Fix before you finish.
 
 ## 6. Look at it
 
