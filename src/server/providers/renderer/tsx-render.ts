@@ -88,6 +88,8 @@ export interface ReviewShot {
 export interface TsxRendererDeps {
   /** Absolute, symlink-free path of remotion/kit, mounted read-only. */
   kitDir: string;
+  /** Host-side path of a folder under the storage root (worker in a container). Default: as is. */
+  hostPath?: (p: string) => string;
   runChild(spec: ChildSpec): Promise<ChildResult>;
   probe(file: string, signal: AbortSignal): Promise<ProbeResult>;
   hostLimits?: () => Promise<HostLimits>;
@@ -231,7 +233,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       const name = `${NAME_PREFIX}${runId}-tsx-${randomBytes(4).toString("hex")}`;
       let plan;
       try {
-        plan = tsxRenderPlan({ name, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, config: ctx.config.render, mode });
+        plan = tsxRenderPlan({ name, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, hostPath: deps.hostPath, config: ctx.config.render, mode });
       } catch {
         return failure("infra", "The render settings are not usable for a TSX render.");
       }

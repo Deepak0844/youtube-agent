@@ -142,7 +142,7 @@ export async function renderOm(deps: TsxRendererDeps, ctx: StageContext, input: 
     const name = `${NAME_PREFIX}${ctx.claim.stageRunId.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 36)}-om-${randomBytes(4).toString("hex")}`;
     let plan;
     try {
-      plan = tsxRenderPlan({ name, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, config: ctx.config.render, mode });
+      plan = tsxRenderPlan({ name, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, hostPath: deps.hostPath, config: ctx.config.render, mode });
     } catch {
       return failure("The render settings are not usable for an OpenMontage render.");
     }
