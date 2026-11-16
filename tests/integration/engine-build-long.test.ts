@@ -153,8 +153,8 @@ describe("long video code-scene step", () => {
     expect(eng.calls.map((c) => [c.chapter, c.file])).toEqual([[1, "scene/ch01.tsx"], [2, "scene/ch02.tsx"], [3, "scene/ch03.tsx"], [4, "scene/ch04.tsx"], [5, "scene/ch05.tsx"]]);
     expect(eng.calls.every((c) => c.req.kind === "build" && c.req.long === false)).toBe(true);
     expect(Object.keys(eng.calls[0]!.req.inputs ?? {}).sort()).toEqual(["script.json", "words.json"]);
-    for (const c of eng.calls.slice(1)) expect(Object.keys(c.req.inputs ?? {}).sort()).toEqual(["look-ch01.tsx", "script.json", "words.json"]);
-    expect(eng.calls[1]!.req.inputs!["look-ch01.tsx"]).toBe(landscape(eng.calls[0]!.frames)); // chapter 1's accepted file
+    for (const c of eng.calls.slice(1)) expect(Object.keys(c.req.inputs ?? {}).sort()).toEqual(["look-ch01.txt", "script.json", "words.json"]);
+    expect(eng.calls[1]!.req.inputs!["look-ch01.txt"]).toBe(landscape(eng.calls[0]!.frames)); // chapter 1's accepted file
     // each chapter has its own share of the frames, and together they are the whole narration (plus the tail), with no drift
     const total = eng.calls.reduce((a, c) => a + c.frames, 0);
     expect(total).toBe(Math.ceil((v.narrationS + 0.4) * 30 - 1e-9));
@@ -187,7 +187,7 @@ describe("long video code-scene step", () => {
     const again = await play(v.id, withAttempt({ db: db.pool, root }, codeSceneAttempt(mkDeps(tsx2, v.narrationS).deps, { ...e, runEngine: second.run })));
     expect(again.kind, await reason(again)).toBe("committed");
     expect(second.calls.map((c) => c.chapter)).toEqual([3, 4, 5]); // chapters 1 and 2 were kept, not drawn again
-    expect(second.calls[0]!.req.inputs!["look-ch01.tsx"]).toBeDefined(); // the kept chapter 1 is still the look
+    expect(second.calls[0]!.req.inputs!["look-ch01.txt"]).toBeDefined(); // the kept chapter 1 is still the look
     expect(tsx2.sources).toHaveLength(5); // every chapter is rendered again (cheap) so the join has all five
     const stored = (await db.pool.query("select result from stage_runs where id = $1", [(again as { claim: { stageRunId: string } }).claim.stageRunId])).rows[0]!.result as { drawnNow: number; keptFromBefore: number };
     expect(stored).toMatchObject({ drawnNow: 3, keptFromBefore: 2 });
