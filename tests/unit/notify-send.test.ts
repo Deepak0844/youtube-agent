@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { OSASCRIPT_SOURCE, checkWebhookUrl, osascriptArgs, popupText } from "@/server/core/notify-send";
 import { createDesktopPort, createWebhookPort } from "@/server/providers/notify/senders";
-import { BlockedAddressError } from "@/server/providers/net/safe-fetch";
+import { BlockedAddressError } from "@/server/net/safe-fetch";
 
 describe("popup text", () => {
   it("keeps quotes and backslashes as data, flattens control characters", () => {

@@ -2,7 +2,7 @@
 // body is cancelled unread, redirects are never followed (the key must not travel), and errors are swallowed without being
 // logged with their text (it could contain the request URL, which for Pixabay carries the key).
 import { keyTestRequest, statusToResult, type KeyTestResult, type ProviderId } from "@/server/core/provider-keys";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 
 export type KeyFetcher = (url: string, init: RequestInit, opts: { timeoutMs: number; maxRedirects: number }) => Promise<Response>;
 

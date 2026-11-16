@@ -14,7 +14,7 @@ import { quotaCost } from "@/server/core/youtube-oauth";
 import { getAccessToken, reserveQuota, type GoogleHttp } from "@/server/db/youtube-channels";
 import { deleteSecret, putSecret } from "@/server/db/vault";
 import { FILE_CHANGED_MESSAGE, StoredFileError } from "@/server/storage/hash-file";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 import type { Uploader, UploadOutcome, UploadTarget } from "./index";
 
 const API = "https://www.googleapis.com";

@@ -20,7 +20,7 @@ import { loadVideoPage } from "@/server/db/video-page";
 import { latestContent } from "@/server/db/videos";
 import { hasSecret } from "@/server/db/vault";
 import { searxSearch } from "@/server/llm/searxng-client";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 import { assertVoiceStudioUrl } from "@/server/providers/voice/voicestudio";
 import { storageRoot, videoPath } from "@/server/storage/paths";
 

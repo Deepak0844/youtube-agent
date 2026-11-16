@@ -1,4 +1,4 @@
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 
 // SECURITY CONTROL: the only way the pictures stage touches the web. https only, exact host allow-list (checked on every
 // redirect hop too), response capped while streaming, content type checked, no credentials in the address, a descriptive

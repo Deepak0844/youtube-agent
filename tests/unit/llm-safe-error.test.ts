@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { KnownFailure } from "@/server/core/paid-call";
 import { classifyError, NotProcessedError } from "@/server/core/error-class";
 import { createAiSdkStep } from "@/server/llm/ai-sdk-step";
-import { BlockedAddressError } from "@/server/providers/net/safe-fetch";
+import { BlockedAddressError } from "@/server/net/safe-fetch";
 
 // A key the provider "echoes" in every place an SDK error carries request or response text.
 const KEY = "sk-ant-api03-LEAKCANARY0123456789abcdefghijklmnop";

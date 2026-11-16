@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyAddress } from "@/server/core/net-policy";
-import { BlockedAddressError, safeFetch } from "@/server/providers/net/safe-fetch";
+import { BlockedAddressError, safeFetch } from "@/server/net/safe-fetch";
 
 // OrbStack answers host.docker.internal with 0.250.250.254 (inside the reserved 0.0.0.0/8). A typed address the owner has LISTED may
 // use it, so a container can reach a local VoiceStudio or Ollama. Nothing else changes: classifyAddress still says "reserved" (the

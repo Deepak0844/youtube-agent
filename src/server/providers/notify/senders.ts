@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import type { ChannelPort } from "@/server/db/notify";
 import { checkWebhookUrl, osascriptArgs } from "@/server/core/notify-send";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 
 type ExecFile = (file: string, args: string[], cb: (err: Error | null) => void) => unknown;
 

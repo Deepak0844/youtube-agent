@@ -26,7 +26,7 @@ import { openEvalStage } from "@/server/db/llm-eval";
 import { getPool } from "@/server/db/pool";
 import { commitStage, failStage } from "@/server/db/stages";
 import { getSecret, hasSecret } from "@/server/db/vault";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 import { createElevenLabsSound } from "@/server/providers/sound/elevenlabs";
 import { createStockProvider, defaultFetcher } from "@/server/providers/stock";
 import { connectEdge, createEdgeVoice, type WebSocketLike } from "@/server/providers/voice/edge";

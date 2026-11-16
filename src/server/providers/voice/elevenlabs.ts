@@ -6,7 +6,7 @@ import { NotProcessedError } from "@/server/core/error-class";
 import { KnownFailure } from "@/server/core/paid-call";
 import { LANGS, type Lang } from "@/server/core/lang";
 import type { StageContext } from "@/server/core/stage-handler";
-import { BlockedAddressError } from "../net/safe-fetch";
+import { BlockedAddressError } from "@/server/net/safe-fetch";
 import { MODELS, type Alignment, type ElevenLabsDeps, type SafeFetch } from "./eleven-types";
 import type { VoiceProvider, WordTiming } from "./index";
 

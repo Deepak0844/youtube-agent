@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { BlockedAddressError, safeFetch } from "@/server/providers/net/safe-fetch";
+import { BlockedAddressError, safeFetch } from "@/server/net/safe-fetch";
 
 // The local-service allow-list (network.local_services) at the fetch layer, with real sockets on loopback.
 // "Ollama" below is a plain HTTP server on an ephemeral port; the "own service" is the same kind of server.

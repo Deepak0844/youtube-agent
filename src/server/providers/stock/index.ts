@@ -3,7 +3,7 @@ import { open, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { rejectionMessage, sniff, SNIFF_HEAD_BYTES } from "@/server/core/sniff";
 import type { MediaArtifact } from "@/server/providers/media-types";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 import type { Db } from "@/server/db/stages";
 import { coverrStock } from "./coverr";
 import { ownStock } from "./own";

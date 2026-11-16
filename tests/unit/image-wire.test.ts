@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createJobCheckers, falCdnFetch, hostedApiFetch } from "@/server/providers/image/wire";
-import type { safeFetch } from "@/server/providers/net/safe-fetch";
+import type { safeFetch } from "@/server/net/safe-fetch";
 
 const spy = () => {
   const calls: Array<{ url: string; headers: Headers; opts: Record<string, unknown> }> = [];
