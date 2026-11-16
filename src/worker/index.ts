@@ -25,7 +25,9 @@ import { throttledBackup } from "@/server/db/backup";
 import { throttledFxRate } from "@/server/db/fx-rate";
 import { throttledRetention } from "@/server/db/retention";
 import { runNextCutout } from "@/server/db/cutout-runner";
+import { saveWorkerToolChecks } from "@/server/db/worker-tool-checks";
 import { runChild } from "@/server/render/child";
+import { runToolChecks } from "@/server/render/tool-check";
 import { storageRoot } from "@/server/storage/paths";
 import { startRuntime, type WorkerOptions } from "./runtime";
 
@@ -57,6 +59,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         log("ENGINE_DRY_RUN=1: stages run on fake providers");
         handlers = dryRunHandlers(defaultDryRunDeps(pool));
       }
+      // Report Docker and the render image so a web app without Docker access (compose) can show them. Never blocks or throws.
+      const reportTools = () => void runToolChecks().then((c) => saveWorkerToolChecks(pool, c)).catch(() => undefined);
+      reportTools();
+      setInterval(reportTools, 10 * 60_000).unref();
       const hooks = workerHooksFor(pool, process.env);
       // First metadata draft after render: only the real worker does it (a dry run has no model), and tests that boot the
       // runtime directly never do, so their stage counts stay as they are.

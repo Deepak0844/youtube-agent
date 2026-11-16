@@ -41,3 +41,22 @@ export function toolsSummary(checks: readonly ToolCheck[]): { ok: boolean; line:
   if (bad.length === 0) return { ok: true, line: `All ${checks.length} tools are ready.` };
   return { ok: false, line: `${bad.length} of ${checks.length} tools need attention: ${bad.map((c) => c.label).join(", ")}.` };
 }
+
+/** A worker report older than this is treated as missing. */
+export const WORKER_REPORT_STALE_MS = 15 * 60_000;
+const WORKER_ROWS: readonly ToolId[] = ["docker", "render_image"];
+
+/**
+ * When the web app has no Docker access (compose), Docker and the render image can only be checked by the worker. Replaces those two
+ * rows by the worker's last report, or by a failure when there is none or it is stale. Never reports "ok" it did not see.
+ */
+export function mergeWorkerToolChecks(local: ToolCheck[], worker: { checks: ToolCheck[]; at: Date } | null, now: Date): ToolCheck[] {
+  const age = worker ? now.getTime() - worker.at.getTime() : Infinity;
+  const fresh = worker !== null && age <= WORKER_REPORT_STALE_MS ? worker : null;
+  return local.map((c) => {
+    if (!WORKER_ROWS.includes(c.id)) return c;
+    const w = fresh?.checks.find((x) => x.id === c.id);
+    if (!w) return { ...c, ok: false, detail: "The worker has not reported yet.", fix: "Start the worker container and wait a minute." };
+    return { ...w, detail: `${w.detail} (checked by the worker ${Math.max(0, Math.round(age / 60_000))} min ago)` };
+  });
+}
