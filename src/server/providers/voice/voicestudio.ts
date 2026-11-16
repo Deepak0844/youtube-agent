@@ -20,10 +20,14 @@ export class VoiceUrlError extends KnownFailure {
   }
 }
 
-/** "This computer": loopback, or host.docker.internal, which is how a container (docker compose) names the Docker host. Exact name only. */
+/**
+ * "This computer": loopback, or host.docker.internal inside the app's own container (YTSTUDIO_IN_CONTAINER, set by its image), where the
+ * container's hosts file pins that name to the Docker host. Elsewhere the name would come from ordinary DNS, so it is another computer.
+ */
 export function isLoopbackHost(hostname: string): boolean {
   const h = hostname.startsWith("[") ? hostname.slice(1, -1) : hostname;
-  if (h.toLowerCase() === "localhost" || h.toLowerCase() === "host.docker.internal") return true;
+  if (h.toLowerCase() === "localhost") return true;
+  if (h.toLowerCase() === "host.docker.internal") return process.env.YTSTUDIO_IN_CONTAINER === "1";
   if (!ipaddr.isValid(h)) return false;
   const a = ipaddr.parse(h);
   return a.kind() === "ipv6" && (a as ipaddr.IPv6).isIPv4MappedAddress() ? false : a.range() === "loopback";

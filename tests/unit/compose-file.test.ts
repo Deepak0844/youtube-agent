@@ -43,6 +43,9 @@ describe("docker-compose.yml", () => {
   it("init also gets the data folder: the sound library import writes <storage>/audio there for the worker to read", () => {
     expect(s.init!.volumes).toContain("${HOST_STORAGE_ROOT}:/data");
   });
+  it("the app image says it runs in its own container (host.docker.internal is pinned by its hosts file)", () => {
+    expect(readFileSync("infra/Dockerfile.app", "utf8")).toMatch(/^ENV [^\n]*YTSTUDIO_IN_CONTAINER=1/m);
+  });
   it("web is told tool checks come from the worker", () => {
     expect(s.web!.environment!.TOOLS_CHECKED_BY).toBe("worker");
     expect(s.worker!.environment!.TOOLS_CHECKED_BY).toBeUndefined();
