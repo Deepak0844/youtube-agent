@@ -1,0 +1,105 @@
+# The whole studio: `npm run compose:up` (writes .env, builds, starts). See README "Run everything in Docker" and docs/adr/0016.
+# Who may do what: only the worker has the host's Docker socket (it starts the locked-down render container per video);
+# the web app never does. Postgres, Redis and SearXNG publish no ports; web publishes loopback only.
+
+x-env: &env
+  DATABASE_URL: postgres://ytstudio_app:${YTSTUDIO_APP_PASSWORD}@postgres:5432/ytstudio
+  REDIS_URL: redis://redis:6379
+  SEARXNG_URL: http://searxng:8080
+  STORAGE_ROOT: /data
+  RENDER_IMAGE: ${RENDER_IMAGE:-ytstudio-render:dev}
+  VAULT_MASTER_KEY: ${VAULT_MASTER_KEY}
+  APP_URL: ${APP_URL:-http://localhost:3000}
+
+x-app: &app
+  image: ytstudio-app:dev
+  build:
+    context: .
+    dockerfile: infra/Dockerfile.app
+    args:
+      APP_UID: ${APP_UID}
+      APP_GID: ${APP_GID}
+  user: "${APP_UID}:${APP_GID}"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  extra_hosts: ["host.docker.internal:host-gateway"] # a service on this machine (VoiceStudio, Ollama) is host.docker.internal:<port>
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ytstudio
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ytstudio"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine # the job queue only; Postgres decides what runs, so nothing here needs to survive a restart
+    restart: unless-stopped
+
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    volumes:
+      - ./infra/searxng/settings.yml:/etc/searxng/settings.yml:ro
+
+  # One-shot first-run setup: database roles, migrations, the owner's one-time setup link (docker compose logs init).
+  init:
+    <<: *app
+    restart: "no"
+    command: ["npm", "run", "compose:init"]
+    environment:
+      <<: *env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      YTSTUDIO_OWNER_PASSWORD: ${YTSTUDIO_OWNER_PASSWORD}
+      YTSTUDIO_APP_PASSWORD: ${YTSTUDIO_APP_PASSWORD}
+      BOOTSTRAP_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ytstudio
+      MIGRATE_DATABASE_URL: postgres://ytstudio_owner:${YTSTUDIO_OWNER_PASSWORD}@postgres:5432/ytstudio
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    command: ["npm", "run", "start:container"]
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    environment:
+      <<: *env
+      TOOLS_CHECKED_BY: worker # this container has no Docker access; System status shows what the worker last saw
+    volumes:
+      - claude-home:/home/app
+      - ${HOST_STORAGE_ROOT}:/data
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  worker:
+    <<: *app
+    command: ["npm", "run", "worker:container"]
+    group_add: ["${DOCKER_GID}"] # the docker socket's group, so the non-root app user may start the render container
+    environment:
+      <<: *env
+      HOST_STORAGE_ROOT: ${HOST_STORAGE_ROOT} # the host-side path of /data, for the render container's mounts
+    volumes:
+      - claude-home:/home/app
+      - ${HOST_STORAGE_ROOT}:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+volumes:
+  pgdata:
+  claude-home:

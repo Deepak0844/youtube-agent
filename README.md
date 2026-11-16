@@ -36,6 +36,23 @@ Start Redis and SearXNG before `dev:all`, and your voice server before the first
 4. **Settings, System, Local services:** list local voice or model servers as `host:port`. The app's own services (SearXNG, Redis, Postgres) must never be listed.
 5. **New** (`/videos/new`): topic, language, scene kit. Approve the script when it waits at the gate.
 
+## Run everything in Docker
+
+Needs only Docker (Compose v2) and Node 22 to run the first command. On a machine with no Node, `docker compose up` works once `.env` exists (see below).
+
+```
+npm install
+npm run compose:up
+```
+
+What it does: writes `.env` once (random database passwords, the vault key, the data folder; never overwritten), builds the images (the first build takes a few minutes), starts the web app, the worker, Postgres, Redis and SearXNG, runs the one-time setup, and prints the owner's setup link. Open http://localhost:3000, finish the owner setup, then go to **Settings, Models, Connect Claude** and follow the three steps (no terminal needed). If you would rather use API keys, add one on the Keys page instead.
+
+- Stop with `docker compose down`; start again with `npm run compose:up` (no new secrets). Your data stays in `./data` and in the `pgdata` and `claude-home` volumes.
+- Web listens on `127.0.0.1` only. To use another port, set `WEB_PORT` (and `APP_URL`) in `.env`.
+- A local service on the same machine (VoiceStudio, Ollama) is reached as `host.docker.internal:<port>`; add it under Settings, System, Local services.
+- **One trade-off to know:** the worker container can start containers on this machine (it needs that to run the locked-down render container for each video). Only the worker has this; the web app does not. Do not run this on a machine where that is not acceptable. Details: `docs/adr/0016-compose-and-docker-socket.md`.
+- The native way (`npm run dev:all` below) still works and is unchanged.
+
 ## Environment variables
 
 Put them in `.env.local` (git-ignored; copy `.env.example`, which lists the same keys). Provider API keys do not go here; save them in the app under Settings, Keys. Values below are local-dev examples: replace every `CHANGE_ME`.
