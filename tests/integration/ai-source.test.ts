@@ -172,6 +172,21 @@ describe("Claude Code status and Test connection", () => {
     expect(f.count()).toBe(1);
   });
 
+  it("with ignoreSwitch the probe runs while the AI-source switch is off (login check), still counts toward the cap and is audited", async () => {
+    const f = fakeSpawn(OK);
+    await expect(testClaudeCodeConnection(db.pool, { kind: "session" }, { spawn: f.spawn })).rejects.toThrow(/switched off/);
+    const r = await testClaudeCodeConnection(db.pool, { kind: "session" }, { spawn: f.spawn }, { ignoreSwitch: true });
+    expect(r).toEqual({ ok: true, message: "Passed: Claude Code answered." });
+    expect(f.count()).toBe(1);
+    expect(await claudeCodeUsedToday(db.pool)).toBe(1);
+    expect(await claudeCodeEnabled(db.pool)).toBe(false); // the switch itself is untouched
+    const audit = await db.pool.query("select detail from audit_log where event = 'claude_code.tested'");
+    expect(audit.rows[0].detail).toEqual({ result: "ready" });
+    await setSetting(db.pool, "claude_code.daily_cap", 1, session);
+    await db.pool.query("update claude_code_status set test_at = now() - interval '11 seconds'");
+    await expect(testClaudeCodeConnection(db.pool, { kind: "session" }, { spawn: f.spawn }, { ignoreSwitch: true })).rejects.toThrow(/cap is reached/);
+  });
+
   it("a failed test shows the plain class only, never what the program printed", async () => {
     await setSetting(db.pool, "claude_code.enabled", true, session);
     const f = fakeSpawn("", 1, "Not logged in · secret-ish detail /Users/o/.claude\n");

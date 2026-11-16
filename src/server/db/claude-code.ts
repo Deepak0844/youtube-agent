@@ -92,9 +92,11 @@ export async function testClaudeCodeConnection(
   db: pg.Pool,
   actor: { kind: string },
   over: Partial<Omit<ClaudeCodeDeps, "gate">> = {},
+  /** ignoreSwitch: the login check after Connect Claude runs even while the AI-source switch is off (cap, cooldown and audit still apply). */
+  opts: { ignoreSwitch?: boolean } = {},
 ): Promise<{ ok: boolean; message: string }> {
   if (actor?.kind !== "session") throw new CatalogError("Only a signed-in session can test Claude Code.");
-  if (!(await claudeCodeEnabled(db))) throw new CatalogError("Claude Code is switched off. Turn on the AI source switch first.");
+  if (!opts.ignoreSwitch && !(await claudeCodeEnabled(db))) throw new CatalogError("Claude Code is switched off. Turn on the AI source switch first.");
   const cap = await getSetting(db, "claude_code.daily_cap");
   if (typeof cap !== "number" || (await claudeCodeUsedToday(db)) >= cap) throw new CatalogError("The daily Claude Code cap is reached. It resets at midnight UTC.");
   const claimed = await db.query(
@@ -106,7 +108,7 @@ export async function testClaudeCodeConnection(
 
   let outcome: ClaudeCodeOutcome | undefined;
   const base = claudeCodeGate(db);
-  const gate: ClaudeCodeGate = { ...base, record: async (o) => { outcome = o; await base.record!(o); } };
+  const gate: ClaudeCodeGate = { ...base, ...(opts.ignoreSwitch && { enabled: async () => true }), record: async (o) => { outcome = o; await base.record!(o); } };
   const step = createAiSdkStep(createClaudeCodeModel("default", { timeoutMs: TEST_TIMEOUT_MS, ...over, gate, noWait: true }), [], 16);
   let busy = false;
   try {
