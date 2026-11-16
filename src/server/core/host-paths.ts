@@ -18,5 +18,7 @@ export function hostPathMapFrom(env: Record<string, string | undefined>, storage
   const to = env["HOST_STORAGE_ROOT"];
   if (to === undefined || to === "") return null;
   if (!path.isAbsolute(to) || path.normalize(to) !== to) throw new Error("HOST_STORAGE_ROOT must be an absolute path.");
+  // Same rule as every other mount source (remotion-container.ts MOUNT_SAFE): it ends up in `docker run -v <path>:/in:ro`.
+  if (!/^[^:,\0\r\n]+$/.test(to)) throw new Error("HOST_STORAGE_ROOT cannot be mounted safely (no colon, comma or line break).");
   return { from: storageRoot, to };
 }

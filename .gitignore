@@ -55,3 +55,6 @@ docs
 # local design-check output (never commit)
 /.taste-skill/
 
+
+# docker compose: the studio's storage (videos, uploads, attempts) lives here
+/data

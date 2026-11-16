@@ -16,4 +16,9 @@ describe("host paths", () => {
     expect(hostPathMapFrom({ HOST_STORAGE_ROOT: "/srv/studio/data" }, "/data")).toEqual(map);
     expect(() => hostPathMapFrom({ HOST_STORAGE_ROOT: "relative" }, "/data")).toThrow("absolute");
   });
+  it("refuses a host path that could add mount options to docker run -v (colon, comma, line break)", () => {
+    for (const bad of ["/srv/a:/etc", "/srv/a,ro", "/srv/a\nb", "/srv/a\0b"]) {
+      expect(() => hostPathMapFrom({ HOST_STORAGE_ROOT: bad }, "/data"), JSON.stringify(bad)).toThrow("cannot be mounted safely");
+    }
+  });
 });
