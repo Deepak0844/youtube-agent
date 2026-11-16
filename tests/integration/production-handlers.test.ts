@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { readAssetRef } from "@/server/providers/image/wire";
+import { readAssetRef } from "@/server/wiring/image-wire";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DRY_RUN_NOTES } from "@/lib/dry-run";
 import type { ChildRegistry } from "@/server/render/child";

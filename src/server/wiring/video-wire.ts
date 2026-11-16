@@ -7,14 +7,14 @@ import type { Keyring } from "@/server/core/vault-crypto";
 import { getPriceRule } from "@/server/db/media-registry";
 import { getSecret, hasSecret } from "@/server/db/vault";
 import { safeJoin, storageRoot } from "@/server/storage/paths";
-import { hostedApiFetch } from "../image/wire";
+import { hostedApiFetch } from "./image-wire";
 import { safeFetch } from "@/server/net/safe-fetch";
-import type { JobCheckers } from "../media-types";
-import type { SafeFetch } from "../voice/eleven-types";
-import type { VideoProvider } from "./index";
-import { createKlingJobChecker, createKlingVideo } from "./kling";
-import { createSeedanceJobChecker, createSeedanceVideo } from "./seedance";
-import { createVeoJobChecker, createVeoVideo } from "./veo";
+import type { JobCheckers } from "@/server/providers/media-types";
+import type { SafeFetch } from "@/server/providers/voice/eleven-types";
+import type { VideoProvider } from "@/server/providers/video";
+import { createKlingJobChecker, createKlingVideo } from "@/server/providers/video/kling";
+import { createSeedanceJobChecker, createSeedanceVideo } from "@/server/providers/video/seedance";
+import { createVeoJobChecker, createVeoVideo } from "@/server/providers/video/veo";
 
 type Sf = typeof safeFetch;
 

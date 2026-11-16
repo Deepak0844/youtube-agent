@@ -10,7 +10,7 @@ const presentation = ["@/app/*", "@/ui/*", "**/ui", "**/ui/*", "**/app", "**/app
 const nodeIo = ["fs", "fs/promises", "net", "http", "http2", "https", "child_process", "dgram", "dns", "tls"];
 const ioPackages = ["pg", "ioredis", "bullmq", "undici"];
 const io = [...nodeIo, ...nodeIo.map((m) => `node:${m}`), ...ioPackages];
-const effectDirs = ["db", "providers", "llm", "queue", "render", "authoring", "net"];
+const effectDirs = ["db", "providers", "llm", "queue", "render", "authoring", "net", "wiring"];
 const effects = effectDirs.flatMap((d) => [`@/server/${d}`, `@/server/${d}/*`, `**/${d}`, `**/${d}/*`]);
 const orm = ["drizzle-orm", "drizzle-orm/*"];
 // The vault and its master key are server-only. Client code (src/ui, and .tsx under src/app other than the server-only
@@ -45,12 +45,9 @@ const boundary = (files, group, message, ignores = []) => ({
 const boundaryBaseline = {
   providers: [
     "src/server/providers/async-media.ts",
-    "src/server/providers/image/wire.ts",
-    "src/server/providers/notify/ports.ts",
     "src/server/providers/sound/index.ts",
     "src/server/providers/stock/own.ts",
-    "src/server/providers/uploader/youtube.ts",
-    "src/server/providers/video/wire.ts"
+    "src/server/providers/uploader/youtube.ts"
   ],
   db: [],
   ui: [],

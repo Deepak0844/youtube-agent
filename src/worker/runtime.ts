@@ -14,7 +14,7 @@ import { advanceAll } from "@/server/db/pipeline";
 import { NO_DECISIONS, type PipelineReaders } from "@/server/db/pipeline";
 import { afterReconcile, afterStageOutcome, sweepRetries } from "@/server/db/retry";
 import { notifyTransition, notifyUploadEnd, type NotifyPorts, type NotifySend } from "@/server/db/notify";
-import { realNotifyPorts } from "@/server/providers/notify/ports";
+import { realNotifyPorts } from "@/server/wiring/notify-ports";
 import { getStage } from "@/server/db/stages";
 import type { StageOutcome } from "@/server/core/stage-runner";
 import { failureEvent, type NotifyEventId } from "@/server/core/notify";
