@@ -238,3 +238,22 @@ export function createHttpRunner(deps: HttpRunnerDeps): ContainerRunner {
     },
   };
 }
+
+const bothOrNeither = (env: Record<string, string | undefined>): { url: string; token: string } | null => {
+  const url = env.RENDER_RUNNER_URL?.trim() ?? "";
+  const token = env.RENDER_RUNNER_TOKEN?.trim() ?? "";
+  if (url === "" && token === "") return null;
+  if (url === "" || token === "") throw new Error("RENDER_RUNNER_URL and RENDER_RUNNER_TOKEN must be set together");
+  return { url, token };
+};
+
+/** True when the worker is to ask the render service (compose); false when it runs docker itself (native). Half a setting is an error. */
+export const usesRenderService = (env: Record<string, string | undefined>): boolean => bothOrNeither(env) !== null;
+
+/** The runner for this environment: the render service when RENDER_RUNNER_URL and RENDER_RUNNER_TOKEN are both set, else docker. Never a silent fallback. */
+export function selectRunner(env: Record<string, string | undefined>, deps: { docker: DockerRunnerDeps; storageRoot: string }): ContainerRunner {
+  const svc = bothOrNeither(env);
+  if (svc === null) return createDockerRunner(deps.docker);
+  if (!/^https?:\/\//.test(svc.url)) throw new Error("RENDER_RUNNER_URL must be an http(s) address");
+  return createHttpRunner({ url: svc.url, token: svc.token, storageRoot: deps.storageRoot });
+}

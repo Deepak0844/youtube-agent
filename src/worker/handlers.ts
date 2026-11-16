@@ -26,7 +26,7 @@ import { DEFAULT_CUTOUT } from "@/server/core/cutout";
 import { makeCutout } from "@/server/db/cutouts";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
-import { createDockerRunner } from "@/server/providers/renderer/container-runner";
+import { selectRunner, usesRenderService } from "@/server/providers/renderer/container-runner";
 import { createContainerRenderer, resolveRenderImage, sweepRenderContainers } from "@/server/providers/renderer/remotion-container";
 import { createThumbnailRenderer } from "@/server/providers/renderer/thumbnail-container";
 import { createTsxRenderer } from "@/server/providers/renderer/tsx-render";
@@ -144,7 +144,8 @@ export function renderKitDir(here: string = import.meta.dirname): string {
  */
 export function workerHooksFor(pool: pg.Pool, env: Record<string, string | undefined>): Partial<WorkerHooks> {
   if (env.ENGINE_DRY_RUN === "1") return {};
-  return { sweepRenderContainers: () => sweepRenderContainers({ isAlive: (id) => isWorkerAlive(pool, id) }) };
+  const runner = selectRunner(env, { storageRoot: storageRoot(), docker: { runChild: (spec) => runChild(spec) } }); // only list and remove are used here
+  return { sweepRenderContainers: () => sweepRenderContainers({ runner, isAlive: (id) => isWorkerAlive(pool, id) }) };
 }
 
 const notWired = (): never => { throw new KnownFailure("This step is not wired in production yet."); };
@@ -157,8 +158,10 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
   const run = (spec: Parameters<typeof runChild>[0]) => runChild(spec, { registry: env.childRegistry });
   const hostMap = hostPathMapFrom(process.env, root); // set only when the worker runs in a container (HOST_STORAGE_ROOT)
   const hostPath = (p: string) => hostPathFor(p, hostMap);
-  const image = resolveRenderImage(); // once, at worker boot: renders run the image by its sha256 id (tag fallback is logged)
-  const runner = createDockerRunner({ runChild: run, hostPath, image: () => image }); // the kit, thumbnail and clip renderers run their containers through this
+  // The render service (compose) when RENDER_RUNNER_URL and RENDER_RUNNER_TOKEN are set, else docker itself. Docker mode resolves the image id once,
+  // at worker boot, and runs it by its sha256 id (tag fallback is logged); the service does that on its side.
+  const image = usesRenderService(process.env) ? undefined : resolveRenderImage();
+  const runner = selectRunner(process.env, { storageRoot: root, docker: { runChild: run, hostPath, ...(image && { image: () => image }) } }); // the kit, thumbnail, code-scene, OpenMontage and clip renderers run their containers through this
   const tsxDeps: TsxRendererDeps = { runner, runChild: run, workerId: env.workerId, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
   return {
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),

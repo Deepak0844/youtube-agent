@@ -1,5 +1,6 @@
 import { badCheck, dockerVersion, ffVersion, okCheck, type ToolCheck } from "@/server/core/tool-check";
 import { cleanEnv, exec } from "./probe";
+import type { ContainerRunner } from "@/server/providers/renderer/container-runner";
 import { RENDER_IMAGE } from "./runner";
 
 // Runs the tool checks: fixed commands, no shell, no user input, a short time limit each, a clean environment. Nothing from a failure
@@ -17,7 +18,8 @@ async function run(ex: Exec, bin: string, args: string[], env: Record<string, st
   }
 }
 
-export async function runToolChecks(o: { exec?: Exec; env?: Record<string, string | undefined> } = {}): Promise<ToolCheck[]> {
+/** With `runner` (compose), Docker and the render image are answered by the render service; the local docker is never asked. */
+export async function runToolChecks(o: { exec?: Exec; env?: Record<string, string | undefined>; runner?: Pick<ContainerRunner, "info"> } = {}): Promise<ToolCheck[]> {
   const ex = o.exec ?? exec;
   const env = cleanEnv((o.env ?? process.env) as NodeJS.ProcessEnv);
   const out: ToolCheck[] = [];
@@ -25,6 +27,22 @@ export async function runToolChecks(o: { exec?: Exec; env?: Record<string, strin
     const text = await run(ex, tool, ["-version"], env);
     const v = text === null ? null : ffVersion(text, tool);
     out.push(v ? okCheck(tool, `version ${v}`) : badCheck(tool, text === null ? "Not found." : "Found, but it did not answer like ffmpeg."));
+  }
+  if (o.runner) {
+    const fixService = "Start the render service: docker compose up -d render-runner";
+    let info: Awaited<ReturnType<ContainerRunner["info"]>> | null = null;
+    try { info = await o.runner.info(); } catch { /* the rows below say it */ }
+    if (info === null) {
+      out.push({ ...badCheck("docker", "The render service is not reachable."), fix: fixService });
+      out.push({ ...badCheck("render_image", "Cannot be checked until the render service runs."), fix: fixService });
+    } else if (info.dockerVersion === null) {
+      out.push({ ...badCheck("docker", "The render service cannot reach Docker."), fix: "Check the render service's Docker socket: docker compose logs render-runner" });
+      out.push(badCheck("render_image", "Cannot be checked until Docker runs."));
+    } else {
+      out.push(okCheck("docker", `version ${info.dockerVersion} (through the render service)`));
+      out.push(info.image.pinned ? okCheck("render_image", "Built and ready.") : badCheck("render_image", "Not built on this computer (run npm run image:render)."));
+    }
+    return out;
   }
   const dockerOut = await run(ex, "docker", ["info", "--format", "{{.ServerVersion}}"], env);
   const dv = dockerOut === null ? null : dockerVersion(dockerOut);

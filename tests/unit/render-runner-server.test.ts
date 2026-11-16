@@ -71,10 +71,10 @@ describe("who may call", () => {
     }
     expect(calls).toHaveLength(0);
   });
-  it("answers 401 to an unauthorised huge body without reading it (a 1 MiB body is not an error, just refused)", async () => {
+  it("an unauthorised huge body is never read or run: the answer is 401, or the connection is dropped while the client is still uploading", async () => {
     await start();
-    const r = await post("x".repeat(1024 * 1024), {});
-    expect(r.status).toBe(401);
+    const r = await post("x".repeat(1024 * 1024), {}).catch(() => null); // the service may close before the upload finishes
+    if (r) expect(r.status).toBe(401);
     expect(calls).toHaveLength(0);
   });
   it("unknown paths are 404 and wrong methods 405, after the token check", async () => {

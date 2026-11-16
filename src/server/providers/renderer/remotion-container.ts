@@ -10,7 +10,7 @@ import { assetRefs } from "@/server/core/scene-build";
 import type { ProbeResult } from "@/server/core/qa";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { assertRealDir, JOB_LABEL, RENDER_IMAGE } from "@/server/render/runner";
-import { mountable, NAME_PREFIX, renderConfig, WORKER_ID, WORKER_LABEL } from "@/server/render/render-job";
+import { mountable, NAME_PREFIX, renderConfig } from "@/server/render/render-job";
 import type { ContainerRunner } from "./container-runner";
 import { safeJoin } from "@/server/storage/paths";
 import { buildVideoProps } from "@/shared/scene/video-props";
@@ -80,26 +80,22 @@ export async function resolveRenderImage(image = RENDER_IMAGE): Promise<{ ref: s
  * Best effort, never throws.
  */
 export async function sweepRenderContainers(deps: {
+  runner: Pick<ContainerRunner, "list" | "remove">;
   isAlive(workerId: string): Promise<boolean>;
-  exec?: (args: string[]) => Promise<string>;
 }): Promise<number> {
-  const exec = deps.exec ?? (async (args: string[]) => (await run("docker", args, { env: dockerEnv(), timeout: 30_000 })).stdout);
   try {
-    const out = await exec(["ps", "-a", "--filter", `label=${JOB_LABEL}`, "--filter", `label=${WORKER_LABEL}`, "--filter", `name=${NAME_PREFIX}`, "--format", `{{.ID}} {{.Label "${WORKER_LABEL}"}}`]);
     const byWorker = new Map<string, string[]>();
-    for (const line of out.split("\n")) {
-      const [id, worker] = line.trim().split(" ");
-      if (!id || !CONTAINER_ID.test(id) || !worker || !WORKER_ID.test(worker)) continue;
-      byWorker.set(worker, [...(byWorker.get(worker) ?? []), id]);
+    for (const { name, worker } of await deps.runner.list()) byWorker.set(worker, [...(byWorker.get(worker) ?? []), name]);
+    let removed = 0;
+    for (const [worker, names] of byWorker) {
+      if (await deps.isAlive(worker).catch(() => true)) continue; // a liveness check that fails counts as alive: never remove on a guess
+      for (const name of names) {
+        if (await deps.runner.remove(name).then(() => true, () => false)) removed++;
+      }
     }
-    const dead: string[] = [];
-    for (const [worker, ids] of byWorker) {
-      if (!(await deps.isAlive(worker).catch(() => true))) dead.push(...ids);
-    }
-    if (dead.length > 0) await exec(["rm", "-f", ...dead]);
-    return dead.length;
+    return removed;
   } catch {
-    return 0;
+    return 0; // a clean-up must never throw
   }
 }
 
