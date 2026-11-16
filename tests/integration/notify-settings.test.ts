@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { withTestDb, type TestDb } from "../support/db";
 import { loadNotifyForm, saveNotifyForm } from "@/server/db/notify-settings";
 import { markAllNotificationsRead, notifyTransition, recentChannelFailures, unreadCount } from "@/server/db/notify";
-import { realNotifyPorts } from "@/server/providers/notify/ports";
+import { realNotifyPorts } from "@/server/wiring/notify-ports";
 
 let db: TestDb;
 beforeAll(async () => { db = await withTestDb(); });

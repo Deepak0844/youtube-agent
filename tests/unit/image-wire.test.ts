@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createJobCheckers, falCdnFetch, hostedApiFetch } from "@/server/providers/image/wire";
+import { createJobCheckers, falCdnFetch, hostedApiFetch } from "@/server/wiring/image-wire";
 import type { safeFetch } from "@/server/net/safe-fetch";
 
 const spy = () => {

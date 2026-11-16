@@ -8,13 +8,13 @@ import { getAsset } from "@/server/db/assets";
 import { getPriceRule } from "@/server/db/media-registry";
 import { getSecret, hasSecret } from "@/server/db/vault";
 import { storageRoot, safeJoin } from "@/server/storage/paths";
-import type { ImageProvider } from "../media";
-import type { JobCheckers } from "../media-types";
+import type { ImageProvider } from "@/server/providers/media";
+import type { JobCheckers } from "@/server/providers/media-types";
 import { safeFetch } from "@/server/net/safe-fetch";
-import type { SafeFetch } from "../voice/eleven-types";
-import { createFalJobChecker, createFalImage, falCdnUrl } from "./fal";
-import { createGeminiImage } from "./gemini";
-import { createOpenAIImage } from "./openai";
+import type { SafeFetch } from "@/server/providers/voice/eleven-types";
+import { createFalJobChecker, createFalImage, falCdnUrl } from "@/server/providers/image/fal";
+import { createGeminiImage } from "@/server/providers/image/gemini";
+import { createOpenAIImage } from "@/server/providers/image/openai";
 
 type Sf = typeof safeFetch;
 

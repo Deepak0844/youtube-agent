@@ -1,7 +1,7 @@
 import type pg from "pg";
 import type { NotifyPorts } from "@/server/db/notify";
 import { getWebhookUrl } from "@/server/db/notify-settings";
-import { createDesktopPort, createWebhookPort } from "./senders";
+import { createDesktopPort, createWebhookPort } from "@/server/providers/notify/senders";
 
 /** The real channels for the worker. The webhook address is read fresh on every call, so a change on the settings page applies to the next message. */
 export async function realNotifyPorts(db: pg.Pool): Promise<NotifyPorts> {
