@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findMoments, validateWords, type MomentWord } from "@/server/core/clip-moments";
+import { findMoments, FLOW_PAUSE_S, hookScore, validateWords, type MomentWord } from "@/server/core/clip-moments";
 
 /** Builds words at 3 per second from sentences; each sentence ends with a full stop; `gap` seconds of silence between sentences. */
 function talk(sentences: string[], gap = 0.4): MomentWord[] {
@@ -54,6 +54,32 @@ describe("findMoments", () => {
     const r = findMoments(words, { max: 1, minS: 20, maxS: 30 });
     if (!r.ok) throw new Error(r.reason);
     expect(r.moments[0]!.hook).toMatch(/^Why is the sky blue\?/);
+  });
+
+  it("scores a start in the middle of flowing speech lower than the same sentence after a pause, and never penalises the first sentence", () => {
+    const text = "Air moving past them makes the whole humming sound.";
+    const afterPause = hookScore({ text }, 0.6);
+    const flowing = hookScore({ text }, 0.02);
+    expect(afterPause - flowing).toBeCloseTo(0.35, 5);
+    expect(hookScore({ text }, FLOW_PAUSE_S)).toBe(afterPause); // exactly the limit is still a pause
+    expect(hookScore({ text }, Number.POSITIVE_INFINITY)).toBe(afterPause); // the first sentence has nothing before it
+  });
+
+  it("marks a clip that opens in the middle of flowing speech, and never penalises the very first sentence", () => {
+    const w: MomentWord[] = [];
+    let t = 0;
+    for (const text of ["Why is this happening to us today friends and neighbours?", "Because the muscles open and close very fast again and again."]) {
+      for (const word of text.split(" ")) { w.push({ word, startS: t, endS: t + 0.3 }); t += 0.34; }
+      t += 0.01; // no pause at all between the two sentences
+    }
+    for (let k = 0; k < 8; k++) for (const word of `Another long sentence number ${k} keeps the talk going on and on here.`.split(" ")) { w.push({ word, startS: t, endS: t + 0.3 }); t += 0.34; }
+    const r = findMoments(w, { minS: 5, maxS: 12, max: 10 });
+    if (!r.ok) throw new Error(r.reason);
+    const first = r.moments.find((m) => m.startS < 0.5);
+    expect(first).toBeDefined(); // the first sentence of the talk can still open a clip: nothing comes before it
+    expect(first!.reason).not.toMatch(/mid-flow/);
+    const second = r.moments.find((m) => m.hook.startsWith("Because"));
+    if (second) expect(second.reason).toMatch(/mid-flow/);
   });
 
   it("splits sentences at a long silence even without punctuation", () => {
