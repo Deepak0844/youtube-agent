@@ -5,7 +5,9 @@ import { z } from "zod";
 import { assertActionOrigin } from "@/lib/auth/action-origin";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { parseAiSourceForm } from "@/server/core/ai-source";
+import { recordAudit } from "@/server/db/audit";
 import { setAiSource, testClaudeCodeConnection } from "@/server/db/claude-code";
+import { claudeLogin } from "@/server/llm/claude-login";
 import { InputTooLongError, boundedText, usdToMicro } from "@/server/core/llm-catalog";
 import { CatalogError, copyDefault, createModel, deleteModel, setRoute, updateModel } from "@/server/db/llm-models";
 import { getPool } from "@/server/db/pool";
@@ -194,4 +196,49 @@ export async function testClaudeCodeAction(): Promise<FormState> {
   } catch (err) {
     return fail(err, new FormData());
   }
+}
+
+// Connect Claude: log in to Claude Code from this page, no terminal (claude-login.ts). Only fixed sentences come back; the
+// pasted code goes to the login runner and nowhere else (not the audit log, not the probe, not the reply).
+const LOGIN_BUSY = "A login is already waiting for its code.";
+
+export async function startClaudeLoginAction(): Promise<FormState> {
+  await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { error: origin };
+  try {
+    await claudeLogin().start();
+    await recordAudit(getPool(), "claude_code.login_started", {});
+    refresh();
+    return { ok: true, note: "Open the link below and sign in." };
+  } catch (err) {
+    refresh();
+    return { ok: false, error: err instanceof Error && err.message === LOGIN_BUSY ? LOGIN_BUSY : "Could not start the login. Try again." };
+  }
+}
+
+export async function submitClaudeLoginCodeAction(_prev: FormState, form: FormData): Promise<FormState> {
+  await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { error: origin };
+  const code = form.get("code");
+  const r = await claudeLogin().submit(typeof code === "string" ? code : "");
+  await recordAudit(getPool(), "claude_code.login_submitted", { ok: r.ok });
+  if (!r.ok) {
+    refresh();
+    return { ok: false, error: r.message };
+  }
+  // Logged in: one tiny real call proves it (works with the AI-source switch off; counts toward the daily cap).
+  const check = await testClaudeCodeConnection(getPool(), { kind: "session" }, {}, { ignoreSwitch: true }).catch((e: unknown) => ({ ok: false, message: e instanceof CatalogError ? e.message : GENERIC }));
+  refresh();
+  return check.ok ? { ok: true, note: `${r.message} ${check.message}` } : { ok: false, error: `${r.message} The check failed: ${check.message}` };
+}
+
+export async function cancelClaudeLoginAction(): Promise<FormState> {
+  await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { error: origin };
+  claudeLogin().cancel();
+  refresh();
+  return { ok: true, note: "Login cancelled." };
 }
