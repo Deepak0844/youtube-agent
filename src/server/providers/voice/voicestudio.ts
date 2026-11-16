@@ -20,9 +20,10 @@ export class VoiceUrlError extends KnownFailure {
   }
 }
 
+/** "This computer": loopback, or host.docker.internal, which is how a container (docker compose) names the Docker host. Exact name only. */
 export function isLoopbackHost(hostname: string): boolean {
   const h = hostname.startsWith("[") ? hostname.slice(1, -1) : hostname;
-  if (h.toLowerCase() === "localhost") return true;
+  if (h.toLowerCase() === "localhost" || h.toLowerCase() === "host.docker.internal") return true;
   if (!ipaddr.isValid(h)) return false;
   const a = ipaddr.parse(h);
   return a.kind() === "ipv6" && (a as ipaddr.IPv6).isIPv4MappedAddress() ? false : a.range() === "loopback";
