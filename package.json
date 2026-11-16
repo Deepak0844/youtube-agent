@@ -28,6 +28,7 @@
     "vault:check": "tsx --env-file-if-exists=.env.local scripts/vault-check.ts",
     "vault:rotate": "tsx --env-file-if-exists=.env.local scripts/vault-rotate.ts",
     "compose:init": "tsx scripts/compose-init.ts",
+    "compose:up": "tsx scripts/compose-up.ts",
     "owner:create": "tsx scripts/owner-create.ts",
     "owner:reset": "tsx scripts/owner-reset.ts",
     "auth:purge": "tsx scripts/auth-purge.ts",
