@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chapterMarks, chapterFrameChunks, chapterMarksFromScenes, chapterTimestampLines, clock, lengthRangeProblem, lengthVsQaProblem, longWordRange, outlineEstimate, validateOutline } from "@/server/core/long-form";
+import { chapterMarks, chapterMarksFromFrames, chapterFrameChunks, chapterMarksFromScenes, chapterTimestampLines, clock, lengthRangeProblem, lengthVsQaProblem, longWordRange, outlineEstimate, validateOutline } from "@/server/core/long-form";
 
 const ch = (title: string, target_s: number) => ({ title, line: `about ${title}`, target_s });
 const good = { chapters: [ch("Hook", 90), ch("How it works", 150), ch("Why it matters", 120)] }; // 360 s = 6 min
@@ -135,5 +135,20 @@ describe("chapterFrameChunks", () => {
   it("merges chapters that start on the same frame, and the first always starts at frame 0", () => {
     expect(chapterFrameChunks(at(0, 10_000, 10_010, 20_000), 30)).toEqual([{ from: 0, to: 299 }, { from: 300, to: 599 }, { from: 600, to: "end" }]);
     expect(chapterFrameChunks(at(500, 10_000), 30)).toEqual([{ from: 0, to: 299 }, { from: 300, to: "end" }]);
+  });
+});
+
+describe("chapterMarksFromFrames", () => {
+  const ch = [{ title: "A", frames: 900 }, { title: "B", frames: 1500 }, { title: "C", frames: 600 }];
+  it("each chapter starts where the one before ends, on 30 frames a second", () => {
+    expect(chapterMarksFromFrames(ch, 3000)).toEqual({ marks: [{ title: "A", startMs: 0 }, { title: "B", startMs: 30_000 }, { title: "C", startMs: 80_000 }], totalMs: 100_000 });
+  });
+  it("is null when the frames do not add up to the video, or the data has the wrong shape", () => {
+    expect(chapterMarksFromFrames(ch, 3001)).toBeNull();
+    expect(chapterMarksFromFrames([], 10)).toBeNull();
+    expect(chapterMarksFromFrames("x", 10)).toBeNull();
+    expect(chapterMarksFromFrames([{ title: "A", frames: 0 }], 0)).toBeNull();
+    expect(chapterMarksFromFrames([{ title: 3, frames: 10 }], 10)).toBeNull();
+    expect(chapterMarksFromFrames([{ title: "A", frames: 1.5 }], 1.5)).toBeNull();
   });
 });

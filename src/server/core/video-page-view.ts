@@ -189,3 +189,20 @@ export function scriptSuggestion(result: unknown): { kind: string; name: string;
   const reason = r.suggestedReason.replace(/\s+/g, " ").trim().slice(0, 160);
   return reason ? { kind: r.suggestedKind, name: KIND_NAMES[r.suggestedKind]!, reason } : null;
 }
+
+/** What one drawn chapter has cost so far on the owner's Claude usage (real runs: about 19 minutes, about Rs 370 of API-price tokens). An estimate, said so. */
+export const CHAPTER_DRAW_MINUTES = 19;
+export const CHAPTER_DRAW_INR = 370;
+
+/** For a long code-scene video's script: how many chapters will be drawn (the chapter number in the beat ids c1_b1, c2_b1 ...) and what that takes, in plain words. Null when no beat names a chapter. */
+export function longDrawNote(beats: ReadonlyArray<{ id: string }>): string | null {
+  const chapters = new Set<number>();
+  for (const b of beats) {
+    const m = /^c(\d{1,2})_/.exec(b.id);
+    if (m) chapters.add(Number(m[1]));
+  }
+  const n = chapters.size;
+  if (n === 0) return null;
+  const hours = (n * CHAPTER_DRAW_MINUTES) / 60;
+  return `Approving this script starts the drawing: ${n} chapters, one Claude run each. Nothing is billed here (it uses your Claude subscription), but plan for about ${hours.toFixed(1)} hours and about \u20B9${(n * CHAPTER_DRAW_INR).toLocaleString("en-IN")} of usage at API prices. A usage limit pauses it and finished chapters are kept. This is an estimate from earlier runs.`;
+}

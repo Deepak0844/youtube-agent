@@ -8,7 +8,7 @@ import { describeDetail } from "@/server/core/audit-view";
 import { microToUsd } from "@/server/core/llm-catalog";
 import { ttsRerunProblem, type StageName } from "@/server/core/pipeline-plan";
 import { scriptSchema } from "@/server/core/script-contract";
-import { estimateLabel, parseTab, forceRerunOffered, voiceChanged, rerunCostNote, rerunOffered, SEVERITY_WORDS, STAGE_LABELS, STATE_WORDS, stepBar, TABS, type StageView, type StepBarState, type TabId, type UiState } from "@/server/core/video-page-view";
+import { estimateLabel, parseTab, forceRerunOffered, longDrawNote, voiceChanged, rerunCostNote, rerunOffered, SEVERITY_WORDS, STAGE_LABELS, STATE_WORDS, stepBar, TABS, type StageView, type StepBarState, type TabId, type UiState } from "@/server/core/video-page-view";
 import { FORMAT_WORDS, KIND_WORDS, LANGUAGE_WORDS, STATUS_WORDS } from "@/server/core/videos-view";
 import { getPool } from "@/server/db/pool";
 import { jobCheckers } from "../../queue/job-checkers";
@@ -258,6 +258,7 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
         <>
           <p className="m-0 flex flex-wrap items-center gap-2"><Pill tone={p.script.approved ? "positive" : "warning"}>{p.script.approved ? "Approved script" : "Draft, not approved yet"}</Pill><span className="text-small text-muted">version {p.script.version}</span></p>
           {p.scriptSuggestion ? <p data-testid="type-suggestion" className="m-0 text-small text-muted [overflow-wrap:anywhere]">Suggested video type: {p.scriptSuggestion.name}. {p.scriptSuggestion.reason} This is only a suggestion; the type is not changed.</p> : null}
+          {s.success && p.head.format === "long" && p.head.kind === "tsx" && !p.script.approved && longDrawNote(s.data.beats) ? <p data-testid="long-draw-note" className="m-0 max-w-[68ch] text-small text-muted [overflow-wrap:anywhere]">{longDrawNote(s.data.beats)}</p> : null}
           {s.success ? (
             <>
               <H>{s.data.title}</H>
