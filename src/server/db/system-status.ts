@@ -9,7 +9,9 @@ import { cpuLoadFraction, sumQueues, type QueueCounts } from "@/server/core/heal
 import type { ToolCheck } from "@/server/core/tool-check";
 import { loadKeyring } from "@/server/db/master-key";
 import { vaultStatus, type VaultStatus } from "@/server/db/vault";
+import { mergeWorkerToolChecks } from "@/server/core/tool-check";
 import { cachedToolChecks } from "@/server/render/tool-check";
+import { readWorkerToolChecks } from "@/server/db/worker-tool-checks";
 import { storageRoot } from "@/server/storage/paths";
 
 // Read-only facts for /settings/system. Nothing returned here is a secret: no connection strings, no key material, no
@@ -149,6 +151,8 @@ export async function getSystemStatus(db: pg.Pool, opts: { redisUrl?: string } =
   const redisUrl = opts.redisUrl ?? process.env.REDIS_URL;
   const root = storageRoot();
   const [redis, disk, queue, storageBytes, tools] = await Promise.all([checkRedis(redisUrl), diskFor(root), queueCounts(redisUrl), storageUsedBytes(root), cachedToolChecks()]);
+  // In compose the web app has no Docker access: Docker and the render image are shown as the worker last saw them.
+  const toolRows = process.env.TOOLS_CHECKED_BY === "worker" ? mergeWorkerToolChecks(tools, await readWorkerToolChecks(db).catch(() => null), new Date()) : tools;
   const totalMem = os.totalmem();
   return {
     versions: {
@@ -165,6 +169,6 @@ export async function getSystemStatus(db: pg.Pool, opts: { redisUrl?: string } =
     memory: { usedBytes: totalMem - os.freemem(), totalBytes: totalMem },
     queue: redis.ok ? queue : null,
     storageBytes,
-    tools,
+    tools: toolRows,
   };
 }
