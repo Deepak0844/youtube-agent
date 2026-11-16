@@ -120,6 +120,7 @@ interface OwnService {
   bindAny: boolean;
 }
 
+const ORBSTACK_HOST = "0.250.250.254";
 const LOCAL_CLASSES: ReadonlySet<AddressClass> = new Set(["private", "loopback", "linklocal", "cgnat", "docker"]);
 // With an allow-list, link-local is never reachable (it is where metadata services live) and only these may be listed.
 const LISTABLE_CLASSES: ReadonlySet<AddressClass> = new Set(["private", "loopback", "cgnat", "docker"]);
@@ -161,7 +162,10 @@ function check(address: string, url: URL, mode: FetchMode, own: OwnService[], li
   const port = defaultPort(url);
   const hostname = stripBrackets(url.hostname).toLowerCase();
   const ip = canonical(address);
-  const cls = classifyAddress(address);
+  // OrbStack answers host.docker.internal with 0.250.250.254, inside the otherwise reserved 0.0.0.0/8, so a container could never reach
+  // a service on the owner's own machine. Only a TYPED destination may use it, and only through the same rules as any other Docker
+  // host address (listed host:port, own ports refused). classifyAddress still says "reserved": the egress proxy and indirect mode refuse it.
+  const cls = mode === "typed" && ip === ORBSTACK_HOST ? "docker" : classifyAddress(address);
   for (const svc of own) {
     if (svc.port !== port) continue;
     if (svc.host === hostname || svc.ips.has(ip) || (svc.loopback && cls === "loopback") || (svc.bindAny && LOCAL_CLASSES.has(cls))) {
