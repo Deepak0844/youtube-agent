@@ -1,6 +1,6 @@
 import { requireOwner } from "@/lib/auth/require-owner";
 import { getPool } from "@/server/db/pool";
-import { AreaMenuLive } from "./nav-live";
+import { AreaMenuLive } from "@/ui/shell/nav-live";
 
 /** The area menu with live counts (Queue: videos waiting on the owner). Reads the session, so it sits in <Suspense>. */
 export async function AreaMenuWithCounts() {

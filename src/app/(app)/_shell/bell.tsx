@@ -5,10 +5,10 @@ import { markAllReadAction, markOneReadAction } from "@/app/_actions/notificatio
 import { getPool } from "@/server/db/pool";
 import { listNotifications, unreadCount } from "@/server/db/notify";
 import { bellItem } from "@/server/core/notify-view";
-import { TimeAgo } from "../states/time-ago";
-import { BellCloser } from "./bell-closer";
-import { BellLink } from "./bell-link";
-import { cn, focusRing } from "../lib/cn";
+import { TimeAgo } from "@/ui/states/time-ago";
+import { BellCloser } from "@/ui/shell/bell-closer";
+import { BellLink } from "@/ui/shell/bell-link";
+import { cn, focusRing } from "@/ui/lib/cn";
 
 const ICON = { needs_you: CircleAlert, problems: CircleX, good_news: CircleCheck } as const;
 const TONE = { needs_you: "text-pill-warning-ink bg-pill-warning-bg", problems: "text-pill-negative-ink bg-pill-negative-bg", good_news: "text-pill-positive-ink bg-pill-positive-bg" } as const;
