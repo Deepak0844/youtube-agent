@@ -33,6 +33,12 @@ RUN (userdel -r node || true) \
  && useradd -m -u "$APP_UID" -g "$APP_GID" -s /bin/bash app \
  && mkdir /data && chown app:app /data
 
+# On OrbStack the Docker socket's group is root (gid 0), so the worker's app user joins group root to start renders. Make sure that
+# group gives it nothing else: drop group-root write bits everywhere (the base image leaves a few, e.g. man folders), and fail the build
+# if any remain. The socket itself is mounted at run time, so it keeps its own permissions.
+RUN find / -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -group 0 -perm -g+w ! -perm -o+w -exec chmod g-w {} + \
+ && test -z "$(find / -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -group 0 -perm -g+w ! -perm -o+w -print)"
+
 WORKDIR /app
 COPY --chown=app:app package.json package-lock.json ./
 # Dev dependencies stay: tsx runs the worker and the setup scripts.

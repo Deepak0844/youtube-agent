@@ -46,6 +46,14 @@ describe("docker-compose.yml", () => {
   it("the app image says it runs in its own container (host.docker.internal is pinned by its hosts file)", () => {
     expect(readFileSync("infra/Dockerfile.app", "utf8")).toMatch(/^ENV [^\n]*YTSTUDIO_IN_CONTAINER=1/m);
   });
+  it("the published web port is an own-service port, so it can never be listed as a local service", () => {
+    for (const name of ["web", "worker"]) expect(s[name]!.environment!.OWN_SERVICE_PORTS, name).toBe("${WEB_PORT:-3000}");
+  });
+  it("the app image removes group-root write access (the worker joins group root on OrbStack for the socket) and fails the build if any remains", () => {
+    const df = readFileSync("infra/Dockerfile.app", "utf8");
+    expect(df).toContain("-group 0 -perm -g+w ! -perm -o+w -exec chmod g-w {} +");
+    expect(df).toMatch(/test -z "\$\(find \/ -xdev[^\n]*-group 0 -perm -g\+w/);
+  });
   it("web is told tool checks come from the worker", () => {
     expect(s.web!.environment!.TOOLS_CHECKED_BY).toBe("worker");
     expect(s.worker!.environment!.TOOLS_CHECKED_BY).toBeUndefined();
