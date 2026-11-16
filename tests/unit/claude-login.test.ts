@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CODE_RE, createClaudeLogin, loginOutcome, loginUrlFrom } from "@/server/llm/claude-login";
@@ -132,6 +133,23 @@ describe("claude login runner", () => {
     await vi.waitFor(() => expect(login.state().phase).toBe("idle"));
     await login.start();
     expect(spawned).toHaveLength(2);
+    login.cancel();
+  });
+
+  it("a spawn that throws leaves no temp folder behind and a later start still works", async () => {
+    let cwd = "";
+    let first = true;
+    const spawn: SpawnClaude = (_c, _a, opts) => {
+      cwd = opts.cwd;
+      if (first) { first = false; throw new Error("spawn EACCES"); }
+      const c = new FakeChild();
+      setImmediate(() => c.say(`visit: ${URL_LINE}\n`));
+      return c;
+    };
+    const login = createClaudeLogin({ spawn, env: { PATH: "/usr/bin" }, killGroup: () => {}, killGraceMs: 5 });
+    await expect(login.start()).rejects.toThrow("EACCES");
+    expect(existsSync(cwd)).toBe(false);
+    await expect(login.start()).resolves.toEqual({ url: URL_LINE });
     login.cancel();
   });
 });

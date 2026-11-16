@@ -98,7 +98,13 @@ export function createClaudeLogin(deps: ClaudeLoginDeps = {}) {
       let r: Run;
       try {
         const cwd = await mkdtemp(path.join(tmpdir(), "yt-claude-login-"));
-        const child = spawn("claude", [...LOGIN_ARGS], { cwd, env: minimalEnv(deps.env ?? process.env), shell: false, detached: true, stdio: ["pipe", "pipe", "pipe"] });
+        let child: ClaudeChild;
+        try {
+          child = spawn("claude", [...LOGIN_ARGS], { cwd, env: minimalEnv(deps.env ?? process.env), shell: false, detached: true, stdio: ["pipe", "pipe", "pipe"] });
+        } catch (e) {
+          await rm(cwd, { recursive: true, force: true });
+          throw e;
+        }
         r = { child, cwd, stdout: "", timers: [], timedOut: false, done: false };
         run = r;
         st = { phase: "idle" };
