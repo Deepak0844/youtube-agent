@@ -6,6 +6,8 @@
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
     "start": "next start -H 127.0.0.1",
+    "start:container": "next start -H 0.0.0.0",
+    "worker:container": "tsx src/worker/index.ts",
     "db:bootstrap": "tsx scripts/db-bootstrap.ts",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db-migrate.ts",
     "openmontage:sync": "tsx scripts/openmontage-sync.ts",
