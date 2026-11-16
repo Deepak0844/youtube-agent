@@ -3,7 +3,7 @@ import type pg from "pg";
 export type VideoFormat = "short" | "long";
 export type VideoKind = "tsx" | "collage" | "ai";
 export type VideoLanguage = "en" | "hi" | "ta" | "te" | "ml" | "kn";
-export type ContentKind = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "frame_review" | "previews" | "review" | "outline" | "thumbnail" | "clips";
+export type ContentKind = "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "frame_review" | "previews" | "review" | "outline" | "thumbnail" | "clips" | "clip_batch";
 
 export interface VideoInput {
   format: VideoFormat;

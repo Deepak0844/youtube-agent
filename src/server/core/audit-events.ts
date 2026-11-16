@@ -116,6 +116,7 @@ export const AUDIT_EVENTS = {
   "video.version_made": "The owner started a new Short on the same topic as another video, as a different video type (detail: new video id, original video id, type, session id)",
   "video.thumbnail_requested": "The owner asked for the thumbnail card of a long video (detail: video id, whether one of their own pictures is on it, stage run id, session id)",
   "video.reframe_requested": "The owner asked for a 16:9 or 1:1 version of a finished video (detail: video id, format, stage run id, session id)",
+  "clips.requested": "The owner asked for a batch of short clips to be cut from a finished video (detail: video id, stage run id, session id)",
   "seo.requested": "The owner asked for titles, description and tags for the approved script (detail: video id, stage run id, session id)",
   "seo.auto_requested": "The first titles, description and tags were queued automatically after the video finished rendering (detail: video id, stage run id)",
   // Phase 5 slice 3 (detail: video id, session id; never claim text or URLs)
