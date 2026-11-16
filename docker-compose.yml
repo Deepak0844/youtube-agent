@@ -91,19 +91,53 @@ services:
   worker:
     <<: *app
     command: ["npm", "run", "worker:container"]
-    group_add: ["${DOCKER_GID}"] # the docker socket's group, so the non-root app user may start the render container
+    networks: [default, render]
     environment:
       <<: *env
-      HOST_STORAGE_ROOT: ${HOST_STORAGE_ROOT} # the host-side path of /data, for the render container's mounts
+      # Renders go through the render service: this container has no Docker socket and no Docker CLI.
+      RENDER_RUNNER_URL: http://render-runner:4100
+      RENDER_RUNNER_TOKEN: ${RENDER_RUNNER_TOKEN}
     volumes:
       - claude-home:/home/app
       - ${HOST_STORAGE_ROOT}:/data
-      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       init:
         condition: service_completed_successfully
       redis:
         condition: service_started
+      render-runner:
+        condition: service_healthy
+
+  # The only service with the Docker socket. It accepts a validated job description, never docker arguments, and holds no secret:
+  # no database, no vault key, no Claude login. It sits on the private `render` network with the worker and nothing else.
+  render-runner:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.render-runner
+    image: ytstudio-render-runner:dev
+    restart: unless-stopped
+    networks: [render]
+    group_add: ["${DOCKER_GID}"] # the docker socket's group, so the non-root user may use it
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    environment:
+      RENDER_IMAGE: ${RENDER_IMAGE:-ytstudio-render:dev}
+      HOST_STORAGE_ROOT: ${HOST_STORAGE_ROOT} # the host-side path of /data: the prefix of every render mount
+      RENDER_RUNNER_TOKEN: ${RENDER_RUNNER_TOKEN}
+    volumes:
+      - ${HOST_STORAGE_ROOT}:/data:ro # only to check that a job's folders are real folders inside it; never written
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4100/v1/info',{headers:{authorization:'Bearer '+process.env.RENDER_RUNNER_TOKEN}}).then((r)=>r.json()).then((j)=>process.exit(j.ready?0:1),()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+networks:
+  render:
+    internal: true # no route out: the service needs none (the socket is a file), and a render job cannot reach anything through it
 
 volumes:
   pgdata:

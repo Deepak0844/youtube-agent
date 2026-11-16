@@ -3,22 +3,22 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 // The compose contract (docs/adr/0016): who gets the Docker socket, what is published, who waits for whom.
-type Svc = { ports?: string[]; volumes?: string[]; user?: string; group_add?: string[]; environment?: Record<string, string>; depends_on?: Record<string, { condition: string }>; command?: string; container_name?: string; cap_drop?: string[]; extra_hosts?: string[] };
-const doc = parse(readFileSync("docker-compose.yml", "utf8"), { merge: true }) as { services: Record<string, Svc>; volumes: Record<string, unknown> };
+type Svc = { networks?: string[]; read_only?: boolean; healthcheck?: { test: string[] }; build?: { dockerfile: string }; ports?: string[]; volumes?: string[]; user?: string; group_add?: string[]; environment?: Record<string, string>; depends_on?: Record<string, { condition: string }>; command?: string; container_name?: string; cap_drop?: string[]; extra_hosts?: string[] };
+const doc = parse(readFileSync("docker-compose.yml", "utf8"), { merge: true }) as { services: Record<string, Svc>; volumes: Record<string, unknown>; networks?: Record<string, { internal?: boolean }> };
 const s = doc.services;
 const SOCK = "/var/run/docker.sock:/var/run/docker.sock";
 
 describe("docker-compose.yml", () => {
   it("has exactly the studio's services (no egress proxy: nothing calls it)", () => {
-    expect(Object.keys(s).sort()).toEqual(["init", "postgres", "redis", "searxng", "web", "worker"]);
+    expect(Object.keys(s).sort()).toEqual(["init", "postgres", "redis", "render-runner", "searxng", "web", "worker"]);
   });
-  it("only the worker has the docker socket; web and init never do", () => {
-    expect(s.worker!.volumes).toContain(SOCK);
-    for (const name of ["web", "init", "postgres", "redis", "searxng"]) expect(s[name]!.volumes ?? [], name).not.toContain(SOCK);
+  it("only the render service has the docker socket: the worker, web, init and the rest never do", () => {
+    expect(s["render-runner"]!.volumes).toContain(SOCK);
+    for (const name of ["worker", "web", "init", "postgres", "redis", "searxng"]) expect(s[name]!.volumes ?? [], name).not.toContain(SOCK);
   });
-  it("the worker joins the socket's group so the non-root app user can use it", () => {
-    expect(s.worker!.group_add).toEqual(["${DOCKER_GID}"]);
-    expect(s.web!.group_add).toBeUndefined();
+  it("the render service joins the socket's group; nobody else does", () => {
+    expect(s["render-runner"]!.group_add).toEqual(["${DOCKER_GID}"]);
+    for (const name of ["worker", "web", "init"]) expect(s[name]!.group_add, name).toBeUndefined();
   });
   it("web publishes only loopback port 3000; nothing else publishes a port", () => {
     expect(s.web!.ports).toEqual(["127.0.0.1:${WEB_PORT:-3000}:3000"]);
@@ -33,7 +33,8 @@ describe("docker-compose.yml", () => {
   });
   it("web and worker share the data folder; the worker is told its host-side path", () => {
     for (const name of ["web", "worker"]) expect(s[name]!.volumes, name).toContain("${HOST_STORAGE_ROOT}:/data");
-    expect(s.worker!.environment!.HOST_STORAGE_ROOT).toBe("${HOST_STORAGE_ROOT}");
+    // the worker no longer needs the host-side path: the render service does the translation
+    expect(s.worker!.environment!.HOST_STORAGE_ROOT).toBeUndefined();
     expect(s.web!.environment!.HOST_STORAGE_ROOT).toBeUndefined();
   });
   it("web and worker wait for init; init waits for a healthy postgres", () => {
@@ -53,6 +54,9 @@ describe("docker-compose.yml", () => {
     const df = readFileSync("infra/Dockerfile.app", "utf8");
     expect(df).toContain("-group 0 -perm -g+w ! -perm -o+w -exec chmod g-w {} +");
     expect(df).toMatch(/test -z "\$\(find \/ -xdev[^\n]*-group 0 -perm -g\+w/);
+  });
+  it("the app image has no Docker CLI: the worker never touches Docker, the render service does", () => {
+    expect(readFileSync("infra/Dockerfile.app", "utf8")).not.toMatch(/docker:27-cli|\/usr\/local\/bin\/docker/);
   });
   it("web is told tool checks come from the worker", () => {
     expect(s.web!.environment!.TOOLS_CHECKED_BY).toBe("worker");
@@ -80,5 +84,44 @@ describe("docker-compose.yml", () => {
   });
   it("worker and web can reach a service on the host machine (VoiceStudio, Ollama) as host.docker.internal", () => {
     for (const name of ["web", "worker"]) expect(s[name]!.extra_hosts, name).toContain("host.docker.internal:host-gateway");
+  });
+
+  describe("the render service", () => {
+    const rr = () => s["render-runner"]!;
+    it("is built from its own Dockerfile and sees the data folder read-only", () => {
+      expect(rr().build!.dockerfile).toBe("infra/Dockerfile.render-runner");
+      expect(rr().volumes).toContain("${HOST_STORAGE_ROOT}:/data:ro");
+    });
+    it("holds only what it needs: the image, the host path, the token; no database, vault or Claude login", () => {
+      const e = rr().environment!;
+      expect(e.RENDER_IMAGE).toBe("${RENDER_IMAGE:-ytstudio-render:dev}");
+      expect(e.HOST_STORAGE_ROOT).toBe("${HOST_STORAGE_ROOT}");
+      expect(e.RENDER_RUNNER_TOKEN).toBe("${RENDER_RUNNER_TOKEN}");
+      expect(JSON.stringify(e)).not.toMatch(/DATABASE|VAULT|REDIS|PASSWORD|ANTHROPIC/i);
+      expect((rr().volumes ?? []).join(" ")).not.toMatch(/claude-home|pgdata/);
+    });
+    it("is locked down: no capabilities, no new privileges, read-only root", () => {
+      expect(rr().cap_drop).toEqual(["ALL"]);
+      expect((rr() as { security_opt?: string[] }).security_opt).toEqual(["no-new-privileges:true"]);
+      expect(rr().read_only).toBe(true);
+    });
+    it("is on the private render network only, which has no way out; the worker joins it, web and the rest do not", () => {
+      expect(rr().networks).toEqual(["render"]);
+      expect(doc.networks!.render).toMatchObject({ internal: true });
+      expect(s.worker!.networks).toEqual(expect.arrayContaining(["default", "render"]));
+      for (const name of ["web", "init", "postgres", "redis", "searxng"]) expect(s[name]!.networks ?? ["default"], name).not.toContain("render");
+    });
+    it("publishes no port and has a healthcheck that needs Docker to answer", () => {
+      expect(rr().ports).toBeUndefined();
+      expect(rr().healthcheck!.test.join(" ")).toMatch(/\/v1\/info/);
+      expect(rr().healthcheck!.test.join(" ")).toMatch(/ready/);
+    });
+    it("the worker asks it (url + token) and waits until it is healthy", () => {
+      expect(s.worker!.environment!.RENDER_RUNNER_URL).toBe("http://render-runner:4100");
+      expect(s.worker!.environment!.RENDER_RUNNER_TOKEN).toBe("${RENDER_RUNNER_TOKEN}");
+      expect(s.worker!.depends_on!["render-runner"]!.condition).toBe("service_healthy");
+      expect(s.web!.environment!.RENDER_RUNNER_TOKEN).toBeUndefined();
+      expect(s.web!.environment!.RENDER_RUNNER_URL).toBeUndefined();
+    });
   });
 });

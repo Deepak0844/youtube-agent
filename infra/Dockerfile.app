@@ -1,6 +1,7 @@
 # The studio app: web and worker run from this one image (different commands, see docker-compose.yml).
-# Contains what the app starts as child programs: ffmpeg/ffprobe, the Docker CLI (the worker starts the render container
-# through the host's socket), pg_dump 17 (backups), and Claude Code (pinned to the version the login flow was tested with).
+# Contains what the app starts as child programs: ffmpeg/ffprobe, pg_dump 17 (backups), and Claude Code (pinned to the version the
+# login flow was tested with). No Docker CLI: renders go through the render service (infra/Dockerfile.render-runner), the only
+# container with the socket.
 FROM node:22-bookworm-slim
 
 RUN apt-get update \
@@ -16,9 +17,6 @@ RUN install -d /usr/share/keyrings \
  && apt-get install -y --no-install-recommends postgresql-client-17 \
  && apt-get purge -y curl gnupg && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/*
-
-# Static client binary only; the daemon is the host's.
-COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 
 RUN npm i -g @anthropic-ai/claude-code@2.1.207 --no-audit --no-fund && claude --version
 

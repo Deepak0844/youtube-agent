@@ -19,6 +19,8 @@ describe("renderComposeEnv", () => {
     expect(env.RENDER_IMAGE).toBe("ytstudio-render:dev");
     expect(new Set([env.POSTGRES_PASSWORD, env.YTSTUDIO_OWNER_PASSWORD, env.YTSTUDIO_APP_PASSWORD, env.YTSTUDIO_BACKUP_PASSWORD]).size).toBe(4);
     expect(env.YTSTUDIO_BACKUP_PASSWORD).toHaveLength(32);
+    expect(env.RENDER_RUNNER_TOKEN).toHaveLength(32);
+    expect(env.RENDER_RUNNER_TOKEN).not.toBe(env.YTSTUDIO_APP_PASSWORD);
     expect(env.VAULT_MASTER_KEY).toHaveLength(44);
   });
   it("refuses a relative storage root", () => {
