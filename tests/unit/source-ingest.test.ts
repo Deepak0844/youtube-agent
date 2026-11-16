@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { audioChunkArgs, checkSourceProbe, chunkPlan, mergeChunkWords, probeSourceArgs, SOURCE_MAX_S, SOURCE_MIN_S, transcodeSourceArgs } from "@/server/core/source-ingest";
+import { audioChunkArgs, checkSourceProbe, chunkPlan, looksLikeVideo, mergeChunkWords, probeSourceArgs, SOURCE_MAX_S, SOURCE_MIN_S, transcodeSourceArgs } from "@/server/core/source-ingest";
 import { assertFfprobeAvailable } from "../support/tools";
 
 const probe = (o: { format?: string; streams?: unknown[]; duration?: unknown; size?: unknown } = {}) =>
@@ -47,6 +47,18 @@ describe("transcodeSourceArgs / audioChunkArgs", () => {
     const c = audioChunkArgs("/in/s.mp4", "/out/c1.wav", { startS: 120, lenS: 60 });
     expect(c[c.indexOf("-ss") + 1]).toBe("120.000");
     expect(c.join(" ")).toContain("-ac 1 -ar 16000");
+  });
+});
+
+describe("looksLikeVideo", () => {
+  const bytes = (...b: number[]) => Uint8Array.from([...b, ...new Array(Math.max(0, 16 - b.length)).fill(0)]);
+  it("accepts the mp4/mov and matroska/webm signatures and refuses everything else", () => {
+    expect(looksLikeVideo(bytes(0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d))).toBe(true);
+    expect(looksLikeVideo(bytes(0x1a, 0x45, 0xdf, 0xa3))).toBe(true);
+    expect(looksLikeVideo(new TextEncoder().encode("#EXTM3U\n#EXT-X-VERSION:3\n"))).toBe(false); // a playlist
+    expect(looksLikeVideo(new TextEncoder().encode("GIF89a......ftyp"))).toBe(false);
+    expect(looksLikeVideo(new Uint8Array(0))).toBe(false);
+    expect(looksLikeVideo(bytes(0, 0, 0, 0x20, 0x66, 0x74, 0x79))).toBe(false); // too short to be sure
   });
 });
 

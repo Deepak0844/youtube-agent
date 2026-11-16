@@ -24,6 +24,12 @@ export interface SourceFacts {
 
 const num = (v: unknown): number => (typeof v === "string" || typeof v === "number" ? Number(v) : Number.NaN);
 
+/** True when the first bytes look like an mp4/mov ("ftyp" at byte 4) or a matroska/webm (EBML magic) file. A cheap early refusal at upload time; the real check is ffprobe (checkSourceProbe). */
+export function looksLikeVideo(head: Uint8Array): boolean {
+  if (head.length >= 12 && head[4] === 0x66 && head[5] === 0x74 && head[6] === 0x79 && head[7] === 0x70) return true; // "ftyp"
+  return head.length >= 4 && head[0] === 0x1a && head[1] === 0x45 && head[2] === 0xdf && head[3] === 0xa3; // EBML
+}
+
 /** ffprobe arguments for an upload: the file protocol only, so even probing cannot open a network address a crafted playlist names. */
 export function probeSourceArgs(file: string): string[] {
   if (!file || file.startsWith("-")) throw new Error("The file name is not valid.");
