@@ -7,7 +7,7 @@ import type { StageContext } from "@/server/core/stage-handler";
 import { addAudioItem } from "@/server/db/audio-library";
 import { knownFailure, throwsUnknown } from "@/server/providers/fake-base";
 import { createFakeSound } from "@/server/providers/sound/fake";
-import { ensureSound, type SoundDeps } from "@/server/providers/sound";
+import { ensureSound, type SoundDeps } from "@/server/wiring/ensure-sound";
 import { runChild, type ChildSpec } from "@/server/render/child";
 import { withTestDb, type TestDb } from "../support/db";
 import { assertFfprobeAvailable } from "../support/tools";
