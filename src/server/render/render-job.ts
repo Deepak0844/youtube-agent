@@ -1,4 +1,5 @@
 import path from "node:path";
+import { z } from "zod";
 import { KnownFailure } from "@/server/core/paid-call";
 import { JOB_LABEL, lockFlags, type HostLimits } from "./runner";
 
@@ -8,6 +9,8 @@ import { JOB_LABEL, lockFlags, type HostLimits } from "./runner";
 export const NAME_PREFIX = "ytstudio-render-";
 export const WORKER_LABEL = "ytstudio.worker";
 export const WORKER_ID = /^[A-Za-z0-9_.-]{1,64}$/;
+/** What the docker CLI may print back from a kit render. */
+export const MAX_OUTPUT_BYTES = 1024 * 1024;
 const MOUNT_SAFE = /^[^:,\0\r\n]+$/;
 
 export interface RenderArgsInput {
@@ -129,4 +132,80 @@ export function tsxRenderPlan(o: TsxRenderPlanInput): TsxRenderPlan {
     maxVideoBytes: TSX_SANDBOX.maxFileBytes,
     maxOutputBytes: TSX_SANDBOX.maxOutputBytes,
   };
+}
+
+// ---- the job: what the worker hands over, and what the render service validates ----
+
+export const RENDER_KINDS = ["kit", "kit-landscape", "thumbnail", "tsx-stills", "tsx-video", "om-stills", "om-video", "clip"] as const;
+export type RenderKind = (typeof RENDER_KINDS)[number];
+
+/** A folder inside the storage root, relative to it: no `..`, no `.` segments, no absolute path, no characters that could add mount options. */
+const relativeFolder = z.string().min(1).max(200).refine(
+  (p) => /^[^:,\0\r\n]+$/.test(p) && !p.startsWith("/") && !p.endsWith("/") && path.posix.normalize(p) === p && p !== "." && p.split("/").every((seg) => seg !== ".."),
+  "not a plain relative folder",
+);
+
+const limit = (max: number) => z.number().finite().positive().max(max);
+const frame = z.number().int().min(0).max(9_999_999);
+
+export const renderJobSchema = z
+  .object({
+    kind: z.enum(RENDER_KINDS),
+    /** Container name: the render prefix and a short safe tail. */
+    name: z.string().regex(/^ytstudio-render-[A-Za-z0-9_.-]{1,60}$/),
+    inDir: relativeFolder,
+    outDir: relativeFolder,
+    worker: z.string().regex(WORKER_ID).optional(),
+    /** The engine's render settings; renderPlan only ever lowers them. */
+    config: z.object({ timeoutS: limit(7200), cpus: limit(64), memoryMb: limit(65536), pids: limit(4096) }).strict(),
+    /** kit-landscape only: render one chapter's frames, muted (the host joins the chapters and lays the narration on). */
+    chunk: z.object({ from: frame, to: z.union([z.literal("end"), frame]) }).strict().optional(),
+  })
+  .strict()
+  .superRefine((j, ctx) => {
+    if (j.chunk && j.kind !== "kit-landscape") ctx.addIssue({ code: "custom", message: "chunk is only for kit-landscape", path: ["chunk"] });
+    if (j.chunk && j.chunk.to !== "end" && j.chunk.to < j.chunk.from) ctx.addIssue({ code: "custom", message: "chunk ends before it starts", path: ["chunk"] });
+  });
+export type RenderJob = z.infer<typeof renderJobSchema>;
+
+export interface RenderPlan {
+  args: string[];
+  timeoutMs: number;
+  maxOutputBytes: number;
+}
+
+/**
+ * The exact `docker run` arguments, wall-clock limit and output cap of one job. `at` holds what only the caller knows: the daemon's
+ * limits, the image reference, the absolute folders it resolved, and (native dev only) a kit folder and a host-path rewrite. The job
+ * never names an image, a mount, or a flag: nothing it contains can change what runs.
+ */
+export function renderPlan(job: RenderJob, at: { host: HostLimits; imageRef: string; inDir: string; outDir: string; kitDir?: string; hostPath?: (p: string) => string }): RenderPlan {
+  const common = { name: job.name, host: at.host, imageRef: at.imageRef, workerId: job.worker, inDir: at.inDir, outDir: at.outDir, kitDir: at.kitDir, hostPath: at.hostPath };
+  const c = job.config;
+  const limits = { cpus: c.cpus, memoryMb: c.memoryMb, pids: c.pids };
+  switch (job.kind) {
+    case "kit":
+      return { args: renderArgs({ ...common, limits }), timeoutMs: c.timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES };
+    case "kit-landscape":
+      return {
+        args: renderArgs({ ...common, limits, entry: ["/in", "/out/out.mp4", "--landscape", ...(job.chunk ? [chunkArg(job.chunk), "--muted"] : [])] }),
+        timeoutMs: c.timeoutS * 1000,
+        maxOutputBytes: MAX_OUTPUT_BYTES,
+      };
+    case "thumbnail":
+      return { args: renderArgs({ ...common, limits, entry: ["/in", "/out/out.png", "--thumbnail"] }), timeoutMs: Math.min(c.timeoutS, 300) * 1000, maxOutputBytes: 256 * 1024 };
+    case "clip": {
+      for (const v of [c.timeoutS, c.cpus, c.memoryMb, c.pids]) if (!Number.isFinite(v) || v <= 0) throw new Error("invalid render settings");
+      return {
+        args: renderArgs({ ...common, limits, extra: TSX_EXTRA_FLAGS, entry: ["/in", "/out/out.mp4", "--clip"] }),
+        timeoutMs: Math.floor(c.timeoutS) * 1000,
+        maxOutputBytes: TSX_SANDBOX.maxOutputBytes,
+      };
+    }
+    default: {
+      const mode = ({ "tsx-stills": "stills", "tsx-video": "video", "om-stills": "om-stills", "om-video": "om-video" } as const)[job.kind];
+      const p = tsxRenderPlan({ ...common, config: c, mode });
+      return { args: p.args, timeoutMs: p.timeoutMs, maxOutputBytes: p.maxOutputBytes };
+    }
+  }
 }
