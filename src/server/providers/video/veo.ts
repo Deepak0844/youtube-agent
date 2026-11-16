@@ -1,8 +1,7 @@
 import { KnownFailure } from "@/server/core/paid-call";
 import { clipProblem, quoteClip, type VideoModelCap } from "@/server/core/video-clip";
 import { sniff, SNIFF_HEAD_BYTES } from "@/server/core/sniff";
-import type { Db } from "@/server/db/stages";
-import { runAsyncMedia, stepOfKey } from "../async-media";
+import { runAsyncMedia, stepOfKey, type MediaJobStore } from "../async-media";
 import { readKey } from "../image";
 import type { JobChecker } from "../media-types";
 import type { SafeFetch } from "../voice/eleven-types";
@@ -29,7 +28,7 @@ export const VEO_MODELS: Readonly<Record<string, VideoModelCap>> = {
 export interface VeoDeps {
   /** Typed hosts us-central1-aiplatform.googleapis.com and oauth2.googleapis.com. */
   fetch: SafeFetch;
-  db: Db;
+  jobs: MediaJobStore;
   /** The saved service-account JSON, decrypted per call; never cached or logged. */
   getKey: () => Promise<string>;
   /** The `veo_video` registry price (per second) for the model in use. null = unpriced, refused. */
@@ -120,7 +119,7 @@ export function createVeoVideo(deps: VeoDeps): VideoProvider {
         };
         let flaky = 0;
         let held: Buffer | null = null;
-        const result = await runAsyncMedia(ctx, { db: deps.db, provider: "veo_video", kind: "video", step: stepOfKey(callKey), quoteMicroUsd: reserve, signal, sleep: deps.sleep }, {
+        const result = await runAsyncMedia(ctx, { jobs: deps.jobs, provider: "veo_video", kind: "video", step: stepOfKey(callKey), quoteMicroUsd: reserve, signal, sleep: deps.sleep }, {
           async submit() {
             const url = `${API}/projects/${sa.project_id}/locations/${LOCATION}/publishers/google/models/${a.model}:predictLongRunning`;
             const res = await postJson("Veo", deps.fetch, url, { authorization: `Bearer ${await bearer()}` }, { instances: [instance], parameters }, signal);

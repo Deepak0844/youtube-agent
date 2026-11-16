@@ -2,6 +2,7 @@
 // real ffmpeg, plus a kill at every paid step of the new stages. A "kill" here is an in-process Died thrown at the exact point
 // (the real SIGKILL sweep over tts/generate is engine-chaos / engine-resilience); the next attempt is the same stage run with a
 // higher fence after the lost attempt folder was swept, which is what a restarted worker does.
+import { mediaJobStore } from "@/server/db/media-jobs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -457,7 +458,7 @@ describe("generated images", () => {
       }
       return new Response("{}", { status: 503 }); // polling keeps failing: the worker dies while the job is parked at the provider
     };
-    const fal = createFalImage({ fetch, fetchCdn: fetch, db: db.pool, getKey: async () => "k", price: FAL_PRICE, root, sleep: async () => undefined });
+    const fal = createFalImage({ fetch, fetchCdn: fetch, jobs: mediaJobStore(db.pool), getKey: async () => "k", price: FAL_PRICE, root, sleep: async () => undefined });
     const scope = await ensureCapScope(db.pool, `t21:fal:${v.id}`, 1_000_000);
     const stageId = await newStage(v.id, "generate");
     await expect(fal.generate(await claimCtx(stageId, "generate", "h", "w1"), imageArgs(scope, "fal-ai/flux/schnell"))).rejects.toThrow();

@@ -1,5 +1,6 @@
 // Fixtures below are hand-written from the public provider docs (Gemini Interactions API, OpenAI Image API, fal queue API)
 // and are `unrecorded`: no real call has been made. Everything runs against a local HTTP server.
+import { mediaJobStore } from "@/server/db/media-jobs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -89,7 +90,7 @@ const openaiOk = (img: Buffer) => ({ data: [{ b64_json: img.toString("base64") }
 const gemini = (price: typeof PRICE | null = PRICE) => createGeminiImage({ fetch: localFetch, getKey: async () => KEY, price, root, readRef: async (id) => (id === "bad" ? HTML : PNG) });
 const openai = (price: typeof PRICE | null = PRICE) => createOpenAIImage({ fetch: localFetch, getKey: async () => KEY, price, root });
 const fal = (price: typeof FAL_PRICE | null = FAL_PRICE, extra: { fetchCdn?: SafeFetch } = {}) =>
-  createFalImage({ fetch: localFetch, fetchCdn: extra.fetchCdn ?? localFetch, db: db.pool, getKey: async () => KEY, price, root, sleep: async (ms) => { sleeps.push(ms); } });
+  createFalImage({ fetch: localFetch, fetchCdn: extra.fetchCdn ?? localFetch, jobs: mediaJobStore(db.pool), getKey: async () => KEY, price, root, sleep: async (ms) => { sleeps.push(ms); } });
 
 const args = { prompt: "a red fox", aspect: "9:16" as const, model: "", budgetScopes: BUDGET };
 const MODEL = { gemini: "gemini-3.1-flash-lite-image", openai: "gpt-image-1-mini", fal: "fal-ai/flux/schnell" };
@@ -397,7 +398,7 @@ describe("fal async flow", () => {
 
   it("cancel_stops_polling_and_leaves_intent_pending", async () => {
     falServer({ status: (_r, _b, res) => json(res, 200, { status: "IN_PROGRESS" }) });
-    const slow = createFalImage({ fetch: localFetch, fetchCdn: localFetch, db: db.pool, getKey: async () => KEY, price: FAL_PRICE, root, sleep: async (_ms, signal) => { ctl.abort(new Error("cancelled")); if (signal?.aborted) throw signal.reason; } });
+    const slow = createFalImage({ fetch: localFetch, fetchCdn: localFetch, jobs: mediaJobStore(db.pool), getKey: async () => KEY, price: FAL_PRICE, root, sleep: async (_ms, signal) => { ctl.abort(new Error("cancelled")); if (signal?.aborted) throw signal.reason; } });
     await expect(gen(slow)).rejects.toThrow("cancelled");
     const polls = count(/status$/);
     expect(polls).toBe(1);

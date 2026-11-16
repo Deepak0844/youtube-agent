@@ -5,6 +5,7 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { secretName, type ProviderId } from "@/server/core/provider-keys";
 import type { Keyring } from "@/server/core/vault-crypto";
 import { getAsset } from "@/server/db/assets";
+import { mediaJobStore } from "@/server/db/media-jobs";
 import { getPriceRule } from "@/server/db/media-registry";
 import { getSecret, hasSecret } from "@/server/db/vault";
 import { storageRoot, safeJoin } from "@/server/storage/paths";
@@ -67,7 +68,7 @@ export function createImageFor(db: pg.Pool, loader: () => Keyring, root: string 
     if (!(await hasSecret(db, secretName(KEY_SLOT[id] as ProviderId)))) throw new KnownFailure(`${PICK} (save its key first).`);
     const getKey = keyReader(db, loader, id);
     if (id === "openai_image") return createOpenAIImage({ fetch, getKey, price, root });
-    if (id === "fal_image") return createFalImage({ fetch, fetchCdn: falCdnFetch(sf), db, getKey, price, root });
+    if (id === "fal_image") return createFalImage({ fetch, fetchCdn: falCdnFetch(sf), jobs: mediaJobStore(db), getKey, price, root });
     return createGeminiImage({ fetch, getKey, price, root, readRef: readAssetRef(db, root) });
   };
 }

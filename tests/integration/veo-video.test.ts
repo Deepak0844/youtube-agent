@@ -1,4 +1,5 @@
 // Fixtures are hand-written from Google's public Veo docs (Vertex AI) and are `unrecorded`: no real call has been made. Everything runs against a local HTTP server.
+import { mediaJobStore } from "@/server/db/media-jobs";
 import { generateKeyPairSync } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
@@ -77,7 +78,7 @@ beforeEach(async () => {
 });
 
 const veo = (price: unknown = PRICE, extra: { resolution?: "720p" | "1080p" } = {}) =>
-  createVeoVideo({ fetch: localFetch, db: db.pool, getKey: async () => KEY, price, root, resolution: extra.resolution, now: () => 1_700_000_000_000,
+  createVeoVideo({ fetch: localFetch, jobs: mediaJobStore(db.pool), getKey: async () => KEY, price, root, resolution: extra.resolution, now: () => 1_700_000_000_000,
     readImage: async (p) => (p === "bad.png" ? HTML : p === "webp.webp" ? WEBP : PNG), sleep: async (ms) => { sleeps.push(ms); } });
 const args = (o: Partial<ClipArgs> = {}): ClipArgs => ({ prompt: "a red fox runs", seconds: 4, aspect: "9:16", startImage: false, endImage: false, model: MODEL, budgetScopes: BUDGET, ...o });
 
@@ -133,7 +134,7 @@ describe("a normal clip", () => {
     let clock = 1_700_000_000_000;
     let n = 0;
     server_({ poll: (_r, _b, s) => { clock += 50 * 60_000; json(s, 200, ++n < 2 ? { name: OP, done: false } : done()); } });
-    const v = createVeoVideo({ fetch: localFetch, db: db.pool, getKey: async () => KEY, price: PRICE, root, readImage: async () => PNG, now: () => clock, sleep: async () => undefined });
+    const v = createVeoVideo({ fetch: localFetch, jobs: mediaJobStore(db.pool), getKey: async () => KEY, price: PRICE, root, readImage: async () => PNG, now: () => clock, sleep: async () => undefined });
     await v.generate(ctxFor(), args());
     expect(seen.filter((s) => s.url === "/token").length).toBeGreaterThanOrEqual(2);
   });
@@ -161,7 +162,7 @@ describe("refusals before any money or request", () => {
   });
   it("a bad saved file or a refused sign-in stops before the clip is submitted, and the money is released", async () => {
     server_();
-    const badFile = createVeoVideo({ fetch: localFetch, db: db.pool, getKey: async () => "not json", price: PRICE, root, readImage: async () => PNG });
+    const badFile = createVeoVideo({ fetch: localFetch, jobs: mediaJobStore(db.pool), getKey: async () => "not json", price: PRICE, root, readImage: async () => PNG });
     expect(await badFile.generate(ctxFor(), args()).catch((x) => x)).toBeInstanceOf(NotProcessedError);
     server_({ token: (_r, _b, s) => json(s, 401, { error: "invalid_grant" }) });
     const e = await veo().generate(ctxFor(), args()).catch((x) => x);
