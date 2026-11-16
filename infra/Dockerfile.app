@@ -45,5 +45,7 @@ RUN npm run build
 ENV NODE_ENV=production \
     HOME=/home/app \
     STORAGE_ROOT=/data
+# host.docker.internal counts as "this computer" only here: the container's hosts file pins it (voicestudio.ts isLoopbackHost).
+ENV YTSTUDIO_IN_CONTAINER=1
 EXPOSE 3000
 CMD ["npm", "run", "start:container"]
