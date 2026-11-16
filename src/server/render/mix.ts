@@ -4,6 +4,7 @@ import { buildMixGraph } from "@/server/core/mix-graph";
 import { bedAudibility, cueAudibility, type Verdict } from "@/server/core/sound-view";
 import { KnownFailure } from "@/server/core/paid-call";
 import { cutAudioArgs, type ClipWindow } from "@/server/core/derive-short";
+import { cutClipArgs, type ClipCut } from "@/server/core/clip-cut";
 import { cueSheet, SfxPlan } from "@/server/core/sfx-plan";
 import type { StageContext } from "@/server/core/stage-handler";
 import { audioFilePaths } from "@/server/db/audio-library";
@@ -123,6 +124,17 @@ export async function joinClips(mix: MixDeps, ctx: StageContext, f: { clips: rea
   await writeFile(list, joinListText(f.clips), { mode: 0o600 });
   await run(mix, ctx, "ffmpeg", joinArgs(list, f.out), "Joining the chapters");
   return durationS(mix, ctx, f.out);
+}
+
+/** Cuts one clip out of a finished video into a 1080x1920 portrait file (core/clip-cut.ts), then checks the cut's length. Throws a KnownFailure. */
+export async function cutClipFile(mix: MixDeps, ctx: StageContext, c: ClipCut): Promise<number> {
+  await run(mix, ctx, "ffmpeg", cutClipArgs(c), "Cutting a clip");
+  const s = await durationS(mix, ctx, c.outFile);
+  if (Math.abs(s - (c.endS - c.startS)) > 0.7) {
+    await rm(c.outFile, { force: true }).catch(() => undefined);
+    throw new KnownFailure(`The cut clip is ${s.toFixed(1)} s but was planned as ${(c.endS - c.startS).toFixed(1)} s. Nothing was kept.`);
+  }
+  return s;
 }
 
 /**

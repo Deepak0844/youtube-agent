@@ -8,10 +8,10 @@ import type { GateId } from "@/server/core/gates";
 
 export type VideoFormat = "short" | "long";
 export type VideoKind = "tsx" | "collage" | "ai";
-export type ContentKindName = "outline" | "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "thumbnail" | "clips";
+export type ContentKindName = "outline" | "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "thumbnail" | "clips" | "clip_batch";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
-export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "voice", "sfx", "qa", "repair_scenes", "reframe", "thumbnail", "derive", "shots", "seo", "reply_drafts"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
+export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "voice", "sfx", "qa", "repair_scenes", "reframe", "thumbnail", "derive", "shots", "seo", "reply_drafts", "clips"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
 export type StageName = (typeof STAGE_NAMES)[number];
 
 export interface PlanStep {
@@ -135,6 +135,7 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   derive: [],
   seo: ["script"],
   reply_drafts: [],
+  clips: [], // on demand (Clip Factory), off the hash chain: its own input hash is the request count
 };
 
 /**
