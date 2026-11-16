@@ -8,11 +8,17 @@ import { promisify } from "node:util";
 // callers cannot loosen them. docker is invoked via execFile with an args array (never a shell string).
 const run = promisify(execFile);
 
-export const RENDER_IMAGE = "ytstudio-render:dev";
+const IMAGE_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.:/@-]{0,255}$/;
+/** The render image: RENDER_IMAGE from the environment (a prebuilt or registry image), else the local dev build. */
+export function renderImageName(env: Record<string, string | undefined>): string {
+  const v = env.RENDER_IMAGE ?? "ytstudio-render:dev";
+  if (!IMAGE_RE.test(v)) throw new Error("RENDER_IMAGE is not a valid image reference.");
+  return v;
+}
+export const RENDER_IMAGE = renderImageName(process.env);
 export const JOB_LABEL = "ytstudio.job";
 const LOG_CAP = 1024 * 1024;
 const JOB_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/;
-const IMAGE_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.:/@-]{0,255}$/;
 const DEFAULT_LIMITS = { cpus: 4, memoryMb: 4096, pids: 512 };
 
 export interface HostLimits {
