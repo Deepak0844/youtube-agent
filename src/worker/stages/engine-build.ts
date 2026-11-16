@@ -15,6 +15,7 @@ import type { ChildRegistry } from "@/server/render/child";
 import type { AttemptHandler } from "./attempt";
 import { loadVideo, type StageDeps } from "./deps";
 import { loadTsxInputs, tsxAuthorAttempt } from "./tsx-author";
+import { longEngineBuildAttempt } from "./engine-build-long";
 
 // OpenMontage parity, Phase D1: the code-scene step done by the engine (Claude Code on the owner's subscription, ADR 0015).
 // Claude gets the approved script and word times as read-only inputs and the six engine tools, draws the Explainer in
@@ -37,17 +38,20 @@ export interface EngineBuildDeps {
 
 const SCENE = path.join("scene", "video.tsx");
 
-/** The scene file the engine left in its work folder: a plain file (no link on the way), at most the scene size cap. */
-async function readScene(workDir: string): Promise<string> {
-  const missing = new KnownFailure("The engine did not write scene/video.tsx. Run the step again.");
-  for (let p = path.join(workDir, SCENE); p.startsWith(workDir + path.sep); p = path.dirname(p)) {
+/** A scene file the engine left in its work folder: a plain file (no link on the way), at most the scene size cap. `file` is relative, like scene/video.tsx or scene/ch02.tsx. */
+export async function readSceneFile(workDir: string, file: string): Promise<string> {
+  const missing = new KnownFailure(`The engine did not write ${file.split(path.sep).join("/")}. Run the step again.`);
+  const full = path.resolve(workDir, file);
+  if (!full.startsWith(workDir + path.sep)) throw missing;
+  for (let p = full; p.startsWith(workDir + path.sep); p = path.dirname(p)) {
     if ((await lstat(p).catch(() => null))?.isSymbolicLink()) throw missing;
   }
-  const st = await lstat(path.join(workDir, SCENE)).catch(() => null);
+  const st = await lstat(full).catch(() => null);
   if (!st?.isFile()) throw missing;
-  if (st.size > TSX_MAX_BYTES) throw new KnownFailure(`The engine's scene/video.tsx is over ${TSX_MAX_BYTES / 1024} KB. Run the step again.`);
-  return readFile(path.join(workDir, SCENE), "utf8");
+  if (st.size > TSX_MAX_BYTES) throw new KnownFailure(`The engine's ${file.split(path.sep).join("/")} is over ${TSX_MAX_BYTES / 1024} KB. Run the step again.`);
+  return readFile(full, "utf8");
 }
+const readScene = (workDir: string): Promise<string> => readSceneFile(workDir, SCENE);
 
 const CUES = "sfx-cues.json";
 const CUES_MAX_BYTES = 64 * 1024;
@@ -115,6 +119,14 @@ export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Attempt
 /** The code-scene step: the engine when engine.enabled is on (Settings), otherwise the paid-model step exactly as before. */
 export function codeSceneAttempt(deps: StageDeps, e: EngineBuildDeps): AttemptHandler {
   const engine = engineBuildAttempt(deps, e);
+  const longEngine = longEngineBuildAttempt(deps, e);
   const paid = tsxAuthorAttempt(deps);
-  return (ctx) => (ctx.config.engine.enabled ? engine(ctx) : paid(ctx));
+  return async (ctx) => {
+    if (!ctx.config.engine.enabled) {
+      // The paid-model step draws ONE file of at most 90 s: it cannot draw a long video, and it says so instead of failing on the length.
+      if ((await loadVideo(deps.db, ctx)).format === "long") throw new KnownFailure("A long video is drawn by the engine. Switch the video engine on in Settings > System, then run this step again.");
+      return paid(ctx);
+    }
+    return (await loadVideo(deps.db, ctx)).format === "long" ? longEngine(ctx) : engine(ctx);
+  };
 }

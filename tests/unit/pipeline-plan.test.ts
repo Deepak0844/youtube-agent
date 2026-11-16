@@ -111,9 +111,10 @@ describe("stagePlan", () => {
       expect(() => stagePlan(k, "short", { ...flags, derived: true }), k).toThrow(/clips from a long video are not available/);
     }
   });
-  it("a_long_code_scene_video_runs_the_outline_then_the_script_and_stops_at_the_script_gate_for_now", () => {
+  it("a_long_code_scene_video_runs_outline_script_narration_chapter_scenes_voice_sound_and_qa", () => {
     const p = stagePlan("tsx", "long", flags);
-    expect(p.map((s) => [s.stage, s.gateAfter])).toEqual([["outline", "outline"], ["draft", "script"]]);
+    expect(p.map((s) => [s.stage, s.gateAfter])).toEqual([["outline", "outline"], ["draft", "script"], ["tts", undefined], ["tsx_author", undefined], ["voice", undefined], ["sfx", undefined], ["qa", "video"]]);
+    expect(postStageGates(p, flags).slice(0, 1)).toEqual(["video"]); // the video gate, then evidence and publish as for any video
     expect(stagePlan("tsx", "short", flags).map((s) => s.stage)).not.toContain("outline"); // a Short is unchanged
     expect(() => stagePlan("tsx", "long", { ...flags, imported: true })).toThrow(/long videos are not available/); // an imported long video stays refused
   });
