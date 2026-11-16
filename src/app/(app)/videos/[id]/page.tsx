@@ -35,6 +35,7 @@ import { MakeVersionForm } from "./version-form";
 import { SoundTabPanel } from "./sound-tab";
 import { EvidenceTabPanel } from "./evidence-tab";
 import { TitlesTabPanel } from "./titles-tab";
+import { ClipsTabPanel } from "./clips-tab";
 
 export const metadata = { title: "Video" };
 
@@ -296,6 +297,8 @@ function Panel({ tab, p, preview }: { tab: TabId; p: VideoPage; preview: Preview
       return <EvidenceTabPanel p={p} />;
     case "titles":
       return <TitlesTabPanel p={p} />;
+    case "clips":
+      return <ClipsTabPanel p={p} />;
     case "cost": {
       const items = Array.isArray(asObj(p.costPlan).items) ? (asObj(p.costPlan).items as Array<Record<string, unknown>>) : [];
       return (

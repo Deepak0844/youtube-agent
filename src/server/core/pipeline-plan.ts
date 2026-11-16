@@ -35,9 +35,16 @@ export interface PlanFlags {
    * step (no model, no voice), the owner still approves the script, and the video goes on through Render, Voice, Sound and QA.
    */
   derived?: boolean;
+  /** A Short made from a clip of a finished video (Clip Factory): the clip file is already its final video, so only the QA check runs, after the owner approves the inherited script. */
+  clip?: boolean;
 }
 
 export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags): PlanStep[] {
+  // Clip Short (Clip Factory CF4b): nothing is drafted, narrated, drawn or mixed. The clip is final.mp4 already; the owner approves its (inherited) script, QA checks the file, then the normal video, evidence and publish gates apply.
+  if (flags.clip) {
+    if (kind !== "tsx" || format !== "short") throw new Error("a clip Short is a code-scene short");
+    return [{ stage: "qa", gateBefore: "script", gateAfter: "video", resource: "cpu" }];
+  }
   // Derived short (Phase 6b.4): scene kit only, and never imported. Nothing is drafted, built or narrated: `derive` writes all of it from the long video.
   if (flags.derived) {
     throw new Error("clips from a long video are not available: they were made with the scene kit, which is removed");

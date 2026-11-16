@@ -1,6 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { planBatch, reviewBatch, type BatchClip, type BatchReview, type Measured } from "@/server/core/clip-batch";
+import { planBatch, reviewBatch, type ClipBatchBody, type Measured } from "@/server/core/clip-batch";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
 import { renderClip, type ClipRenderInput, type ClipRenderResult } from "@/server/providers/renderer/clip-render";
@@ -8,22 +8,15 @@ import { cutClipFile, durationS } from "@/server/render/mix";
 import { promotedPath, type AttemptHandler } from "./attempt";
 import { contentBody, loadVideo, type StageDeps } from "./deps";
 
-/** What one batch records on the SOURCE video (content kind `clip_batch`, one version per run). */
-export interface ClipBatchBody {
-  sourceVideoId: string;
-  /** 1 for the first batch of this video, then 2, 3... (the clip file names carry it, so an old batch is never overwritten) */
-  batch: number;
-  clips: Array<BatchClip & { file: string }>;
-  measured: Record<string, Measured>;
-  review: BatchReview;
-}
-
 export interface ClipsOverrides {
   /** Test seam. Default: renderClip through the locked renderer (deps.tsxDeps). */
   render?: (ctx: StageContext, input: ClipRenderInput) => Promise<ClipRenderResult>;
 }
 
+export type { ClipBatchBody };
 export const CLIP_MAX_S = 58;
+export const CLIP_MIN_S = 15;
+export const CLIP_MAX_SHARE = 0.7;
 
 const isWord = (w: unknown): w is { word: string; startS: number; endS: number } =>
   typeof w === "object" && w !== null && typeof (w as { word?: unknown }).word === "string" && Number.isFinite((w as { startS?: unknown }).startS) && Number.isFinite((w as { endS?: unknown }).endS);
@@ -49,8 +42,11 @@ export function clipsAttempt(deps: StageDeps, o: ClipsOverrides = {}): AttemptHa
     const source = await promotedPath(deps.root, video.id, "final.mp4");
     const sourceS = await durationS(deps.mix, ctx, source);
 
-    // A clip becomes a Short and a Short's QA allows at most 60 s (qa.short.maxS), so no clip is planned longer than 58 s.
-    const plan = planBatch(words, { maxS: CLIP_MAX_S });
+    // A clip becomes a Short and a Short's QA allows at most 60 s (qa.short.maxS), so no clip is planned longer than 58 s. A clip is also
+    // never more than 70% of the source: a longer one is a near-copy of the video, not a cut from it (owner decision 2026-11-16).
+    const maxS = Math.min(CLIP_MAX_S, sourceS * CLIP_MAX_SHARE);
+    if (maxS < CLIP_MIN_S) throw new KnownFailure(`This video is only ${Math.round(sourceS)} s long, too short to cut clips from: a clip is at least ${CLIP_MIN_S} s and at most ${Math.round(CLIP_MAX_SHARE * 100)}% of the video. Use a video of about ${Math.ceil(CLIP_MIN_S / CLIP_MAX_SHARE)} s or more.`);
+    const plan = planBatch(words, { maxS });
     if (!plan.ok) throw new KnownFailure(plan.reason);
     const prev = await deps.db.query<{ n: string }>("select count(*)::text as n from video_content where video_id = $1 and kind = 'clip_batch'", [video.id]);
     const batch = Number(prev.rows[0]!.n) + 1;
