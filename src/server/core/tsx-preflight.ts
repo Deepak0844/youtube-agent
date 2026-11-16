@@ -169,6 +169,37 @@ export function longestEmptyBand(f: RgbFrame): number {
   }
 }
 
+/** Landscape captions sit at about 80% to 93% of the frame's height: sharp edges there mean a picture or label runs into them (measured: engine previews 0.0%, a frame whose object reached the captions 0.3% to 1%). */
+const CAPTION_TOP = 0.8;
+const CAPTION_BOTTOM = 0.95;
+export const CAPTION_BAND_EDGE_MAX = 0.003;
+
+/** Share (0..1) of the caption band's pixels on a sharp edge, for a landscape frame; 0 for a tall one (its captions are handled by the objects zone). */
+export function captionBandEdgeShare(f: RgbFrame): number {
+  try {
+    if (!validFrame(f) || f.width <= f.height) return 0;
+    const y0 = Math.floor(f.height * CAPTION_TOP);
+    const y1 = Math.min(f.height - 1, Math.floor(f.height * CAPTION_BOTTOM));
+    const step = Math.max(1, Math.round(f.width / 360));
+    let edges = 0;
+    let total = 0;
+    for (let y = y0; y < y1; y++) {
+      for (let x = 0; x < f.width - step; x++) {
+        const i = (y * f.width + x) * 3;
+        const j = i + step * 3;
+        const k = i + step * f.width * 3;
+        let hit = false;
+        for (let c = 0; c < 3 && !hit; c++) hit = Math.abs(f.rgb[i + c]! - f.rgb[j + c]!) > EDGE_LEVEL || (k + c < f.rgb.length && Math.abs(f.rgb[i + c]! - f.rgb[k + c]!) > EDGE_LEVEL);
+        if (hit) edges++;
+        total++;
+      }
+    }
+    return total === 0 ? 0 : edges / total;
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * Checks the sampled stills: each must be a readable frame of the expected size, not black and not one flat colour, and
  * (with two or more stills) at least one pair must differ, i.e. something moves. The last frame may equal frame 0 (a loop).
@@ -186,6 +217,8 @@ export function checkPreflight(frames: unknown, size: { width: number; height: n
       else if (f.frame === 0 && zoneEdgeShare(f) < EDGE_SHARE_MIN) problems.push(EMPTY_FRAME0);
       else if (opts.maxEmptyBand !== undefined) {
         const band = longestEmptyBand(f);
+        const cap = captionBandEdgeShare(f);
+        if (cap > CAPTION_BAND_EDGE_MAX) problems.push(`Frame ${f.frame}: a picture or label runs into the caption band (the bottom 20% of the frame, where the captions go); keep everything above y ${Math.round(f.height * CAPTION_TOP)} of ${f.height}.`);
         if (band > opts.maxEmptyBand) problems.push(`Frame ${f.frame}: an empty band covers ${Math.round(band * 100)}% of the picture's height; spread the objects over the whole height (the largest empty band must stay under ${Math.round(opts.maxEmptyBand * 100)}%).`);
       }
       good.push(f);
