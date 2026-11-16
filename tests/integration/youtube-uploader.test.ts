@@ -8,6 +8,7 @@ import { getSecret, hasSecret } from "@/server/db/vault";
 import { FILE_CHANGED_MESSAGE, StoredFileError } from "@/server/storage/hash-file";
 import { completeConnect, confirmChannel, listAccounts, startConnect, type GoogleHttp } from "@/server/db/youtube-channels";
 import type { UploadTarget } from "@/server/providers/uploader";
+import { youtubeStore } from "@/server/db/youtube-store";
 import { createYouTubeUploader, sessionSecretName } from "@/server/providers/uploader/youtube";
 import { withTestDb, type TestDb } from "../support/db";
 import { waitFor } from "./helpers/stage-env";
@@ -88,7 +89,7 @@ function target(o: { visibility?: "private" | "unlisted" | "public"; publishAt?:
     open: async () => (o.stream ? o.stream() : Readable.from([BYTES.subarray(0, 3), BYTES.subarray(3, 9), BYTES.subarray(9)])),
   };
 }
-const uploader = (s: Server) => createYouTubeUploader({ pool: db.pool, ring, http: s.http, chunkBytes: 4 });
+const uploader = (s: Server) => createYouTubeUploader({ store: youtubeStore(db.pool, ring), http: s.http, chunkBytes: 4 });
 const progress = () => {
   const seen: number[] = [];
   return { seen, fn: async (n: number) => void seen.push(n) };
@@ -201,7 +202,7 @@ describe("youtube uploader", () => {
       return base(url, init);
     };
     const p = progress();
-    const pending = createYouTubeUploader({ pool: db.pool, ring, http: s.http, chunkBytes: 4, heartbeatMs: 10 }).upload(UPLOAD, p.fn, new AbortController().signal, target());
+    const pending = createYouTubeUploader({ store: youtubeStore(db.pool, ring), http: s.http, chunkBytes: 4, heartbeatMs: 10 }).upload(UPLOAD, p.fn, new AbortController().signal, target());
     await waitFor(async () => p.seen.length > 5, "heartbeats arrive while the final PUT is held");
     const during = p.seen.length;
     release();
@@ -218,7 +219,7 @@ describe("youtube uploader", () => {
       return base(url, init);
     };
     const p = progress();
-    const out = await createYouTubeUploader({ pool: db.pool, ring, http: s.http, chunkBytes: 4, heartbeatMs: 10 }).upload(UPLOAD, p.fn, new AbortController().signal, target());
+    const out = await createYouTubeUploader({ store: youtubeStore(db.pool, ring), http: s.http, chunkBytes: 4, heartbeatMs: 10 }).upload(UPLOAD, p.fn, new AbortController().signal, target());
     expect(out).toEqual({ kind: "uploaded", youtubeId: "vid123" });
     expect(await logOf()).toContain("readback_ok: private");
     // heartbeats never go backwards

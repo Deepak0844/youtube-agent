@@ -8,11 +8,8 @@
 //   - Only `target.open()` is read. All HTTP goes through the injected `http` (default: safeFetch, indirect mode).
 // Secrets: the access token and the session URI are never put in an error message, an audit row or a log. The session URI is
 // kept in the vault so a human-triggered "check" can look for the video; nothing resumes it automatically.
-import type pg from "pg";
-import type { Keyring } from "@/server/core/vault-crypto";
-import { quotaCost } from "@/server/core/youtube-oauth";
-import { getAccessToken, reserveQuota, type GoogleHttp } from "@/server/db/youtube-channels";
-import { deleteSecret, putSecret } from "@/server/db/vault";
+import { quotaCost, type QuotaCall } from "@/server/core/youtube-oauth";
+import type { AccessResult, GoogleHttp } from "@/server/db/youtube-channels";
 import { FILE_CHANGED_MESSAGE, StoredFileError } from "@/server/storage/hash-file";
 import { safeFetch } from "@/server/net/safe-fetch";
 import type { Uploader, UploadOutcome, UploadTarget } from "./index";
@@ -37,9 +34,18 @@ export const sessionSecretName = (uploadId: string) => `youtube.upload.${uploadI
 /** Longer than the OAuth default: one chunk is several MiB. */
 export const uploadHttp: GoogleHttp = (url, init) => safeFetch(url, init, { mode: "indirect", timeoutMs: 120_000 });
 
+/** What the uploader needs from the database. src/server/db/youtube-store.ts provides it (youtubeStore); providers never import the database. */
+export interface YouTubeStore {
+  accessToken(http: GoogleHttp, channelRowId: string): Promise<AccessResult>;
+  reserveQuota(call: QuotaCall): Promise<boolean>;
+  putSecret(name: string, plain: string, opts: { hint: false }): Promise<void>;
+  deleteSecret(name: string): Promise<boolean>;
+  /** Appends one upload_log row; rejects if the insert fails. */
+  logUpload(uploadId: string, event: string): Promise<void>;
+}
+
 export interface YouTubeUploaderDeps {
-  pool: pg.Pool;
-  ring: Keyring | (() => Keyring);
+  store: YouTubeStore;
   http?: GoogleHttp;
   chunkBytes?: number;
   /** How often progress is re-reported while a request is in flight, so a long final PUT is never swept as stalled. */
@@ -99,9 +105,9 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
       if (png.length === 0) return { ok: false, reason: "the thumbnail file is empty" };
       if (png.length > THUMBNAIL_MAX_BYTES) return { ok: false, reason: `the thumbnail is over YouTube's 2 MB limit (${(png.length / 1048576).toFixed(1)} MB)` };
       try {
-        const tok = await getAccessToken(deps.pool, deps.ring, http, channelRowId);
+        const tok = await deps.store.accessToken(http, channelRowId);
         if (!tok.ok) return { ok: false, reason: tok.reason === "unavailable" ? "could not get a YouTube sign-in right now" : "the channel needs to be reconnected or confirmed (Settings, Channels)" };
-        if (!(await reserveQuota(deps.pool, "thumbnails.set"))) return { ok: false, reason: `not enough YouTube quota left today (a thumbnail costs ${quotaCost("thumbnails.set")} units)` };
+        if (!(await deps.store.reserveQuota("thumbnails.set"))) return { ok: false, reason: `not enough YouTube quota left today (a thumbnail costs ${quotaCost("thumbnails.set")} units)` };
         const res = await http(THUMB_URL + encodeURIComponent(youtubeId), {
           method: "POST", signal, body: new Uint8Array(png), headers: { authorization: `Bearer ${tok.accessToken}`, "content-type": "image/png", "content-length": String(png.length) },
         });
@@ -123,15 +129,15 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
       if (!target) return { kind: "failed", reason: "no approved file was handed to the uploader" };
       if (!Number.isSafeInteger(target.bytes) || target.bytes < 1) return { kind: "failed", reason: "the approved video file is empty" };
       // The session address is a bearer-style capability: delete it once the upload ended clearly. An unclear end keeps it for the check.
-      const dropSession = async () => void (await deleteSecret(deps.pool, sessionSecretName(uploadId)).catch(() => false));
+      const dropSession = async () => void (await deps.store.deleteSecret(sessionSecretName(uploadId)).catch(() => false));
       try {
         // 1. token (not a YouTube call), then the quota reservation, BEFORE the insert call
-        const tok = await getAccessToken(deps.pool, deps.ring, http, target.channelRowId);
+        const tok = await deps.store.accessToken(http, target.channelRowId);
         if (!tok.ok) {
           return { kind: "failed", reason: tok.reason === "unavailable" ? "could not get a YouTube sign-in right now; try again" : "the channel needs to be reconnected or confirmed (Settings, Channels)" };
         }
         const auth = { authorization: `Bearer ${tok.accessToken}` };
-        if (!(await reserveQuota(deps.pool, "videos.insert"))) return { kind: "failed", reason: `not enough YouTube quota left today (this upload costs ${quotaCost("videos.insert")} units)` };
+        if (!(await deps.store.reserveQuota("videos.insert"))) return { kind: "failed", reason: `not enough YouTube quota left today (this upload costs ${quotaCost("videos.insert")} units)` };
 
         // 2. open the resumable session
         const d = target.details;
@@ -146,14 +152,14 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
         const session = init.headers.get("location");
         if (!init.ok || !session || !session.startsWith(SESSION_PREFIX)) return { kind: "failed", reason: "YouTube did not open an upload session; nothing was sent" };
         try {
-          await putSecret(deps.pool, typeof deps.ring === "function" ? deps.ring() : deps.ring, sessionSecretName(uploadId), session, { hint: false });
+          await deps.store.putSecret(sessionSecretName(uploadId), session, { hint: false });
         } catch {
           return { kind: "failed", reason: "could not store the upload session safely; nothing was sent" };
         }
 
         // The title we sent, so "Check on YouTube" matches what YouTube was given even if the details change later.
         try {
-          await deps.pool.query("insert into upload_log (upload_id, event) values ($1, $2)", [uploadId, `sent_title: ${d.title}`]);
+          await deps.store.logUpload(uploadId, `sent_title: ${d.title}`);
         } catch {
           await dropSession();
           return { kind: "failed", reason: "could not record the upload title; nothing was sent" };
@@ -249,7 +255,7 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
 
         // 5. read back what YouTube actually kept (an unaudited project may be forced to private). A failed read-back never
         //    undoes the success: the video exists.
-        await readBack(deps.pool, http, auth, signal, uploadId, youtubeId, target.visibility);
+        await readBack(deps.store, http, auth, signal, uploadId, youtubeId, target.visibility);
         await dropSession();
         return { kind: "uploaded", youtubeId };
         } finally {
@@ -266,19 +272,19 @@ export function createYouTubeUploader(deps: YouTubeUploaderDeps): Uploader {
   };
 }
 
-async function note(pool: pg.Pool, uploadId: string, event: string): Promise<void> {
-  await pool.query("insert into upload_log (upload_id, event) values ($1, $2)", [uploadId, event]).catch(() => undefined);
+async function note(store: YouTubeStore, uploadId: string, event: string): Promise<void> {
+  await store.logUpload(uploadId, event).catch(() => undefined);
 }
 
-async function readBack(pool: pg.Pool, http: GoogleHttp, auth: Record<string, string>, signal: AbortSignal, uploadId: string, ytId: string, approved: string): Promise<void> {
+async function readBack(store: YouTubeStore, http: GoogleHttp, auth: Record<string, string>, signal: AbortSignal, uploadId: string, ytId: string, approved: string): Promise<void> {
   try {
-    if (!(await reserveQuota(pool, "videos.list"))) return void (await note(pool, uploadId, "readback_skipped: quota"));
+    if (!(await store.reserveQuota("videos.list"))) return void (await note(store, uploadId, "readback_skipped: quota"));
     const res = await http(`${API}/youtube/v3/videos?part=status&id=${encodeURIComponent(ytId)}`, { headers: auth, signal });
     const j = res.ok ? ((await res.json()) as { items?: Array<{ status?: { privacyStatus?: unknown } }> }) : null;
     const p = j?.items?.[0]?.status?.privacyStatus;
-    if (typeof p !== "string" || !/^[a-z]{1,20}$/.test(p)) return void (await note(pool, uploadId, "readback_failed"));
-    await note(pool, uploadId, p === approved ? `readback_ok: ${p}` : `privacy_mismatch: approved=${approved} reported=${p}`);
+    if (typeof p !== "string" || !/^[a-z]{1,20}$/.test(p)) return void (await note(store, uploadId, "readback_failed"));
+    await note(store, uploadId, p === approved ? `readback_ok: ${p}` : `privacy_mismatch: approved=${approved} reported=${p}`);
   } catch {
-    await note(pool, uploadId, "readback_failed");
+    await note(store, uploadId, "readback_failed");
   }
 }

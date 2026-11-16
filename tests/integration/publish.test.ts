@@ -24,6 +24,7 @@ import { makeKeyring } from "@/server/core/vault-crypto";
 import { saveOwnGoogleApp } from "@/server/db/google-app";
 import { putSecret } from "@/server/db/vault";
 import { checkOnYoutube, listUploads, requestRetry, savePublishChoice } from "@/server/db/upload-actions";
+import { youtubeStore } from "@/server/db/youtube-store";
 import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
 import type { GoogleHttp } from "@/server/db/youtube-channels";
 import { withTestDb, type TestDb } from "../support/db";
@@ -581,7 +582,7 @@ describe("youtube upload outcomes through the job", () => {
   const uploaderFor = async (f: Fake) => {
     await saveOwnGoogleApp(db.pool, ring, { clientId: "123456789012-abcdefghijklmnopqrstuv12.apps.googleusercontent.com", clientSecret: "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1" });
     await putSecret(db.pool, ring, "tok-uc-test", "1//refresh", { hint: false });
-    return createYouTubeUploader({ pool: db.pool, ring, http: f.http });
+    return createYouTubeUploader({ store: youtubeStore(db.pool, ring), http: f.http });
   };
   const actorFor = async () => ({ kind: "session", sessionId: await newSession() }) as const;
   /** Pretend the attempt ended `min` minutes ago (the cooldown is measured from finished_at). */
@@ -708,7 +709,7 @@ describe("unclear uploads: cooldown, stall, race, session, recheck", () => {
   const upFor = async (h: GoogleHttp) => {
     await saveOwnGoogleApp(db.pool, ring, { clientId: "123456789012-abcdefghijklmnopqrstuv12.apps.googleusercontent.com", clientSecret: "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1" });
     await putSecret(db.pool, ring, "tok-uc-test", "1//refresh", { hint: false });
-    return createYouTubeUploader({ pool: db.pool, ring, http: h });
+    return createYouTubeUploader({ store: youtubeStore(db.pool, ring), http: h });
   };
   const actorFor = async () => ({ kind: "session", sessionId: await newSession() }) as const;
   const aged = (uploadId: string, min = 20) => db.ownerPool.query("update uploads set finished_at = finished_at - ($2::int * interval '1 minute') where id = $1", [uploadId, min]);
@@ -734,7 +735,7 @@ describe("unclear uploads: cooldown, stall, race, session, recheck", () => {
     const slow: GoogleHttp = async (url, init) => (init?.method === "PUT" ? (await hold, http()(url, init)) : http()(url, init));
     await saveOwnGoogleApp(db.pool, ring, { clientId: "123456789012-abcdefghijklmnopqrstuv12.apps.googleusercontent.com", clientSecret: "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1" });
     await putSecret(db.pool, ring, "tok-uc-test", "1//refresh", { hint: false });
-    const pending = run(uploadId, createYouTubeUploader({ pool: db.pool, ring, http: slow, heartbeatMs: 20 }));
+    const pending = run(uploadId, createYouTubeUploader({ store: youtubeStore(db.pool, ring), http: slow, heartbeatMs: 20 }));
     await waitFor(async () => Number((await row(uploadId))?.bytes_sent) >= 1, "first progress");
     await db.ownerPool.query("update uploads set last_progress_at = clock_timestamp() - interval '10 minutes' where id = $1", [uploadId]);
     await waitFor(async () => (await db.pool.query("select 1 from uploads where id = $1 and last_progress_at > clock_timestamp() - interval '1 minute'", [uploadId])).rowCount === 1, "heartbeat refreshed progress");
