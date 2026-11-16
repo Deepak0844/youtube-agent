@@ -172,7 +172,7 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     videoFor: createVideoFor(pool, () => loadKeyring(), root),
     ingest: { runChild: run },
     image: { capability: { id: "none", refImages: false, seed: false, aspects: [], maxRefs: 0 }, quote: notWired, generate: notWired },
-    // Code scenes (tsx_author): the same container locks plus tighter limits (tsx-sandbox.ts); the model's file never touches the host shell.
+    // Code scenes (tsx_author): the same container locks plus tighter limits (render/render-job.ts); the model's file never touches the host shell.
     tsx: createTsxRenderer(tsxDeps),
     tsxDeps,
     // The long-video thumbnail card: the same container locks, mode --thumbnail (thumbnail-container.ts).

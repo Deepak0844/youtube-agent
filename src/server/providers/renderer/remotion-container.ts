@@ -9,7 +9,8 @@ import type { StageContext } from "@/server/core/stage-handler";
 import { assetRefs } from "@/server/core/scene-build";
 import type { ProbeResult } from "@/server/core/qa";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
-import { assertRealDir, daemonLimits, JOB_LABEL, lockFlags, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
+import { assertRealDir, daemonLimits, JOB_LABEL, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
+import { chunkArg, mountable, NAME_PREFIX, renderArgs, WORKER_ID, WORKER_LABEL } from "@/server/render/render-job";
 import { safeJoin } from "@/server/storage/paths";
 import { buildVideoProps } from "@/shared/scene/video-props";
 import { copyRegular, MAX_VIDEO_BYTES } from "@/server/storage/regular-file";
@@ -34,12 +35,8 @@ export const ASSET_EXT: ReadonlySet<string> = new Set([".png", ".jpg", ".jpeg", 
 export const AUDIO_EXT: ReadonlySet<string> = new Set([".wav", ".mp3", ".flac", ".m4a", ".aac"]);
 const ASSET_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/; // same rule as the scene schema
 const CONTAINER_ID = /^[0-9a-f]{12,64}$/;
-const MOUNT_SAFE = /^[^:,\0\r\n]+$/;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const FPS = 30; // keep equal to remotion/kit/theme.ts
-export const NAME_PREFIX = "ytstudio-render-";
-const WORKER_LABEL = "ytstudio.worker";
-const WORKER_ID = /^[A-Za-z0-9_.-]{1,64}$/;
 
 export interface ContainerRendererDeps {
   /** Storage root: asset files are copied from here (never mounted). */
@@ -114,49 +111,6 @@ export async function sweepRenderContainers(deps: {
   }
 }
 
-export interface RenderArgsInput {
-  name: string;
-  limits: { cpus: number; memoryMb: number; pids: number };
-  host: HostLimits;
-  imageRef: string;
-  workerId?: string;
-  /** Mount sources: absolute, already checked with mountable() and realDir(). */
-  inDir: string;
-  outDir: string;
-  kitDir?: string;
-  /** Rewrites /in and /out mount sources to host paths (worker in a container). */
-  hostPath?: (p: string) => string;
-  /** Extra hardening flags placed after the shared locks; only ever adds limits (see tsx-sandbox.ts). */
-  extra?: readonly string[];
-  /** Arguments of render-entry.mjs (after the image). Default: the kit render, /in /out/out.mp4. */
-  entry?: readonly string[];
-}
-
-/** The `docker run` argument list of one render. Builds only; runs nothing. */
-const same = (p: string) => p;
-export function renderArgs(o: RenderArgsInput): string[] {
-  return [
-    "run", "--rm", "--name", o.name,
-    ...lockFlags(o.limits, o.host),
-    ...(o.extra ?? []),
-    "--log-driver", "none",
-    "--label", `${JOB_LABEL}=${o.name}`,
-    "--label", `${WORKER_LABEL}=${o.workerId && WORKER_ID.test(o.workerId) ? o.workerId : "unknown"}`,
-    "-v", `${(o.hostPath ?? same)(o.inDir)}:/in:ro`,
-    "-v", `${(o.hostPath ?? same)(o.outDir)}:/out:rw`,
-    ...(o.kitDir === undefined ? [] : ["-v", `${o.kitDir}:/opt/render/kit:ro`]),
-    "-w", "/tmp",
-    "--entrypoint", "node",
-    o.imageRef,
-    "/opt/render/kit/render-entry.mjs", ...(o.entry ?? ["/in", "/out/out.mp4"]),
-  ];
-}
-
-export function mountable(p: string): string {
-  if (!path.isAbsolute(p) || path.normalize(p) !== p || !MOUNT_SAFE.test(p)) throw new KnownFailure("A render folder has a path that cannot be mounted safely.");
-  return p;
-}
-
 export async function realDir(p: string, what: string): Promise<void> {
   try {
     await assertRealDir(p, what);
@@ -209,13 +163,6 @@ export async function runRenderContainer(
     setTimeout(() => void sweepByLabel(), deps.sweepDelayMs ?? 1000).unref();
   }
   return { r, tail };
-}
-
-/** The `--frames` argument of one chapter chunk: whole numbers, from at most to. Anything else is a plain refusal. */
-export function chunkArg(chunk: NonNullable<RenderArgs["chunk"]>): string {
-  const ok = Number.isInteger(chunk.from) && chunk.from >= 0 && chunk.from <= 9_999_999 && (chunk.to === "end" || (Number.isInteger(chunk.to) && chunk.to >= chunk.from && chunk.to <= 9_999_999));
-  if (!ok) throw new KnownFailure("The chapter frame range is not valid. Nothing was rendered.");
-  return `--frames=${chunk.from}-${chunk.to}`;
 }
 
 /** The chapter cards a landscape render draws: 1 to 12 titles in order, the first at 0 ms, starts never going back. Anything else is a plain refusal. */

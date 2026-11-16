@@ -1,4 +1,65 @@
-import { renderArgs, type RenderArgsInput } from "./remotion-container";
+import path from "node:path";
+import { KnownFailure } from "@/server/core/paid-call";
+import { JOB_LABEL, lockFlags, type HostLimits } from "./runner";
+
+// The pure part of a render: how a job becomes the exact `docker run` arguments of the locked-down render container (ADR 0003, 0009).
+// No IO here, so the worker (native) and the render service (compose) build byte-identical commands from the same code.
+
+export const NAME_PREFIX = "ytstudio-render-";
+export const WORKER_LABEL = "ytstudio.worker";
+export const WORKER_ID = /^[A-Za-z0-9_.-]{1,64}$/;
+const MOUNT_SAFE = /^[^:,\0\r\n]+$/;
+
+export interface RenderArgsInput {
+  name: string;
+  limits: { cpus: number; memoryMb: number; pids: number };
+  host: HostLimits;
+  imageRef: string;
+  workerId?: string;
+  /** Mount sources: absolute, already checked with mountable() and realDir(). */
+  inDir: string;
+  outDir: string;
+  kitDir?: string;
+  /** Rewrites /in and /out mount sources to host paths (worker in a container). */
+  hostPath?: (p: string) => string;
+  /** Extra hardening flags placed after the shared locks; only ever adds limits (see render/render-job.ts). */
+  extra?: readonly string[];
+  /** Arguments of render-entry.mjs (after the image). Default: the kit render, /in /out/out.mp4. */
+  entry?: readonly string[];
+}
+
+/** The `docker run` argument list of one render. Builds only; runs nothing. */
+const same = (p: string) => p;
+export function renderArgs(o: RenderArgsInput): string[] {
+  return [
+    "run", "--rm", "--name", o.name,
+    ...lockFlags(o.limits, o.host),
+    ...(o.extra ?? []),
+    "--log-driver", "none",
+    "--label", `${JOB_LABEL}=${o.name}`,
+    "--label", `${WORKER_LABEL}=${o.workerId && WORKER_ID.test(o.workerId) ? o.workerId : "unknown"}`,
+    "-v", `${(o.hostPath ?? same)(o.inDir)}:/in:ro`,
+    "-v", `${(o.hostPath ?? same)(o.outDir)}:/out:rw`,
+    ...(o.kitDir === undefined ? [] : ["-v", `${o.kitDir}:/opt/render/kit:ro`]),
+    "-w", "/tmp",
+    "--entrypoint", "node",
+    o.imageRef,
+    "/opt/render/kit/render-entry.mjs", ...(o.entry ?? ["/in", "/out/out.mp4"]),
+  ];
+}
+
+export function mountable(p: string): string {
+  if (!path.isAbsolute(p) || path.normalize(p) !== p || !MOUNT_SAFE.test(p)) throw new KnownFailure("A render folder has a path that cannot be mounted safely.");
+  return p;
+}
+
+/** The `--frames` argument of one chapter chunk: whole numbers, from at most to. Anything else is a plain refusal. */
+export function chunkArg(chunk: { from: number; to: number | "end" }): string {
+  const ok = Number.isInteger(chunk.from) && chunk.from >= 0 && chunk.from <= 9_999_999 && (chunk.to === "end" || (Number.isInteger(chunk.to) && chunk.to >= chunk.from && chunk.to <= 9_999_999));
+  if (!ok) throw new KnownFailure("The chapter frame range is not valid. Nothing was rendered.");
+  return `--frames=${chunk.from}-${chunk.to}`;
+}
+
 
 // SECURITY CONTROL (ADR 0009, the boundary for the TSX path): model-written code runs only inside the same hardened render
 // container as the scene kit (renderArgs + lockFlags: no network, read-only root, noexec /tmp tmpfs, cap-drop ALL,

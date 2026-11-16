@@ -5,7 +5,8 @@ import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
 import { daemonLimits } from "@/server/render/runner";
 import { safeJoin } from "@/server/storage/paths";
-import { ASSET_EXT, mountable, NAME_PREFIX, realDir, renderArgs, resolveRenderImage, runRenderContainer, type ContainerRendererDeps } from "./remotion-container";
+import { ASSET_EXT, realDir, resolveRenderImage, runRenderContainer, type ContainerRendererDeps } from "./remotion-container";
+import { mountable, NAME_PREFIX, renderArgs } from "@/server/render/render-job";
 import { THUMBNAIL_PNG_MAX_BYTES } from "@/server/core/asset-rules";
 import { copyRegular } from "@/server/storage/regular-file";
 

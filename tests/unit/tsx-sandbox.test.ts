@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { renderArgs } from "@/server/providers/renderer/remotion-container";
-import { TSX_EXTRA_FLAGS, TSX_SANDBOX, tsxRenderPlan } from "@/server/providers/renderer/tsx-sandbox";
+import { renderArgs } from "@/server/render/render-job";
+import { TSX_EXTRA_FLAGS, TSX_SANDBOX, tsxRenderPlan } from "@/server/render/render-job";
 
 const base = {
   name: "ytstudio-render-run-1-abcd1234",
