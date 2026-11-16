@@ -41,7 +41,7 @@ export function ClipBatchForm({ videoId, batch, clips }: { videoId: string; batc
       <ul className="m-0 grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 lg:grid-cols-3">
         {clips.map((c) => (
           <li key={c.id} data-testid="clip-card" className="flex min-w-0 flex-col gap-2 rounded-card border border-border bg-surface p-pad">
-            {c.src ? <video src={c.src} controls preload="none" playsInline className="aspect-[9/16] max-h-96 w-full rounded-card bg-black" aria-label={`Clip ${c.id}`} /> : <p className="m-0 text-small text-muted">No player (the vault is locked).</p>}
+            {c.src ? <video src={c.src} controls preload="none" playsInline className="aspect-[9/16] max-h-96 w-full rounded-card bg-surface" aria-label={`Clip ${c.id}`} /> : <p className="m-0 text-small text-muted">No player (the vault is locked).</p>}
             <p className="m-0 text-body font-medium">{c.hook}</p>
             <p className="m-0 text-small tabular-nums text-muted">{Math.round(c.durationS)} s</p>
             {c.warnings.length === 0 ? <Pill tone="positive">All checks passed</Pill> : <ul className="m-0 flex list-none flex-col gap-1 p-0">{c.warnings.map((w) => <li key={w}><Pill tone="warning">Check</Pill> <span className="text-small">{w}</span></li>)}</ul>}
