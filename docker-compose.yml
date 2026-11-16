@@ -4,6 +4,7 @@
 
 x-env: &env
   DATABASE_URL: postgres://ytstudio_app:${YTSTUDIO_APP_PASSWORD}@postgres:5432/ytstudio
+  BACKUP_DATABASE_URL: postgres://ytstudio_backup:${YTSTUDIO_BACKUP_PASSWORD}@postgres:5432/ytstudio # read-only: backups only (the app role is locked out of some sequences on purpose)
   REDIS_URL: redis://redis:6379
   SEARXNG_URL: http://searxng:8080
   STORAGE_ROOT: /data
@@ -60,6 +61,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       YTSTUDIO_OWNER_PASSWORD: ${YTSTUDIO_OWNER_PASSWORD}
       YTSTUDIO_APP_PASSWORD: ${YTSTUDIO_APP_PASSWORD}
+      YTSTUDIO_BACKUP_PASSWORD: ${YTSTUDIO_BACKUP_PASSWORD}
       BOOTSTRAP_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ytstudio
       MIGRATE_DATABASE_URL: postgres://ytstudio_owner:${YTSTUDIO_OWNER_PASSWORD}@postgres:5432/ytstudio
     depends_on:

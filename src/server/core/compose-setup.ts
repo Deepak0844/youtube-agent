@@ -3,7 +3,7 @@
 export const INIT_STEPS = ["db:bootstrap", "db:migrate", "owner:create"] as const;
 export type InitStep = (typeof INIT_STEPS)[number];
 
-const REQUIRED = ["POSTGRES_PASSWORD", "YTSTUDIO_OWNER_PASSWORD", "YTSTUDIO_APP_PASSWORD", "VAULT_MASTER_KEY"] as const;
+const REQUIRED = ["POSTGRES_PASSWORD", "YTSTUDIO_OWNER_PASSWORD", "YTSTUDIO_APP_PASSWORD", "YTSTUDIO_BACKUP_PASSWORD", "VAULT_MASTER_KEY"] as const;
 
 /** The reason to refuse before anything starts: the first secret that is missing or still the example placeholder. */
 export function refuseInit(env: Record<string, string | undefined>): string | null {

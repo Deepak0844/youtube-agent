@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { renderComposeEnv } from "@/server/core/compose-env";
 import { generateMasterKey } from "@/server/core/vault-crypto";
@@ -29,6 +29,12 @@ if (!dry && docker(["image", "inspect", RENDER_IMAGE]).status !== 0) {
 
 if (existsSync(envFile)) {
   say("Using existing .env");
+  // An .env from an older version lacks the read-only backup password: add just that line (backups need it), touch nothing else.
+  if (!/^YTSTUDIO_BACKUP_PASSWORD=/m.test(readFileSync(envFile, "utf8"))) {
+    const old = readFileSync(envFile, "utf8");
+    appendFileSync(envFile, `${old.endsWith("\n") || old === "" ? "" : "\n"}YTSTUDIO_BACKUP_PASSWORD=${randomBytes(24).toString("base64url")}\n`);
+    say("Added YTSTUDIO_BACKUP_PASSWORD to .env (read-only backup role)");
+  }
 } else {
   // On Linux the data folder belongs to the host user, so the app runs as that user; macOS maps ownership itself.
   const linux = process.platform === "linux" && process.getuid && process.getgid;
