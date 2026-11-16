@@ -20,10 +20,13 @@ export interface MixDeps {
   audioRoot: string;
 }
 
-async function run(mix: MixDeps, ctx: StageContext, command: "ffmpeg" | "ffprobe", args: string[], what = "The sound mix"): Promise<string[]> {
+/** Runs one ffmpeg or ffprobe command through the child runner and returns its output lines; a failure is a KnownFailure with a plain sentence. */
+export const runMediaTool = (mix: MixDeps, ctx: StageContext, command: "ffmpeg" | "ffprobe", args: string[], what: string, timeoutMs = 600_000): Promise<string[]> => run(mix, ctx, command, args, what, timeoutMs);
+
+async function run(mix: MixDeps, ctx: StageContext, command: "ffmpeg" | "ffprobe", args: string[], what = "The sound mix", timeoutMs = 600_000): Promise<string[]> {
   const out: string[] = [];
   const r = await mix.runChild({
-    command, args, cwd: ctx.attemptDir, cwdRoot: ctx.attemptDir, timeoutMs: 600_000, maxOutputBytes: 4 * 1024 * 1024,
+    command, args, cwd: ctx.attemptDir, cwdRoot: ctx.attemptDir, timeoutMs, maxOutputBytes: 4 * 1024 * 1024,
     signal: ctx.signal, onLine: (l) => out.push(l), stageRunId: ctx.claim.stageRunId,
   });
   if (r.code !== 0 || r.truncated || r.timedOut || r.aborted) throw new KnownFailure(`${what} failed (${command} ${r.timedOut ? "timed out" : r.aborted ? "was stopped" : "returned an error"}).`);

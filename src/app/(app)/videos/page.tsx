@@ -67,7 +67,8 @@ async function Owned({ searchParams }: { searchParams: PageProps<"/videos">["sea
           <h1 className="text-page-title font-semibold tracking-tight">Videos</h1>
           <p className="m-0 text-body text-muted">Every video you have started, newest first.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="secondary"><Link href="/videos/source">Cut clips from a video</Link></Button>
           <Button asChild variant="secondary"><Link href="/videos/new?format=long">New long video</Link></Button>
           <Button asChild><Link href="/videos/new?format=short">New short</Link></Button>
         </div>

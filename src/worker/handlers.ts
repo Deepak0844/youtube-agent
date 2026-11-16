@@ -46,6 +46,8 @@ import { thumbnailAttempt } from "./stages/thumbnail";
 import { replyDraftsAttempt } from "./stages/reply-drafts";
 import { seoAttempt } from "./stages/seo";
 import { clipsAttempt } from "./stages/clips";
+import { ingestSourceAttempt } from "./stages/ingest-source";
+import { createTranscriberFor } from "./stages/stt-for";
 import type { StageDeps } from "./stages/deps";
 import { dryRunDraftHandler } from "./stages/draft";
 import { generateAttempt } from "./stages/generate";
@@ -256,6 +258,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     thumbnail: refuseDryRunVideos(pool, withAttempt(fin, thumbnailAttempt(deps))),
     derive: refuseDryRunVideos(pool, withAttempt(fin, deriveAttempt(deps))),
     clips: refuseDryRunVideos(pool, withAttempt(fin, clipsAttempt(deps))), // on demand: free, local; nothing is published or approved
+    ingest_source: refuseDryRunVideos(pool, withAttempt(fin, ingestSourceAttempt(deps, { transcriber: createTranscriberFor(pool, () => loadKeyring()) }))), // on demand: an uploaded video becomes a clip source (free, local)
     shots: refuseDryRunVideos(pool, withAttempt(fin, shotsAttempt(deps))),
     // Only AI videos buy anything in production (the clips of the approved cost plan); every other kind has no paid generation yet.
     generate: refuseDryRunVideos(pool, async (ctx) => {

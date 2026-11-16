@@ -49,6 +49,6 @@ export function proxy(request: NextRequest): NextResponse {
 // handlers there must call assertSameOrigin/assertAllowedHost themselves.
 export const config = {
   matcher: [
-    "/((?!api/uploads(?:/|$)|api/media(?:/|$)|api/webhooks(?:/|$)|api/events(?:/|$)|api/oauth(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon\\.ico$).*)",
+    "/((?!api/uploads(?:/|$)|api/clip-sources(?:/|$)|api/media(?:/|$)|api/webhooks(?:/|$)|api/events(?:/|$)|api/oauth(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon\\.ico$).*)",
   ],
 };

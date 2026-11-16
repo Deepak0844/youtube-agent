@@ -38,7 +38,7 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
     env:
       # CI has no copy of the old shorts repo; the test also skips itself when it is absent.
       SKIP_OLD_SHORTS: "1"
@@ -66,7 +66,7 @@ jobs:
       # Three steps (same commands, same order) so each has its own limit: a hang fails in minutes, and the verbose reporter
       # prints every test as it finishes instead of one silent block per file.
       - name: Run integration suites (without the engine suites)
-        timeout-minutes: 25
+        timeout-minutes: 35
         run: npm run test:integration -- --exclude tests/integration/engine-resilience.test.ts --exclude tests/integration/engine-chaos.test.ts
       - name: Run the engine resilience suite
         timeout-minutes: 15

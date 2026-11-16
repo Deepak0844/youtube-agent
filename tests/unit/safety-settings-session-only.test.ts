@@ -108,6 +108,7 @@ describe("no code path in src writes a safety setting as anything but a session"
       "src/server/db/comments.ts": ["getSetting"],
       "src/server/db/targets.ts": ["pauseDraftingForTargets"],
       "src/worker/stages/voice-for.ts": ["getSetting"],
+      "src/worker/stages/stt-for.ts": ["getSetting"], // reads the VoiceStudio address (read only), same as narration
       "src/server/llm/default-deps.ts": ["getSetting"],
     });
     for (const names of Object.values(SETTINGS_IMPORT_ALLOW)) expect(names).not.toContain("setSetting");

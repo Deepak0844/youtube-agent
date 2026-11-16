@@ -50,6 +50,7 @@ export const SETTINGS_IMPORT_ALLOW: ImportAllow = {
   // Reads uploads.kill_switch and comments.dry_run for the reply post checks and the Engagement banner; never writes.
   "src/server/db/comments.ts": ["getSetting"],
   "src/worker/stages/voice-for.ts": ["getSetting"],
+  "src/worker/stages/stt-for.ts": ["getSetting"], // reads the VoiceStudio address (read only), same as narration
   "src/server/llm/default-deps.ts": ["getSetting"],
 };
 
