@@ -11,6 +11,7 @@ import { renderTsx, renderTsxStills, type TsxRendererDeps } from "@/server/provi
 import { probeVideo } from "@/server/render/probe";
 import { RENDER_IMAGE } from "@/server/render/runner";
 import { runChild } from "@/server/render/child";
+import { createDockerRunner } from "@/server/providers/renderer/container-runner";
 import { renderKitDir } from "@/worker/handlers";
 import { assertDockerUp } from "../support/infra";
 import { assertFfprobeAvailable } from "../support/tools";
@@ -31,7 +32,7 @@ beforeAll(async () => {
 }, 1_600_000);
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-const deps: TsxRendererDeps = { kitDir: renderKitDir(), runChild: (spec) => runChild(spec), probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
+const deps: TsxRendererDeps = { runner: createDockerRunner({ kitDir: renderKitDir(), runChild: (spec) => runChild(spec) }), runChild: (spec) => runChild(spec), probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
 const ctx = (name: string): StageContext => {
   const attemptDir = path.join(root, name);
   rmSync(attemptDir, { recursive: true, force: true });

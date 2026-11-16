@@ -10,11 +10,11 @@ import type { StageContext } from "@/server/core/stage-handler";
 import { checkTsx, echo, isStaticName, tsxDuration, tsxMetaFor, type TsxOrientation } from "@/server/core/tsx-check";
 import { checkPreflight, preflightFrames, reviewStillFrames, type RgbFrame } from "@/server/core/tsx-preflight";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
-import { daemonLimits, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
-import { ASSET_EXT, realDir, runRenderContainer } from "./remotion-container";
-import { mountable, NAME_PREFIX } from "@/server/render/render-job";
+import { RENDER_IMAGE } from "@/server/render/runner";
+import { mountable, NAME_PREFIX, renderConfig, renderLimits, TSX_SANDBOX } from "@/server/render/render-job";
 import { copyRegular } from "@/server/storage/regular-file";
-import { TSX_SANDBOX, tsxRenderPlan } from "@/server/render/render-job";
+import type { ContainerRunner } from "./container-runner";
+import { ASSET_EXT, realDir } from "./remotion-container";
 
 // SECURITY CONTROL (ADR 0009): renders ONE model-written Remotion TSX file. Fails closed at every step and returns a typed
 // error (for slice 3's retry loop) instead of throwing; only a cancelled stage throws.
@@ -88,16 +88,12 @@ export interface ReviewShot {
 }
 
 export interface TsxRendererDeps {
-  /** Dev override: absolute, symlink-free path of remotion/kit, mounted read-only over the kit baked into the image. */
-  kitDir?: string;
-  /** Host-side path of a folder under the storage root (worker in a container). Default: as is. */
-  hostPath?: (p: string) => string;
+  /** Runs the render container (docker here, or the render service). */
+  runner: ContainerRunner;
+  /** For the host's own small helpers (the frame converter), never for docker. */
   runChild(spec: ChildSpec): Promise<ChildResult>;
   probe(file: string, signal: AbortSignal): Promise<ProbeResult>;
-  hostLimits?: () => Promise<HostLimits>;
-  image?: () => Promise<{ ref: string; pinned: boolean }>;
   workerId?: string;
-  sweepDelayMs?: number;
   /** Test hook. Default: typeCheckInThread. */
   typeCheck?: (source: string, timeoutMs: number) => Promise<{ ok: boolean; problems: string[] }>;
 }
@@ -200,13 +196,8 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
   await cleanup();
   try {
     // 3. Stage.
-    let kitDir: string | undefined;
     const publicDir = path.join(inDir, "public");
     try {
-      if (deps.kitDir !== undefined) { // dev override only; production renders use the kit baked into the image
-        kitDir = mountable(deps.kitDir);
-        await realDir(kitDir, "kit");
-      }
       await mkdir(publicDir, { recursive: true, mode: 0o755 });
       await chmod(inDir, 0o755);
       await chmod(publicDir, 0o755);
@@ -228,23 +219,23 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       return failure("infra", e instanceof Error ? e.message : "The render folders are not usable.");
     }
 
-    // 4. Plan: the same sandbox for the stills and the video.
-    const host = await (deps.hostLimits ?? daemonLimits)();
-    const image = deps.image ? await deps.image() : { ref: RENDER_IMAGE, pinned: false };
-    if (!image.pinned) ctx.log(`render: image not pinned (could not resolve its id); running the tag ${image.ref}`);
+    // 4. Run: the same sandbox for the stills and the video.
+    let imageRef = RENDER_IMAGE;
     const runId = ctx.claim.stageRunId.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 36);
     const runOnce = async (mode: "stills" | "video"): Promise<TsxRenderResult | null> => {
       const name = `${NAME_PREFIX}${runId}-tsx-${randomBytes(4).toString("hex")}`;
-      let plan;
+      const kind = mode === "stills" ? "tsx-stills" : "tsx-video";
+      let limits;
       try {
-        plan = tsxRenderPlan({ name, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, hostPath: deps.hostPath, config: ctx.config.render, mode });
+        limits = renderLimits(kind, renderConfig(ctx.config.render));
       } catch {
         return failure("infra", "The render settings are not usable for a TSX render.");
       }
-      const { r, tail } = await runRenderContainer(deps, ctx, { name, args: plan.args, timeoutMs: plan.timeoutMs, maxOutputBytes: plan.maxOutputBytes });
+      const { r, tail, image } = await deps.runner.run(ctx, { kind, name, inDir, outDir, config: renderConfig(ctx.config.render), ...(deps.workerId !== undefined && { worker: deps.workerId }) });
+      imageRef = image;
       if (r.aborted) throw aborted();
       const what = mode === "stills" ? "The preview render" : "The TSX render";
-      if (r.timedOut) return failure("timeout", `${what} took longer than its ${Math.round(plan.timeoutMs / 1000)} s limit and was stopped.`);
+      if (r.timedOut) return failure("timeout", `${what} took longer than its ${Math.round(limits.timeoutMs / 1000)} s limit and was stopped.`);
       if (r.truncated) return failure("render", `${what} printed too much output and was stopped.`);
       const lines = tail.filter((l) => !/^\s*(>|\||\d+\s*\|)/.test(l)).slice(-4);
       if (r.code !== 0) return failure("render", `${what} failed (exit ${r.code ?? r.signal}).`, lines);
@@ -267,7 +258,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       } catch {
         return failure("render", "The preview frames were not drawn.");
       }
-      return { ok: true, outPath: "", image: image.ref, stills: names };
+      return { ok: true, outPath: "", image: imageRef, stills: names };
     }
     const stills: RgbFrame[] = [];
     const shots: ReviewShot[] = [];
@@ -307,7 +298,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
     await Promise.all(stillList.map((f) => rm(path.join(outDir, `still-${f}.png`), { force: true })));
     await rm(path.join(outDir, "out.mp4"), { force: true });
 
-    if (input.preflightOnly) return { ok: true, outPath: "", image: image.ref, stills: kept };
+    if (input.preflightOnly) return { ok: true, outPath: "", image: imageRef, stills: kept };
 
     // 6. The video.
     const videoRun = await runOnce("video");
@@ -330,7 +321,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
     if (p.width !== SIZE.width || p.height !== SIZE.height) return failure("output", `The render is ${p.width}x${p.height}, expected ${SIZE.width}x${SIZE.height}.`);
     if (!(p.durationS > 0)) return failure("output", "The rendered video is empty.");
     if (Math.abs(p.durationS - wantS) > 1) return failure("output", `The video is ${p.durationS.toFixed(1)} s but meta says ${wantS.toFixed(1)} s.`);
-    return { ok: true, outPath, image: image.ref, stills: kept };
+    return { ok: true, outPath, image: imageRef, stills: kept };
   } finally {
     await cleanup();
   }

@@ -19,6 +19,7 @@ import type { TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 import { buildEngineTools } from "@/server/engine/tools-factory";
 import { resolveRenderImage } from "@/server/providers/renderer/remotion-container";
 import { storageRoot } from "@/server/storage/paths";
+import { createDockerRunner } from "@/server/providers/renderer/container-runner";
 import { renderKitDir } from "@/worker/handlers";
 import { GOOD_SCENE } from "../tests/fixtures/tsx-good-scene";
 
@@ -31,7 +32,7 @@ async function main(): Promise<void> {
   const ac = new AbortController();
   const ctx = { stage: { name: "tsx_author", videoId: video.id }, claim: { stageRunId: "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91", fence: 1, workerId: "smoke" }, config, signal: ac.signal, attemptDir, log: (l: string) => console.log(`  [render] ${l}`) } as unknown as StageContext;
   const image = resolveRenderImage();
-  const tsxDeps: TsxRendererDeps = { kitDir: renderKitDir(), runChild: (spec) => runChild(spec), image: () => image, workerId: "smoke", probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
+  const tsxDeps: TsxRendererDeps = { runner: createDockerRunner({ kitDir: renderKitDir(), runChild: (spec) => runChild(spec), image: () => image }), runChild: (spec) => runChild(spec), workerId: "smoke", probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
   const omAt = process.argv.indexOf("--openmontage");
   const omTopic = omAt > 0 ? (process.argv[omAt + 1] ?? "Why we need Docker") : null;
   let workDir = "";

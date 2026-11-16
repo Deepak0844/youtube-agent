@@ -3,12 +3,11 @@ import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isTsxStyleId } from "../../../../remotion/kit/tsxlib/styledata";
 import type { StageContext } from "@/server/core/stage-handler";
-import { daemonLimits, RENDER_IMAGE } from "@/server/render/runner";
-import { realDir, runRenderContainer } from "./remotion-container";
-import { mountable, NAME_PREFIX, renderArgs } from "@/server/render/render-job";
+import { realDir } from "./remotion-container";
+import { mountable, NAME_PREFIX, renderConfig, renderLimits } from "@/server/render/render-job";
 import { copyRegular } from "@/server/storage/regular-file";
 import { stagePublicAssets, type TsxRendererDeps } from "./tsx-render";
-import { TSX_EXTRA_FLAGS, TSX_SANDBOX } from "@/server/render/render-job";
+import { TSX_SANDBOX } from "@/server/render/render-job";
 
 // Clip Factory CF2b. Draws the app's captions over a finished 1080x1920 clip (made by core/clip-cut.ts) in the locked render
 // container (render-entry.mjs --clip). The composition is fixed code from the read-only kit: NO model-written code runs here, so
@@ -47,12 +46,7 @@ export async function renderClip(deps: TsxRendererDeps, ctx: StageContext, input
   await cleanup();
   try {
     const publicDir = path.join(inDir, "public");
-    let kitDir: string | undefined;
     try {
-      if (deps.kitDir !== undefined) { // dev override only; production renders use the kit baked into the image
-        kitDir = mountable(deps.kitDir);
-        await realDir(kitDir, "kit");
-      }
       await mkdir(publicDir, { recursive: true, mode: 0o755 });
       await chmod(inDir, 0o755);
       await chmod(publicDir, 0o755);
@@ -71,18 +65,11 @@ export async function renderClip(deps: TsxRendererDeps, ctx: StageContext, input
       return fail(e instanceof Error ? e.message : "The render folders are not usable.");
     }
 
-    const host = await (deps.hostLimits ?? daemonLimits)();
-    const image = deps.image ? await deps.image() : { ref: RENDER_IMAGE, pinned: false };
-    if (!image.pinned) ctx.log(`render: image not pinned (could not resolve its id); running the tag ${image.ref}`);
     const c = ctx.config.render;
     for (const v of [c.timeoutS, c.cpus, c.memoryMb, c.pids]) if (!Number.isFinite(v) || v <= 0) return fail("The render settings are not usable for a clip render.");
     const name = `${NAME_PREFIX}${ctx.claim.stageRunId.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 36)}-clip-${randomBytes(4).toString("hex")}`;
-    const args = renderArgs({
-      name, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, hostPath: deps.hostPath,
-      limits: { cpus: c.cpus, memoryMb: c.memoryMb, pids: c.pids }, extra: TSX_EXTRA_FLAGS, entry: ["/in", "/out/out.mp4", "--clip"],
-    });
-    const timeoutMs = Math.floor(c.timeoutS) * 1000;
-    const { r, tail } = await runRenderContainer(deps, ctx, { name, args, timeoutMs, maxOutputBytes: TSX_SANDBOX.maxOutputBytes });
+    const timeoutMs = renderLimits("clip", renderConfig(c)).timeoutMs;
+    const { r, tail, image } = await deps.runner.run(ctx, { kind: "clip", name, inDir, outDir, config: renderConfig(c), ...(deps.workerId !== undefined && { worker: deps.workerId }) });
     if (r.aborted) throw aborted();
     if (r.timedOut) return fail(`The clip render took longer than its ${Math.round(timeoutMs / 1000)} s limit and was stopped.`);
     if (r.truncated) return fail("The clip render printed too much output and was stopped.");
@@ -105,7 +92,7 @@ export async function renderClip(deps: TsxRendererDeps, ctx: StageContext, input
     if (p.width !== 1080 || p.height !== 1920) return fail(`The clip render is ${p.width}x${p.height}, expected 1080x1920.`);
     if (!(p.durationS > 0)) return fail("The rendered clip is empty.");
     if (Math.abs(p.durationS - frames / FPS) > 1) return fail(`The clip is ${p.durationS.toFixed(1)} s but was cut to ${(frames / FPS).toFixed(1)} s.`);
-    return { ok: true, outPath, image: image.ref };
+    return { ok: true, outPath, image };
   } finally {
     await cleanup();
   }

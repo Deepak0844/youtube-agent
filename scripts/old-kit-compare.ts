@@ -12,6 +12,7 @@ import type { StageContext } from "@/server/core/stage-handler";
 import { renderTsxStills, type TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 import { probeVideo } from "@/server/render/probe";
 import { runChild } from "@/server/render/child";
+import { createDockerRunner } from "@/server/providers/renderer/container-runner";
 import { renderKitDir } from "@/worker/handlers";
 
 const run = promisify(execFile);
@@ -24,7 +25,7 @@ const SHORTS: Array<{ name: string; frames: number[]; oldVideo?: string }> = [
 
 async function main(): Promise<void> {
   const root = realpathSync(await mkdtemp(path.join(tmpdir(), "old-kit-compare-")));
-  const deps: TsxRendererDeps = { kitDir: renderKitDir(), runChild: (spec) => runChild(spec), probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
+  const deps: TsxRendererDeps = { runner: createDockerRunner({ kitDir: renderKitDir(), runChild: (spec) => runChild(spec) }), runChild: (spec) => runChild(spec), probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
   try {
     for (const s of SHORTS) {
       const attemptDir = path.join(root, s.name);
