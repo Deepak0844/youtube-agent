@@ -1,8 +1,14 @@
+# Build context for every infra/Dockerfile.* (the context is the repo root). Keep what they COPY: remotion/kit, infra/, package*.json, src/.
 node_modules
 .next
-.git
-.superpowers
-docs
-test-results
-playwright-report
+.data
 .env*
+docs
+graphify-out
+playwright-report
+test-results
+.git
+.claude
+.superpowers
+.scratch*
+*.tsbuildinfo

@@ -11,6 +11,13 @@ describe("package.json scripts", () => {
     expect(calls.length).toBeGreaterThan(0);
     for (const c of calls) expect(c).toContain("-H 127.0.0.1");
   });
+  it("start:container binds all interfaces and is the only script that does", () => {
+    expect(scripts["start:container"]).toBe("next start -H 0.0.0.0");
+    for (const [name, cmd] of Object.entries(scripts)) if (name !== "start:container") expect(cmd).not.toContain("0.0.0.0");
+  });
+  it("worker:container runs the worker without an env file", () => {
+    expect(scripts["worker:container"]).toBe("tsx src/worker/index.ts");
+  });
   it("auth_purge_script_exists", () => {
     expect(scripts["auth:purge"]).toBe("tsx scripts/auth-purge.ts");
   });
