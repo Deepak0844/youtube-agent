@@ -14,7 +14,7 @@ import type { JobCheckers } from "@/server/providers/media-types";
 import { DRY_RUN_NOTES } from "@/lib/dry-run";
 import { advanceVideo, cancelVideo, createVideo, readNextAction, type EnqueueOnly } from "@/server/db/pipeline";
 import { approvePublish, requeueUpload } from "@/server/db/publish";
-import { dryRunRefusal } from "@/worker/stages/guard";
+import { dryRunRefusal } from "@/server/db/dry-run-guard";
 import type { UploadQueue } from "@/server/queue/job-queue";
 
 // What the /queue buttons do, minus the framework: the caller (actions.ts) has already run requireOwner() and passes the

@@ -3,7 +3,7 @@ import { createPool } from "@/server/db/pool";
 import { advanceAll } from "@/server/db/pipeline";
 import { autoSeoSweep } from "@/server/db/seo";
 import { approvalReaders } from "@/server/db/approval-readers";
-import { dryRunRefusal } from "./stages/guard";
+import { dryRunRefusal } from "@/server/db/dry-run-guard";
 import type { ChildRegistry } from "@/server/render/child";
 import { defaultDryRunDeps, dryRunHandlers, productionHandlers, workerHooksFor, type StageHandlers } from "./handlers";
 import { loadKeyring } from "@/server/db/master-key";

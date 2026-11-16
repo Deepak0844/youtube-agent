@@ -32,7 +32,7 @@ import { createFakeVoice } from "@/server/providers/voice/fake";
 import { attemptDir } from "@/server/storage/paths";
 import { sweepLostAttempts } from "@/server/storage/store";
 import { assertProviderName } from "@/worker/stages/attempt";
-import { dryRunRefusal } from "@/worker/stages/guard";
+import { dryRunRefusal } from "@/server/db/dry-run-guard";
 import { approvePublish } from "@/server/db/publish";
 import { hashStoredFile } from "@/server/storage/hash-file";
 import { promoteAttempt } from "@/server/storage/store";
