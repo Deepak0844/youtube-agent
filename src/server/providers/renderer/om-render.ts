@@ -3,10 +3,11 @@ import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { StageContext } from "@/server/core/stage-handler";
 import { daemonLimits, RENDER_IMAGE } from "@/server/render/runner";
-import { ASSET_EXT, AUDIO_EXT, mountable, NAME_PREFIX, realDir, runRenderContainer } from "./remotion-container";
+import { ASSET_EXT, AUDIO_EXT, realDir, runRenderContainer } from "./remotion-container";
+import { mountable, NAME_PREFIX } from "@/server/render/render-job";
 import { copyRegular } from "@/server/storage/regular-file";
 import { stagePublicAssets, type TsxRendererDeps } from "./tsx-render";
-import { TSX_SANDBOX, tsxRenderPlan } from "./tsx-sandbox";
+import { TSX_SANDBOX, tsxRenderPlan } from "@/server/render/render-job";
 
 // SECURITY CONTROL (ADR 0009): draws an OpenMontage scene list (cuts, overlays, captions, audio: plain JSON, no code) with
 // OpenMontage's own Explainer composition (remotion/kit/om, AGPL-3.0, copied plus patches) in the same locked container and

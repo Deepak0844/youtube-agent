@@ -7,7 +7,7 @@ import { OM_LIBS } from "@/server/core/om-names";
 // bundled or rendered. It works on the TypeScript AST, not on regexes over the code. It is deliberately strict: an
 // allow-list of imports, no network/DOM/timer/clock APIs, no dynamic code, bounded loops, safe JSX only.
 // It is NOT the security boundary: JavaScript is too dynamic for a static check to be complete (a value built at run time
-// can still reach a lookup). The boundary is the render container (tsx-sandbox.ts: no network, read-only, non-root, short
+// can still reach a lookup). The boundary is the render container (render/render-job.ts: no network, read-only, non-root, short
 // timeout); preflight frames (tsx-preflight.ts) catch blank or frozen output. Pure, never throws, linear in input size;
 // the input is capped before parsing. Every problem reads "rule: what is wrong; what to write instead" in at most 120
 // characters (plus the line prefix): it goes back to the model as retry feedback.

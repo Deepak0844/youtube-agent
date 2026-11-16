@@ -11,9 +11,10 @@ import { checkTsx, echo, isStaticName, tsxDuration, tsxMetaFor, type TsxOrientat
 import { checkPreflight, preflightFrames, reviewStillFrames, type RgbFrame } from "@/server/core/tsx-preflight";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { daemonLimits, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
-import { ASSET_EXT, mountable, NAME_PREFIX, realDir, runRenderContainer } from "./remotion-container";
+import { ASSET_EXT, realDir, runRenderContainer } from "./remotion-container";
+import { mountable, NAME_PREFIX } from "@/server/render/render-job";
 import { copyRegular } from "@/server/storage/regular-file";
-import { TSX_SANDBOX, tsxRenderPlan } from "./tsx-sandbox";
+import { TSX_SANDBOX, tsxRenderPlan } from "@/server/render/render-job";
 
 // SECURITY CONTROL (ADR 0009): renders ONE model-written Remotion TSX file. Fails closed at every step and returns a typed
 // error (for slice 3's retry loop) instead of throwing; only a cancelled stage throws.
@@ -21,7 +22,7 @@ import { TSX_SANDBOX, tsxRenderPlan } from "./tsx-sandbox";
 //  2. Type-check with the TypeScript API in a worker thread of this process (tsx-typecheck.mjs): only the allowed module
 //     typings, no Node types, a timeout and a heap cap. Never in the container.
 //  3. Stage a fresh per-job folder: video.tsx, props.json, meta.json (the length from the checked file) and public/ with
-//     copies of exactly the named files. Mounted read-only at /in of the TSX sandbox (tsx-sandbox.ts: the kit's locks plus
+//     copies of exactly the named files. Mounted read-only at /in of the TSX sandbox (render/render-job.ts: the kit's locks plus
 //     tighter limits); render-entry.mjs bundles only that file (tsx-index.ts imports nothing of the kit).
 //  4. Preflight: frames 0, middle and last as PNG stills under the SAME plan and timeout, copied out without following
 //     symlinks, decoded in a child process (still-child.mjs) and checked (tsx-preflight.ts). The full render runs only

@@ -4,10 +4,11 @@ import path from "node:path";
 import { isTsxStyleId } from "../../../../remotion/kit/tsxlib/styledata";
 import type { StageContext } from "@/server/core/stage-handler";
 import { daemonLimits, RENDER_IMAGE } from "@/server/render/runner";
-import { mountable, NAME_PREFIX, realDir, renderArgs, runRenderContainer } from "./remotion-container";
+import { realDir, runRenderContainer } from "./remotion-container";
+import { mountable, NAME_PREFIX, renderArgs } from "@/server/render/render-job";
 import { copyRegular } from "@/server/storage/regular-file";
 import { stagePublicAssets, type TsxRendererDeps } from "./tsx-render";
-import { TSX_EXTRA_FLAGS, TSX_SANDBOX } from "./tsx-sandbox";
+import { TSX_EXTRA_FLAGS, TSX_SANDBOX } from "@/server/render/render-job";
 
 // Clip Factory CF2b. Draws the app's captions over a finished 1080x1920 clip (made by core/clip-cut.ts) in the locked render
 // container (render-entry.mjs --clip). The composition is fixed code from the read-only kit: NO model-written code runs here, so
