@@ -78,6 +78,18 @@ describe("clip captions through the locked renderer", () => {
     expect(lower).toBeGreaterThan(300);
   }, 600_000);
 
+  it("renders a 25 s full-resolution, detailed clip without the container being killed for memory (a real clip did exit 137)", async () => {
+    // A 6 s black clip never showed it; a real 24 s clip of an engine video was killed at the 4 GB limit before the render-entry limits.
+    const big = path.join(root, "big.mp4");
+    const g = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1080x1920:rate=30:duration=25", "-f", "lavfi", "-i", "sine=frequency=300:duration=25", "-shortest", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", big]);
+    expect(g.status).toBe(0);
+    const r = await renderClip(deps, ctx("big"), { clipFile: big, captions: words, style: null, durationS: 25, outFile: "big-out.mp4" });
+    if (!r.ok) throw new Error(r.message);
+    const p = await probeVideo(r.outPath, new AbortController().signal, { storageRoot: root });
+    expect([p.width, p.height]).toEqual([1080, 1920]);
+    expect(Math.abs(p.durationS - 25)).toBeLessThan(0.7);
+  }, 600_000);
+
   it("refuses in plain words: a missing clip file, a clip over 180 s, a bad output name", async () => {
     const c = ctx("bad");
     expect(await renderClip(deps, c, { clipFile: path.join(root, "nope.mp4"), captions: [], durationS: 3, outFile: "x.mp4" })).toMatchObject({ ok: false });

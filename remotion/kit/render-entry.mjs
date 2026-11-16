@@ -160,6 +160,8 @@ if (mode === "--thumbnail") {
     browserExecutable,
     chromiumOptions,
     overwrite: true,
+    // A clip decodes a real 1080x1920 video: keep the memory down (parallel tabs and the decoded-frame cache) or the container is killed at its limit (exit 137).
+    ...(clip ? { concurrency: 2, offthreadVideoCacheSizeInBytes: 256 * 1024 * 1024 } : {}),
     ...(frameRange ? { frameRange, muted: chunk.muted } : {}),
     onProgress: ({ progress }) => {
       const p = Math.floor(progress * 100);
