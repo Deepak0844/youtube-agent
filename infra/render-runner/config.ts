@@ -19,7 +19,7 @@ export function loadRunnerConfig(env: Record<string, string | undefined>): { ok:
   };
   const token = need("RENDER_RUNNER_TOKEN");
   if (token === null) return { ok: false, error: "RENDER_RUNNER_TOKEN is not set." };
-  if (token.length < 16) return { ok: false, error: "RENDER_RUNNER_TOKEN is too short (at least 16 characters)." };
+  if (!/^[A-Za-z0-9_-]{16,}$/.test(token)) return { ok: false, error: "RENDER_RUNNER_TOKEN may only use letters, digits, - and _ (at least 16 characters)." };
   const image = need("RENDER_IMAGE");
   if (image === null) return { ok: false, error: "RENDER_IMAGE is not set." };
   try {

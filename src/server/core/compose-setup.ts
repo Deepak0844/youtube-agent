@@ -5,7 +5,7 @@ export const INIT_STEPS = ["db:bootstrap", "db:migrate", "audio:import", "owner:
 export type InitStep = (typeof INIT_STEPS)[number];
 
 const DB_PASSWORDS = ["POSTGRES_PASSWORD", "YTSTUDIO_OWNER_PASSWORD", "YTSTUDIO_APP_PASSWORD", "YTSTUDIO_BACKUP_PASSWORD"] as const;
-const REQUIRED = [...DB_PASSWORDS, "RENDER_RUNNER_TOKEN", "VAULT_MASTER_KEY"] as const;
+const REQUIRED = [...DB_PASSWORDS, "VAULT_MASTER_KEY"] as const; // the render service token is checked by the service itself: init never receives it
 
 /** The reason to refuse before anything starts: the first secret that is missing or still the example placeholder. */
 export function refuseInit(env: Record<string, string | undefined>): string | null {
@@ -18,7 +18,6 @@ export function refuseInit(env: Record<string, string | undefined>): string | nu
   for (const key of DB_PASSWORDS) {
     if (!/^[A-Za-z0-9._~-]+$/.test(env[key]!)) return `${key} in .env may only use letters, digits and - _ . ~ (it goes into a database address).`;
   }
-  if (!/^[A-Za-z0-9_-]{16,}$/.test(env.RENDER_RUNNER_TOKEN!)) return "RENDER_RUNNER_TOKEN in .env may only use letters, digits, - and _ (at least 16 characters).";
   return null;
 }
 
