@@ -102,3 +102,31 @@ describe("cachedToolChecks", () => {
     expect(runs).toBe(2);
   });
 });
+
+describe("tool checks through the render service", () => {
+  const runner = (info: () => Promise<unknown>) => ({ info }) as unknown as import("@/server/providers/renderer/container-runner").ContainerRunner;
+  const exec = async (bin: string) => Buffer.from(bin === "ffmpeg" ? "ffmpeg version 7.1.1 Copyright" : "ffprobe version 7.1.1 Copyright");
+  const row = (cs: Awaited<ReturnType<typeof runToolChecks>>, id: string) => cs.find((c) => c.id === id)!;
+  it("Docker and the render image come from the service, and the local docker is never asked", async () => {
+    let dockerAsked = false;
+    const ex = async (bin: string) => { if (bin === "docker") dockerAsked = true; return exec(bin); };
+    const cs = await runToolChecks({ exec: ex as never, runner: runner(async () => ({ host: { cpus: 2, memoryMb: 3000 }, image: { ref: "sha256:" + "a".repeat(64), pinned: true }, dockerVersion: "27.3.1" })) });
+    expect(row(cs, "docker")).toMatchObject({ ok: true, detail: "version 27.3.1 (through the render service)" });
+    expect(row(cs, "render_image")).toMatchObject({ ok: true, detail: "Built and ready." });
+    expect(row(cs, "ffmpeg").ok).toBe(true);
+    expect(dockerAsked).toBe(false);
+  });
+  it("an image the service cannot resolve is not built; a service without docker is not running docker", async () => {
+    const unpinned = await runToolChecks({ exec: exec as never, runner: runner(async () => ({ host: { cpus: 2, memoryMb: 3000 }, image: { ref: "ytstudio-render:dev", pinned: false }, dockerVersion: "27.3.1" })) });
+    expect(row(unpinned, "render_image").ok).toBe(false);
+    const noDocker = await runToolChecks({ exec: exec as never, runner: runner(async () => ({ host: { cpus: 2, memoryMb: 3000 }, image: { ref: "x", pinned: false }, dockerVersion: null })) });
+    expect(row(noDocker, "docker")).toMatchObject({ ok: false, detail: "The render service cannot reach Docker." });
+    expect(row(noDocker, "render_image").ok).toBe(false);
+  });
+  it("a service that is down is a visible failure with a fix that names the service", async () => {
+    const cs = await runToolChecks({ exec: exec as never, runner: runner(async () => { throw new Error("not reachable"); }) });
+    expect(row(cs, "docker")).toMatchObject({ ok: false, detail: "The render service is not reachable." });
+    expect(row(cs, "docker").fix).toMatch(/render-runner/);
+    expect(row(cs, "render_image").ok).toBe(false);
+  });
+});

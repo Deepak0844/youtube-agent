@@ -7,7 +7,7 @@ import { buildEngineConfig } from "@/server/core/engine-config";
 import { KnownFailure } from "@/server/core/paid-call";
 import { StageAbort, type StageContext } from "@/server/core/stage-handler";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
-import { createDockerRunner } from "@/server/providers/renderer/container-runner";
+import { createDockerRunner, type ContainerRunner } from "@/server/providers/renderer/container-runner";
 import { createContainerRenderer, parseProgress, sweepRenderContainers, type ContainerRendererDeps } from "@/server/providers/renderer/remotion-container";
 import { copyRegular } from "@/server/storage/regular-file";
 
@@ -319,22 +319,36 @@ describe("container renderer", () => {
 });
 
 describe("boot sweep of render containers", () => {
-  it("removes only containers of dead workers; a live sibling's render is left alone; never throws", async () => {
-    const seen: string[][] = [];
-    const exec = async (a: string[]) => (seen.push(a), a[0] === "ps" ? "abcdef123456 dead-1\nbad id\n0123456789ab live-1\nfedcba654321 dead-1\n111111111111 \n" : "");
+  const fakeRunner = (rows: Array<{ name: string; worker: string }>, over: { listFails?: boolean; failRemove?: string } = {}) => {
+    const removed: string[] = [];
+    const runner = {
+      list: async () => { if (over.listFails) throw new Error("no docker"); return rows; },
+      remove: async (n: string) => { if (n === over.failRemove) throw new Error("gone"); removed.push(n); },
+    } as unknown as ContainerRunner;
+    return { runner, removed };
+  };
+  const rows = [
+    { name: "ytstudio-render-a-1111", worker: "dead-1" }, { name: "ytstudio-render-b-2222", worker: "live-1" },
+    { name: "ytstudio-render-c-3333", worker: "dead-1" }, { name: "ytstudio-render-d-4444", worker: "unknown" },
+  ];
+  it("removes only containers of dead workers; a live sibling's render is left alone", async () => {
+    const { runner, removed } = fakeRunner(rows);
     const asked: string[] = [];
     const isAlive = async (id: string) => (asked.push(id), id === "live-1");
-    expect(await sweepRenderContainers({ exec, isAlive })).toBe(2);
-    expect(seen).toEqual([
-      ["ps", "-a", "--filter", "label=ytstudio.job", "--filter", "label=ytstudio.worker", "--filter", "name=ytstudio-render-", "--format", '{{.ID}} {{.Label "ytstudio.worker"}}'],
-      ["rm", "-f", "abcdef123456", "fedcba654321"],
-    ]);
-    expect(asked.sort()).toEqual(["dead-1", "live-1"]);
-    // a liveness check that fails counts as alive: nothing is removed
-    seen.length = 0;
-    expect(await sweepRenderContainers({ exec, isAlive: async () => { throw new Error("db down"); } })).toBe(0);
-    expect(seen.filter((x) => x[0] === "rm")).toHaveLength(0);
-    expect(await sweepRenderContainers({ exec: async () => { throw new Error("no docker"); }, isAlive })).toBe(0);
+    expect(await sweepRenderContainers({ runner, isAlive })).toBe(3); // dead-1 twice, and "unknown" (no worker id: nobody can vouch for it)
+    expect(removed.sort()).toEqual(["ytstudio-render-a-1111", "ytstudio-render-c-3333", "ytstudio-render-d-4444"]);
+    expect(asked.sort()).toEqual(["dead-1", "live-1", "unknown"]);
+  });
+  it("a liveness check that fails counts as alive: nothing is removed", async () => {
+    const { runner, removed } = fakeRunner(rows);
+    expect(await sweepRenderContainers({ runner, isAlive: async () => { throw new Error("db down"); } })).toBe(0);
+    expect(removed).toEqual([]);
+  });
+  it("never throws: a failing list is zero, and one failing removal does not stop the others", async () => {
+    expect(await sweepRenderContainers({ runner: fakeRunner([], { listFails: true }).runner, isAlive: async () => false })).toBe(0);
+    const { runner, removed } = fakeRunner(rows, { failRemove: "ytstudio-render-a-1111" });
+    expect(await sweepRenderContainers({ runner, isAlive: async () => false })).toBe(3);
+    expect(removed.sort()).toEqual(["ytstudio-render-b-2222", "ytstudio-render-c-3333", "ytstudio-render-d-4444"]);
   });
 });
 

@@ -28,6 +28,7 @@ import { throttledRetention } from "@/server/db/retention";
 import { runNextCutout } from "@/server/db/cutout-runner";
 import { saveWorkerToolChecks } from "@/server/db/worker-tool-checks";
 import { runChild } from "@/server/render/child";
+import { selectRunner, usesRenderService } from "@/server/providers/renderer/container-runner";
 import { runToolChecks } from "@/server/render/tool-check";
 import { storageRoot } from "@/server/storage/paths";
 import { startRuntime, type WorkerOptions } from "./runtime";
@@ -61,7 +62,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         handlers = dryRunHandlers(defaultDryRunDeps(pool));
       }
       // Report Docker and the render image so a web app without Docker access (compose) can show them. Never blocks or throws.
-      const reportTools = () => void runToolChecks().then((c) => saveWorkerToolChecks(pool, c)).catch(() => undefined);
+      const toolOpts = usesRenderService(process.env) ? { runner: selectRunner(process.env, { storageRoot: storageRoot(), docker: { runChild: (spec) => runChild(spec) } }) } : {}; // compose: ask the render service, not a local docker
+      const reportTools = () => void runToolChecks(toolOpts).then((c) => saveWorkerToolChecks(pool, c)).catch(() => undefined);
       reportTools();
       setInterval(reportTools, 10 * 60_000).unref();
       const hooks = workerHooksFor(pool, process.env);
