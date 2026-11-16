@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import type { StageContext } from "@/server/core/stage-handler";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { JOB_LABEL, daemonLimits, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
-import { mountable, NAME_PREFIX, renderPlan, WORKER_ID, WORKER_LABEL, type RenderRequest } from "@/server/render/render-job";
+import { mountable, NAME_PREFIX, parseRenderContainers, RENDER_NAME, renderPlan, WORKER_LABEL, type RenderRequest } from "@/server/render/render-job";
 import { realDir, runRenderContainer } from "./remotion-container";
 
 // The one way the worker runs a render. A renderer describes a job (render-job.ts); a ContainerRunner runs it. Two adapters:
@@ -36,7 +36,6 @@ export interface ContainerRunner {
 
 const execDocker = promisify(execFile);
 const dockerEnv = () => ({ PATH: process.env.PATH ?? "/usr/bin:/bin" }) as unknown as NodeJS.ProcessEnv; // PATH only: no DOCKER_HOST/CONFIG, no secrets
-const RENDER_NAME = new RegExp(`^${NAME_PREFIX}[A-Za-z0-9_.-]{1,60}$`);
 
 export interface DockerRunnerDeps {
   runChild(spec: ChildSpec): Promise<ChildResult>;
@@ -74,18 +73,11 @@ export function createDockerRunner(deps: DockerRunnerDeps): ContainerRunner {
     },
 
     async list() {
-      let out: string;
       try {
-        out = await exec(["ps", "-a", "--filter", `label=${JOB_LABEL}`, "--filter", `label=${WORKER_LABEL}`, "--filter", `name=${NAME_PREFIX}`, "--format", `{{.Names}} {{.Label "${WORKER_LABEL}"}}`]);
+        return parseRenderContainers(await exec(["ps", "-a", "--filter", `label=${JOB_LABEL}`, "--filter", `label=${WORKER_LABEL}`, "--filter", `name=${NAME_PREFIX}`, "--format", `{{.Names}} {{.Label "${WORKER_LABEL}"}}`]));
       } catch {
         return []; // a clean-up must never throw
       }
-      const rows: Array<{ name: string; worker: string }> = [];
-      for (const line of out.split("\n")) {
-        const [name, worker] = line.trim().split(" ");
-        if (name && RENDER_NAME.test(name) && worker && WORKER_ID.test(worker) && line.trim().split(" ").length === 2) rows.push({ name, worker });
-      }
-      return rows;
     },
 
     async remove(name) {
