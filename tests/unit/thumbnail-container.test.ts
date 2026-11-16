@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildEngineConfig } from "@/server/core/engine-config";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
+import { createDockerRunner } from "@/server/providers/renderer/container-runner";
 import { createThumbnailRenderer, pngProblem } from "@/server/providers/renderer/thumbnail-container";
 import type { ChildSpec } from "@/server/render/child";
 
@@ -38,15 +39,18 @@ const pngHead = (w: number, h: number) => {
 
 const renderer = (behave?: (outDir: string, inDir: string) => void | { code: number }) =>
   createThumbnailRenderer({
-    root, kitDir: path.resolve("remotion/kit"), hostLimits: async () => ({ cpus: 2, memoryMb: 3000 }), image: async () => ({ ref: IMAGE_ID, pinned: true }), workerId: "w-1", sweepDelayMs: 1,
-    runChild: async (spec) => {
-      calls.push(spec);
-      if (spec.args[0] !== "run") return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
-      const outDir = mountOf(spec.args, "/out");
-      const inDir = mountOf(spec.args, "/in");
-      const r = behave ? behave(outDir, inDir) : (writeFileSync(path.join(outDir, "out.png"), pngHead(1280, 720)), undefined);
-      return { code: r?.code ?? 0, signal: null, truncated: false, timedOut: false, aborted: false };
-    },
+    root, workerId: "w-1",
+    runner: createDockerRunner({
+      kitDir: path.resolve("remotion/kit"), hostLimits: async () => ({ cpus: 2, memoryMb: 3000 }), image: async () => ({ ref: IMAGE_ID, pinned: true }), sweepDelayMs: 1,
+      runChild: async (spec) => {
+        calls.push(spec);
+        if (spec.args[0] !== "run") return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
+        const outDir = mountOf(spec.args, "/out");
+        const inDir = mountOf(spec.args, "/in");
+        const r = behave ? behave(outDir, inDir) : (writeFileSync(path.join(outDir, "out.png"), pngHead(1280, 720)), undefined);
+        return { code: r?.code ?? 0, signal: null, truncated: false, timedOut: false, aborted: false };
+      },
+    }),
   });
 const runs = () => calls.filter((c) => c.args[0] === "run");
 

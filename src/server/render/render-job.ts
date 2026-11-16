@@ -168,6 +168,9 @@ export const renderJobSchema = z
   });
 export type RenderJob = z.infer<typeof renderJobSchema>;
 
+/** What a renderer hands the ContainerRunner: the same job with its two folders as the absolute paths it already holds. The service adapter turns them into the relative folders of a RenderJob. */
+export type RenderRequest = Omit<RenderJob, "inDir" | "outDir"> & { inDir: string; outDir: string };
+
 export interface RenderPlan {
   args: string[];
   timeoutMs: number;
@@ -179,7 +182,7 @@ export interface RenderPlan {
  * limits, the image reference, the absolute folders it resolved, and (native dev only) a kit folder and a host-path rewrite. The job
  * never names an image, a mount, or a flag: nothing it contains can change what runs.
  */
-export function renderPlan(job: RenderJob, at: { host: HostLimits; imageRef: string; inDir: string; outDir: string; kitDir?: string; hostPath?: (p: string) => string }): RenderPlan {
+export function renderPlan(job: Omit<RenderJob, "inDir" | "outDir">, at: { host: HostLimits; imageRef: string; inDir: string; outDir: string; kitDir?: string; hostPath?: (p: string) => string }): RenderPlan {
   const common = { name: job.name, host: at.host, imageRef: at.imageRef, workerId: job.worker, inDir: at.inDir, outDir: at.outDir, kitDir: at.kitDir, hostPath: at.hostPath };
   const c = job.config;
   const limits = { cpus: c.cpus, memoryMb: c.memoryMb, pids: c.pids };
@@ -209,3 +212,6 @@ export function renderPlan(job: RenderJob, at: { host: HostLimits; imageRef: str
     }
   }
 }
+
+/** The four engine settings a job carries, picked by name (the wire schema is strict: nothing else may ride along). */
+export const renderConfig = (c: { timeoutS: number; cpus: number; memoryMb: number; pids: number }) => ({ timeoutS: c.timeoutS, cpus: c.cpus, memoryMb: c.memoryMb, pids: c.pids });

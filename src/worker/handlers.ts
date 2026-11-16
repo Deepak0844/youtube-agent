@@ -26,6 +26,7 @@ import { DEFAULT_CUTOUT } from "@/server/core/cutout";
 import { makeCutout } from "@/server/db/cutouts";
 import { createFakeImage } from "@/server/providers/media/fake";
 import { createFakeRenderer } from "@/server/providers/renderer/fake";
+import { createDockerRunner } from "@/server/providers/renderer/container-runner";
 import { createContainerRenderer, resolveRenderImage, sweepRenderContainers } from "@/server/providers/renderer/remotion-container";
 import { createThumbnailRenderer } from "@/server/providers/renderer/thumbnail-container";
 import { createTsxRenderer } from "@/server/providers/renderer/tsx-render";
@@ -157,6 +158,7 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
   const hostMap = hostPathMapFrom(process.env, root); // set only when the worker runs in a container (HOST_STORAGE_ROOT)
   const hostPath = (p: string) => hostPathFor(p, hostMap);
   const image = resolveRenderImage(); // once, at worker boot: renders run the image by its sha256 id (tag fallback is logged)
+  const runner = createDockerRunner({ runChild: run, hostPath, image: () => image }); // the kit, thumbnail and clip renderers run their containers through this
   const tsxDeps: TsxRendererDeps = { hostPath, runChild: run, image: () => image, workerId: env.workerId, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
   return {
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
@@ -176,10 +178,10 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
     tsx: createTsxRenderer(tsxDeps),
     tsxDeps,
     // The long-video thumbnail card: the same container locks, mode --thumbnail (thumbnail-container.ts).
-    thumbnails: createThumbnailRenderer({ root, hostPath, runChild: run, image: () => image, workerId: env.workerId }),
+    thumbnails: createThumbnailRenderer({ root, runner, workerId: env.workerId }),
     // Render runs in the locked-down render container (remotion-container.ts). The scene kit is baked into the render image.
     renderer: createContainerRenderer({
-      root, hostPath, runChild: run, image: () => image, workerId: env.workerId,
+      root, runner, workerId: env.workerId,
       assetFile: async (id) => { const a = await getAsset(pool, id); return a && !a.deletedAt && (a.kind === "image" || a.kind === "video") ? a.storageRef : null; },
       probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }),
     }),

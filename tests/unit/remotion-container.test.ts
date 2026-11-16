@@ -7,6 +7,7 @@ import { buildEngineConfig } from "@/server/core/engine-config";
 import { KnownFailure } from "@/server/core/paid-call";
 import { StageAbort, type StageContext } from "@/server/core/stage-handler";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
+import { createDockerRunner } from "@/server/providers/renderer/container-runner";
 import { createContainerRenderer, parseProgress, sweepRenderContainers, type ContainerRendererDeps } from "@/server/providers/renderer/remotion-container";
 import { copyRegular } from "@/server/storage/regular-file";
 
@@ -46,30 +47,34 @@ function ctx(): StageContext {
 const mountOf = (args: string[], dst: string) => args[args.findIndex((a, i) => args[i - 1] === "-v" && a.split(":")[1] === dst)];
 
 /** Fake docker: `run` writes out.mp4 into the mounted out dir (or does `behave`), `rm -f` succeeds. */
-function deps(behave?: (spec: ChildSpec, outDir: string) => Promise<ChildResult> | ChildResult, over: Partial<ContainerRendererDeps> = {}): ContainerRendererDeps {
+function deps(behave?: (spec: ChildSpec, outDir: string) => Promise<ChildResult> | ChildResult, over: Partial<ContainerRendererDeps> & { kitDir?: string; hostPath?: (p: string) => string; image?: () => Promise<{ ref: string; pinned: boolean }> } = {}): ContainerRendererDeps {
+  const { kitDir, hostPath, image, ...renderer } = over;
   return {
     root,
-    kitDir: path.resolve("remotion/kit"),
-    hostLimits: async () => ({ cpus: 2, memoryMb: 3000 }),
     assetFile: async (id) => (id === "img1" ? "assets/j1/main.png" : null),
     probe: async () => ({ width: 1080, height: 1920, durationS: 2, hasAudio: true, meanDb: -20, peakDb: -1, loopDiff: 1 }),
-    image: async () => ({ ref: IMAGE_ID, pinned: true }),
     workerId: "w-1",
-    sweepDelayMs: 1,
-    runChild: async (spec) => {
-      calls.push(spec);
-      if (spec.args[0] === "ps") {
-        spec.onLine?.("abcdef123456");
-        spec.onLine?.("not-an-id; rm -rf /");
-      }
-      if (spec.args[0] !== "run") return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
-      const outDir = mountOf(spec.args, "/out")!.split(":")[0]!;
-      if (behave) return behave(spec, outDir);
-      for (const l of ["PROGRESS 0", "PROGRESS 55", "PROGRESS 100"]) spec.onLine?.(l);
-      copyFileSync(GOOD, path.join(outDir, "out.mp4"));
-      return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
-    },
-    ...over,
+    runner: createDockerRunner({
+      kitDir: "kitDir" in over ? kitDir : path.resolve("remotion/kit"),
+      hostLimits: async () => ({ cpus: 2, memoryMb: 3000 }),
+      image: image ?? (async () => ({ ref: IMAGE_ID, pinned: true })),
+      ...(hostPath && { hostPath }),
+      sweepDelayMs: 1,
+      runChild: async (spec) => {
+        calls.push(spec);
+        if (spec.args[0] === "ps") {
+          spec.onLine?.("abcdef123456");
+          spec.onLine?.("not-an-id; rm -rf /");
+        }
+        if (spec.args[0] !== "run") return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
+        const outDir = mountOf(spec.args, "/out")!.split(":")[0]!;
+        if (behave) return behave(spec, outDir);
+        for (const l of ["PROGRESS 0", "PROGRESS 55", "PROGRESS 100"]) spec.onLine?.(l);
+        copyFileSync(GOOD, path.join(outDir, "out.mp4"));
+        return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
+      },
+    }),
+    ...renderer,
   };
 }
 
