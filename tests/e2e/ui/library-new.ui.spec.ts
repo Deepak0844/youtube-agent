@@ -117,4 +117,16 @@ test("New long video opens the form on Long", async ({ page }) => {
   await page.goto("/videos/new?format=long");
   await expect(page.getByLabel("Format")).toHaveValue("long");
   await expect(page.getByTestId("long-length")).toBeVisible();
+  await expect(page.getByRole("radio", { name: /Custom animation/ })).toBeEnabled(); // the one type a long video can be
+  await expect(page.getByRole("radio", { name: /Custom animation/ })).toBeChecked();
+  await expect(page.getByLabel("Longest")).toHaveAttribute("max", /^[3-9]$/); // six chapters of 90 s: never over 9 minutes
+});
+
+test("picking Long while AI video is chosen goes back to Custom animation and hides the AI options", async ({ page }) => {
+  await page.goto("/videos/new");
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("radio", { name: /AI video/ }).check();
+  await page.getByLabel("Format").selectOption("long");
+  await expect(page.getByRole("radio", { name: /Custom animation/ })).toBeChecked();
+  await expect(page.getByTestId("ai-options")).toHaveCount(0);
 });

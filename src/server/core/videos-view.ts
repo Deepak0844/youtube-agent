@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CAPTION_STYLE_IDS, STYLE_IDS } from "../../../remotion/kit/presets";
 import { LANGS } from "@/server/core/lang";
+import { LONG_DEFAULT_RANGE } from "@/server/core/long-form";
 
 // Pure: the Library's filters and words, and the New form's input. No IO.
 
@@ -89,12 +90,14 @@ export type NewVideoInput = Omit<z.infer<typeof newVideoSchema>, "minMinutes" | 
 export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
   const g = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
   const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "tsx", format: g("format") ?? "short", notes: g("notes") || undefined, character: g("character") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined, minMinutes: g("minMinutes") || undefined, maxMinutes: g("maxMinutes") || undefined });
-  // Long videos were made with the scene kit only, which is removed.
-  if (r.success && r.data.format === "long") return { ok: false, message: "Long videos are not available right now (they were made with the Scene kit, which is removed). Pick Short." };
+  // A long video is a Custom animation only (one code scene per chapter). The other types stay Shorts.
+  if (r.success && r.data.format === "long" && r.data.kind !== "tsx") return { ok: false, message: "Only a Custom animation can be a long video. Pick that type, or pick Short." };
   // Custom animation (tsx) burns its own captions: the caption picker does not apply. The style does (it shapes the TSX look).
   if (r.success && r.data.kind === "tsx") {
-    const { topic, language, kind, format, notes, style } = r.data;
-    return { ok: true, value: { topic, language, kind, format, notes, ...(style ? { style } : {}) } };
+    const { topic, language, kind, format, notes, style, minMinutes, maxMinutes } = r.data;
+    // A long video carries its length range (blank = the default). Whether the range is allowed is checked where the settings are read (startVideo).
+    const length = format === "long" ? { lengthMin: minMinutes ?? LONG_DEFAULT_RANGE.min, lengthMax: maxMinutes ?? LONG_DEFAULT_RANGE.max } : {};
+    return { ok: true, value: { topic, language, kind, format, notes, ...(style ? { style } : {}), ...length } };
   }
   // An AI video: a look and captions, and optionally a locked character. Shorts only.
   if (r.success && r.data.kind === "ai") {
