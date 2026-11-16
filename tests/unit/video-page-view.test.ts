@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scriptSuggestion, estimateLabel, forceRerunOffered, voiceChanged, fmtDuration, headline, median, parseFindings, parseTab, rerunCostNote, rerunOffered, reframedFormats, stageViews, TABS, type RunFact } from "@/server/core/video-page-view";
+import { longDrawNote, scriptSuggestion, estimateLabel, forceRerunOffered, voiceChanged, fmtDuration, headline, median, parseFindings, parseTab, rerunCostNote, rerunOffered, reframedFormats, stageViews, TABS, type RunFact } from "@/server/core/video-page-view";
 
 const run = (o: Partial<RunFact>): RunFact => ({ status: "succeeded", createdAt: 0, updatedAt: 0, retryNumber: 0, error: null, percent: null, ...o });
 const plan = ["draft", "build", "tts", "render"] as const;
@@ -143,5 +143,20 @@ describe("scriptSuggestion", () => {
   });
   it("drops_anything_unusable", () => {
     for (const bad of [null, undefined, "x", {}, { suggestedKind: "evil", suggestedReason: "r" }, { suggestedKind: "tsx" }, { suggestedKind: "tsx", suggestedReason: "  " }, { suggestedKind: "__proto__", suggestedReason: "r" }]) expect(scriptSuggestion(bad)).toBeNull();
+  });
+});
+
+describe("longDrawNote", () => {
+  const beats = (ids: string[]) => ids.map((id) => ({ id }));
+  it("counts the chapters named in the beat ids and says the time and usage plainly", () => {
+    const note = longDrawNote(beats(["c1_b1", "c1_b2", "c2_b1", "c3_b1", "c4_b1", "c5_b1", "c5_b2"]));
+    expect(note).toContain("5 chapters");
+    expect(note).toContain("about 1.6 hours"); // 5 x 19 minutes
+    expect(note).toContain("\u20B91,850"); // 5 x 370
+    expect(note).toMatch(/Nothing is billed here/);
+  });
+  it("is null when no beat names a chapter", () => {
+    expect(longDrawNote(beats(["b1", "b2"]))).toBeNull();
+    expect(longDrawNote([])).toBeNull();
   });
 });

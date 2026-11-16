@@ -128,6 +128,19 @@ export function chapterMarksFromScenes(outline: Pick<Outline, "chapters">, scene
   return { marks: outline.chapters.map((c, i) => ({ title: c.title, startMs: i === 0 ? 0 : starts[i]! })), from: "scenes" };
 }
 
+/** The chapter starts of a code-scene long video: its chapters are saved with their frame counts (30 a second), so each starts where the one before ends. Null when the data is not that shape. */
+export function chapterMarksFromFrames(chapters: unknown, durationInFrames: unknown, fps = 30): { marks: ChapterMark[]; totalMs: number } | null {
+  if (!Array.isArray(chapters) || chapters.length === 0 || typeof durationInFrames !== "number" || !(durationInFrames > 0)) return null;
+  let at = 0;
+  const marks: ChapterMark[] = [];
+  for (const c of chapters) {
+    if (typeof c !== "object" || c === null || typeof (c as { title?: unknown }).title !== "string" || !Number.isInteger((c as { frames?: unknown }).frames) || (c as { frames: number }).frames <= 0) return null;
+    marks.push({ title: (c as { title: string }).title, startMs: Math.round((at / fps) * 1000) });
+    at += (c as { frames: number }).frames;
+  }
+  return at === durationInFrames ? { marks, totalMs: Math.round((at / fps) * 1000) } : null;
+}
+
 /** YouTube shows chapters only when the first starts at 0:00, there are at least 3, and each lasts at least 10 seconds. */
 export const MIN_YT_CHAPTER_S = 10;
 

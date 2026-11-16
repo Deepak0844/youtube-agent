@@ -1,7 +1,7 @@
 import type pg from "pg";
 import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
-import { chapterTimestampLines } from "@/server/core/long-form";
+import { chapterMarksFromFrames, chapterTimestampLines } from "@/server/core/long-form";
 import { defaultDetails, validateUploadDetails, type UploadDetails } from "@/server/core/upload-details";
 import { recordAudit } from "./audit";
 import { addContent, latestContent } from "./videos";
@@ -29,9 +29,15 @@ export async function loadChapterLines(db: pg.Pool, videoId: string): Promise<st
     [videoId],
   );
   const res = r.rows[0]?.result;
-  if (!isObj(res) || !Array.isArray(res.chapters) || typeof res.totalMs !== "number") return null;
-  const marks = res.chapters.filter((c): c is { title: string; startMs: number } => isObj(c) && typeof c.title === "string" && typeof c.startMs === "number");
-  return marks.length === res.chapters.length ? chapterTimestampLines(marks, res.totalMs) : null;
+  if (isObj(res) && Array.isArray(res.chapters) && typeof res.totalMs === "number") {
+    const marks = res.chapters.filter((c): c is { title: string; startMs: number } => isObj(c) && typeof c.title === "string" && typeof c.startMs === "number");
+    return marks.length === res.chapters.length ? chapterTimestampLines(marks, res.totalMs) : null;
+  }
+  // A code-scene long video has no render stage: its chapters are drawn one by one and the newest tsx content lists each chapter's frames.
+  const isLong = (await db.query("select 1 from videos where id = $1 and format = 'long' and kind = 'tsx'", [videoId])).rowCount;
+  const tsx = isLong ? (await latestContent(db, videoId, "tsx"))?.body : null;
+  const from = isObj(tsx) ? chapterMarksFromFrames(tsx.chapters, tsx.durationInFrames) : null;
+  return from ? chapterTimestampLines(from.marks, from.totalMs) : null;
 }
 
 export async function loadUploadDetails(db: pg.Pool, videoId: string): Promise<DetailsView | null> {
