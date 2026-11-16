@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { INIT_STEPS, refuseInit, stepOutcome } from "@/server/core/compose-setup";
 
-const good = { POSTGRES_PASSWORD: "p".repeat(20), YTSTUDIO_OWNER_PASSWORD: "o".repeat(20), YTSTUDIO_APP_PASSWORD: "a".repeat(20), YTSTUDIO_BACKUP_PASSWORD: "b".repeat(20), RENDER_RUNNER_TOKEN: "r".repeat(32), VAULT_MASTER_KEY: "k".repeat(44) };
+const good = { POSTGRES_PASSWORD: "p".repeat(20), YTSTUDIO_OWNER_PASSWORD: "o".repeat(20), YTSTUDIO_APP_PASSWORD: "a".repeat(20), YTSTUDIO_BACKUP_PASSWORD: "b".repeat(20), VAULT_MASTER_KEY: "k".repeat(44) };
 
 describe("compose first-run setup", () => {
   it("accepts real secrets", () => expect(refuseInit(good)).toBeNull());
@@ -18,12 +18,8 @@ describe("compose first-run setup", () => {
     }
     expect(refuseInit({ ...good, YTSTUDIO_APP_PASSWORD: "Abc-123_x.y~z" })).toBeNull();
   });
-  it("needs a render service token of letters, digits, - and _ (at least 16), naming it otherwise", () => {
-    expect(refuseInit({ ...good, RENDER_RUNNER_TOKEN: undefined })).toBe("Set real passwords in .env: RENDER_RUNNER_TOKEN is missing.");
-    for (const bad of ["short", "has space in it 123456", "ünicode-token-1234567", "a/b/c-token-1234567"]) {
-      expect(refuseInit({ ...good, RENDER_RUNNER_TOKEN: bad }), bad).toBe("RENDER_RUNNER_TOKEN in .env may only use letters, digits, - and _ (at least 16 characters).");
-    }
-    expect(refuseInit({ ...good, RENDER_RUNNER_TOKEN: "Abc-123_xyz-4567_" })).toBeNull();
+  it("does not ask for the render service token: the init job never receives it (the service checks its own token)", () => {
+    expect(refuseInit({ ...good, RENDER_RUNNER_TOKEN: undefined })).toBeNull();
   });
   it("runs bootstrap, migrate, the sound library import, owner:create in that order", () => expect(INIT_STEPS).toEqual(["db:bootstrap", "db:migrate", "audio:import", "owner:create"]));
   it("an existing owner is a skip; any other owner:create failure is a fail", () => {

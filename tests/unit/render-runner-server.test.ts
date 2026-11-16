@@ -207,8 +207,8 @@ describe("loadRunnerConfig refuses to start without what it needs", () => {
       if (!r.ok) expect(r.error).toContain(key);
     }
   });
-  it("refuses a short token, a relative or unsafe host root, and a bad image reference", () => {
-    expect(loadRunnerConfig({ ...good, RENDER_RUNNER_TOKEN: "short" }).ok).toBe(false);
+  it("refuses a short token or one with odd characters, a relative or unsafe host root, and a bad image reference", () => {
+    for (const t of ["short", "has space in it 123456", "ünicode-token-1234567", "a/b/c-token-1234567"]) expect(loadRunnerConfig({ ...good, RENDER_RUNNER_TOKEN: t }).ok, t).toBe(false);
     for (const h of ["relative", "/srv/a:/etc", "/srv/a,ro"]) expect(loadRunnerConfig({ ...good, HOST_STORAGE_ROOT: h }).ok, h).toBe(false);
     for (const i of ["a b", "--rm", "x;y"]) expect(loadRunnerConfig({ ...good, RENDER_IMAGE: i }).ok, i).toBe(false);
   });
