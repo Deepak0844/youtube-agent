@@ -51,10 +51,12 @@ npm run compose:up
 │ init      one-time setup: database roles, migrations,          │
 │           sound library, owner setup link                      │
 │ web       the app (no Docker access)                           │
-│ worker    makes the videos; Claude Code inside                 │
+│ worker    makes the videos; Claude Code inside (no Docker)     │
+│ render-runner  the only one with the Docker socket; private    │
+│           network with the worker, no secrets                  │
 │ postgres · redis · searxng   (not reachable from outside)      │
 └──────┬─────────────────────────────────────────────────────────┘
-       │ Docker socket (worker only)
+       │ Docker socket (render-runner only)
        ▼
  render container per video: no network, read-only, deleted after
 ```
@@ -73,7 +75,7 @@ npm run compose:up
 - `.env` holds your database passwords and the vault key (mode 600). Keep it private; database passwords may only use letters, digits and `- _ . ~`.
 - After editing `remotion/kit`, run `npm run compose:up` again (the kit is built into the render image).
 
-**One trade-off to know:** the worker container can start containers on this machine (it needs that to run the locked-down render container for each video). Only the worker has this; the web app does not. Do not run this on a machine where that is not acceptable. Details: `docs/adr/0016-compose-and-docker-socket.md`.
+**One trade-off to know:** starting the render containers needs the machine's Docker socket, and a socket is a root-level handle on the machine. Only one small container has it: the `render-runner` service. It accepts a short description of a render job (never docker commands), checks it, and starts the locked-down render container itself; it holds no passwords, keys or logins and sits on a private network that only the worker shares. The worker and the web app have no Docker access at all. Details: `docs/adr/0017-render-service.md`.
 
 The native way (`npm run dev:all` below) still works and is unchanged.
 
