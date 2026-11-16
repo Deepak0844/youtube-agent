@@ -48,6 +48,7 @@
     "bakeoff:grid": "tsx scripts/bakeoff-grid.ts",
     "image:render": "docker build -f infra/Dockerfile.render -t ytstudio-render:dev .",
     "test:ui": "playwright test --project=ui-desktop --project=ui-phone",
+    "image:render-runner": "docker build -f infra/Dockerfile.render-runner -t ytstudio-render-runner:dev .",
     "image:egress-proxy": "docker build -f infra/Dockerfile.egress-proxy -t ytstudio-egress-proxy:dev ."
   },
   "dependencies": {
