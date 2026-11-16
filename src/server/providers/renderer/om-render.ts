@@ -2,12 +2,11 @@ import { randomBytes } from "node:crypto";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { StageContext } from "@/server/core/stage-handler";
-import { daemonLimits, RENDER_IMAGE } from "@/server/render/runner";
-import { ASSET_EXT, AUDIO_EXT, realDir, runRenderContainer } from "./remotion-container";
-import { mountable, NAME_PREFIX } from "@/server/render/render-job";
+import { ASSET_EXT, AUDIO_EXT, realDir } from "./remotion-container";
+import { mountable, NAME_PREFIX, renderConfig, renderLimits } from "@/server/render/render-job";
 import { copyRegular } from "@/server/storage/regular-file";
 import { stagePublicAssets, type TsxRendererDeps } from "./tsx-render";
-import { TSX_SANDBOX, tsxRenderPlan } from "@/server/render/render-job";
+import { TSX_SANDBOX } from "@/server/render/render-job";
 
 // SECURITY CONTROL (ADR 0009): draws an OpenMontage scene list (cuts, overlays, captions, audio: plain JSON, no code) with
 // OpenMontage's own Explainer composition (remotion/kit/om, AGPL-3.0, copied plus patches) in the same locked container and
@@ -114,12 +113,7 @@ export async function renderOm(deps: TsxRendererDeps, ctx: StageContext, input: 
   const cleanup = () => Promise.all([inDir, outDir].map((d) => rm(d, { recursive: true, force: true }))).catch(() => undefined);
   await cleanup();
   try {
-    let kitDir: string | undefined;
     try {
-      if (deps.kitDir !== undefined) { // dev override only; production renders use the kit baked into the image
-        kitDir = mountable(deps.kitDir);
-        await realDir(kitDir, "kit");
-      }
       await mkdir(publicDir, { recursive: true, mode: 0o755 });
       await chmod(inDir, 0o755);
       await chmod(publicDir, 0o755);
@@ -139,20 +133,17 @@ export async function renderOm(deps: TsxRendererDeps, ctx: StageContext, input: 
       return failure(e instanceof Error ? e.message : "The render folders are not usable.");
     }
 
-    const host = await (deps.hostLimits ?? daemonLimits)();
-    const image = deps.image ? await deps.image() : { ref: RENDER_IMAGE, pinned: false };
-    if (!image.pinned) ctx.log(`render: image not pinned (could not resolve its id); running the tag ${image.ref}`);
-    const mode = input.stills ? "om-stills" : "om-video";
+    const kind = input.stills ? "om-stills" : "om-video";
     const name = `${NAME_PREFIX}${ctx.claim.stageRunId.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 36)}-om-${randomBytes(4).toString("hex")}`;
-    let plan;
+    let limits;
     try {
-      plan = tsxRenderPlan({ name, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, hostPath: deps.hostPath, config: ctx.config.render, mode });
+      limits = renderLimits(kind, renderConfig(ctx.config.render));
     } catch {
       return failure("The render settings are not usable for an OpenMontage render.");
     }
-    const { r, tail } = await runRenderContainer(deps, ctx, { name, args: plan.args, timeoutMs: plan.timeoutMs, maxOutputBytes: plan.maxOutputBytes });
+    const { r, tail, image } = await deps.runner.run(ctx, { kind, name, inDir, outDir, config: renderConfig(ctx.config.render), ...(deps.workerId !== undefined && { worker: deps.workerId }) });
     if (r.aborted) throw aborted();
-    if (r.timedOut) return failure(`The OpenMontage render took longer than its ${Math.round(plan.timeoutMs / 1000)} s limit and was stopped.`);
+    if (r.timedOut) return failure(`The OpenMontage render took longer than its ${Math.round(limits.timeoutMs / 1000)} s limit and was stopped.`);
     if (r.truncated) return failure("The OpenMontage render printed too much output and was stopped.");
     if (r.code !== 0) return failure(`The OpenMontage render failed (exit ${r.code ?? r.signal}).`, tail.filter((l) => !/^\s*(>|\||\d+\s*\|)/.test(l)).slice(-4));
 
@@ -168,7 +159,7 @@ export async function renderOm(deps: TsxRendererDeps, ctx: StageContext, input: 
       } catch {
         return failure("The preview frames were not drawn.");
       }
-      return { ok: true, outPath: "", stills: names, image: image.ref };
+      return { ok: true, outPath: "", stills: names, image };
     }
     const outPath = path.join(ctx.attemptDir, input.outFile);
     await rm(outPath, { force: true });
@@ -186,7 +177,7 @@ export async function renderOm(deps: TsxRendererDeps, ctx: StageContext, input: 
     }
     if (p.width !== size.width || p.height !== size.height) return failure(`The render is ${p.width}x${p.height}, expected ${size.width}x${size.height}.`);
     if (Math.abs(p.durationS - frames / FPS) > 1) return failure(`The video is ${p.durationS.toFixed(1)} s, expected ${(frames / FPS).toFixed(1)} s.`);
-    return { ok: true, outPath, stills: [], image: image.ref };
+    return { ok: true, outPath, stills: [], image };
   } finally {
     await cleanup();
   }

@@ -159,7 +159,7 @@ export function productionStageDeps(pool: pg.Pool, env: { childRegistry?: ChildR
   const hostPath = (p: string) => hostPathFor(p, hostMap);
   const image = resolveRenderImage(); // once, at worker boot: renders run the image by its sha256 id (tag fallback is logged)
   const runner = createDockerRunner({ runChild: run, hostPath, image: () => image }); // the kit, thumbnail and clip renderers run their containers through this
-  const tsxDeps: TsxRendererDeps = { hostPath, runChild: run, image: () => image, workerId: env.workerId, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
+  const tsxDeps: TsxRendererDeps = { runner, runChild: run, workerId: env.workerId, probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
   return {
     db: pool, root, voiceFor: createVoiceFor(pool, () => loadKeyring()), align: whisperAligner(run),
     qaScan: scanVideo,

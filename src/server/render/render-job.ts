@@ -113,6 +113,11 @@ export const TSX_ENTRY = {
   "om-video": ["/in", "/out/out.mp4", "--om"],
 } as const;
 
+/** The wall-clock limit of a code-scene render: half the kit limit (at most 300 s), or the kit's own limit (at most 1800 s) for a whole OpenMontage video. */
+function tsxTimeoutS(mode: keyof typeof TSX_ENTRY, kitTimeoutS: number): number {
+  return mode === "om-video" ? Math.max(1, Math.min(TSX_SANDBOX.omVideoTimeoutS, Math.floor(kitTimeoutS))) : Math.max(1, Math.min(TSX_SANDBOX.timeoutS, Math.floor(kitTimeoutS / 2)));
+}
+
 /** The docker args and limits of one TSX render. Throws on unusable settings (never falls back to looser ones). */
 export function tsxRenderPlan(o: TsxRenderPlanInput): TsxRenderPlan {
   const { config: c, mode, ...rest } = o;
@@ -125,7 +130,7 @@ export function tsxRenderPlan(o: TsxRenderPlanInput): TsxRenderPlan {
     memoryMb: Math.min(c.memoryMb, TSX_SANDBOX.memoryMb),
     pids: Math.min(c.pids, TSX_SANDBOX.pids),
   };
-  const timeoutS = mode === "om-video" ? Math.max(1, Math.min(TSX_SANDBOX.omVideoTimeoutS, Math.floor(c.timeoutS))) : Math.max(1, Math.min(TSX_SANDBOX.timeoutS, Math.floor(c.timeoutS / 2)));
+  const timeoutS = tsxTimeoutS(mode, c.timeoutS);
   return {
     args: renderArgs({ ...rest, limits, extra: TSX_EXTRA_FLAGS, entry: TSX_ENTRY[mode] }),
     timeoutMs: timeoutS * 1000,
@@ -186,32 +191,42 @@ export function renderPlan(job: Omit<RenderJob, "inDir" | "outDir">, at: { host:
   const common = { name: job.name, host: at.host, imageRef: at.imageRef, workerId: job.worker, inDir: at.inDir, outDir: at.outDir, kitDir: at.kitDir, hostPath: at.hostPath };
   const c = job.config;
   const limits = { cpus: c.cpus, memoryMb: c.memoryMb, pids: c.pids };
+  const { timeoutMs, maxOutputBytes } = renderLimits(job.kind, c);
   switch (job.kind) {
     case "kit":
-      return { args: renderArgs({ ...common, limits }), timeoutMs: c.timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES };
+      return { args: renderArgs({ ...common, limits }), timeoutMs, maxOutputBytes };
     case "kit-landscape":
-      return {
-        args: renderArgs({ ...common, limits, entry: ["/in", "/out/out.mp4", "--landscape", ...(job.chunk ? [chunkArg(job.chunk), "--muted"] : [])] }),
-        timeoutMs: c.timeoutS * 1000,
-        maxOutputBytes: MAX_OUTPUT_BYTES,
-      };
+      return { args: renderArgs({ ...common, limits, entry: ["/in", "/out/out.mp4", "--landscape", ...(job.chunk ? [chunkArg(job.chunk), "--muted"] : [])] }), timeoutMs, maxOutputBytes };
     case "thumbnail":
-      return { args: renderArgs({ ...common, limits, entry: ["/in", "/out/out.png", "--thumbnail"] }), timeoutMs: Math.min(c.timeoutS, 300) * 1000, maxOutputBytes: 256 * 1024 };
-    case "clip": {
-      for (const v of [c.timeoutS, c.cpus, c.memoryMb, c.pids]) if (!Number.isFinite(v) || v <= 0) throw new Error("invalid render settings");
-      return {
-        args: renderArgs({ ...common, limits, extra: TSX_EXTRA_FLAGS, entry: ["/in", "/out/out.mp4", "--clip"] }),
-        timeoutMs: Math.floor(c.timeoutS) * 1000,
-        maxOutputBytes: TSX_SANDBOX.maxOutputBytes,
-      };
-    }
+      return { args: renderArgs({ ...common, limits, entry: ["/in", "/out/out.png", "--thumbnail"] }), timeoutMs, maxOutputBytes };
+    case "clip":
+      return { args: renderArgs({ ...common, limits, extra: TSX_EXTRA_FLAGS, entry: ["/in", "/out/out.mp4", "--clip"] }), timeoutMs, maxOutputBytes };
     default: {
       const mode = ({ "tsx-stills": "stills", "tsx-video": "video", "om-stills": "om-stills", "om-video": "om-video" } as const)[job.kind];
-      const p = tsxRenderPlan({ ...common, config: c, mode });
-      return { args: p.args, timeoutMs: p.timeoutMs, maxOutputBytes: p.maxOutputBytes };
+      return { args: tsxRenderPlan({ ...common, config: c, mode }).args, timeoutMs, maxOutputBytes };
     }
   }
 }
 
 /** The four engine settings a job carries, picked by name (the wire schema is strict: nothing else may ride along). */
 export const renderConfig = (c: { timeoutS: number; cpus: number; memoryMb: number; pids: number }) => ({ timeoutS: c.timeoutS, cpus: c.cpus, memoryMb: c.memoryMb, pids: c.pids });
+
+/**
+ * The wall-clock limit and output cap of a job, without building the command: the renderers quote the limit in their failure messages.
+ * Throws "invalid render settings" for the code-scene and clip kinds on a non-positive or non-finite setting, as tsxRenderPlan always did.
+ */
+export function renderLimits(kind: RenderKind, c: RenderJob["config"]): { timeoutMs: number; maxOutputBytes: number } {
+  switch (kind) {
+    case "kit":
+    case "kit-landscape":
+      return { timeoutMs: c.timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES };
+    case "thumbnail":
+      return { timeoutMs: Math.min(c.timeoutS, 300) * 1000, maxOutputBytes: 256 * 1024 };
+    default: {
+      for (const v of [c.timeoutS, c.cpus, c.memoryMb, c.pids]) if (!Number.isFinite(v) || v <= 0) throw new Error("invalid render settings");
+      if (kind === "clip") return { timeoutMs: Math.floor(c.timeoutS) * 1000, maxOutputBytes: TSX_SANDBOX.maxOutputBytes };
+      const mode = ({ "tsx-stills": "stills", "tsx-video": "video", "om-stills": "om-stills", "om-video": "om-video" } as const)[kind];
+      return { timeoutMs: tsxTimeoutS(mode, c.timeoutS) * 1000, maxOutputBytes: TSX_SANDBOX.maxOutputBytes };
+    }
+  }
+}

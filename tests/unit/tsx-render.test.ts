@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildEngineConfig } from "@/server/core/engine-config";
 import type { StageContext } from "@/server/core/stage-handler";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
+import { createDockerRunner } from "@/server/providers/renderer/container-runner";
 import { renderTsxStills, renderTsx, scrub, type TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 
 const GOOD_MP4 = path.resolve("tests/fixtures/video/good.mp4");
@@ -64,41 +65,42 @@ const frameBytes = (f: number) => {
 
 type Behave = { stills?: (outDir: string) => ChildResult; video?: (outDir: string) => ChildResult; decode?: (spec: ChildSpec) => ChildResult };
 function deps(behave: Behave = {}, over: Partial<TsxRendererDeps> = {}): TsxRendererDeps {
+  const fake = async (spec: ChildSpec): Promise<ChildResult> => {
+    calls.push(spec);
+    if (spec.command === process.execPath) {
+      if (behave.decode) return behave.decode(spec);
+      const [, png, raw] = spec.args;
+      const f = Number(/still-(\d+)\.png$/.exec(png!)![1]);
+      writeFileSync(raw!, frameBytes(f));
+      spec.onLine?.('{"ok":true}');
+      return OK;
+    }
+    if (spec.args[0] !== "run") return OK;
+    const inDir = mountOf(spec.args, "/in");
+    const outDir = mountOf(spec.args, "/out");
+    seen.video = readFileSync(path.join(inDir, "video.tsx"), "utf8");
+    seen.props = readFileSync(path.join(inDir, "props.json"), "utf8");
+    seen.meta = readFileSync(path.join(inDir, "meta.json"), "utf8");
+    seen.asset = existsSync(path.join(inDir, "public", "pics", "a.png"));
+    seen.entries.push(spec.args.slice(spec.args.indexOf("/opt/render/kit/render-entry.mjs")));
+    if (spec.args.at(-1) === "--tsx-stills") {
+      if (behave.stills) return behave.stills(outDir);
+      for (const f of [0, 44, 89]) writeFileSync(path.join(outDir, `still-${f}.png`), "png");
+      return OK;
+    }
+    if (behave.video) return behave.video(outDir);
+    copyFileSync(GOOD_MP4, path.join(outDir, "out.mp4"));
+    return OK;
+
+  };
   return {
-    kitDir: path.resolve("remotion/kit"),
-    hostLimits: async () => ({ cpus: 4, memoryMb: 8000 }),
-    image: async () => ({ ref: "sha256:" + "b".repeat(64), pinned: true }),
     workerId: "w-1",
-    sweepDelayMs: 1,
     typeCheck: async () => ({ ok: true, problems: [] }),
     probe: async () => ({ width: W, height: H, durationS: 3, hasAudio: false, meanDb: null, peakDb: null, loopDiff: 1 }),
-    runChild: async (spec) => {
-      calls.push(spec);
-      if (spec.command === process.execPath) {
-        if (behave.decode) return behave.decode(spec);
-        const [, png, raw] = spec.args;
-        const f = Number(/still-(\d+)\.png$/.exec(png!)![1]);
-        writeFileSync(raw!, frameBytes(f));
-        spec.onLine?.('{"ok":true}');
-        return OK;
-      }
-      if (spec.args[0] !== "run") return OK;
-      const inDir = mountOf(spec.args, "/in");
-      const outDir = mountOf(spec.args, "/out");
-      seen.video = readFileSync(path.join(inDir, "video.tsx"), "utf8");
-      seen.props = readFileSync(path.join(inDir, "props.json"), "utf8");
-      seen.meta = readFileSync(path.join(inDir, "meta.json"), "utf8");
-      seen.asset = existsSync(path.join(inDir, "public", "pics", "a.png"));
-      seen.entries.push(spec.args.slice(spec.args.indexOf("/opt/render/kit/render-entry.mjs")));
-      if (spec.args.at(-1) === "--tsx-stills") {
-        if (behave.stills) return behave.stills(outDir);
-        for (const f of [0, 44, 89]) writeFileSync(path.join(outDir, `still-${f}.png`), "png");
-        return OK;
-      }
-      if (behave.video) return behave.video(outDir);
-      copyFileSync(GOOD_MP4, path.join(outDir, "out.mp4"));
-      return OK;
-    },
+    runChild: fake,
+    runner: createDockerRunner({
+      kitDir: path.resolve("remotion/kit"), hostLimits: async () => ({ cpus: 4, memoryMb: 8000 }), image: async () => ({ ref: "sha256:" + "b".repeat(64), pinned: true }), sweepDelayMs: 1, runChild: over.runChild ?? fake,
+    }),
     ...over,
   };
 }

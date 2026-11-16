@@ -17,6 +17,7 @@ import { omDurationFrames, renderOm } from "@/server/providers/renderer/om-rende
 import type { TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 import { probeVideo } from "@/server/render/probe";
 import { runChild } from "@/server/render/child";
+import { createDockerRunner } from "@/server/providers/renderer/container-runner";
 import { renderKitDir } from "@/worker/handlers";
 
 const run = promisify(execFile);
@@ -39,7 +40,7 @@ async function main(): Promise<void> {
   const n = omDurationFrames(props);
   const frames = [...new Set([0, 15, 45, Math.floor(n * 0.25), Math.floor(n * 0.5), Math.floor(n * 0.7), Math.floor(n * 0.9), n - 1])].sort((a, b) => a - b);
   const root = realpathSync(await mkdtemp(path.join(tmpdir(), "om-compare-")));
-  const deps: TsxRendererDeps = { kitDir: renderKitDir(), runChild: (spec) => runChild(spec), probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
+  const deps: TsxRendererDeps = { runner: createDockerRunner({ kitDir: renderKitDir(), runChild: (spec) => runChild(spec) }), runChild: (spec) => runChild(spec), probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
   const ctx = { stage: { name: "om", videoId: "v" }, claim: { stageRunId: "om-compare", fence: 1, workerId: "c" }, config: buildEngineConfig(new Map()), signal: new AbortController().signal, attemptDir: root, log: () => undefined } as unknown as StageContext;
   try {
     const r = await renderOm(deps, ctx, { props, orientation, outFile: "x.mp4", stills: frames });

@@ -15,6 +15,7 @@ import { omDurationFrames, renderOm } from "@/server/providers/renderer/om-rende
 import type { TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 import { probeVideo } from "@/server/render/probe";
 import { runChild } from "@/server/render/child";
+import { createDockerRunner } from "@/server/providers/renderer/container-runner";
 import { renderKitDir } from "@/worker/handlers";
 
 const VALIDATE = `
@@ -55,7 +56,7 @@ async function main(): Promise<void> {
   const assetsDir = path.join(dir, "assets");
   const assets = existsSync(assetsDir) ? Object.fromEntries(readdirSync(assetsDir).map((f) => [f, path.join(assetsDir, f)])) : {};
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "om-phase-b-")));
-  const deps: TsxRendererDeps = { kitDir: renderKitDir(), runChild: (spec) => runChild(spec), probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
+  const deps: TsxRendererDeps = { runner: createDockerRunner({ kitDir: renderKitDir(), runChild: (spec) => runChild(spec) }), runChild: (spec) => runChild(spec), probe: (file, signal) => probeVideo(file, signal, { storageRoot: root }) };
   const ctx = { stage: { name: "om", videoId: "v" }, claim: { stageRunId: "om-phase-b", fence: 1, workerId: "c" }, config: buildEngineConfig(new Map()), signal: new AbortController().signal, attemptDir: root, log: () => undefined } as unknown as StageContext;
   try {
     const r = await renderOm(deps, ctx, { props, orientation: "portrait", outFile: "x.mp4", stills: frames, assets });
