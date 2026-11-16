@@ -110,3 +110,9 @@ export function claudeCodeStageFit(): { label: string; ok: boolean; why: string 
     return { label: s.label, ok: fit.ok, why: fit.ok ? fit.warnings.join(" ") : `needs ${fit.missing.join(", ")}` };
   });
 }
+
+/** What the Connect Claude panel should say after the last Claude Code call. `turn_on`: logged in, but the text stages are still on API keys. */
+export function claudeConnectState(last: { result: string } | null, switchOn: boolean): "not_connected" | "turn_on" | "on" {
+  if (last?.result !== "ready") return "not_connected";
+  return switchOn ? "on" : "turn_on";
+}

@@ -10,7 +10,7 @@ import {
   microToUsd,
   type ModelRow,
 } from "@/server/core/llm-catalog";
-import { claudeCodeStageFit } from "@/server/core/ai-source";
+import { claudeCodeStageFit, claudeConnectState } from "@/server/core/ai-source";
 import { getClaudeCodeStatus, type ClaudeCodeStatus } from "@/server/db/claude-code";
 import { getPool } from "@/server/db/pool";
 import { listDefaults, listModels, listRoutes, localServices, modelsForStage, type CatalogDefault } from "@/server/db/llm-models";
@@ -114,9 +114,9 @@ const WHEN = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: 
 
 /** The switch and the Claude Code status box. Everything here is read from the database: nothing is started on page load. */
 // Reads the web process's login (claude-login.ts) at request time; this page is already dynamic (requireOwner above).
-function ConnectClaude() {
+function ConnectClaude({ cc }: { cc: ClaudeCodeStatus }) {
   const s = claudeLogin().state();
-  return <ConnectClaudeForm waitingUrl={s.phase === "waiting_code" ? s.url : null} />;
+  return <ConnectClaudeForm waitingUrl={s.phase === "waiting_code" ? s.url : null} connect={claudeConnectState(cc.last, cc.switchOn)} />;
 }
 
 function ClaudeCodeSection({ cc }: { cc: ClaudeCodeStatus }) {
@@ -178,7 +178,7 @@ function ClaudeCodeSection({ cc }: { cc: ClaudeCodeStatus }) {
             </p>
           ) : null}
           <p className="text-small text-warning">Log in to claude with your claude.ai subscription, not a Console API key: a key would bill the API while the books here say $0.</p>
-          <ConnectClaude />
+          <ConnectClaude cc={cc} />
           <TestClaudeCodeButton disabled={!cc.enabled} />
         </div>
       </div>
