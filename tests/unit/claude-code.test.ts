@@ -7,7 +7,7 @@ import { NotProcessedError, classifyError } from "@/server/core/error-class";
 import { KnownFailure, runPaidCall, type PaidCallPorts } from "@/server/core/paid-call";
 import { priceCardFor, modelInputSchema, type ModelRow } from "@/server/core/llm-catalog";
 import { createAiSdkStep, createImagesStep } from "@/server/llm/ai-sdk-step";
-import { MAX_IMAGES, callTimeoutMs, createClaudeCodeModel, resultLine, type ClaudeCodeDeps, type SpawnClaude } from "@/server/llm/claude-code";
+import { MAX_IMAGES, callTimeoutMs, createClaudeCodeModel, isLoginProblem, resultLine, type ClaudeCodeDeps, type SpawnClaude } from "@/server/llm/claude-code";
 
 // Every test fakes the process: the real `claude` binary is never started here.
 
@@ -488,5 +488,12 @@ describe("call timeout", () => {
     expect(callTimeoutMs(8000)).toBe(440_000);
     expect(callTimeoutMs(1_000_000)).toBe(600_000);
     expect(callTimeoutMs(-5)).toBe(120_000);
+  });
+});
+
+describe("isLoginProblem", () => {
+  it("an unrefreshable OAuth session is a login problem", () => {
+    expect(isLoginProblem("Failed to authenticate: OAuth session expired and could not be refreshed")).toBe(true);
+    expect(isLoginProblem("OAuth session expired")).toBe(false); // only the CLI's full sentence
   });
 });

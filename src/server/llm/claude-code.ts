@@ -242,7 +242,7 @@ async function runOnce(deps: ClaudeCodeDeps, args: string[], input: string, sign
 
 // Anchored to the CLI's own error sentences (the start of its `result` field, or of stderr): a stray "429" in text is not a refusal.
 export const LIMIT = /^(?:Claude AI usage limit reached|You(?:'|\u2019)ve (?:hit|reached) your [\w\s-]*limit|API Error: 429\b|API Error: Rate limit)/i;
-const LOGIN = /^(?:Invalid API key|Not logged in|Please run \/login|OAuth token (?:has expired|has been revoked)|API Error: 401\b)/i;
+const LOGIN = /^(?:Invalid API key|Not logged in|Failed to authenticate: OAuth session expired|Please run \/login|OAuth token (?:has expired|has been revoked)|API Error: 401\b)/i;
 /** The text of an ERROR reply that means "log in again". "not authenticated" may sit anywhere in it (the CLI wraps it in other words). Only ever called on an is_error reply, never on an answer. */
 export const isLoginProblem = (said: string): boolean => LOGIN.test(said.trimStart()) || /\bnot authenticated\b/i.test(said);
 export const LOGIN_MESSAGE = "Claude Code is not logged in on this machine. Run `claude` once and log in.";
