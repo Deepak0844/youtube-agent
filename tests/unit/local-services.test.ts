@@ -163,28 +163,41 @@ describe("N-b: an unreadable own-service setting is reported, not hidden", () =>
   });
 });
 
-describe("production needs the own-service URLs before any entry counts", () => {
-  const all = { RENDER_RUNNER_URL: "http://127.0.0.1:7001", FETCHER_URL: "http://127.0.0.1:7002", SEARXNG_URL: "http://127.0.0.1:8888", EGRESS_PROXY_URL: "http://127.0.0.1:3128" };
+describe("production needs only the own services that exist before any entry counts", () => {
+  const ready = { SEARXNG_URL: "http://searxng:8080" };
   it("names what is missing in production and nothing outside it", () => {
-    expect(localServiceBlockers({ NODE_ENV: "production" })).toEqual(["RENDER_RUNNER_URL", "FETCHER_URL", "SEARXNG_URL", "EGRESS_PROXY_URL"]);
-    expect(localServiceBlockers({ NODE_ENV: "production", ...all, FETCHER_URL: "  " })).toEqual(["FETCHER_URL"]);
-    expect(localServiceBlockers({ NODE_ENV: "production", ...all })).toEqual([]);
+    expect(localServiceBlockers({ NODE_ENV: "production" })).toEqual(["SEARXNG_URL"]);
+    expect(localServiceBlockers({ NODE_ENV: "production", SEARXNG_URL: "  " })).toEqual(["SEARXNG_URL"]);
+    expect(localServiceBlockers({ NODE_ENV: "production", ...ready })).toEqual([]);
     expect(localServiceBlockers({ NODE_ENV: "development" })).toEqual([]);
     expect(localServiceBlockers({ NODE_ENV: "test" })).toEqual([]);
     expect(localServiceBlockers({})).toEqual([]);
   });
-  it("every entry is refused in production until they are set; an empty list is still fine", () => {
+  it("services that are not built (render runner, fetcher, egress proxy) no longer block, but are still blocked ports when set", () => {
+    expect(localServiceBlockers({ NODE_ENV: "production", ...ready })).toEqual([]);
+    const ports = ownServicePorts({ RENDER_RUNNER_URL: "http://127.0.0.1:7001", FETCHER_URL: "http://127.0.0.1:7002", EGRESS_PROXY_URL: "http://127.0.0.1:43128" });
+    for (const p of [7001, 7002, 43128, 3128]) expect(ports.has(p), String(p)).toBe(true);
+  });
+  it("every entry is refused in production until SEARXNG_URL is set; an empty list is still fine", () => {
     const prod = { NODE_ENV: "production" };
     const r = validateLocalService("localhost:11434", OWN, prod);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toMatch(/RENDER_RUNNER_URL/);
+    if (!r.ok) expect(r.reason).toMatch(/SEARXNG_URL/);
     expect(parseLocalServicesInput("localhost:11434", OWN, prod).ok).toBe(false);
     expect(parseLocalServicesInput("", OWN, prod)).toEqual({ ok: true, entries: [] });
-    expect(validateLocalService("localhost:11434", OWN, { ...prod, ...all }).ok).toBe(true);
+    expect(validateLocalService("localhost:11434", OWN, { ...prod, ...ready }).ok).toBe(true);
   });
   it("matching refuses everything while blocked", () => {
     expect(matchLocalService(["localhost:11434"], new URL("http://localhost:11434/"), new Set(), { NODE_ENV: "production" })).toBe(false);
-    expect(matchLocalService(["localhost:11434"], new URL("http://localhost:11434/"), new Set(), { NODE_ENV: "production", ...all })).toBe(true);
+    expect(matchLocalService(["localhost:11434"], new URL("http://localhost:11434/"), new Set(), { NODE_ENV: "production", ...ready })).toBe(true);
+  });
+  it("an own-service port can still never be listed as a local service (the database, Redis and search of this install)", () => {
+    const env = { NODE_ENV: "production", ...ready, DATABASE_URL: "postgres://u:p@postgres:5432/ytstudio", REDIS_URL: "redis://redis:6379" };
+    for (const port of [5432, 6379, 8080]) {
+      const r = validateLocalService(`host.docker.internal:${port}`, ownServicePorts(env), env);
+      expect(r.ok, String(port)).toBe(false);
+    }
+    expect(validateLocalService("host.docker.internal:11434", ownServicePorts(env), env).ok).toBe(true);
   });
 });
 

@@ -42,8 +42,11 @@ function portOfUrl(name: string, raw: string | undefined): number | undefined {
   return port;
 }
 
-// Services that must be configured in production before any local entry counts (see localServiceBlockers).
-const PRODUCTION_REQUIRED = ["RENDER_RUNNER_URL", "FETCHER_URL", "SEARXNG_URL", "EGRESS_PROXY_URL"] as const;
+// Own services that must be configured in production before any local entry counts (see localServiceBlockers). Only services that
+// exist are required: the render runner and the fetcher (ADR 0003) are not built, and the egress proxy has a fixed port already in
+// FIXED_OWN_PORTS. Their URLs are still read by ownServicePorts when set, so a port is blocked the day a service appears; the render
+// runner joins this list again when compose step 2 builds it.
+const PRODUCTION_REQUIRED = ["SEARXNG_URL"] as const;
 
 /**
  * In production the own-service ports are only known if these URLs are set. Until they are, every local-service entry is
