@@ -56,6 +56,6 @@ if (!dry) {
   const compose = (args: string[]) => docker(["compose", "--env-file", envFile, ...args], true).status ?? 1;
   if (compose(["up", "-d", "--build"]) !== 0) stop("docker compose up failed.");
   say("Setting up (the one-time owner link is printed below):");
-  compose(["logs", "-f", "init"]);
+  compose(["logs", "init"]); // no -f: up -d already waited for init to finish (web and worker depend on it), and -f never returns for an exited container
   say("Open http://localhost:3000");
 }
