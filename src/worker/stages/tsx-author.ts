@@ -34,7 +34,8 @@ export interface TsxInputs {
  * Shared by the paid-model step and the engine step. Refuses with one plain sentence when an earlier step's output is missing,
  * and when the narration is over the 90 s limit of a custom animation.
  */
-export async function loadTsxInputs(deps: StageDeps, ctx: Parameters<AttemptHandler>[0], videoId: string, narrationSeconds?: (file: string) => Promise<number>): Promise<TsxInputs> {
+/** `long`: a long video's narration is drawn in many chapter files, so the 90 s limit of ONE file does not apply to the whole narration. */
+export async function loadTsxInputs(deps: StageDeps, ctx: Parameters<AttemptHandler>[0], videoId: string, narrationSeconds?: (file: string) => Promise<number>, opts: { long?: boolean } = {}): Promise<TsxInputs> {
   const video = { id: videoId };
   const script = await approvedScript(deps.db, video.id);
   if (!script.ok) throw new KnownFailure(script.reason);
@@ -53,7 +54,7 @@ export async function loadTsxInputs(deps: StageDeps, ctx: Parameters<AttemptHand
   if (!(narrationS > 0)) throw new KnownFailure("The length of the narration is not known. Run the voice step again.");
 
   // The scene file is capped at 90 s. Narration longer than that is not clipped: the stage fails and the owner shortens the script.
-  if (tooLongForTsx(narrationS)) throw new KnownFailure(`The narration is ${narrationS.toFixed(1)} s, over the 90 s limit of a custom animation. Shorten the script and draft again.`);
+  if (!opts.long && tooLongForTsx(narrationS)) throw new KnownFailure(`The narration is ${narrationS.toFixed(1)} s, over the 90 s limit of a custom animation. Shorten the script and draft again.`);
 
   const beats: PromptBeat[] = script.beats.map((b, i) => {
     const x = b as { id?: unknown; text?: unknown; visual?: unknown };

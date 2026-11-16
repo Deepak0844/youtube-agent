@@ -1,7 +1,7 @@
 import type pg from "pg";
 import { captionsNeedTick, actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import { STALE_MESSAGE, versionsKey, type BreakerStage, type DecisionInput, type GateInput, type OutlineEditInput } from "@/server/core/queue-input";
-import { validateOutline } from "@/server/core/long-form";
+import { TSX_CHAPTER_MAX_S, validateOutline } from "@/server/core/long-form";
 import { addContentIfLatest, latestContent } from "@/server/db/videos";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
@@ -152,7 +152,7 @@ export async function decideGate(db: pg.Pool, q: Queues, actor: GateActor, i: Ga
  */
 export async function editOutline(db: pg.Pool, q: Queues, actor: GateActor, i: OutlineEditInput): Promise<ActionResult> {
   if (actorProblem(actor)) return refuse(ACTOR_REASON);
-  const v = await db.query<{ status: string; format: string; length_min_minutes: number | null; length_max_minutes: number | null }>("select status, format, length_min_minutes, length_max_minutes from videos where id = $1", [i.videoId]);
+  const v = await db.query<{ status: string; format: string; kind: string; length_min_minutes: number | null; length_max_minutes: number | null }>("select status, format, kind, length_min_minutes, length_max_minutes from videos where id = $1", [i.videoId]);
   const row = v.rows[0];
   if (!row || !["active", "waiting"].includes(row.status)) return refuse("This video is no longer in production.");
   if (row.format !== "long" || row.length_min_minutes === null || row.length_max_minutes === null) return refuse("Only a long video has an outline.");
@@ -160,7 +160,7 @@ export async function editOutline(db: pg.Pool, q: Queues, actor: GateActor, i: O
   if (next?.kind !== "wait_gate" || next.gate !== "outline") return refuse(NOT_WAITING);
   const live = await liveGateHash(db, i.videoId, "outline");
   if (!live || live.hash !== i.seenHash || versionsKey(live.versions) !== i.seenVersions) return refuse(STALE_MESSAGE);
-  const ok = validateOutline({ chapters: i.chapters }, { min: row.length_min_minutes, max: row.length_max_minutes });
+  const ok = validateOutline({ chapters: i.chapters }, { min: row.length_min_minutes, max: row.length_max_minutes }, row.kind === "tsx" ? { maxChapterS: TSX_CHAPTER_MAX_S } : {});
   if (!ok.ok) return refuse(`${ok.problems[0]!.charAt(0).toUpperCase()}${ok.problems[0]!.slice(1)}${/[.!?]$/.test(ok.problems[0]!) ? "" : "."}`);
   const body = ok.outline;
   const sha = sha256Hex(canonicalJson(body));

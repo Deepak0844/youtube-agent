@@ -8,7 +8,7 @@ import type { GateId } from "@/server/core/gates";
 
 export type VideoFormat = "short" | "long";
 export type VideoKind = "tsx" | "collage" | "ai";
-export type ContentKindName = "outline" | "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "thumbnail" | "clips" | "clip_batch";
+export type ContentKindName = "outline" | "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "thumbnail" | "clips" | "clip_batch" | "chapter_scene";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
 export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "voice", "sfx", "qa", "repair_scenes", "reframe", "thumbnail", "derive", "shots", "seo", "reply_drafts", "clips", "ingest_source"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
@@ -58,6 +58,20 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
   }
   // Long (Phase 6b.2): scene kit only. The short route with the outline step (and its gate) in front; the render stage picks the
   // landscape composition. Every other kind keeps refusing until its own slice ships.
+  // Long code-scene video: the outline (the owner approves the chapters), the script that follows them (the owner approves it), the narration of the whole
+  // script, one code scene per chapter joined into one video (L3), then voice, sound and QA exactly as for a Short. The New video screen keeps refusing a
+  // long video until a real run passes (L6), so this route is only reached by a developer script today.
+  if (format === "long" && kind === "tsx" && !flags.imported) {
+    return [
+      { stage: "outline", gateAfter: "outline", resource: "net" },
+      { stage: "draft", gateAfter: "script", resource: "net" },
+      { stage: "tts", resource: "net" },
+      { stage: "tsx_author", resource: "render" }, // one engine run per chapter, joined (stages/engine-build-long.ts)
+      { stage: "voice", resource: "cpu" },
+      { stage: "sfx", resource: "cpu" },
+      { stage: "qa", gateAfter: "video", resource: "cpu" },
+    ];
+  }
   if (format === "long") {
     throw new Error("long videos are not available: they were made with the scene kit, which is removed");
     // An imported project has no outline to approve, and Draft and Render both need one: refuse instead of building a video that cannot render.

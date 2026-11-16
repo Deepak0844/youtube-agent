@@ -13,8 +13,9 @@ describe("usesEngineDraft", () => {
   it("engine_on_short_uses_the_engine", () => {
     expect(usesEngineDraft(ON, "short")).toBe(true);
   });
-  it("engine_on_long_keeps_the_paid_draft", () => {
-    expect(usesEngineDraft(ON, "long")).toBe(false);
+  it("engine_on_long_uses_the_engine_draft_too_and_engine_off_keeps_the_paid_draft", () => {
+    expect(usesEngineDraft(ON, "long")).toBe(true);
+    expect(usesEngineDraft({ engine: { enabled: false } }, "long")).toBe(false);
   });
   it("an_unknown_format_keeps_the_paid_draft", () => {
     expect(usesEngineDraft(ON, "")).toBe(false);

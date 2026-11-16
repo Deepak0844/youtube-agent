@@ -6,7 +6,9 @@ import type { WebTools } from "@/server/authoring/draft/shared";
 import { learningNotes } from "@/server/core/insights";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageHandler } from "@/server/core/stage-handler";
+import type { Outline } from "@/server/core/long-form";
 import { loadInsightShorts } from "@/server/db/insights";
+import { approvedOutline } from "@/server/db/stage-content";
 import { loadDraftVideo, pendingScriptFeedback, saveDraftContent } from "@/server/db/draft-store";
 import { EngineLimitError } from "@/server/engine/limit";
 import { researchTools } from "@/server/engine/mcp/research-tools";
@@ -62,8 +64,8 @@ function suggestion(raw: unknown): { kind: (typeof KINDS)[number]; reason: strin
   return reason ? { kind: s.kind as (typeof KINDS)[number], reason } : null;
 }
 
-/** The Draft step is done by the engine only when it is switched on (Settings) and the video is a Short; everything else keeps the paid draft. */
-export const usesEngineDraft = (config: { engine: { enabled: boolean } }, format: string): boolean => config.engine.enabled && format === "short";
+/** The Draft step is done by the engine only when it is switched on (Settings); a Short or a long video (which follows its approved outline). */
+export const usesEngineDraft = (config: { engine: { enabled: boolean } }, format: string): boolean => config.engine.enabled && (format === "short" || format === "long");
 
 export function engineDraftHandler(d: EngineDraftDeps): StageHandler {
   return async (ctx) => {
@@ -71,21 +73,28 @@ export function engineDraftHandler(d: EngineDraftDeps): StageHandler {
     if (!videoId) throw new KnownFailure("draft needs a video");
     const video = await loadDraftVideo(d.db, videoId);
     if (!video) throw new KnownFailure("The video for this draft no longer exists.");
-    if (video.format !== "short") throw new KnownFailure("The engine writes the script of Shorts only; a long video is drafted by the paid model.");
+    // A long video's script follows the chapters the owner approved, inside the length range they chose.
+    let long: { outline: Outline; range: { min: number; max: number } } | undefined;
+    if (video.format === "long") {
+      if (video.length_min_minutes === null || video.length_max_minutes === null) throw new KnownFailure("This long video has no length range saved.");
+      const o = await approvedOutline(d.db, videoId);
+      if (!o.ok) throw new KnownFailure(o.reason);
+      long = { outline: o.outline, range: { min: video.length_min_minutes, max: video.length_max_minutes } };
+    }
 
     const feedback = await pendingScriptFeedback(d.db, videoId);
     const learning = learningNotes(await loadInsightShorts(d.db).catch(() => []));
-    const { prompt } = scriptRequest({ topic: video.topic, lang: video.language, kind: video.kind, ...(video.notes ? { notes: video.notes } : {}), ...(feedback ? { feedback } : {}), ...(learning.length ? { learning } : {}) });
+    const { prompt } = scriptRequest({ topic: video.topic, lang: video.language, kind: video.kind, format: video.format, ...(long ? { long } : {}), ...(video.notes ? { notes: video.notes } : {}), ...(feedback ? { feedback } : {}), ...(learning.length ? { learning } : {}) });
 
     const fetched = new Map<string, string>();
     const web = d.makeWeb();
     const judge = (raw: unknown, pages: ReadonlyMap<string, string>) => {
-      const v = judgeDraft(raw, video.language, "short", pages, video.kind);
+      const v = judgeDraft(raw, video.language, video.format, pages, video.kind, long?.range);
       return v.ok ? ({ ok: true } as const) : ({ ok: false, problems: v.problems } as const);
     };
     const r = await (d.runEngine ?? runEngine)(
       { db: d.db, root: d.root, config: ctx.config.engine, registry: d.registry, tools: (ws) => researchTools({ workDir: ws.workDir, web, fetched, judge }) },
-      { videoId, stageRunId: ctx.claim.stageRunId, kind: "research", prompt, long: false, signal: ctx.signal, model: ctx.config.engine.model },
+      { videoId, stageRunId: ctx.claim.stageRunId, kind: "research", prompt, long: video.format === "long", signal: ctx.signal, model: ctx.config.engine.model },
     );
     if (!r.ok) {
       if (r.limit) throw new EngineLimitError(r.resumeAt);
@@ -95,7 +104,7 @@ export function engineDraftHandler(d: EngineDraftDeps): StageHandler {
 
     // Judged again here, against the pages the tools really fetched (the engine's own check_script ran on its side of the boundary).
     const raw = await readDraftJson(r.workDir, "script.json", MAX_SCRIPT_BYTES, true);
-    const verdict = judgeDraft(raw, video.language, "short", fetched, video.kind);
+    const verdict = judgeDraft(raw, video.language, video.format, fetched, video.kind, long?.range);
     if (!verdict.ok) throw new KnownFailure(`The engine's script did not pass the checks: ${verdict.problems.slice(0, 3).join("; ").slice(0, 300)}. Run the step again.`);
     const hint = suggestion(await readDraftJson(r.workDir, "suggestion.json", 4 * 1024, false));
 

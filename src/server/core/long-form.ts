@@ -11,6 +11,9 @@ export const LONG_DEFAULT_RANGE = { min: 3, max: 8 } as const;
 export const LONG_HARD_MAX_MINUTES = 30;
 export const OUTLINE_CHAPTERS = { min: 3, max: 6 } as const;
 export const MIN_CHAPTER_S = 20;
+/** A code-scene video draws one file per chapter and one file may run at most 90 s (TSX_MAX_FRAMES), so no chapter is longer: six chapters give up to 9 minutes. */
+export const TSX_CHAPTER_MAX_S = 90;
+export const TSX_LONG_MAX_MINUTES = (OUTLINE_CHAPTERS.max * TSX_CHAPTER_MAX_S) / 60;
 
 export interface LengthRange {
   min: number;
@@ -53,10 +56,12 @@ export type OutlineChapter = z.infer<typeof outlineChapterSchema>;
 export const outlineTotalS = (chapters: readonly Pick<OutlineChapter, "target_s">[]): number => chapters.reduce((a, c) => a + c.target_s, 0);
 
 /** The chapters the model or the owner wrote, checked against the video's own length range. The range in the body is overwritten with the video's. */
-export function validateOutline(raw: unknown, range: LengthRange): { ok: true; outline: Outline } | { ok: false; problems: string[] } {
+export function validateOutline(raw: unknown, range: LengthRange, opts: { maxChapterS?: number } = {}): { ok: true; outline: Outline } | { ok: false; problems: string[] } {
   const body = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? { chapters: (raw as { chapters?: unknown }).chapters, length: { min_minutes: range.min, max_minutes: range.max } } : raw;
   const p = outlineSchema.safeParse(body);
   if (!p.success) return { ok: false, problems: p.error.issues.map((i) => `${i.path.join(".") || "outline"}: ${i.message}`) };
+  const over = opts.maxChapterS === undefined ? [] : p.data.chapters.flatMap((c, i) => (c.target_s > opts.maxChapterS! ? [`chapter ${i + 1} is ${c.target_s} seconds; no chapter may be over ${opts.maxChapterS} seconds (split it into two chapters)`] : []));
+  if (over.length > 0) return { ok: false, problems: over };
   const total = outlineTotalS(p.data.chapters);
   if (total < range.min * 60 || total > range.max * 60) return { ok: false, problems: [`the chapters add up to ${total} seconds; they must add up to between ${range.min * 60} and ${range.max * 60} seconds (${range.min} to ${range.max} minutes)`] };
   return { ok: true, outline: p.data };

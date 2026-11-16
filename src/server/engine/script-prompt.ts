@@ -1,7 +1,8 @@
 import type { Lang } from "@/server/core/lang";
+import type { LengthRange, Outline } from "@/server/core/long-form";
 import { draftSystem, writeBlocks } from "@/server/authoring/draft/prompts";
 
-// The prompt of a research run that writes a Short's script (D3). It reuses the paid draft's own rules and JSON shape (same words,
+// The prompt of a research run that writes a Short's script (D3), or a long video's script that follows its approved chapters (L2). It reuses the paid draft's own rules and JSON shape (same words,
 // same contract) and changes only how the work is done: the app's web tools, a file, check_script. Everything the owner typed is
 // DATA inside a fence. Pure: no IO.
 
@@ -12,10 +13,13 @@ export interface ScriptRequestInput {
   notes?: string;
   feedback?: string;
   learning?: string[];
+  /** Default "short". A long video also needs its approved outline and the chosen minutes (they set the chapters and the word range). */
+  format?: "short" | "long";
+  long?: { outline: Outline; range: LengthRange };
 }
 
 export function scriptRequest(v: ScriptRequestInput): { prompt: string } {
-  const i = { topic: v.topic, lang: v.lang, kind: v.kind, format: "short" as const, notes: v.notes, feedback: v.feedback, learning: v.learning };
+  const i = { topic: v.topic, lang: v.lang, kind: v.kind, format: v.format ?? ("short" as const), notes: v.notes, feedback: v.feedback, learning: v.learning, ...(v.long ? { long: v.long } : {}) };
   const prompt = `${draftSystem(i)}
 
 HOW YOU WORK IN THIS RUN (this replaces "Reply with ONLY JSON" and "the excerpts you were given" above):

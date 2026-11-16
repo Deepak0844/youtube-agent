@@ -8,7 +8,9 @@ import type { StageHandler } from "@/server/core/stage-handler";
 import type { StageOutcome } from "@/server/core/stage-runner";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { insertQueuedStage } from "@/server/db/stages";
-import { createVideoRow, latestContent } from "@/server/db/videos";
+import { addContent, createVideoRow, latestContent } from "@/server/db/videos";
+import { approveGate, liveGateHash } from "@/server/db/approvals";
+import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import type { EngineDeps, EngineRequest, EngineResult } from "@/server/engine/run";
 import { fakeDraft } from "@/server/llm/fake-step";
 import { createWebTools } from "@/server/llm/web-tools";
@@ -150,15 +152,63 @@ describe("engine draft step", () => {
     expect(await latestContent(db.pool, v.id, "script")).toBeNull();
   });
 
-  it("no_money_is_reserved_or_spent_and_long_videos_are_refused", async () => {
+  it("no_money_is_reserved_or_spent", async () => {
     const v = await shortVideo();
     await play(v.id, handler(fakeEngine({ script: sourced(QUOTE) }).run));
     expect((await db.pool.query("select count(*)::int n from spend_intents")).rows[0].n).toBe(0);
-    const long = await createVideoRow(db.pool, { format: "long", kind: "tsx", language: "en", topic: "Docker deep dive", lengthMinMinutes: 5, lengthMaxMinutes: 8 } as never);
-    const eng = fakeEngine({ script: sourced(QUOTE) });
-    const out = await play(long.id, handler(eng.run));
-    expect(out.kind).not.toBe("committed");
-    expect(eng.calls).toHaveLength(0);
-    expect(await reason(out)).toMatch(/Shorts only/);
+  });
+
+  describe("long videos (L2)", () => {
+    const SESSION = { kind: "session", sessionId: "11111111-1111-4111-8111-111111111111" } as const;
+    const outline = { chapters: [{ title: "What Docker is", line: "Containers in plain words", target_s: 120 }, { title: "Images and layers", line: "How an image is built", target_s: 150 }, { title: "Running it", line: "Start, stop and share", target_s: 150 }], length: { min_minutes: 5, max_minutes: 8 } };
+    async function longVideo(approve = true): Promise<string> {
+      const v = await createVideoRow(db.pool, { format: "long", kind: "tsx", language: "en", topic: "Docker deep dive", lengthMinMinutes: 5, lengthMaxMinutes: 8 } as never);
+      await addContent(db.pool, v.id, "outline", { body: outline, sha256: sha256Hex(canonicalJson(outline)) });
+      if (approve) {
+        await db.pool.query("insert into sessions (id, token_hash, expires_at, absolute_expires_at) values ($1, 'long-draft', clock_timestamp() + interval '1 day', clock_timestamp() + interval '7 days') on conflict (id) do nothing", [SESSION.sessionId]);
+        const live = await liveGateHash(db.pool, v.id, "outline");
+        const ok = await approveGate(db.pool, { videoId: v.id, gate: "outline", seenHash: live!.hash, actor: SESSION });
+        if (!ok.ok) throw new Error(ok.reason);
+      }
+      return v.id;
+    }
+    /** About 900 spoken words in 45 beats of 20 words, with one sourced claim. */
+    const longScript = (words = 900): Script => {
+      const beatText = (n: number) => Array.from({ length: 20 }, (_, k) => `w${n}x${k}`).join(" ");
+      const beats = Array.from({ length: Math.round(words / 20) }, (_, n) => ({ id: `b${n + 1}`, text: n === 0 ? `${QUOTE}. ${beatText(n).split(" ").slice(8).join(" ")}` : beatText(n) }));
+      return { title: "Docker, explained", narration: beats.map((b) => b.text).join(" "), beats, evidence: [{ text: "Docker packs an app with everything it needs", kind: "sourced", source_url: PAGE_URL, quote: QUOTE }] };
+    };
+
+    it("the engine writes a long script that follows the approved outline, inside the word range, and it is saved", async () => {
+      const id = await longVideo();
+      const eng = fakeEngine({ script: longScript() });
+      const out = await play(id, handler(eng.run));
+      expect(out.kind, await reason(out)).toBe("committed");
+      expect(eng.calls[0]!.req.long).toBe(true); // a long run gets the long timeout
+      expect(eng.calls[0]!.req.prompt).toContain("What Docker is"); // the approved chapters are in the prompt
+      expect(eng.calls[0]!.req.prompt).toMatch(/LONG VIDEO/);
+      expect((await latestContent(db.pool, id, "script"))!.body).toMatchObject({ title: "Docker, explained" });
+      expect(await latestContent(db.pool, id, "beats")).not.toBeNull();
+    });
+
+    it("refuses before any run when the outline is not approved or the length range is missing", async () => {
+      const unapproved = await longVideo(false);
+      const eng = fakeEngine({ script: longScript() });
+      const a = await play(unapproved, handler(eng.run));
+      expect(a.kind).not.toBe("committed");
+      expect(await reason(a)).toMatch(/outline is not approved/);
+      const noRange = await createVideoRow(db.pool, { format: "long", kind: "tsx", language: "en", topic: "No range" } as never);
+      const b = await play(noRange.id, handler(eng.run));
+      expect(await reason(b)).toMatch(/no length range/);
+      expect(eng.calls).toHaveLength(0);
+    });
+
+    it("a long script with too few words or a beat that is too long is judged and not saved", async () => {
+      const id = await longVideo();
+      const out = await play(id, handler(fakeEngine({ script: longScript(200) }).run));
+      expect(out.kind).not.toBe("committed");
+      expect(await reason(out)).toMatch(/spoken words \(want/);
+      expect(await latestContent(db.pool, id, "script")).toBeNull();
+    });
   });
 });

@@ -191,7 +191,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
   const draft: StageHandler = async (ctx) => {
     const searxUrl = process.env.SEARXNG_URL;
     if (!searxUrl) throw new KnownFailure("Web search is not set up (SEARXNG_URL), so a draft cannot be written.");
-    // With engine.enabled on (Settings), a Short's script is written by the engine (engine-draft.ts); Long videos and the engine off keep the paid draft.
+    // With engine.enabled on (Settings), a Short's or a long video's script is written by the engine (engine-draft.ts); with the engine off the paid draft keeps it.
     const format = ctx.stage.videoId ? (await loadDraftVideo(pool, ctx.stage.videoId))?.format : undefined;
     if (usesEngineDraft(ctx.config, format ?? "")) return engineDraftHandler({ db: pool, root: defaultEngineRoot(), makeWeb: () => createWebTools({ searxUrl }), registry: env.childRegistry })(ctx);
     const models = await defaultModelDeps(pool, () => loadKeyring());
