@@ -60,7 +60,7 @@ function splitSentences(words: readonly MomentWord[], gapS: number): Sentence[] 
 }
 
 /** 0 to 1: a hook is a short, direct first sentence, ideally a question or one that names a surprise. */
-export function hookScore(s: Pick<Sentence, "text">, pauseBeforeS: number): number {
+export function hookScore(s: Pick<Sentence, "text">, pauseBeforeS: number, afterQuestion = false): number {
   const n = s.text.split(/\s+/).length;
   let v = 0.3;
   if (n >= 4 && n <= 18) v += 0.3;
@@ -69,7 +69,14 @@ export function hookScore(s: Pick<Sentence, "text">, pauseBeforeS: number): numb
   if (/\d/.test(s.text)) v += 0.05;
   if (LEADS_BACK.test(s.text)) v -= 0.4; // starts mid-thought
   if (pauseBeforeS < FLOW_PAUSE_S) v -= 0.35; // starts with no pause: the speaker was still mid-sentence
+  if (afterQuestion) v -= 0.25; // the sentence before asked something: this is its answer, and the question would be missing
   return Math.max(0, Math.min(1, v));
+}
+
+/** What the last word adds: a real full stop 0.1; a clip that ends on a question leaves it unanswered, -0.15. */
+export function endingScore(lastWord: string): number {
+  if (/\?["'\u201d\u2019)\]]*$/u.test(lastWord)) return -0.15;
+  return SENTENCE_END.test(lastWord) ? 0.1 : 0;
 }
 
 /** 0 to 1: spoken pace between 2 and 3.5 words a second is good; long silences and rushed speech score lower. */
@@ -113,7 +120,8 @@ export function findMoments(words: readonly MomentWord[], opts: MomentOpts = {})
   const cands: Cand[] = [];
   for (let i = 0; i < sentences.length; i++) {
     const pauseBefore = sentences[i]!.firstWord > 0 ? sentences[i]!.startS - words[sentences[i]!.firstWord - 1]!.endS : Infinity;
-    const hook = hookScore(sentences[i]!, pauseBefore);
+    const afterQuestion = sentences[i]!.firstWord > 0 && /\?["'\u201d\u2019)\]]*$/u.test(words[sentences[i]!.firstWord - 1]!.word);
+    const hook = hookScore(sentences[i]!, pauseBefore, afterQuestion);
     let best: Cand | undefined; // only the best window per start sentence is kept (keeps memory linear)
     for (let j = i; j < sentences.length; j++) {
       const dur = sentences[j]!.endS - sentences[i]!.startS;
@@ -122,7 +130,7 @@ export function findMoments(words: readonly MomentWord[], opts: MomentOpts = {})
       const nWords = sentences[j]!.lastWord - sentences[i]!.firstWord + 1;
       const pace = paceScore(nWords, dur);
       const len = lengthScore(dur, minS, maxS);
-      const closes = SENTENCE_END.test(words[sentences[j]!.lastWord]!.word) ? 0.1 : 0; // a real full stop at the end
+      const closes = endingScore(words[sentences[j]!.lastWord]!.word);
       const score = Math.round((hook * 0.45 + pace * 0.3 + len * 0.25 + closes) * 1000) / 1000;
       const prevEnd = sentences[i]!.firstWord > 0 ? words[sentences[i]!.firstWord - 1]!.endS : 0;
       const nextStart = sentences[j]!.lastWord < words.length - 1 ? words[sentences[j]!.lastWord + 1]!.startS : Infinity;

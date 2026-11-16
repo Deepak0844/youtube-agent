@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findMoments, FLOW_PAUSE_S, hookScore, validateWords, type MomentWord } from "@/server/core/clip-moments";
+import { endingScore, findMoments, FLOW_PAUSE_S, hookScore, validateWords, type MomentWord } from "@/server/core/clip-moments";
 
 /** Builds words at 3 per second from sentences; each sentence ends with a full stop; `gap` seconds of silence between sentences. */
 function talk(sentences: string[], gap = 0.4): MomentWord[] {
@@ -63,6 +63,15 @@ describe("findMoments", () => {
     expect(afterPause - flowing).toBeCloseTo(0.35, 5);
     expect(hookScore({ text }, FLOW_PAUSE_S)).toBe(afterPause); // exactly the limit is still a pause
     expect(hookScore({ text }, Number.POSITIVE_INFINITY)).toBe(afterPause); // the first sentence has nothing before it
+  });
+
+  it("scores a start that answers a question lower, and a clip that ends on a question lower than one that ends on a full stop", () => {
+    const text = "It is a mix of three things.";
+    expect(hookScore({ text }, 0.6) - hookScore({ text }, 0.6, true)).toBeCloseTo(0.25, 5);
+    expect(endingScore("light.")).toBe(0.1);
+    expect(endingScore("upright?")).toBe(-0.15);
+    expect(endingScore("upright?\u201d")).toBe(-0.15);
+    expect(endingScore("and")).toBe(0);
   });
 
   it("marks a clip that opens in the middle of flowing speech, and never penalises the very first sentence", () => {
