@@ -3,10 +3,9 @@ import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
-import { daemonLimits } from "@/server/render/runner";
 import { safeJoin } from "@/server/storage/paths";
-import { ASSET_EXT, realDir, resolveRenderImage, runRenderContainer, type ContainerRendererDeps } from "./remotion-container";
-import { mountable, NAME_PREFIX, renderArgs } from "@/server/render/render-job";
+import { ASSET_EXT, realDir, type ContainerRendererDeps } from "./remotion-container";
+import { mountable, NAME_PREFIX, renderConfig } from "@/server/render/render-job";
 import { THUMBNAIL_PNG_MAX_BYTES } from "@/server/core/asset-rules";
 import { copyRegular } from "@/server/storage/regular-file";
 
@@ -36,15 +35,13 @@ export function pngProblem(head: Buffer): string | null {
 
 export type ThumbnailRenderer = { draw(ctx: StageContext, a: ThumbnailInput): Promise<{ outPath: string; image: string }> };
 
-export function createThumbnailRenderer(deps: Pick<ContainerRendererDeps, "root" | "kitDir" | "runChild" | "hostLimits" | "image" | "workerId" | "sweepDelayMs" | "hostPath">) {
+export function createThumbnailRenderer(deps: Pick<ContainerRendererDeps, "root" | "runner" | "workerId">) {
   const renderer: ThumbnailRenderer = {
     async draw(ctx: StageContext, a: ThumbnailInput): Promise<{ outPath: string; image: string }> {
       if (a.outFile === "" || a.outFile !== path.basename(a.outFile) || a.outFile.startsWith(".") || !a.outFile.endsWith(".png")) throw new Error("outFile must be a plain .png file name");
       if (a.title.trim() === "" || a.title.length > 300) throw new KnownFailure("The thumbnail needs a title of up to 300 characters.");
       const inDir = mountable(path.join(ctx.attemptDir, "thumb-in"));
       const outDir = mountable(path.join(ctx.attemptDir, "thumb-out"));
-      const kitDir = deps.kitDir === undefined ? undefined : mountable(deps.kitDir); // dev override only
-      if (kitDir !== undefined) await realDir(kitDir, "kit");
       const name = `${NAME_PREFIX}${ctx.claim.stageRunId.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 36)}-${randomBytes(4).toString("hex")}`;
       const cleanup = () => Promise.all([rm(inDir, { recursive: true, force: true }), rm(outDir, { recursive: true, force: true })]).catch(() => undefined);
       await cleanup();
@@ -71,10 +68,9 @@ export function createThumbnailRenderer(deps: Pick<ContainerRendererDeps, "root"
         await realDir(outDir, "output");
 
         const lim = ctx.config.render;
-        const host = await (deps.hostLimits ?? daemonLimits)();
-        const image = deps.image ? await deps.image() : await resolveRenderImage();
-        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, hostPath: deps.hostPath, entry: ["/in", "/out/out.png", "--thumbnail"] });
-        const { r, tail } = await runRenderContainer(deps, ctx, { name, args, timeoutMs: Math.min(lim.timeoutS, 300) * 1000, maxOutputBytes: 256 * 1024 });
+        const { r, tail, image } = await deps.runner.run(ctx, {
+          kind: "thumbnail", name, inDir, outDir, config: renderConfig(lim), ...(deps.workerId !== undefined && { worker: deps.workerId }),
+        });
         if (r.aborted) throw ctx.signal.reason ?? new Error("render aborted");
         if (r.timedOut) throw new KnownFailure("The thumbnail took too long and was stopped.");
         if (r.truncated) throw new KnownFailure("The thumbnail render printed too much output and was stopped.");
@@ -97,7 +93,7 @@ export function createThumbnailRenderer(deps: Pick<ContainerRendererDeps, "root"
           await rm(outPath, { force: true });
           throw new KnownFailure(bad);
         }
-        return { outPath, image: image.ref };
+        return { outPath, image };
       } finally {
         await cleanup();
       }

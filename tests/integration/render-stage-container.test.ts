@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
 import { buildEngineConfig } from "@/server/core/engine-config";
 import type { StageContext } from "@/server/core/stage-handler";
+import { createDockerRunner } from "@/server/providers/renderer/container-runner";
 import { createContainerRenderer } from "@/server/providers/renderer/remotion-container";
 import { runChild } from "@/server/render/child";
 import { probeVideo } from "@/server/render/probe";
@@ -30,7 +31,7 @@ function setup(id: string, settings: [string, unknown][] = []) {
     log: () => undefined, nextStep: () => 0, paid: async () => { throw new Error("no paid calls"); },
   } as unknown as StageContext;
   const renderer = createContainerRenderer({
-    root, runChild: (s) => runChild(s), assetFile: async (a) => (a === "img1" ? "assets/j1/main.png" : null),
+    root, runner: createDockerRunner({ runChild: (s) => runChild(s) }), assetFile: async (a) => (a === "img1" ? "assets/j1/main.png" : null),
     probe: (f, s) => probeVideo(f, s, { storageRoot: root }),
   });
   const doc = { version: 1, scenes: [

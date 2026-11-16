@@ -1,11 +1,10 @@
 import { execFile } from "node:child_process";
-import path from "node:path";
 import { promisify } from "node:util";
 import type { StageContext } from "@/server/core/stage-handler";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { JOB_LABEL, daemonLimits, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
-import { mountable, NAME_PREFIX, renderPlan, WORKER_ID, WORKER_LABEL, type RenderJob } from "@/server/render/render-job";
-import { runRenderContainer } from "./remotion-container";
+import { mountable, NAME_PREFIX, renderPlan, WORKER_ID, WORKER_LABEL, type RenderRequest } from "@/server/render/render-job";
+import { realDir, runRenderContainer } from "./remotion-container";
 
 // The one way the worker runs a render. A renderer describes a job (render-job.ts); a ContainerRunner runs it. Two adapters:
 //  - dockerRunner: the worker calls docker itself (native Mac setup, and compose before the render service);
@@ -27,7 +26,7 @@ export interface RunnerInfo {
 }
 
 export interface ContainerRunner {
-  run(ctx: StageContext, job: RenderJob): Promise<RenderRunResult>;
+  run(ctx: StageContext, req: RenderRequest): Promise<RenderRunResult>;
   info(): Promise<RunnerInfo>;
   /** Render containers that exist now (running or not), with the worker label they carry. */
   list(): Promise<Array<{ name: string; worker: string }>>;
@@ -41,7 +40,6 @@ const RENDER_NAME = new RegExp(`^${NAME_PREFIX}[A-Za-z0-9_.-]{1,60}$`);
 
 export interface DockerRunnerDeps {
   runChild(spec: ChildSpec): Promise<ChildResult>;
-  storageRoot: string;
   /** Dev override: a working copy of remotion/kit mounted read-only over the one baked into the image. */
   kitDir?: string;
   /** Host-side path of a folder under the storage root (a worker in a container without the render service). Default: as is. */
@@ -59,8 +57,9 @@ export function createDockerRunner(deps: DockerRunnerDeps): ContainerRunner {
   const image = () => (deps.image ? deps.image() : Promise.resolve({ ref: RENDER_IMAGE, pinned: false }));
   return {
     async run(ctx, job) {
-      const inDir = mountable(path.join(deps.storageRoot, job.inDir));
-      const outDir = mountable(path.join(deps.storageRoot, job.outDir));
+      const inDir = mountable(job.inDir);
+      const outDir = mountable(job.outDir);
+      if (deps.kitDir !== undefined) await realDir(mountable(deps.kitDir), "kit"); // dev override only
       const host = await (deps.hostLimits ?? daemonLimits)();
       const img = await image();
       if (!img.pinned) ctx.log(`render: image not pinned (could not resolve its id); running the tag ${img.ref}`);

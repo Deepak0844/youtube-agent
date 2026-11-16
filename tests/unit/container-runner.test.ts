@@ -1,16 +1,14 @@
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { StageContext } from "@/server/core/stage-handler";
 import { createDockerRunner } from "@/server/providers/renderer/container-runner";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
-import { renderPlan, type RenderJob } from "@/server/render/render-job";
+import { renderPlan, type RenderRequest } from "@/server/render/render-job";
 
 // The docker adapter is today's behaviour behind the ContainerRunner port: same arguments, same logging, same clean-up.
-const ROOT = "/data";
 const IMAGE = "sha256:" + "b".repeat(64);
 const HOST = { cpus: 2, memoryMb: 3000 };
-const job: RenderJob = {
-  kind: "kit", name: "ytstudio-render-run1-abcd1234", inDir: "videos/v1/attempt-1/render-in", outDir: "videos/v1/attempt-1/render-out",
+const job: RenderRequest = {
+  kind: "kit", name: "ytstudio-render-run1-abcd1234", inDir: "/data/videos/v1/attempt-1/render-in", outDir: "/data/videos/v1/attempt-1/render-out",
   worker: "w-1", config: { timeoutS: 600, cpus: 2, memoryMb: 3000, pids: 512 },
 };
 const done: ChildResult = { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
@@ -25,7 +23,7 @@ function setup(over: { image?: { ref: string; pinned: boolean }; result?: ChildR
     log: (l: string) => logs.push(l), progress: (p: number) => progress.push(p),
   } as unknown as StageContext;
   const runner = createDockerRunner({
-    storageRoot: ROOT, sweepDelayMs: 1,
+    sweepDelayMs: 1,
     hostLimits: async () => HOST,
     image: async () => over.image ?? { ref: IMAGE, pinned: true },
     runChild: async (spec) => {
@@ -39,11 +37,11 @@ function setup(over: { image?: { ref: string; pinned: boolean }; result?: ChildR
 }
 
 describe("dockerRunner.run", () => {
-  it("runs exactly the arguments renderPlan gives for the job, in the resolved folders, and reports the image used", async () => {
+  it("runs exactly the arguments renderPlan gives for the request, in its folders, and reports the image used", async () => {
     const { runner, ctx, specs } = setup();
     const out = await runner.run(ctx, job);
     const run = specs.find((s) => s.args[0] === "run")!;
-    const want = renderPlan(job, { host: HOST, imageRef: IMAGE, inDir: path.join(ROOT, job.inDir), outDir: path.join(ROOT, job.outDir) });
+    const want = renderPlan(job, { host: HOST, imageRef: IMAGE, inDir: job.inDir, outDir: job.outDir });
     expect(run.command).toBe("docker");
     expect(run.args).toEqual(want.args);
     expect(run.timeoutMs).toBe(want.timeoutMs);
@@ -72,6 +70,14 @@ describe("dockerRunner.run", () => {
   it("passes the failure outcome through (timeout, flood, abort, exit code)", async () => {
     const { runner, ctx } = setup({ result: { code: null, signal: "SIGKILL", truncated: true, timedOut: true, aborted: false } });
     expect((await runner.run(ctx, job)).r).toEqual({ code: null, signal: "SIGKILL", truncated: true, timedOut: true, aborted: false });
+  });
+});
+
+describe("dockerRunner.run: unsafe folders", () => {
+  it("refuses a folder whose path could add mount options, before anything runs", async () => {
+    const { runner, ctx, specs } = setup();
+    for (const bad of ["/data/a:/etc", "/data/a,ro", "relative/dir"]) await expect(runner.run(ctx, { ...job, inDir: bad }), bad).rejects.toThrow("cannot be mounted safely");
+    expect(specs).toHaveLength(0);
   });
 });
 

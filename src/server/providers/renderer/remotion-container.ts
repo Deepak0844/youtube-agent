@@ -9,8 +9,9 @@ import type { StageContext } from "@/server/core/stage-handler";
 import { assetRefs } from "@/server/core/scene-build";
 import type { ProbeResult } from "@/server/core/qa";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
-import { assertRealDir, daemonLimits, JOB_LABEL, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
-import { chunkArg, MAX_OUTPUT_BYTES, mountable, NAME_PREFIX, renderArgs, WORKER_ID, WORKER_LABEL } from "@/server/render/render-job";
+import { assertRealDir, JOB_LABEL, RENDER_IMAGE } from "@/server/render/runner";
+import { mountable, NAME_PREFIX, renderConfig, WORKER_ID, WORKER_LABEL } from "@/server/render/render-job";
+import type { ContainerRunner } from "./container-runner";
 import { safeJoin } from "@/server/storage/paths";
 import { buildVideoProps } from "@/shared/scene/video-props";
 import { copyRegular, MAX_VIDEO_BYTES } from "@/server/storage/regular-file";
@@ -40,22 +41,14 @@ const FPS = 30; // keep equal to remotion/kit/theme.ts
 export interface ContainerRendererDeps {
   /** Storage root: asset files are copied from here (never mounted). */
   root: string;
-  /** Dev override: absolute, symlink-free path of remotion/kit, mounted read-only over the kit baked into the image. */
-  kitDir?: string;
-  /** Host-side path of a folder under the storage root, for the docker mounts when the worker runs in a container. Default: as is. */
-  hostPath?: (p: string) => string;
   /** storageRef (relative to root) of an asset's main file, or null when there is no such asset. */
   assetFile(id: string): Promise<string | null>;
-  /** runChild bound to the worker's child registry. */
-  runChild(spec: ChildSpec): Promise<ChildResult>;
+  /** Runs the render container (docker here, or the render service). */
+  runner: ContainerRunner;
   probe(file: string, signal: AbortSignal): Promise<ProbeResult>;
-  hostLimits?: () => Promise<HostLimits>;
-  /** The image to run: its sha256 id when resolved at boot (pinned), else the tag. Default: the tag, unpinned. */
-  image?: () => Promise<{ ref: string; pinned: boolean }>;
   /** This worker's id, put on every container as ytstudio.worker so the boot sweep spares a live worker's renders. */
   workerId?: string;
-  /** Test hooks. */
-  sweepDelayMs?: number;
+  /** Test hook. */
   maxVideoBytes?: number;
 }
 
@@ -123,7 +116,7 @@ export async function realDir(p: string, what: string): Promise<void> {
  * ctx.progress; other lines are redacted, logged and the last 8 kept in `tail`.
  */
 export async function runRenderContainer(
-  deps: Pick<ContainerRendererDeps, "runChild" | "sweepDelayMs">,
+  deps: { runChild(spec: ChildSpec): Promise<ChildResult>; sweepDelayMs?: number },
   ctx: StageContext,
   o: { name: string; args: string[]; timeoutMs: number; maxOutputBytes: number },
 ): Promise<{ r: ChildResult; tail: string[] }> {
@@ -212,8 +205,6 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
       if (!a.doc) throw new KnownFailure("The render step needs the checked scenes. Run the build step again.");
       const inDir = mountable(path.join(ctx.attemptDir, "render-in"));
       const outDir = mountable(path.join(ctx.attemptDir, "render-out"));
-      const kitDir = deps.kitDir === undefined ? undefined : mountable(deps.kitDir); // dev override only
-      if (kitDir !== undefined) await realDir(kitDir, "kit");
       const name = `${NAME_PREFIX}${ctx.claim.stageRunId.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 36)}-${randomBytes(4).toString("hex")}`;
       const cleanup = () => Promise.all([rm(inDir, { recursive: true, force: true }), rm(outDir, { recursive: true, force: true })]).catch(() => undefined);
       await cleanup();
@@ -259,18 +250,18 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         await realDir(outDir, "output");
 
         const lim = ctx.config.render;
-        const host = await (deps.hostLimits ?? daemonLimits)();
-        const image = deps.image ? await deps.image() : { ref: RENDER_IMAGE, pinned: false };
-        if (!image.pinned) ctx.log(`render: image not pinned (could not resolve its id); running the tag ${image.ref}`);
-        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, hostPath: deps.hostPath, ...(a.layout === "landscape" ? { entry: ["/in", "/out/out.mp4", "--landscape", ...(a.chunk ? [chunkArg(a.chunk), "--muted"] : [])] } : {}) });
-        const { r, tail } = await runRenderContainer(deps, ctx, { name, args, timeoutMs: lim.timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES });
+        const landscape = a.layout === "landscape";
+        const { r, tail, image } = await deps.runner.run(ctx, {
+          kind: landscape ? "kit-landscape" : "kit", name, inDir, outDir, config: renderConfig(lim),
+          ...(deps.workerId !== undefined && { worker: deps.workerId }), ...(landscape && a.chunk && { chunk: a.chunk }),
+        });
         if (r.aborted) throw ctx.signal.reason ?? new Error("render aborted");
         if (r.timedOut) throw new KnownFailure(`The render took longer than its ${Math.ceil(lim.timeoutS / 60)} min limit and was stopped.`);
         if (r.truncated) throw new KnownFailure("The render printed too much output and was stopped.");
         if (r.code !== 0) throw new KnownFailure(`The render failed (exit ${r.code ?? r.signal}). Last lines: ${tail.slice(-3).join(" | ")}`.slice(0, 600));
 
         const outPath = await collectOutput(deps, ctx, a, outDir, audioSrc !== undefined);
-        return { outPath, image: image.ref };
+        return { outPath, image };
       } finally {
         await cleanup();
       }
