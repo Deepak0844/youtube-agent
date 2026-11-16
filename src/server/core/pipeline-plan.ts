@@ -58,6 +58,12 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
   }
   // Long (Phase 6b.2): scene kit only. The short route with the outline step (and its gate) in front; the render stage picks the
   // landscape composition. Every other kind keeps refusing until its own slice ships.
+  // Long code-scene video (L2 of the long-video work): the outline (the owner approves the chapters), then the script that follows them (the owner
+  // approves it). The steps after the script (narration, a code scene per chapter, the joined render, QA) arrive with L3 to L5, and the New video screen
+  // keeps refusing a long video until a real run passes (L6), so this route is only reached by a developer script today.
+  if (format === "long" && kind === "tsx" && !flags.imported) {
+    return [{ stage: "outline", gateAfter: "outline", resource: "net" }, { stage: "draft", gateAfter: "script", resource: "net" }];
+  }
   if (format === "long") {
     throw new Error("long videos are not available: they were made with the scene kit, which is removed");
     // An imported project has no outline to approve, and Draft and Render both need one: refuse instead of building a video that cannot render.

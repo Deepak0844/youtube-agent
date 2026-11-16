@@ -105,11 +105,17 @@ describe("stagePlan", () => {
     expect(p.some((s) => s.gateBefore === "cost")).toBe(false);
     expect(postStageGates(p, f)).toEqual(["video", "publish"]);
   });
-  it("long_format_and_derived_shorts_are_refused_for_every_kind", () => {
+  it("long_format_is_refused_for_collage_and_ai_and_derived_shorts_for_every_kind", () => {
     for (const k of ["tsx", "collage", "ai"] as const) {
-      expect(() => stagePlan(k, "long", flags), k).toThrow(/long videos are not available/);
+      if (k !== "tsx") expect(() => stagePlan(k, "long", flags), k).toThrow(/long videos are not available/);
       expect(() => stagePlan(k, "short", { ...flags, derived: true }), k).toThrow(/clips from a long video are not available/);
     }
+  });
+  it("a_long_code_scene_video_runs_the_outline_then_the_script_and_stops_at_the_script_gate_for_now", () => {
+    const p = stagePlan("tsx", "long", flags);
+    expect(p.map((s) => [s.stage, s.gateAfter])).toEqual([["outline", "outline"], ["draft", "script"]]);
+    expect(stagePlan("tsx", "short", flags).map((s) => s.stage)).not.toContain("outline"); // a Short is unchanged
+    expect(() => stagePlan("tsx", "long", { ...flags, imported: true })).toThrow(/long videos are not available/); // an imported long video stays refused
   });
 });
 
