@@ -15,6 +15,8 @@ export interface ClipsOverrides {
 
 export type { ClipBatchBody };
 export const CLIP_MAX_S = 58;
+export const CLIP_MIN_S = 15;
+export const CLIP_MAX_SHARE = 0.7;
 
 const isWord = (w: unknown): w is { word: string; startS: number; endS: number } =>
   typeof w === "object" && w !== null && typeof (w as { word?: unknown }).word === "string" && Number.isFinite((w as { startS?: unknown }).startS) && Number.isFinite((w as { endS?: unknown }).endS);
@@ -40,8 +42,11 @@ export function clipsAttempt(deps: StageDeps, o: ClipsOverrides = {}): AttemptHa
     const source = await promotedPath(deps.root, video.id, "final.mp4");
     const sourceS = await durationS(deps.mix, ctx, source);
 
-    // A clip becomes a Short and a Short's QA allows at most 60 s (qa.short.maxS), so no clip is planned longer than 58 s.
-    const plan = planBatch(words, { maxS: CLIP_MAX_S });
+    // A clip becomes a Short and a Short's QA allows at most 60 s (qa.short.maxS), so no clip is planned longer than 58 s. A clip is also
+    // never more than 70% of the source: a longer one is a near-copy of the video, not a cut from it (owner decision 2026-11-16).
+    const maxS = Math.min(CLIP_MAX_S, sourceS * CLIP_MAX_SHARE);
+    if (maxS < CLIP_MIN_S) throw new KnownFailure(`This video is only ${Math.round(sourceS)} s long, too short to cut clips from: a clip is at least ${CLIP_MIN_S} s and at most ${Math.round(CLIP_MAX_SHARE * 100)}% of the video. Use a video of about ${Math.ceil(CLIP_MIN_S / CLIP_MAX_SHARE)} s or more.`);
+    const plan = planBatch(words, { maxS });
     if (!plan.ok) throw new KnownFailure(plan.reason);
     const prev = await deps.db.query<{ n: string }>("select count(*)::text as n from video_content where video_id = $1 and kind = 'clip_batch'", [video.id]);
     const batch = Number(prev.rows[0]!.n) + 1;

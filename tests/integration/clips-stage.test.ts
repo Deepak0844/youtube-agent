@@ -52,25 +52,25 @@ async function play(videoId: string, handler: StageHandler): Promise<StageOutcom
 }
 
 /** 20 sentences of 12 words at 3 a second with 0.4 s of silence: about 88 s of speech. */
-function words() {
+function words(sentences = 20) {
   const out: { word: string; startS: number; endS: number }[] = [];
   let t = 0;
-  for (let s = 0; s < 20; s++) {
+  for (let s = 0; s < sentences; s++) {
     for (let k = 0; k < 12; k++) { out.push({ word: k === 0 ? "Why" : k === 11 ? "end." : `w${k}`, startS: Math.round(t * 1000) / 1000, endS: Math.round((t + 0.3) * 1000) / 1000 }); t += 1 / 3; }
     t += 0.4;
   }
   return out;
 }
-async function finishedVideo(opts: { captions?: boolean; source?: boolean } = {}): Promise<string> {
+async function finishedVideo(opts: { captions?: boolean; source?: boolean; sentences?: number; sourceS?: number } = {}): Promise<string> {
   const v = await createVideoRow(db.pool, { format: "short", kind: "tsx", language: "en", topic: "Why the sky is blue" });
   if (opts.captions !== false) {
-    const body = { timings_kind: "aligned", words: words(), needs_check: false, flags: [], approximate: false };
+    const body = { timings_kind: "aligned", words: words(opts.sentences), needs_check: false, flags: [], approximate: false };
     await addContent(db.pool, v.id, "captions", { body, sha256: sha256Hex(canonicalJson(body)) });
   }
   if (opts.source !== false) {
     const dir = path.join(root, "videos", v.id);
     mkdirSync(dir, { recursive: true });
-    const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x180:r=10:d=95", "-f", "lavfi", "-i", "sine=frequency=330:duration=95", "-shortest", "-pix_fmt", "yuv420p", path.join(dir, "final.mp4")]);
+    const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", `color=c=black:s=320x180:r=10:d=${opts.sourceS ?? 95}`, "-f", "lavfi", "-i", `sine=frequency=330:duration=${opts.sourceS ?? 95}`, "-shortest", "-pix_fmt", "yuv420p", path.join(dir, "final.mp4")]);
     if (r.status !== 0) throw new Error(String(r.stderr));
   }
   await db.pool.query("insert into stage_runs (id, video_id, name, status, input_hash) values ($1, $2, 'qa', 'succeeded', 'h')", [uuidv7(), v.id]);
@@ -139,6 +139,19 @@ describe("clips stage", () => {
     expect(body.review.needAttention).toBe(body.clips.length);
     expect(body.review.clips[0]!.warnings.join(" ")).toMatch(/LUFS/);
   }, 180_000);
+
+  it("never makes a near-copy: a clip is at most 70% of the source, and a source that is too short is refused in plain words", async () => {
+    const short = await finishedVideo({ sentences: 8, sourceS: 36 }); // a 36 s Short: the owner's own test made a 35 s clip of it
+    const out = await play(short, withAttempt({ db: db.pool, root }, clipsAttempt(deps(), { render: fakeRender() })));
+    expect(out.kind).toBe("committed");
+    const body = (await latestContent(db.pool, short, "clip_batch"))!.body as ClipBatchBody;
+    for (const c of body.clips) expect(c.durationS).toBeLessThanOrEqual(36 * 0.7 + 0.8);
+    const tiny = await finishedVideo({ sentences: 4, sourceS: 18 });
+    const bad = await play(tiny, withAttempt({ db: db.pool, root }, clipsAttempt(deps(), { render: fakeRender() })));
+    expect(bad.kind).toBe("known_failure");
+    expect((await db.pool.query<{ result: { error: string } }>("select result from stage_runs where video_id = $1 and name = 'clips'", [tiny])).rows[0]!.result.error).toMatch(/too short to cut clips from.*about 22 s or more/);
+    expect(await latestContent(db.pool, tiny, "clip_batch")).toBeNull();
+  }, 240_000);
 
   it("refuses in plain words: no caption words, a failing render keeps nothing, a missing tool", async () => {
     const noCaps = await finishedVideo({ captions: false });
