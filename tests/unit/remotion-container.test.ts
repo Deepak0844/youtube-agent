@@ -110,6 +110,13 @@ describe("container renderer", () => {
     expect(new Set(names).size).toBe(2);
   });
 
+  it("without kitDir (production) only /in and /out are mounted: the kit is inside the image", async () => {
+    await createContainerRenderer(deps(undefined, { kitDir: undefined })).render(ctx(), args());
+    const a = run().args;
+    expect(a.filter((x, i) => a[i - 1] === "-v")).toEqual([`${attemptDir}/render-in:/in:ro`, `${attemptDir}/render-out:/out:rw`]);
+    expect(a.slice(-3)).toEqual(["/opt/render/kit/render-entry.mjs", "/in", "/out/out.mp4"]);
+  });
+
   it("mounts the host-side path of /in and /out when a mapper is given, and still checks the container-side folders", async () => {
     const toHost = (q: string) => q.replace(root, "/host-root");
     const behave = (_spec: ChildSpec, outDir: string) => {

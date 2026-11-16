@@ -15,3 +15,10 @@ describe("render image pins match package.json", () => {
     expect(pkg.dependencies[name]).toBe(inImage(name));
   });
 });
+
+describe("render image carries the scene kit", () => {
+  it("copies remotion/kit into /opt/render/kit after the npm layer (kit edits rebuild in seconds)", () => {
+    const copyAt = docker.indexOf("COPY remotion/kit /opt/render/kit");
+    expect(copyAt).toBeGreaterThan(docker.indexOf("npm i --omit=dev"));
+  });
+});

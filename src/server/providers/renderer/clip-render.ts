@@ -45,10 +45,12 @@ export async function renderClip(deps: TsxRendererDeps, ctx: StageContext, input
   await cleanup();
   try {
     const publicDir = path.join(inDir, "public");
-    let kitDir: string;
+    let kitDir: string | undefined;
     try {
-      kitDir = mountable(deps.kitDir);
-      await realDir(kitDir, "kit");
+      if (deps.kitDir !== undefined) { // dev override only; production renders use the kit baked into the image
+        kitDir = mountable(deps.kitDir);
+        await realDir(kitDir, "kit");
+      }
       await mkdir(publicDir, { recursive: true, mode: 0o755 });
       await chmod(inDir, 0o755);
       await chmod(publicDir, 0o755);

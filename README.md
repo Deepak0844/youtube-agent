@@ -136,6 +136,8 @@ After migrating the local database and configuring `.env.local`:
 
 ### Portrait kit (needs `npm run image:render` once, Docker/OrbStack running)
 
+The scene kit (`remotion/kit`) is built into the render image. After editing it, run `npm run image:render` again (a few seconds: only the kit layer rebuilds). The `kit:*` scripts below mount your working copy over it, so they show edits without a rebuild.
+
 - `npm run kit:studio` opens Remotion Studio for `remotion/kit` at http://127.0.0.1:3100 (loopback only, kit mounted read-only, no secrets).
 - `npm run kit:sheet` renders frame 60 of every kit piece (same locked-down container as kit:studio) and tiles them into one grid (row-major; order printed in the terminal and captioned in `index.html`) at `.data/kit-sheet/contact-sheet.png`.
 - `npm run kit:video -- scenes.json [--audio file.wav] [--captions captions.json]` validates a scene file and renders one short MP4 to `.data/kit-video/out.mp4` in the same container.

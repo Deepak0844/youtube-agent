@@ -86,8 +86,8 @@ export interface ReviewShot {
 }
 
 export interface TsxRendererDeps {
-  /** Absolute, symlink-free path of remotion/kit, mounted read-only. */
-  kitDir: string;
+  /** Dev override: absolute, symlink-free path of remotion/kit, mounted read-only over the kit baked into the image. */
+  kitDir?: string;
   /** Host-side path of a folder under the storage root (worker in a container). Default: as is. */
   hostPath?: (p: string) => string;
   runChild(spec: ChildSpec): Promise<ChildResult>;
@@ -198,11 +198,13 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
   await cleanup();
   try {
     // 3. Stage.
-    let kitDir: string;
+    let kitDir: string | undefined;
     const publicDir = path.join(inDir, "public");
     try {
-      kitDir = mountable(deps.kitDir);
-      await realDir(kitDir, "kit");
+      if (deps.kitDir !== undefined) { // dev override only; production renders use the kit baked into the image
+        kitDir = mountable(deps.kitDir);
+        await realDir(kitDir, "kit");
+      }
       await mkdir(publicDir, { recursive: true, mode: 0o755 });
       await chmod(inDir, 0o755);
       await chmod(publicDir, 0o755);

@@ -30,7 +30,7 @@ function setup(id: string, settings: [string, unknown][] = []) {
     log: () => undefined, nextStep: () => 0, paid: async () => { throw new Error("no paid calls"); },
   } as unknown as StageContext;
   const renderer = createContainerRenderer({
-    root, kitDir: path.resolve("remotion/kit"), runChild: (s) => runChild(s), assetFile: async (a) => (a === "img1" ? "assets/j1/main.png" : null),
+    root, runChild: (s) => runChild(s), assetFile: async (a) => (a === "img1" ? "assets/j1/main.png" : null),
     probe: (f, s) => probeVideo(f, s, { storageRoot: root }),
   });
   const doc = { version: 1, scenes: [
