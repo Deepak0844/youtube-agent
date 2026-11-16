@@ -34,25 +34,26 @@ const coreOnly = {
 };
 
 
-// Boundary cleanup: who may not import whom (value imports). Baselines are generated, then removed file by file as the imports move.
-const boundary = (files, group, message, ignores = []) => ({
+// Layer boundaries: who may not import whom. Value imports only: `import type` is erased at build, so it cannot create a runtime cycle.
+//   providers = adapters (no db, no worker): the wiring layer (src/server/wiring) or an injected port connects them to the database
+//   db        = no providers: shared code lives in src/server/net, storage or core
+//   ui        = presentation only (no db): data is read in src/app and passed as props
+//   app       = no worker code: shared code lives in src/server
+// Relative spellings (`../db/x`) are covered too.
+const boundary = (files, dirs, message) => ({
   files,
-  ...(ignores.length ? { ignores } : {}),
   rules: {
-    "@typescript-eslint/no-restricted-imports": ["error", { patterns: [{ group, message, allowTypeImports: true }] }],
+    "@typescript-eslint/no-restricted-imports": [
+      "error",
+      { patterns: [{ group: dirs.flatMap((d) => [`@/${d}`, `@/${d}/*`, `**/${d.split("/").at(-1)}`, `**/${d.split("/").at(-1)}/*`]), message, allowTypeImports: true }] },
+    ],
   },
 });
-const boundaryBaseline = {
-  providers: [],
-  db: [],
-  ui: [],
-  app: [],
-};
 const boundaryRules = [
-  boundary(["src/server/providers/**/*.{ts,tsx}"], ["@/server/db", "@/server/db/*", "@/worker", "@/worker/*"], "providers are adapters: inject what they need from the database or the worker (type-only imports are fine).", boundaryBaseline.providers),
-  boundary(["src/server/db/**/*.{ts,tsx}"], ["@/server/providers", "@/server/providers/*"], "db must not depend on providers: move shared code to src/server/net, storage or core (type-only imports are fine).", boundaryBaseline.db),
-  boundary(["src/ui/**/*.{ts,tsx}"], ["@/server/db", "@/server/db/*"], "src/ui is presentation: read data in src/app and pass it as props (type-only imports are fine).", boundaryBaseline.ui),
-  boundary(["src/app/**/*.{ts,tsx}"], ["@/worker", "@/worker/*"], "the web app must not import worker code: move shared code to src/server.", boundaryBaseline.app),
+  boundary(["src/server/providers/**/*.{ts,tsx}"], ["server/db", "worker"], "providers are adapters: inject what they need from the database or the worker (see src/server/wiring; type-only imports are fine)."),
+  boundary(["src/server/db/**/*.{ts,tsx}"], ["server/providers"], "db must not depend on providers: move shared code to src/server/net, storage or core (type-only imports are fine)."),
+  boundary(["src/ui/**/*.{ts,tsx}"], ["server/db"], "src/ui is presentation: read data in src/app and pass it as props (type-only imports are fine)."),
+  boundary(["src/app/**/*.{ts,tsx}"], ["worker"], "the web app must not import worker code: move shared code to src/server."),
 ];
 
 const eslintConfig = defineConfig([
@@ -95,8 +96,7 @@ const eslintConfig = defineConfig([
   { files: ["src/server/**/*.{ts,tsx,mts}", "src/worker/**/*.{ts,tsx,mts}"], rules: restrict(framework, presentation, orm) },
   { files: ["src/server/db/**/*.{ts,tsx,mts}"], rules: restrict(framework, presentation) },
   { files: ["src/server/core/**/*.{ts,tsx,mts}"], rules: { ...restrict(framework, presentation, orm, io, effects), ...coreOnly } },
-  // Layer boundaries (value imports only; `import type` is erased at build, so it cannot create a runtime cycle). Each block lists
-  // files that still break its rule in `ignores`; the list only shrinks (boundary cleanup), and must end empty.
+  // Layer boundaries (see boundaryRules above).
   ...boundaryRules,
 ]);
 
