@@ -1,4 +1,8 @@
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { prepareWorkspace } from "@/server/engine/workspace";
 import { targetFrames } from "@/server/core/tsx-prompt";
 import { chapterBuildRequest, chapterSceneFile, explainerBuildRequest } from "@/server/engine/build-prompt";
 
@@ -88,8 +92,8 @@ describe("chapterBuildRequest (long videos, L3)", () => {
 
   it("hands chapter 1's file to later chapters as the look, and only when given", () => {
     const withLook = chapterBuildRequest({ ...base, chapter: chapter(2), lookSource: "export default () => null; // chapter one" });
-    expect(withLook.inputs["look-ch01.tsx"]).toContain("chapter one");
-    expect(withLook.prompt).toContain("input/look-ch01.tsx");
+    expect(withLook.inputs["look-ch01.txt"]).toContain("chapter one");
+    expect(withLook.prompt).toContain("input/look-ch01.txt");
     expect(withLook.prompt).toMatch(/Do NOT copy its pictures/);
     const none = chapterBuildRequest({ ...base, chapter: chapter(1) });
     expect(Object.keys(none.inputs).sort()).toEqual(["script.json", "words.json"]);
@@ -106,5 +110,19 @@ describe("chapterBuildRequest (long videos, L3)", () => {
     expect(mid).toMatch(/Do not loop back to frame 0/);
     expect(last).toMatch(/LAST chapter: end on the payoff/);
     expect(mid).toMatch(/Do not write sfx-cues\.json/); // sound is planned for the whole video, not per chapter
+  });
+
+  it("every input file of a chapter run is accepted by the REAL engine workspace (a bad file name stopped a real run at chapter 2)", async () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "ws-chapter-")));
+    try {
+      for (const withLook of [false, true]) {
+        const r = chapterBuildRequest({ ...base, chapter: chapter(2), ...(withLook ? { lookSource: "export default () => null;" } : {}) });
+        const ws = await prepareWorkspace(root, "12981f5c-3750-4636-b89c-59f24b841292", {}, r.inputs);
+        expect(readFileSync(path.join(ws.workDir, "input", "script.json"), "utf8")).toContain('"index": 2');
+        if (withLook) expect(readFileSync(path.join(ws.workDir, "input", "look-ch01.txt"), "utf8")).toContain("export default");
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

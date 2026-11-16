@@ -67,7 +67,8 @@ export function explainerBuildRequest(v: { topic: string; beats: PromptBeat[]; w
 
 /** The file the engine writes for chapter k of a long video: scene/ch01.tsx, scene/ch02.tsx, ... */
 export const chapterSceneFile = (index: number): string => `scene/ch${String(index).padStart(2, "0")}.tsx`;
-export const LOOK_FILE = "look-ch01.tsx";
+/** Named .txt: the engine workspace takes only .json, .md and .txt input files (the file is plain text for the engine to read). */
+export const LOOK_FILE = "look-ch01.txt";
 
 /**
  * The build request for ONE chapter of a long video (L3). The chapter's beats and words are already on the chapter's own clock (they start at 0),
@@ -99,7 +100,7 @@ export function chapterBuildRequest(v: { topic: string; chapter: ChapterWindow; 
     `Make chapter ${c.index} of ${v.total} ("${c.title}") of a long explainer video: "${v.topic}". The script is approved and narrated already. This is ONE chapter file; the app joins the chapters into one video.`,
     "",
     "Inputs (read-only): input/script.json (this chapter's beats with their text, the visual each asks for, and start and end seconds on THIS chapter's own clock) and input/words.json (every spoken word of this chapter with its start and end seconds, from 0).",
-    ...(v.lookSource ? [`- input/${LOOK_FILE} is chapter 1 of this same video, already drawn and accepted. Match its colours, fonts, caption-safe zone and drawing style so the chapters look like one video. Do NOT copy its pictures: draw what THIS chapter's beats ask for.`] : []),
+    ...(v.lookSource ? [`- input/${LOOK_FILE} is the source code of chapter 1 of this same video, already drawn and accepted. Match its colours, fonts, caption-safe zone and drawing style so the chapters look like one video. Do NOT copy its pictures: draw what THIS chapter's beats ask for.`] : []),
     "",
     "How:",
     "- Use the openmontage-pipeline skill for the craft (stages from scene planning on, pacing, review), the draw-objects skill to draw the objects, and vidtsx-2d-generator for the rules that keep a file from crashing.",
