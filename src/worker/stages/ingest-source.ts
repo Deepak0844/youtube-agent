@@ -53,7 +53,7 @@ export function ingestSourceAttempt(deps: StageDeps, o: { transcriber: () => Pro
         ctx.log(`ingest: audio piece ${i + 1} done`);
       }
       const words = mergeChunkWords(pieces, durationS);
-      if (words.length < MIN_WORDS) throw new KnownFailure(`Only ${words.length} spoken words were found, so there is nothing to cut clips by. Use a video with clear speech.`);
+      if (words.length < MIN_WORDS) throw new KnownFailure(`Only ${words.length} spoken word${words.length === 1 ? "" : "s"} could be made out in ${Math.round(durationS)} s, so there is nothing to cut clips by. Clips are cut at sentence ends, so the video needs a clear voice speaking the chosen language (a screen recording with only music or no voice gives nothing). Check the language you picked.`);
       const captions = { timings_kind: "aligned", words, needs_check: false, flags: [], approximate: false };
       return { files: ["final.mp4"], content: [{ kind: "captions", body: captions }], result: { durationS: Math.round(durationS * 10) / 10, words: words.length } };
     } finally {

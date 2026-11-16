@@ -148,7 +148,7 @@ describe("ingest_source stage", () => {
 
     const quiet = await mk(await upload(30));
     expect((await run(quiet, { transcribe: async () => [{ word: "hi", startS: 1, endS: 1.2 }] })).kind).toBe("known_failure");
-    expect(await errorOf(quiet)).toMatch(/Only 1 spoken words/);
+    expect(await errorOf(quiet)).toMatch(/Only 1 spoken word could be made out.*needs a clear voice/);
     for (const v of [tiny, broken, quiet]) {
       expect(await latestContent(db.pool, v, "captions")).toBeNull();
       expect(existsSync(path.join(root, "videos", v, "upload.bin"))).toBe(false);
