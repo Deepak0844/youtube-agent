@@ -23,6 +23,8 @@ export interface ClipsOverrides {
   render?: (ctx: StageContext, input: ClipRenderInput) => Promise<ClipRenderResult>;
 }
 
+export const CLIP_MAX_S = 58;
+
 const isWord = (w: unknown): w is { word: string; startS: number; endS: number } =>
   typeof w === "object" && w !== null && typeof (w as { word?: unknown }).word === "string" && Number.isFinite((w as { startS?: unknown }).startS) && Number.isFinite((w as { endS?: unknown }).endS);
 
@@ -47,7 +49,8 @@ export function clipsAttempt(deps: StageDeps, o: ClipsOverrides = {}): AttemptHa
     const source = await promotedPath(deps.root, video.id, "final.mp4");
     const sourceS = await durationS(deps.mix, ctx, source);
 
-    const plan = planBatch(words);
+    // A clip becomes a Short and a Short's QA allows at most 60 s (qa.short.maxS), so no clip is planned longer than 58 s.
+    const plan = planBatch(words, { maxS: CLIP_MAX_S });
     if (!plan.ok) throw new KnownFailure(plan.reason);
     const prev = await deps.db.query<{ n: string }>("select count(*)::text as n from video_content where video_id = $1 and kind = 'clip_batch'", [video.id]);
     const batch = Number(prev.rows[0]!.n) + 1;

@@ -104,6 +104,7 @@ describe("clips stage", () => {
     expect(body.sourceVideoId).toBe(id);
     expect(body.batch).toBe(1);
     expect(body.clips.length).toBeGreaterThanOrEqual(2);
+    for (const c of body.clips) expect(c.durationS).toBeLessThanOrEqual(58.5); // a Short's QA allows 60 s
     expect(Object.keys(body.measured)).toEqual(body.clips.map((c) => c.id));
     expect(body.review.clips).toHaveLength(body.clips.length);
     for (const m of Object.values(body.measured)) expect(m.lufs).not.toBeNull(); // really measured (a sine tone), not a stand-in
