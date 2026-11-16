@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { checkRights, cleanOriginalName, refusalMessage, rightsSchema, type Rights, type RightsRefusal } from "@/server/core/asset-rules";
 import { loadAssetDays } from "./asset-settings";
+import type { OwnLibrary } from "@/server/providers/stock";
 import type { Db } from "./stages";
 
 // SQL for the assets table (migration 0028). Dedupe is one INSERT ... ON CONFLICT (sha256) DO UPDATE statement, so two
@@ -182,3 +183,9 @@ export async function purgeDueAsset(db: Db, id: string): Promise<{ storageRef: s
   );
   return rows[0] ? { storageRef: rows[0].storage_ref, derivedRefs: rows[0].derived_refs } : null;
 }
+
+/** The asset table as the own-stock provider sees it (providers get this injected instead of importing the database). */
+export const ownLibrary = (db: Db): OwnLibrary => ({
+  findAssetsByTag: (tags, limit) => findAssetsByTag(db, tags, limit),
+  getAsset: (id) => getAsset(db, id),
+});
