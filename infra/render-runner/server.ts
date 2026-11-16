@@ -79,6 +79,9 @@ export function createRunnerServer(deps: RunnerDeps): http.Server {
       let out: ExecResult & { error?: string };
       try {
         const [host, image] = await Promise.all([deps.hostLimits(), deps.image()]);
+        // A job that waited in the queue may find its folders changed: check again right before the run, which narrows (does not close) the
+        // window between this check and the daemon resolving the mount paths. The worker is the trust boundary (ADR 0017 §3).
+        dirs = await resolveJobDirs(job, deps.root, deps.hostRoot);
         const plan = renderPlan(job, { host, imageRef: image.ref, inDir: dirs.hostIn, outDir: dirs.hostOut });
         out = await deps.exec(plan.args, { onLine: (l) => write({ t: "line", s: l.slice(0, 2000) }), signal: ac.signal, timeoutMs: plan.timeoutMs, maxOutputBytes: plan.maxOutputBytes });
       } catch {
