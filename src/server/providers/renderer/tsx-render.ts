@@ -11,7 +11,8 @@ import { checkTsx, echo, isStaticName, tsxDuration, tsxMetaFor, type TsxOrientat
 import { checkPreflight, preflightFrames, reviewStillFrames, type RgbFrame } from "@/server/core/tsx-preflight";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { daemonLimits, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
-import { ASSET_EXT, copyRegular, mountable, NAME_PREFIX, realDir, runRenderContainer } from "./remotion-container";
+import { ASSET_EXT, mountable, NAME_PREFIX, realDir, runRenderContainer } from "./remotion-container";
+import { copyRegular } from "@/server/storage/regular-file";
 import { TSX_SANDBOX, tsxRenderPlan } from "./tsx-sandbox";
 
 // SECURITY CONTROL (ADR 0009): renders ONE model-written Remotion TSX file. Fails closed at every step and returns a typed

@@ -4,7 +4,8 @@ import path from "node:path";
 import { isTsxStyleId } from "../../../../remotion/kit/tsxlib/styledata";
 import type { StageContext } from "@/server/core/stage-handler";
 import { daemonLimits, RENDER_IMAGE } from "@/server/render/runner";
-import { copyRegular, mountable, NAME_PREFIX, realDir, renderArgs, runRenderContainer } from "./remotion-container";
+import { mountable, NAME_PREFIX, realDir, renderArgs, runRenderContainer } from "./remotion-container";
+import { copyRegular } from "@/server/storage/regular-file";
 import { stagePublicAssets, type TsxRendererDeps } from "./tsx-render";
 import { TSX_EXTRA_FLAGS, TSX_SANDBOX } from "./tsx-sandbox";
 

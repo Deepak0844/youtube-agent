@@ -3,7 +3,8 @@ import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { StageContext } from "@/server/core/stage-handler";
 import { daemonLimits, RENDER_IMAGE } from "@/server/render/runner";
-import { ASSET_EXT, AUDIO_EXT, copyRegular, mountable, NAME_PREFIX, realDir, runRenderContainer } from "./remotion-container";
+import { ASSET_EXT, AUDIO_EXT, mountable, NAME_PREFIX, realDir, runRenderContainer } from "./remotion-container";
+import { copyRegular } from "@/server/storage/regular-file";
 import { stagePublicAssets, type TsxRendererDeps } from "./tsx-render";
 import { TSX_SANDBOX, tsxRenderPlan } from "./tsx-sandbox";
 

@@ -47,14 +47,12 @@ const boundaryBaseline = {
     "src/server/providers/async-media.ts",
     "src/server/providers/image/wire.ts",
     "src/server/providers/notify/ports.ts",
-    "src/server/providers/renderer/remotion-container.ts",
     "src/server/providers/sound/index.ts",
     "src/server/providers/stock/own.ts",
     "src/server/providers/uploader/youtube.ts",
     "src/server/providers/video/wire.ts"
   ],
   db: [
-    "src/server/db/clip-shorts.ts",
     "src/server/db/provider-keys.ts",
     "src/server/db/system-settings.ts",
     "src/server/db/thumbnail-upload.ts"

@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { constants as fsc } from "node:fs";
-import { copyFile, lstat, mkdir, open } from "node:fs/promises";
+import { copyFile, lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type pg from "pg";
 import { KnownFailure, LeaseLostError } from "@/server/core/paid-call";
@@ -10,6 +9,7 @@ import { saveStageContent, type ContentSave } from "@/server/db/stage-content";
 import type { Claim } from "@/server/db/stages";
 import type { ContentKind } from "@/server/db/videos";
 import { attemptDir, safeJoin } from "@/server/storage/paths";
+import { openRegular } from "@/server/storage/regular-file";
 import { promoteAttempt } from "@/server/storage/store";
 
 // How a stage's files reach the video folder (Doc 2 §9.1).
@@ -51,18 +51,6 @@ export async function prepareAttempt(ctx: StageContext, root: string): Promise<s
   await mkdir(dir, { recursive: true, mode: 0o700 });
   ctx.attemptDir = dir;
   return dir;
-}
-
-/** Opens a regular file for reading: no symlink followed, and O_NONBLOCK so a planted FIFO cannot hang the open. */
-export async function openRegular(file: string) {
-  const fh = await open(file, fsc.O_RDONLY | fsc.O_NOFOLLOW | fsc.O_NONBLOCK);
-  try {
-    if (!(await fh.stat()).isFile()) throw new KnownFailure("expected a regular file");
-    return fh;
-  } catch (e) {
-    await fh.close();
-    throw e;
-  }
 }
 
 /** SHA-256 of a regular file's bytes, hashed while streaming (a large video is never held in memory). No symlinks followed. */

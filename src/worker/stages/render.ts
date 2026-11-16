@@ -7,9 +7,9 @@ import { chapterFrameChunks, chapterMarks, chapterMarksFromScenes, outlineTotalS
 import { validateScenes, type SceneDoc } from "@/shared/scene";
 import { retimeScenes } from "@/shared/scene/retime";
 import type { RenderArgs, Renderer } from "@/server/providers/renderer";
-import { MAX_VIDEO_BYTES } from "@/server/providers/renderer/remotion-container";
+import { MAX_VIDEO_BYTES, openRegular } from "@/server/storage/regular-file";
 import { joinClips, type MixDeps } from "@/server/render/mix";
-import { openRegular, promotedPath, type AttemptHandler } from "./attempt";
+import { promotedPath, type AttemptHandler } from "./attempt";
 import { videoPath } from "@/server/storage/paths";
 import { contentBody, LANDSCAPE_SIZE, loadVideo, SIZE, type StageDeps } from "./deps";
 import { audioSeconds } from "./voice-audio";

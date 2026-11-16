@@ -6,7 +6,7 @@ import type { ClipBatchBody } from "@/server/core/clip-batch";
 import { inheritClipScript } from "@/server/core/clip-inherit";
 import { claimsOf } from "@/server/core/evidence-edit";
 import { uuidv7 } from "@/server/core/ids";
-import { copyRegular } from "@/server/providers/renderer/remotion-container";
+import { copyRegular } from "@/server/storage/regular-file";
 import { safeJoin } from "@/server/storage/paths";
 import { approvalReaders } from "./approval-readers";
 import { recordAudit } from "./audit";
