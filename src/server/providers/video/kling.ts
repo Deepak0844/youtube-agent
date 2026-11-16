@@ -1,7 +1,6 @@
 import { KnownFailure } from "@/server/core/paid-call";
 import { clipProblem, quoteClip, type VideoModelCap } from "@/server/core/video-clip";
-import type { Db } from "@/server/db/stages";
-import { runAsyncMedia, stepOfKey } from "../async-media";
+import { runAsyncMedia, stepOfKey, type MediaJobStore } from "../async-media";
 import { readKey } from "../image";
 import type { JobChecker } from "../media-types";
 import type { SafeFetch } from "../voice/eleven-types";
@@ -27,7 +26,7 @@ export interface KlingDeps {
   fetch: SafeFetch;
   /** Indirect (public-address-only) fetch for the result file; it never gets the key. */
   fetchCdn: SafeFetch;
-  db: Db;
+  jobs: MediaJobStore;
   getKey: () => Promise<string>;
   /** The `kling_video` registry price (per second); it must be the price for `resolution`. null = unpriced, refused. */
   price: unknown;
@@ -99,7 +98,7 @@ export function createKlingVideo(deps: KlingDeps): VideoProvider {
       return ctx.paid({ reserveMicroUsd: reserve, budgetScopes: scopes, kind: "paid" }, async (callKey, signal) => {
         const auth = async () => ({ authorization: `Bearer ${await readKey(deps.getKey, "Kling")}` });
         let flaky = 0;
-        const result = await runAsyncMedia(ctx, { db: deps.db, provider: "kling_video", kind: "video", step: stepOfKey(callKey), quoteMicroUsd: reserve, signal, sleep: deps.sleep }, {
+        const result = await runAsyncMedia(ctx, { jobs: deps.jobs, provider: "kling_video", kind: "video", step: stepOfKey(callKey), quoteMicroUsd: reserve, signal, sleep: deps.sleep }, {
           async submit() {
             const res = await postJson("Kling", deps.fetch, `${HOST}/${path}`, await auth(), body, signal);
             const id = parseJson<{ data?: { id?: unknown } }>("Kling", await readCapped(res, "Kling")).data?.id;

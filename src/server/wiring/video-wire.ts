@@ -4,6 +4,7 @@ import { KEY_SLOT } from "@/server/core/media-catalog";
 import { KnownFailure } from "@/server/core/paid-call";
 import { secretName, type ProviderId } from "@/server/core/provider-keys";
 import type { Keyring } from "@/server/core/vault-crypto";
+import { mediaJobStore } from "@/server/db/media-jobs";
 import { getPriceRule } from "@/server/db/media-registry";
 import { getSecret, hasSecret } from "@/server/db/vault";
 import { safeJoin, storageRoot } from "@/server/storage/paths";
@@ -52,8 +53,8 @@ export function createVideoFor(db: pg.Pool, loader: () => Keyring, root: string 
     const price = await getPriceRule(db, id);
     if (!price) throw new KnownFailure(`${PICK} (${id} is off or has no price).`);
     if (!(await hasSecret(db, secretName(KEY_SLOT[id] as ProviderId)))) throw new KnownFailure(`${PICK} (save its key first).`);
-    const base = { fetch, fetchCdn: videoFileFetch(sf), db, getKey: keyReader(db, loader, id), price, root, readImage: readPicture(root) };
-    if (id === "veo_video") return createVeoVideo({ fetch, db, getKey: base.getKey, price, root, readImage: base.readImage });
+    const base = { fetch, fetchCdn: videoFileFetch(sf), jobs: mediaJobStore(db), getKey: keyReader(db, loader, id), price, root, readImage: readPicture(root) };
+    if (id === "veo_video") return createVeoVideo({ fetch, jobs: base.jobs, getKey: base.getKey, price, root, readImage: base.readImage });
     return id === "kling_video" ? createKlingVideo(base) : createSeedanceVideo(base);
   };
 }

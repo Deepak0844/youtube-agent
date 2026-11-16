@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { uuidv7 } from "@/server/core/ids";
+import type { MediaJobStore } from "@/server/providers/async-media";
 import type { MediaArtifact } from "@/server/providers/media-types";
 
 type Db = pg.Pool | pg.PoolClient;
@@ -84,3 +85,12 @@ export async function settleCheckedJob(db: Db, id: string, r: { actual: number; 
   );
   return res.rowCount === 1;
 }
+
+/** The job table as the async-media runner sees it (providers get this injected instead of importing the database). */
+export const mediaJobStore = (db: Db): MediaJobStore => ({
+  submitOnce: (key, provider, kind, quoteMicroUsd) => submitOnce(db, key, provider, kind, quoteMicroUsd),
+  storeProviderJobId: (id, providerJobId) => storeProviderJobId(db, id, providerJobId),
+  finishJob: (id, r) => finishJob(db, id, r),
+  markJobUnknown: (id) => markJobUnknown(db, id),
+  markJobFailedKnown: (id) => markJobFailedKnown(db, id),
+});

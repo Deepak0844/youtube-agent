@@ -1,4 +1,5 @@
 // Fixtures are hand-written from BytePlus ModelArk's public docs and are `unrecorded`: no real call has been made. Everything runs against a local HTTP server.
+import { mediaJobStore } from "@/server/db/media-jobs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -73,7 +74,7 @@ beforeEach(async () => {
 });
 
 const seedance = (price: unknown = PRICE, extra: { fetchCdn?: SafeFetch; resolution?: "480p" | "720p" | "1080p" } = {}) =>
-  createSeedanceVideo({ fetch: localFetch, fetchCdn: extra.fetchCdn ?? localFetch, db: db.pool, getKey: async () => KEY, price, root, resolution: extra.resolution,
+  createSeedanceVideo({ fetch: localFetch, fetchCdn: extra.fetchCdn ?? localFetch, jobs: mediaJobStore(db.pool), getKey: async () => KEY, price, root, resolution: extra.resolution,
     readImage: async (p) => (p === "bad.png" ? HTML : PNG), sleep: async (ms) => { sleeps.push(ms); } });
 const args = (o: Partial<ClipArgs> = {}): ClipArgs => ({ prompt: "a red fox runs", seconds: 5, aspect: "9:16", startImage: false, endImage: false, model: MODEL, budgetScopes: BUDGET, ...o });
 

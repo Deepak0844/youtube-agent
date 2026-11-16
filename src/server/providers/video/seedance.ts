@@ -1,8 +1,7 @@
 import { sniff, SNIFF_HEAD_BYTES } from "@/server/core/sniff";
 import { KnownFailure } from "@/server/core/paid-call";
 import { clipProblem, quoteClip, type VideoModelCap } from "@/server/core/video-clip";
-import type { Db } from "@/server/db/stages";
-import { runAsyncMedia, stepOfKey } from "../async-media";
+import { runAsyncMedia, stepOfKey, type MediaJobStore } from "../async-media";
 import type { JobChecker } from "../media-types";
 import type { SafeFetch } from "../voice/eleven-types";
 import { postJson, readCapped } from "../voice/elevenlabs";
@@ -30,7 +29,7 @@ export interface SeedanceDeps {
   fetch: SafeFetch;
   /** Indirect (public-address-only) fetch for the result file; it never gets the key. */
   fetchCdn: SafeFetch;
-  db: Db;
+  jobs: MediaJobStore;
   getKey: () => Promise<string>;
   /** The `seedance_video` registry price (per second). It must be the price for `resolution`; null = unpriced, refused. */
   price: unknown;
@@ -109,7 +108,7 @@ export function createSeedanceVideo(deps: SeedanceDeps): VideoProvider {
       return ctx.paid({ reserveMicroUsd: reserve, budgetScopes: scopes, kind: "paid" }, async (callKey, signal) => {
         const auth = async () => ({ authorization: `Bearer ${await readKey(deps.getKey, "Seedance")}` });
         let flaky = 0; // status polls that failed in a row; the job id is stored, so a few are tolerated
-        const result = await runAsyncMedia(ctx, { db: deps.db, provider: "seedance_video", kind: "video", step: stepOfKey(callKey), quoteMicroUsd: reserve, signal, sleep: deps.sleep }, {
+        const result = await runAsyncMedia(ctx, { jobs: deps.jobs, provider: "seedance_video", kind: "video", step: stepOfKey(callKey), quoteMicroUsd: reserve, signal, sleep: deps.sleep }, {
           async submit() {
             const res = await postJson("Seedance", deps.fetch, BASE, await auth(), body, signal);
             const id = parseJson<{ id?: unknown }>("Seedance", await readCapped(res, "Seedance")).id;

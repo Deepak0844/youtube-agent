@@ -1,7 +1,6 @@
 import { quote as priceQuote, type PriceRule } from "@/server/core/media-catalog";
 import { KnownFailure } from "@/server/core/paid-call";
-import type { Db } from "@/server/db/stages";
-import { runAsyncMedia, stepOfKey } from "../async-media";
+import { runAsyncMedia, stepOfKey, type MediaJobStore } from "../async-media";
 import type { Aspect, ImageProvider } from "../media";
 import type { JobChecker } from "../media-types";
 import type { SafeFetch } from "../voice/eleven-types";
@@ -13,7 +12,7 @@ export interface FalImageDeps {
   fetch: SafeFetch;
   /** Indirect (public-address-only) fetch for the CDN; it never gets the key. */
   fetchCdn: SafeFetch;
-  db: Db;
+  jobs: MediaJobStore;
   /** Decrypted per call; never cached or logged. */
   getKey: () => Promise<string>;
   /** The `fal_image` registry price; null = unpriced, refused. */
@@ -124,7 +123,7 @@ export function createFalImage(deps: FalImageDeps): ImageProvider {
       let flaky = 0; // status polls that failed in a row; not a money risk (the job id is stored), so a few are tolerated
       return ctx.paid({ reserveMicroUsd: reserve, budgetScopes: scopes, kind: "paid" }, async (callKey, signal) => {
         const auth = async () => ({ authorization: `Key ${await readKey(deps.getKey, "fal")}` });
-        const result = await runAsyncMedia(ctx, { db: deps.db, provider: "fal_image", kind: "image", step: stepOfKey(callKey), quoteMicroUsd: reserve, signal, sleep: deps.sleep }, {
+        const result = await runAsyncMedia(ctx, { jobs: deps.jobs, provider: "fal_image", kind: "image", step: stepOfKey(callKey), quoteMicroUsd: reserve, signal, sleep: deps.sleep }, {
           async submit() {
             const res = await postJson("fal", deps.fetch, `${HOST}/${a.model}`, await auth(), { prompt, image_size: SIZE[a.aspect], num_images: 1, enable_safety_checker: true, ...(a.seed !== undefined && { seed: a.seed }) }, signal);
             const id = (JSON.parse((await readCapped(res, "fal")).toString("utf8")) as { request_id?: unknown }).request_id;

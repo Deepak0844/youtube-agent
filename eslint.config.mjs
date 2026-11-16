@@ -44,7 +44,6 @@ const boundary = (files, group, message, ignores = []) => ({
 });
 const boundaryBaseline = {
   providers: [
-    "src/server/providers/async-media.ts",
     "src/server/providers/sound/index.ts",
     "src/server/providers/stock/own.ts",
     "src/server/providers/uploader/youtube.ts"
