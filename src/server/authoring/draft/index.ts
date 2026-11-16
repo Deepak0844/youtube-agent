@@ -39,7 +39,7 @@ export function createDraftHandler(d: { db: pg.Pool; makeLlm: (budgetScopes: str
       const outline = await approvedOutline(d.db, videoId);
       if (!outline.ok) throw new KnownFailure(outline.reason);
       if (video.length_min_minutes === null || video.length_max_minutes === null) throw new KnownFailure("This long video has no length range saved.");
-      long = { outline: outline.outline, range: { min: video.length_min_minutes, max: video.length_max_minutes } };
+      long = { outline: outline.outline, range: { min: video.length_min_minutes, max: video.length_max_minutes, qaMinS: ctx.config.qa.long.minS } };
     }
     const feedback = await pendingScriptFeedback(d.db, videoId);
     // What past shorts showed (retention by beat). Shorts only; a read failure just means no notes.

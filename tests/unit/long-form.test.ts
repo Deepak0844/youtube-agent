@@ -53,6 +53,16 @@ describe("estimates", () => {
   it("derives the script word range from the chosen minutes", () => {
     expect(longWordRange("en", { min: 3, max: 8 })).toEqual({ min: 437, max: 1426 });
   });
+
+  it("the QA minimum raises the script's minimum words, so a voice at the average pace still runs at least that long (a real 448-word script ran 168 s against the 180 s minimum)", () => {
+    expect(longWordRange("en", { min: 3, max: 4 })).toEqual({ min: 437, max: 713 }); // without the QA minimum: 10% under 3 minutes is allowed
+    const withQa = longWordRange("en", { min: 3, max: 4, qaMinS: 180 });
+    expect(withQa).toEqual({ min: 535, max: 713 }); // 180 s x 2.7 words a second x 1.1
+    expect(448).toBeLessThan(withQa.min); // the DNS script would now be sent back
+    expect(535 / 2.67).toBeGreaterThan(180); // and a script at the new minimum clears the QA minimum at the real voice's pace
+    expect(longWordRange("en", { min: 5, max: 8, qaMinS: 180 }).min).toBe(longWordRange("en", { min: 5, max: 8 }).min); // a longer range is unchanged
+    expect(longWordRange("en", { min: 3, max: 3, qaMinS: 400 }).min).toBeLessThanOrEqual(longWordRange("en", { min: 3, max: 3, qaMinS: 400 }).max); // the minimum never passes the maximum
+  });
   it("formats clock times", () => {
     expect(clock(65)).toBe("1:05");
     expect(clock(600)).toBe("10:00");
