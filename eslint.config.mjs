@@ -52,11 +52,7 @@ const boundaryBaseline = {
     "src/server/providers/uploader/youtube.ts",
     "src/server/providers/video/wire.ts"
   ],
-  db: [
-    "src/server/db/provider-keys.ts",
-    "src/server/db/system-settings.ts",
-    "src/server/db/thumbnail-upload.ts"
-  ],
+  db: [],
   ui: [
     "src/ui/shell/area-menu-counts.tsx",
     "src/ui/shell/bell.tsx",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVoiceField, hostPortOf, isVoiceField } from "@/server/providers/voice/endpoints";
+import { checkVoiceField, hostPortOf, isVoiceField } from "@/server/core/voice-endpoints";
 
 const okv = (f: Parameters<typeof checkVoiceField>[0], v: string, key = false) => {
   const r = checkVoiceField(f, v, key);

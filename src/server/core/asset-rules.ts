@@ -152,3 +152,6 @@ export function storageFullMessage(h: StorageHolders): string {
   const parts = HOLDER_LABELS.filter(([k]) => h[k] > 0).map(([k, label]) => `${label} (${gb(h[k])})`);
   return `Storage is full. ${parts.length ? `The space is held by ${parts.join(", ")}. Free some of it and try again.` : "Delete files you no longer need and try again."}`;
 }
+
+/** Largest thumbnail card (PNG) the app renders or uploads: the render step caps its output at this, the upload step refuses more. */
+export const THUMBNAIL_PNG_MAX_BYTES = 6 * 1024 * 1024;

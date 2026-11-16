@@ -14,7 +14,7 @@ import { ENGINE_NUMBER_KEYS, ENGINE_NUMBER_FIELDS, parseEngineNumbers } from "@/
 import { getSetting, getStoredSettings, setSessionSettings } from "@/server/db/settings";
 import { recordAudit } from "@/server/db/audit";
 import { hasSecret } from "@/server/db/vault";
-import { checkVoiceField, VOICE_FIELDS, isVoiceField } from "@/server/providers/voice/endpoints";
+import { checkVoiceField, VOICE_FIELDS, isVoiceField } from "@/server/core/voice-endpoints";
 
 // Writers behind /settings/system. Callers (server actions) have already done requireOwner(). There is no actor argument:
 // everything here is written through setSessionSettings, which can only write as a logged-in session (safety keys such as

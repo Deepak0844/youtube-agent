@@ -5,7 +5,7 @@ import { SCOPE_LABELS, canRoute, priceLabel } from "@/server/core/media-catalog"
 import { listProviders, listRoutes } from "@/server/db/media-registry";
 import { classifyAddress } from "@/server/core/net-policy";
 import { loadLocalServices, loadVoiceServers } from "@/server/db/system-settings";
-import { hostPortOf } from "@/server/providers/voice/endpoints";
+import { hostPortOf } from "@/server/core/voice-endpoints";
 import { getPool } from "@/server/db/pool";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/ui/primitives/table";
 import { ProviderList, type ProviderView } from "./provider-table";

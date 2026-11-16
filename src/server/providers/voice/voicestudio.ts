@@ -1,53 +1,18 @@
 import { createHash } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import ipaddr from "ipaddr.js";
 import { FormData } from "undici"; // safeFetch sends with undici, which does not understand the global FormData
 import { estimateTimings, mapToScript, type Recognised } from "@/server/core/alignment";
 import { LANGS } from "@/server/core/lang";
-import { KnownFailure } from "@/server/core/paid-call";
+import { VoiceUrlError, assertVoiceStudioUrl, isLoopbackHost } from "@/server/core/voice-endpoints";
 import type { StageContext } from "@/server/core/stage-handler";
 import { callServer, MAX_AUDIO_BYTES, postJson, readJson, requireScopes, saveCapped } from "./local-http";
 import { joinWav, parseWav, wavSeconds } from "./wav";
 import type { TimingsKind, VoiceProvider, WordTiming } from "./index";
 
+export { VoiceUrlError, assertVoiceStudioUrl, isLoopbackHost };
+
 export const CHUNK_CHARS = 3500; // the server limit is 4096
-
-export class VoiceUrlError extends KnownFailure {
-  constructor(message: string) {
-    super(message);
-    this.name = "VoiceUrlError";
-  }
-}
-
-/**
- * "This computer": loopback, or host.docker.internal inside the app's own container (YTSTUDIO_IN_CONTAINER, set by its image), where the
- * container's hosts file pins that name to the Docker host. Elsewhere the name would come from ordinary DNS, so it is another computer.
- */
-export function isLoopbackHost(hostname: string): boolean {
-  const h = hostname.startsWith("[") ? hostname.slice(1, -1) : hostname;
-  if (h.toLowerCase() === "localhost") return true;
-  if (h.toLowerCase() === "host.docker.internal") return process.env.YTSTUDIO_IN_CONTAINER === "1";
-  if (!ipaddr.isValid(h)) return false;
-  const a = ipaddr.parse(h);
-  return a.kind() === "ipv6" && (a as ipaddr.IPv6).isIPv4MappedAddress() ? false : a.range() === "loopback";
-}
-
-/** VoiceStudio has no login of its own on loopback. Anywhere else it must be reached with a key, or it is refused. */
-export function assertVoiceStudioUrl(url: string, hasKey: boolean): void {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    throw new VoiceUrlError("The VoiceStudio address is not a valid URL.");
-  }
-  if (u.protocol !== "http:" && u.protocol !== "https:") throw new VoiceUrlError("The VoiceStudio address must start with http:// or https://.");
-  if (u.username !== "" || u.password !== "") throw new VoiceUrlError("The VoiceStudio address must not contain a user name or password.");
-  if (hasKey && u.protocol !== "https:" && !isLoopbackHost(u.hostname)) throw new VoiceUrlError("A key must not be sent over plain http to another computer. Use an https address.");
-  if (!hasKey && !isLoopbackHost(u.hostname)) {
-    throw new VoiceUrlError("VoiceStudio is not on this computer, so an API key is required. Add a key, or use the address 127.0.0.1.");
-  }
-}
 
 /** Sentence-aware packing into pieces of at most `max` characters; a single over-long run is cut at a word, then at a character. */
 export function chunkText(text: string, max = CHUNK_CHARS): string[] {

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NotProcessedError } from "@/server/core/error-class";
+import { REGION } from "@/server/core/voice-endpoints";
 import { LANGS, type Lang } from "@/server/core/lang";
 import { isPriced, quote as priceQuote } from "@/server/core/media-catalog";
 import { KnownFailure } from "@/server/core/paid-call";
@@ -13,7 +14,6 @@ import type { VoiceProvider } from "./index";
 // No byte limit is documented for the REST body (audio is cut at 10 minutes), so this is a sane cap of our own,
 // with the same 80% / 3 bytes-per-character rule as Google for the character cap.
 const MAX_BYTES = 9000;
-export const REGION = /^[a-z0-9-]{3,30}$/;
 
 // The REST endpoint sends no word boundaries; the caller aligns the audio (Task 09).
 const ssmlOf = (locale: string, voice: string, text: string) =>
