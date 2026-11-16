@@ -176,6 +176,9 @@ A past landscape build drew small thin objects in the top two thirds and left th
   Put labels in the title band or in empty space beside the thing they name, never on top of a sun, a beam or another tag.
   A past landscape build printed "PRISM SPLITS LIGHT" under a red beam, "~10x" on top of "HOW MUCH SCATTERS" and "NEAR SUNSET"
   on the sun: move the label instead.
+- **The caption band is checked.** Captions sit between y 864 and y 1026. `check_frames` refuses a frame where any edge of a
+  picture or label lies in that band (the bottom 20% of the frame). Keep every object and label above y 860 in every frame,
+  also while it slides, grows or bounces in: a box that bounces 60 px past its place still has to stay above the line.
 - **Both halves carry content.** Split the frame in thirds: the left third and the right third each hold part of the main
   object, an object, a bar or a label. A set-up that only fills one side (bars at the left, nothing at the right) is
   redrawn wider or re-centred.

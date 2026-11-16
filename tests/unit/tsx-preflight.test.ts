@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedShare, checkPreflight, EMPTY_BAND_MAX, EMPTY_FRAME0, isBlack, longestEmptyBand, isFlat, preflightFrames, zoneEdgeShare, type RgbFrame } from "@/server/core/tsx-preflight";
+import { captionBandEdgeShare, changedShare, checkPreflight, EMPTY_BAND_MAX, EMPTY_FRAME0, isBlack, longestEmptyBand, isFlat, preflightFrames, zoneEdgeShare, type RgbFrame } from "@/server/core/tsx-preflight";
 
 const W = 100;
 const H = 200;
@@ -165,5 +165,20 @@ describe("landscape frames (L1)", () => {
     const top = lsquare(5, 10);
     expect(longestEmptyBand(top)).toBeGreaterThan(0.4);
     expect(longestEmptyBand(lsquare(5, 45))).toBeLessThan(0.7);
+  });
+  // The captions sit at about 80% to 93% of a landscape frame's height; a picture must stay above them (draw-objects 5d: nothing important below y 860 of 1080).
+  const rows = (n: number, y0: number, y1: number) => frame(n, (x, y) => (x >= 20 && x < 180 && y >= y0 && y < y1 ? [255, 255, 255] : [20, 30, 60]), LW, LH);
+  it("an_object_running_into_the_caption_band_is_refused_by_the_engine_check_only", () => {
+    expect(captionBandEdgeShare(rows(0, 40, 60))).toBe(0);
+    expect(captionBandEdgeShare(rows(0, 70, 100))).toBeGreaterThan(0.01); // 100 of 112 rows: inside the band
+    const bad = [rows(0, 40, 60), rows(10, 40, 100)];
+    expect(checkPreflight(bad, lsize).problems.join()).not.toMatch(/caption/i); // the final render's own check does not ask
+    const r = checkPreflight(bad, lsize, { maxEmptyBand: EMPTY_BAND_MAX });
+    expect(r.ok).toBe(false);
+    expect(r.problems.join()).toMatch(/Frame 10: .*caption/i);
+    expect(checkPreflight([rows(0, 40, 60), rows(10, 30, 85)], lsize, { maxEmptyBand: EMPTY_BAND_MAX }).problems.join()).not.toMatch(/caption/i); // ends at 76%: clear
+  });
+  it("a_tall_frame_has_no_caption_band_check", () => {
+    expect(captionBandEdgeShare(frame(1, (x, y) => (y > 150 ? [255, 255, 255] : [20, 30, 60]), 100, 200))).toBe(0);
   });
 });
