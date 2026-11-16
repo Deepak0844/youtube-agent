@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { RIGHTS_TEXT } from "@/server/core/asset-rules";
 import { registerAsset } from "@/server/db/assets";
+import { ownLibrary } from "@/server/db/assets";
 import { createStockProvider, StockError, type StockHit } from "@/server/providers/stock";
 import { withTestDb, type TestDb } from "../support/db";
 
@@ -148,7 +149,7 @@ describe("own stock", () => {
     const sha = (await import("node:crypto")).createHash("sha256").update(png).digest("hex");
     const rights = { attestations: [{ at: "2026-10-29T00:00:00Z", text: RIGHTS_TEXT }] };
     await registerAsset(db.pool, { kind: "image", originalName: "boat.png", mime: "image/png", bytes: png.length, width: 10, height: 20, sha256: sha, storageRef: "a/boat.png", tags: ["boat"], rights });
-    const own = createStockProvider("own_stock", { ...deps(null), own: { db: db.pool, resolvePath: (r: string) => path.join(dir, r) } });
+    const own = createStockProvider("own_stock", { ...deps(null), own: { library: ownLibrary(db.pool), resolvePath: (r: string) => path.join(dir, r) } });
     const found = await own.search({ query: "Boat sea", kind: "image", orientation: "portrait", count: 5 });
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({ title: "boat.png", licence: "Own file", width: 10, height: 20 });
@@ -159,7 +160,7 @@ describe("own stock", () => {
   });
 
   it("refuses_deleted_and_non_image_assets", async () => {
-    const own = createStockProvider("own_stock", { ...deps(null), own: { db: db.pool, resolvePath: (r: string) => path.join(dir, r) } });
+    const own = createStockProvider("own_stock", { ...deps(null), own: { library: ownLibrary(db.pool), resolvePath: (r: string) => path.join(dir, r) } });
     const [h] = await own.search({ query: "boat", kind: "image", orientation: "portrait", count: 1 });
     await db.pool.query("update assets set deleted_at = now() where id = $1", [h!.id]);
     await expect(own.fetch(ctx(), h!)).rejects.toThrow(/no longer in your library/);

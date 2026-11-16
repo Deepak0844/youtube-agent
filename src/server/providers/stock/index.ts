@@ -4,7 +4,7 @@ import path from "node:path";
 import { rejectionMessage, sniff, SNIFF_HEAD_BYTES } from "@/server/core/sniff";
 import type { MediaArtifact } from "@/server/providers/media-types";
 import { safeFetch } from "@/server/net/safe-fetch";
-import type { Db } from "@/server/db/stages";
+import type { Asset } from "@/server/db/assets";
 import { coverrStock } from "./coverr";
 import { ownStock } from "./own";
 import { pexelsStock } from "./pexels";
@@ -25,12 +25,18 @@ export interface StockProvider {
 export class StockError extends Error {}
 
 export type StockFetcher = (url: string, init?: RequestInit) => Promise<Response>;
+/** The owner's asset library as the own-stock provider sees it. src/server/db/assets.ts provides it (ownLibrary); providers never import the database. */
+export interface OwnLibrary {
+  findAssetsByTag(tags: string[], limit: number): Promise<Asset[]>;
+  getAsset(id: string): Promise<Asset | null>;
+}
+
 export interface StockDeps {
   /** Reads the saved key for this provider at call time (never cached); null when none is saved. */
   getKey: () => Promise<string | null>;
   fetcher?: StockFetcher;
   /** resolvePath must map a storageRef to a file inside the asset storage root (the caller owns that containment). */
-  own?: { db: Db; resolvePath: (storageRef: string) => string };
+  own?: { library: OwnLibrary; resolvePath: (storageRef: string) => string };
 }
 
 // Hosts are fixed per provider. API host serves the search; CDN hosts are the only places a download may come from.
