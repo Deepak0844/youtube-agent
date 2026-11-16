@@ -26,7 +26,7 @@ import { ok, throwsUnknown } from "@/server/providers/fake-base";
 import { createFalImage } from "@/server/providers/image/fal";
 import { createOpenAIImage } from "@/server/providers/image/openai";
 import { createFakeImage } from "@/server/providers/media/fake";
-import { ensureSound, type SoundDeps, type SoundNeed } from "@/server/providers/sound";
+import { ensureSound, type SoundDeps, type SoundNeed } from "@/server/wiring/ensure-sound";
 import { createElevenLabsSound } from "@/server/providers/sound/elevenlabs";
 import { createFakeVoice, type FakeVoiceOptions } from "@/server/providers/voice/fake";
 import type { SafeFetch } from "@/server/providers/voice/eleven-types";
