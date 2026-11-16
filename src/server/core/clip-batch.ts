@@ -77,3 +77,13 @@ export function approveBatch(review: BatchReview, droppedIds: readonly string[])
   if (approved.length === 0) return { ok: false, reason: "Every clip was dropped. Keep at least one clip, or discard the batch." };
   return { ok: true, approved, dropped: [...dropped].sort() };
 }
+
+/** What one batch records on the SOURCE video (content kind `clip_batch`, one version per run). */
+export interface ClipBatchBody {
+  sourceVideoId: string;
+  /** 1 for the first batch of this video, then 2, 3... (the clip file names carry it, so an old batch is never overwritten) */
+  batch: number;
+  clips: Array<BatchClip & { file: string }>;
+  measured: Record<string, Measured>;
+  review: BatchReview;
+}

@@ -1,6 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { planBatch, reviewBatch, type BatchClip, type BatchReview, type Measured } from "@/server/core/clip-batch";
+import { planBatch, reviewBatch, type ClipBatchBody, type Measured } from "@/server/core/clip-batch";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
 import { renderClip, type ClipRenderInput, type ClipRenderResult } from "@/server/providers/renderer/clip-render";
@@ -8,21 +8,12 @@ import { cutClipFile, durationS } from "@/server/render/mix";
 import { promotedPath, type AttemptHandler } from "./attempt";
 import { contentBody, loadVideo, type StageDeps } from "./deps";
 
-/** What one batch records on the SOURCE video (content kind `clip_batch`, one version per run). */
-export interface ClipBatchBody {
-  sourceVideoId: string;
-  /** 1 for the first batch of this video, then 2, 3... (the clip file names carry it, so an old batch is never overwritten) */
-  batch: number;
-  clips: Array<BatchClip & { file: string }>;
-  measured: Record<string, Measured>;
-  review: BatchReview;
-}
-
 export interface ClipsOverrides {
   /** Test seam. Default: renderClip through the locked renderer (deps.tsxDeps). */
   render?: (ctx: StageContext, input: ClipRenderInput) => Promise<ClipRenderResult>;
 }
 
+export type { ClipBatchBody };
 export const CLIP_MAX_S = 58;
 
 const isWord = (w: unknown): w is { word: string; startS: number; endS: number } =>

@@ -87,9 +87,11 @@ interface VideoLocked {
   derived_from: string | null;
   derive_from_scene: number | null;
   derive_to_scene: number | null;
+  /** Clip Shorts: which batch of the source video it was cut in (null = not a clip Short) */
+  clip_batch: number | null;
 }
 
-const VIDEO_LOCK_COLS = "id, format, kind, kind_origin, language, topic, notes, style, caption_style, status, stage_nonces, length_min_minutes, length_max_minutes, derived_from, derive_from_scene, derive_to_scene";
+const VIDEO_LOCK_COLS = "id, format, kind, kind_origin, language, topic, notes, style, caption_style, status, stage_nonces, length_min_minutes, length_max_minutes, derived_from, derive_from_scene, derive_to_scene, clip_batch";
 
 /** The finished content of a long video a clip is made from. A new version of any of these makes the derived short stale. */
 export const DERIVE_SOURCE_KINDS = ["script", "scenes", "beats", "evidence", "narration", "captions"] as const;
@@ -137,7 +139,7 @@ async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineRead
   return {
     kind: v.kind,
     format: v.format,
-    flags: { requireEvidence, paidGeneration: paid, ...(v.derive_from_scene !== null ? { derived: true } : {}) },
+    flags: { requireEvidence, paidGeneration: paid, ...(v.derive_from_scene !== null ? { derived: true } : {}), ...(v.clip_batch !== null ? { clip: true } : {}) },
     // A long video's chosen length range is part of its parameters (a short adds nothing, so every short hash stays what it was).
     paramsHash: sha256Hex(canonicalJson({ format: v.format, kind: v.kind_origin ?? v.kind, language: v.language, topic: v.topic, notes: v.notes, ...(v.format === "long" ? { length: [v.length_min_minutes, v.length_max_minutes] } : {}), ...(v.derive_from_scene !== null ? { derive: [v.derived_from, v.derive_from_scene, v.derive_to_scene] } : {}) })),
     ...(v.derive_from_scene !== null ? { derivedSource: await derivedSourceDigest(c, v.derived_from) } : {}),
