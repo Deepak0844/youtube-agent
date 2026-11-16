@@ -230,3 +230,18 @@ export function renderLimits(kind: RenderKind, c: RenderJob["config"]): { timeou
     }
   }
 }
+
+/** The name of a render container: the render prefix and a short safe tail (the same pattern a job's name must match). */
+export const RENDER_NAME = new RegExp(`^${NAME_PREFIX}[A-Za-z0-9_.-]{1,60}$`);
+
+/** Parses `docker ps --format '{{.Names}} {{.Label "ytstudio.worker"}}'` into render containers; anything malformed is skipped. */
+export function parseRenderContainers(out: string): Array<{ name: string; worker: string }> {
+  const rows: Array<{ name: string; worker: string }> = [];
+  for (const line of out.split("\n")) {
+    const parts = line.trim().split(" ");
+    if (parts.length !== 2) continue;
+    const [name, worker] = parts as [string, string];
+    if (RENDER_NAME.test(name) && WORKER_ID.test(worker)) rows.push({ name, worker });
+  }
+  return rows;
+}
