@@ -6,6 +6,7 @@ export const COMPOSE_ENV_KEYS = [
   "YTSTUDIO_OWNER_PASSWORD",
   "YTSTUDIO_APP_PASSWORD",
   "YTSTUDIO_BACKUP_PASSWORD",
+  "RENDER_RUNNER_TOKEN",
   "VAULT_MASTER_KEY",
   "HOST_STORAGE_ROOT",
   "APP_URL",
@@ -22,6 +23,7 @@ export function renderComposeEnv(o: { hostStorageRoot: string; uid: number; gid:
     YTSTUDIO_OWNER_PASSWORD: o.password(),
     YTSTUDIO_APP_PASSWORD: o.password(),
     YTSTUDIO_BACKUP_PASSWORD: o.password(),
+    RENDER_RUNNER_TOKEN: o.password(), // base64url: letters, digits, - and _
     VAULT_MASTER_KEY: o.masterKey(),
     HOST_STORAGE_ROOT: o.hostStorageRoot,
     APP_URL: "http://localhost:3000",
