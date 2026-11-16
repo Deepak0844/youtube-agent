@@ -43,9 +43,7 @@ const boundary = (files, group, message, ignores = []) => ({
   },
 });
 const boundaryBaseline = {
-  providers: [
-    "src/server/providers/uploader/youtube.ts"
-  ],
+  providers: [],
   db: [],
   ui: [],
   app: [],

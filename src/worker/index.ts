@@ -8,6 +8,7 @@ import type { ChildRegistry } from "@/server/render/child";
 import { defaultDryRunDeps, dryRunHandlers, productionHandlers, workerHooksFor, type StageHandlers } from "./handlers";
 import { loadKeyring } from "@/server/db/master-key";
 import { createFakeUploader } from "@/server/providers/uploader/fake";
+import { youtubeStore } from "@/server/db/youtube-store";
 import { createYouTubeUploader } from "@/server/providers/uploader/youtube";
 import { throttledCommentSync } from "@/server/db/comments";
 import { pullAnalytics, pullMessage } from "@/server/db/analytics";
@@ -128,7 +129,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       }
       // Approved uploads: the fake only in a guarded dry run. Otherwise the real YouTube uploader, which still sends nothing unless the
       // job-time checks pass (kill switch off, channel connected and confirmed, approval and file hash intact).
-      const uploader = process.env.ENGINE_DRY_RUN === "1" ? createFakeUploader({ pool }) : createYouTubeUploader({ pool, ring: loadKeyring });
+      const uploader = process.env.ENGINE_DRY_RUN === "1" ? createFakeUploader({ pool }) : createYouTubeUploader({ store: youtubeStore(pool, loadKeyring) });
       const worker = startWorker({ log, pool, handlers, readers: approvalReaders, ingest: true, hooks, uploader });
       let exiting = false;
       const shutdown = () => {
