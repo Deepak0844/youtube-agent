@@ -11,8 +11,8 @@ if (refusal) {
 for (const step of INIT_STEPS) {
   process.stdout.write(`== ${step}\n`);
   const r = spawnSync("npm", ["run", step], { stdio: ["ignore", "inherit", "pipe"], encoding: "utf8" }); // stdout inherited: owner:create prints the link there
-  process.stderr.write(r.stderr ?? "");
   const outcome = stepOutcome(step, r.status ?? 1, r.stderr ?? "");
+  if (outcome !== "skip") process.stderr.write(r.stderr ?? ""); // a skip's "already exists" text is not an error to show
   if (outcome === "fail") {
     process.stderr.write(`Setup stopped at ${step}.\n`);
     process.exit(1);
