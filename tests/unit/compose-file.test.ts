@@ -44,6 +44,14 @@ describe("docker-compose.yml", () => {
     expect(s.web!.environment!.TOOLS_CHECKED_BY).toBe("worker");
     expect(s.worker!.environment!.TOOLS_CHECKED_BY).toBeUndefined();
   });
+  it("web and worker get the read-only backup URL (so backups work), never the owner or superuser", () => {
+    for (const name of ["web", "worker"]) {
+      const e = s[name]!.environment!;
+      expect(e.BACKUP_DATABASE_URL, name).toContain("ytstudio_backup");
+      expect(JSON.stringify(e), name).not.toMatch(/ytstudio_owner|postgres:\$\{POSTGRES_PASSWORD\}/);
+    }
+    expect(s.init!.environment!.YTSTUDIO_BACKUP_PASSWORD).toBe("${YTSTUDIO_BACKUP_PASSWORD}");
+  });
   it("only init gets the superuser and owner database URLs; web and worker get the app role only", () => {
     expect(Object.keys(s.init!.environment!)).toEqual(expect.arrayContaining(["BOOTSTRAP_DATABASE_URL", "MIGRATE_DATABASE_URL"]));
     for (const name of ["web", "worker"]) {

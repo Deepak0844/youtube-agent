@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { INIT_STEPS, refuseInit, stepOutcome } from "@/server/core/compose-setup";
 
-const good = { POSTGRES_PASSWORD: "p".repeat(20), YTSTUDIO_OWNER_PASSWORD: "o".repeat(20), YTSTUDIO_APP_PASSWORD: "a".repeat(20), VAULT_MASTER_KEY: "k".repeat(44) };
+const good = { POSTGRES_PASSWORD: "p".repeat(20), YTSTUDIO_OWNER_PASSWORD: "o".repeat(20), YTSTUDIO_APP_PASSWORD: "a".repeat(20), YTSTUDIO_BACKUP_PASSWORD: "b".repeat(20), VAULT_MASTER_KEY: "k".repeat(44) };
 
 describe("compose first-run setup", () => {
   it("accepts real secrets", () => expect(refuseInit(good)).toBeNull());
@@ -9,6 +9,7 @@ describe("compose first-run setup", () => {
     expect(refuseInit({ ...good, YTSTUDIO_OWNER_PASSWORD: "CHANGE_ME" })).toBe("Set real passwords in .env: YTSTUDIO_OWNER_PASSWORD is still CHANGE_ME.");
     expect(refuseInit({ ...good, POSTGRES_PASSWORD: undefined })).toBe("Set real passwords in .env: POSTGRES_PASSWORD is missing.");
     expect(refuseInit({ ...good, VAULT_MASTER_KEY: "" })).toBe("Set real passwords in .env: VAULT_MASTER_KEY is missing.");
+    expect(refuseInit({ ...good, YTSTUDIO_BACKUP_PASSWORD: undefined })).toBe("Set real passwords in .env: YTSTUDIO_BACKUP_PASSWORD is missing.");
     expect(refuseInit({})).toContain("POSTGRES_PASSWORD");
   });
   it("runs bootstrap, migrate, owner:create in that order", () => expect(INIT_STEPS).toEqual(["db:bootstrap", "db:migrate", "owner:create"]));

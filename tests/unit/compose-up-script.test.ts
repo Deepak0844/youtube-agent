@@ -28,13 +28,26 @@ describe("scripts/compose-up.ts", () => {
     expect(readFileSync(file, "utf8")).toContain(`HOST_STORAGE_ROOT=${path.join(dir, "data")}`);
     expect(existsSync(path.join(dir, "data"))).toBe(true);
   });
+  it("adds only the missing backup password to an older .env, leaving every other line alone", () => {
+    const dir = tmp();
+    const file = path.join(dir, ".env");
+    writeFileSync(file, "POSTGRES_PASSWORD=mine\nVAULT_MASTER_KEY=keep\n", { mode: 0o600 });
+    const r = run(dir);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("Added YTSTUDIO_BACKUP_PASSWORD");
+    const text = readFileSync(file, "utf8");
+    expect(text.startsWith("POSTGRES_PASSWORD=mine\nVAULT_MASTER_KEY=keep\n")).toBe(true);
+    expect(text).toMatch(/^YTSTUDIO_BACKUP_PASSWORD=\S{32}$/m);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(run(dir).stdout).not.toContain("Added YTSTUDIO_BACKUP_PASSWORD"); // second run: nothing to add
+  });
   it("never overwrites an existing .env", () => {
     const dir = tmp();
     const file = path.join(dir, ".env");
-    writeFileSync(file, "POSTGRES_PASSWORD=mine\n", { mode: 0o600 });
+    writeFileSync(file, "POSTGRES_PASSWORD=mine\nYTSTUDIO_BACKUP_PASSWORD=mine2\n", { mode: 0o600 });
     const r = run(dir);
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("Using existing .env");
-    expect(readFileSync(file, "utf8")).toBe("POSTGRES_PASSWORD=mine\n");
+    expect(readFileSync(file, "utf8")).toBe("POSTGRES_PASSWORD=mine\nYTSTUDIO_BACKUP_PASSWORD=mine2\n");
   });
 });

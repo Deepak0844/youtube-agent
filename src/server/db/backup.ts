@@ -37,7 +37,7 @@ const defaultExec: NonNullable<BackupDeps["exec"]> = async (cmd, args, env) => {
 
 class BackupError extends Error {}
 
-/** Connection parts for pg_dump as PG* variables, from the migration/owner URL when set, else the app URL. */
+/** Connection parts for pg_dump as PG* variables, from the backup (read-only) URL, else the migration/owner URL, else the app URL. */
 function pgEnv(url: string | undefined): Env {
   let u: URL;
   try {
@@ -78,9 +78,14 @@ const ok = (cmd: string, args: string[]) => run(cmd, args, { timeout: 10_000, wi
 export type PgMode = { kind: "local"; env: Env } | { kind: "docker"; container: string; user: string; db: string };
 
 /** pg_dump / pg_restore on PATH if present, else inside the running database container. Throws a plain sentence when neither is available. */
+/** Which database URL a backup connects with: explicit, else the read-only backup role, else the owner, else the app role. */
+export function backupDatabaseUrl(explicit: string | undefined, env: Record<string, string | undefined> = process.env): string | undefined {
+  return explicit ?? env.BACKUP_DATABASE_URL ?? env.MIGRATE_DATABASE_URL ?? env.DATABASE_URL;
+}
+
 export async function choosePgMode(deps: { databaseUrl?: string; pgMode?: PgMode }): Promise<PgMode> {
   if (deps.pgMode) return deps.pgMode;
-  const url = deps.databaseUrl ?? process.env.MIGRATE_DATABASE_URL ?? process.env.DATABASE_URL;
+  const url = backupDatabaseUrl(deps.databaseUrl);
   const container = process.env.BACKUP_DB_CONTAINER || DEFAULT_DB_CONTAINER;
   const pgDump = (await ok("pg_dump", ["--version"])) !== null;
   const containerRunning = !pgDump && (await ok("docker", ["inspect", "-f", "{{.State.Running}}", container]))?.trim() === "true";

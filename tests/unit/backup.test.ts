@@ -134,3 +134,15 @@ describe("extraDirProblem (the optional second copy)", () => {
     for (const bad of [root, `${root}/backups`, "/Users/me/app", "/Users/me"]) expect(extraDirProblem(bad, root), bad).toMatch(/own storage/);
   });
 });
+
+import { backupDatabaseUrl } from "@/server/db/backup";
+describe("backupDatabaseUrl", () => {
+  const env = { BACKUP_DATABASE_URL: "postgres://b", MIGRATE_DATABASE_URL: "postgres://m", DATABASE_URL: "postgres://a" };
+  it("prefers an explicit URL, then the read-only backup URL, then the owner URL, then the app URL", () => {
+    expect(backupDatabaseUrl("postgres://x", env)).toBe("postgres://x");
+    expect(backupDatabaseUrl(undefined, env)).toBe("postgres://b");
+    expect(backupDatabaseUrl(undefined, { MIGRATE_DATABASE_URL: "postgres://m", DATABASE_URL: "postgres://a" })).toBe("postgres://m");
+    expect(backupDatabaseUrl(undefined, { DATABASE_URL: "postgres://a" })).toBe("postgres://a");
+    expect(backupDatabaseUrl(undefined, {})).toBeUndefined();
+  });
+});
