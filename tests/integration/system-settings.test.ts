@@ -89,11 +89,12 @@ describe("local service list (app role)", () => {
     expect(await audit()).toHaveLength(1);
   });
 
-  it("in production an entry is refused (with the names still missing) until the own-service URLs are set; clearing is allowed", async () => {
+  it("in production an entry is refused (with the names still missing) until SEARXNG_URL is set; clearing is allowed", async () => {
     const prod = { NODE_ENV: "production" };
     const r = await saveLocalServices(db.pool, "localhost:11434", { ownPorts: OWN, env: prod });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(JSON.stringify(r.lines)).toMatch(/RENDER_RUNNER_URL.*FETCHER_URL.*SEARXNG_URL.*EGRESS_PROXY_URL/);
+    if (!r.ok) expect(JSON.stringify(r.lines)).toMatch(/SEARXNG_URL/);
+    if (!r.ok) expect(JSON.stringify(r.lines)).not.toMatch(/RENDER_RUNNER_URL|FETCHER_URL|EGRESS_PROXY_URL/);
     expect(await getSetting(db.pool, "network.local_services")).toEqual([]);
     expect((await saveLocalServices(db.pool, "", { ownPorts: OWN, env: prod })).ok).toBe(true);
   });
