@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { LOOKS } from "../../../../../remotion/kit/look";
 import { PRESETS, STYLE_IDS } from "../../../../../remotion/kit/presets";
+import { TSX_LONG_MAX_MINUTES } from "@/server/core/long-form";
 import { LANGUAGE_ORDER, LANGUAGE_WORDS } from "@/server/core/videos-view";
 import { cn, control, fade, focusRing } from "@/ui/lib/cn";
 import { Button } from "@/ui/primitives/button";
@@ -23,10 +24,12 @@ export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], ini
   const [format, setFormat] = useState<"short" | "long">(initialFormat);
   const [dirty, setDirty] = useState(false);
   useUnsavedWarning(dirty && !pending);
-  const long = format === "long"; // Long videos were Scene kit only, which is removed: no type is offered for them
+  const long = format === "long"; // a long video is a Custom animation: one code scene per chapter
   const pickFormat = (f: "short" | "long") => {
     setFormat(f);
+    if (f === "long") setKind("tsx");
   };
+  const longMax = Math.min(maxLongMinutes, TSX_LONG_MAX_MINUTES);
   const custom = kind === "tsx";
   // Custom animation has no Classic look: its default card is AI Studio. The other types keep Classic ("" = no style).
   const [picked, setPicked] = useState("");
@@ -77,7 +80,7 @@ export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], ini
           <Label htmlFor="format">Format</Label>
           <select id="format" name="format" value={format} onChange={(e) => pickFormat(e.target.value === "long" ? "long" : "short")} className={selectClass}>
             <option value="short">Short (9:16)</option>
-            <option value="long">Long (16:9, not available now)</option>
+            <option value="long">Long (16:9, Custom animation only)</option>
           </select>
         </div>
       </div>
@@ -87,14 +90,14 @@ export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], ini
           <div className="grid max-w-sm grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="minMinutes">Shortest</Label>
-              <Input id="minMinutes" name="minMinutes" type="number" inputMode="numeric" min={3} max={maxLongMinutes} step={1} defaultValue={3} required />
+              <Input id="minMinutes" name="minMinutes" type="number" inputMode="numeric" min={3} max={longMax} step={1} defaultValue={3} required />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="maxMinutes">Longest</Label>
-              <Input id="maxMinutes" name="maxMinutes" type="number" inputMode="numeric" min={3} max={maxLongMinutes} step={1} defaultValue={Math.min(8, maxLongMinutes)} required />
+              <Input id="maxMinutes" name="maxMinutes" type="number" inputMode="numeric" min={3} max={longMax} step={1} defaultValue={Math.min(8, longMax)} required />
             </div>
           </div>
-          <p className="m-0 max-w-[68ch] text-small text-muted">From 3 up to {maxLongMinutes} minutes (Settings, System sets the ceiling). The studio first writes a chapter outline and stops for your approval before it writes the script or pays for narration.</p>
+          <p className="m-0 max-w-[68ch] text-small text-muted">From 3 up to {longMax} minutes (six chapters of up to 90 seconds; Settings, System can lower the ceiling). The studio first writes a chapter outline and stops for your approval before it writes the script or pays for narration.</p>
         </fieldset>
       ) : null}
       <div className="flex flex-col gap-2">
@@ -112,8 +115,8 @@ export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], ini
             ["ai", "AI video (paid clips, Shorts)", "A video model draws a short clip for every beat, as long as that beat of narration. The voice is made first, then you see the price of every clip and approve it before anything is bought. Optionally keep one character the same in every clip."],
           ] as const
         ).map(([id, title, help]) => (
-          <label key={id} className={cn("flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-border bg-page p-3 has-checked:outline-2 has-checked:outline", long && "opacity-50")}>
-            <input type="radio" name="kind" value={id} checked={kind === id} disabled={long} onChange={() => setKind(id)} className="mt-1" />
+          <label key={id} className={cn("flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-border bg-page p-3 has-checked:outline-2 has-checked:outline", long && id !== "tsx" && "opacity-50")}>
+            <input type="radio" name="kind" value={id} checked={kind === id} disabled={long && id !== "tsx"} onChange={() => setKind(id)} className="mt-1" />
             <span className="flex min-w-0 flex-col gap-1">
               <span className="text-body font-medium">{title}</span>
               <span className="text-small text-muted">{help}</span>

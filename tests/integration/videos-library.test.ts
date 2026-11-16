@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PAGE_SIZE, parseNewVideoForm, parseLibraryQuery } from "@/server/core/videos-view";
 import { createHash } from "node:crypto";
 import { RIGHTS_TEXT } from "@/server/core/asset-rules";
+import { setSetting } from "@/server/db/settings";
 import { registerAsset } from "@/server/db/assets";
 import { startNewVideo } from "@/server/db/video-create";
 import { listVideos } from "@/server/db/videos-list";
@@ -106,6 +107,27 @@ describe("startNewVideo for an AI video", () => {
     }
     expect((await startNewVideo(db.pool, queue, actor, input({ kind: "collage", characterAssetId: await png() }))).ok).toBe(false);
     expect((await db.pool.query("select count(*)::int n from videos")).rows[0].n).toBe(before);
+  });
+});
+
+describe("startNewVideo for a long video", () => {
+  const long = (over: Record<string, unknown> = {}) => ({ topic: "How DNS works", language: "en" as const, kind: "tsx" as const, format: "long" as const, style: "clean_professional" as const, lengthMin: 3, lengthMax: 6, ...over });
+  const row = async (id: string) => (await db.pool.query("select format, kind, style, length_min_minutes as lo, length_max_minutes as hi from videos where id = $1", [id])).rows[0];
+  it("starts a Custom animation with its style and length range saved on the video", async () => {
+    const r = await startNewVideo(db.pool, queue, actor, long());
+    if (!r.ok) throw new Error(r.message);
+    expect(await row(r.videoId)).toEqual({ format: "long", kind: "tsx", style: "clean_professional", lo: 3, hi: 6 });
+  });
+  it("refuses, before any video exists, a range the safe renderer or the QA check cannot take", async () => {
+    const before = (await db.pool.query("select count(*)::int as n from videos")).rows[0].n;
+    expect(await startNewVideo(db.pool, queue, actor, long({ kind: "collage" }))).toMatchObject({ ok: false, message: expect.stringMatching(/Only a Custom animation/) });
+    expect(await startNewVideo(db.pool, queue, actor, long({ lengthMax: 10 }))).toMatchObject({ ok: false, message: expect.stringMatching(/at most 9 minutes/) });
+    expect(await startNewVideo(db.pool, queue, actor, long({ lengthMin: 2 }))).toMatchObject({ ok: false, message: expect.stringMatching(/at least 3 minutes/) });
+    expect(await startNewVideo(db.pool, queue, actor, long({ lengthMin: 5, lengthMax: 4 }))).toMatchObject({ ok: false });
+    expect(await startNewVideo(db.pool, queue, actor, long({ lengthMin: undefined, lengthMax: undefined }))).toMatchObject({ ok: false });
+    await setSetting(db.pool, "qa.long_min_s", 240, { actor: "session" }); // QA now needs 4 minutes at least
+    expect(await startNewVideo(db.pool, queue, actor, long({ lengthMin: 3 }))).toMatchObject({ ok: false, message: expect.stringMatching(/QA long: shortest/) });
+    expect((await db.pool.query("select count(*)::int as n from videos")).rows[0].n).toBe(before);
   });
 });
 

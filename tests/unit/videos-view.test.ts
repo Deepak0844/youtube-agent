@@ -55,7 +55,7 @@ describe("parseNewVideoForm: AI videos", () => {
   });
   it("refuses a character that is not an id, and a long AI video; other kinds never carry a character", () => {
     expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "ai", character: "../../etc" }))).toMatchObject({ ok: false });
-    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "ai", format: "long", minMinutes: "3", maxMinutes: "8" }))).toMatchObject({ ok: false, message: expect.stringMatching(/Scene kit/) });
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "ai", format: "long", minMinutes: "3", maxMinutes: "8" }))).toMatchObject({ ok: false, message: expect.stringMatching(/Only a Custom animation/) });
     const sk = parseNewVideoForm(form({ topic: "x", language: "en", kind: "collage", character: id }));
     expect(sk.ok && "characterAssetId" in sk.value).toBe(false);
   });
@@ -75,7 +75,6 @@ describe("parseNewVideoForm", () => {
     expect(plain).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "tsx", format: "short", notes: undefined } });
     const kit = parseNewVideoForm(form({ topic: "x", language: "en", style: "flat_motion" }));
     expect(kit.ok && kit.value.style).toBe("flat_motion");
-    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", format: "long" })).ok).toBe(false);
   });
   it("refuses empty or too long topics and unknown language/kind/format", () => {
     expect(parseNewVideoForm(form({ topic: "   ", language: "en" })).ok).toBe(false);
@@ -86,8 +85,12 @@ describe("parseNewVideoForm", () => {
     expect(parseNewVideoForm(form({ topic: "x", language: "en", format: "wide" })).ok).toBe(false);
     expect(parseNewVideoForm(form({ language: "en" })).ok).toBe(false);
   });
-  it("long videos are refused for every type (they were made with the scene kit)", () => {
-    for (const kind of ["tsx", "collage", "ai"]) expect(parseNewVideoForm(form({ topic: "x", language: "en", kind, format: "long" }))).toMatchObject({ ok: false, message: expect.stringContaining("Scene kit") });
+  it("a long video is a Custom animation only: the other types are refused with a plain sentence", () => {
+    for (const kind of ["collage", "ai"]) expect(parseNewVideoForm(form({ topic: "x", language: "en", kind, format: "long" }))).toMatchObject({ ok: false, message: expect.stringContaining("Only a Custom animation") });
+  });
+  it("a long Custom animation keeps its style and its length range (blank = 3 to 8)", () => {
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", format: "long", style: "clean_professional", minMinutes: "4", maxMinutes: "6" }))).toEqual({ ok: true, value: { topic: "x", language: "en", kind: "tsx", format: "long", notes: undefined, style: "clean_professional", lengthMin: 4, lengthMax: 6 } });
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", format: "long" }))).toMatchObject({ ok: true, value: { lengthMin: 3, lengthMax: 8 } });
   });
   it("a Short never carries a length range", () => {
     const r = parseNewVideoForm(form({ topic: "x", language: "en", minMinutes: "5", maxMinutes: "9" }));

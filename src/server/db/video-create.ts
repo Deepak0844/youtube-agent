@@ -3,6 +3,8 @@ import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approv
 import { versionInput, type NewVideoInput } from "@/server/core/videos-view";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { recordAudit } from "@/server/db/audit";
+import { lengthRangeProblem, lengthVsQaProblem, TSX_CHAPTER_MAX_S, TSX_LONG_MAX_MINUTES } from "@/server/core/long-form";
+import { maxLongMinutes, qaLongSeconds } from "@/server/db/system-settings";
 import { advanceVideo, createVideo, type EnqueueOnly } from "@/server/db/pipeline";
 import { CharacterRefused, characterProblemOf, setVideoCharacter } from "@/server/db/video-characters";
 
@@ -16,15 +18,21 @@ export async function startNewVideo(db: pg.Pool, queue: EnqueueOnly, actor: Gate
 
 /** The same start for the overnight scheduler (sessionId null). Creates a draft only: no gate is approved, nothing is uploaded. */
 export async function startVideo(db: pg.Pool, queue: EnqueueOnly, sessionId: string | null, i: NewVideoInput, channelId: string | null = null): Promise<{ ok: true; videoId: string } | { ok: false; message: string }> {
-  // Long videos were made with the scene kit only, which is removed.
-  if (i.format === "long") return { ok: false, message: "Long videos are not available right now (they were made with the Scene kit, which is removed)." };
+  // A long video is a Custom animation only, and its length must fit what one code scene per chapter can hold and what QA will accept, BEFORE any money is spent.
+  if (i.format === "long") {
+    if (i.kind !== "tsx") return { ok: false, message: "Only a Custom animation can be a long video." };
+    const range = { min: i.lengthMin, max: i.lengthMax };
+    if (Number.isInteger(range.max) && (range.max as number) > TSX_LONG_MAX_MINUTES) return { ok: false, message: `A code-scene long video is at most ${TSX_LONG_MAX_MINUTES} minutes (six chapters of up to ${TSX_CHAPTER_MAX_S} seconds).` };
+    const why = lengthRangeProblem(range.min, range.max, await maxLongMinutes(db)) ?? lengthVsQaProblem({ min: range.min as number, max: range.max as number }, await qaLongSeconds(db));
+    if (why) return { ok: false, message: why };
+  }
   // A locked character is checked BEFORE the video exists, so a bad picture never leaves a half-made video behind.
   if (i.characterAssetId && i.kind !== "ai") return { ok: false, message: "Only an AI video has a character picture." };
   if (i.characterAssetId) {
     const why = await characterProblemOf(db, i.characterAssetId);
     if (why) return { ok: false, message: why };
   }
-  const v = await createVideo(db, { channelId, format: i.format, kind: i.kind, language: i.language, topic: i.topic, notes: i.notes ?? null, style: i.style ?? null, captionStyle: i.captionStyle ?? null });
+  const v = await createVideo(db, { channelId, format: i.format, kind: i.kind, language: i.language, topic: i.topic, notes: i.notes ?? null, style: i.style ?? null, captionStyle: i.captionStyle ?? null, ...(i.format === "long" ? { lengthMinMinutes: i.lengthMin, lengthMaxMinutes: i.lengthMax } : {}) });
   await recordAudit(db, "video.created", { videoId: v.id, language: v.language, kind: v.kind, format: v.format, sessionId });
   if (i.characterAssetId) {
     try {
