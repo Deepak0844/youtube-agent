@@ -110,6 +110,18 @@ describe("container renderer", () => {
     expect(new Set(names).size).toBe(2);
   });
 
+  it("mounts the host-side path of /in and /out when a mapper is given, and still checks the container-side folders", async () => {
+    const toHost = (q: string) => q.replace(root, "/host-root");
+    const behave = (_spec: ChildSpec, outDir: string) => {
+      copyFileSync(GOOD, path.join(outDir.replace("/host-root", root), "out.mp4"));
+      return { code: 0, signal: null, truncated: false, timedOut: false, aborted: false };
+    };
+    await createContainerRenderer(deps(behave, { hostPath: toHost })).render(ctx(), args());
+    const a = run().args;
+    expect(mountOf(a, "/in")).toBe(`${toHost(attemptDir)}/render-in:/in:ro`);
+    expect(mountOf(a, "/out")).toBe(`${toHost(attemptDir)}/render-out:/out:rw`);
+  });
+
   it("stages only referenced assets, narration and props; scratch folders are removed afterwards", async () => {
     let seen: { files: string[]; props: Record<string, unknown> } | undefined;
     const asked: string[] = [];

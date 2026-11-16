@@ -74,7 +74,7 @@ export async function renderClip(deps: TsxRendererDeps, ctx: StageContext, input
     for (const v of [c.timeoutS, c.cpus, c.memoryMb, c.pids]) if (!Number.isFinite(v) || v <= 0) return fail("The render settings are not usable for a clip render.");
     const name = `${NAME_PREFIX}${ctx.claim.stageRunId.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 36)}-clip-${randomBytes(4).toString("hex")}`;
     const args = renderArgs({
-      name, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir,
+      name, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, hostPath: deps.hostPath,
       limits: { cpus: c.cpus, memoryMb: c.memoryMb, pids: c.pids }, extra: TSX_EXTRA_FLAGS, entry: ["/in", "/out/out.mp4", "--clip"],
     });
     const timeoutMs = Math.floor(c.timeoutS) * 1000;

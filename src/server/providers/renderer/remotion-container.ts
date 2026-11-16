@@ -47,6 +47,8 @@ export interface ContainerRendererDeps {
   root: string;
   /** Absolute, symlink-free path of remotion/kit, mounted read-only. */
   kitDir: string;
+  /** Host-side path of a folder under the storage root, for the docker mounts when the worker runs in a container. Default: as is. */
+  hostPath?: (p: string) => string;
   /** storageRef (relative to root) of an asset's main file, or null when there is no such asset. */
   assetFile(id: string): Promise<string | null>;
   /** runChild bound to the worker's child registry. */
@@ -123,6 +125,8 @@ export interface RenderArgsInput {
   inDir: string;
   outDir: string;
   kitDir: string;
+  /** Rewrites /in and /out mount sources to host paths (worker in a container). */
+  hostPath?: (p: string) => string;
   /** Extra hardening flags placed after the shared locks; only ever adds limits (see tsx-sandbox.ts). */
   extra?: readonly string[];
   /** Arguments of render-entry.mjs (after the image). Default: the kit render, /in /out/out.mp4. */
@@ -130,6 +134,7 @@ export interface RenderArgsInput {
 }
 
 /** The `docker run` argument list of one render. Builds only; runs nothing. */
+const same = (p: string) => p;
 export function renderArgs(o: RenderArgsInput): string[] {
   return [
     "run", "--rm", "--name", o.name,
@@ -138,8 +143,8 @@ export function renderArgs(o: RenderArgsInput): string[] {
     "--log-driver", "none",
     "--label", `${JOB_LABEL}=${o.name}`,
     "--label", `${WORKER_LABEL}=${o.workerId && WORKER_ID.test(o.workerId) ? o.workerId : "unknown"}`,
-    "-v", `${o.inDir}:/in:ro`,
-    "-v", `${o.outDir}:/out:rw`,
+    "-v", `${(o.hostPath ?? same)(o.inDir)}:/in:ro`,
+    "-v", `${(o.hostPath ?? same)(o.outDir)}:/out:rw`,
     "-v", `${o.kitDir}:/opt/render/kit:ro`,
     "-w", "/tmp",
     "--entrypoint", "node",
@@ -345,7 +350,7 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
         const host = await (deps.hostLimits ?? daemonLimits)();
         const image = deps.image ? await deps.image() : { ref: RENDER_IMAGE, pinned: false };
         if (!image.pinned) ctx.log(`render: image not pinned (could not resolve its id); running the tag ${image.ref}`);
-        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, ...(a.layout === "landscape" ? { entry: ["/in", "/out/out.mp4", "--landscape", ...(a.chunk ? [chunkArg(a.chunk), "--muted"] : [])] } : {}) });
+        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, hostPath: deps.hostPath, ...(a.layout === "landscape" ? { entry: ["/in", "/out/out.mp4", "--landscape", ...(a.chunk ? [chunkArg(a.chunk), "--muted"] : [])] } : {}) });
         const { r, tail } = await runRenderContainer(deps, ctx, { name, args, timeoutMs: lim.timeoutS * 1000, maxOutputBytes: MAX_OUTPUT_BYTES });
         if (r.aborted) throw ctx.signal.reason ?? new Error("render aborted");
         if (r.timedOut) throw new KnownFailure(`The render took longer than its ${Math.ceil(lim.timeoutS / 60)} min limit and was stopped.`);

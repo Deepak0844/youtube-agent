@@ -34,7 +34,7 @@ export function pngProblem(head: Buffer): string | null {
 
 export type ThumbnailRenderer = { draw(ctx: StageContext, a: ThumbnailInput): Promise<{ outPath: string; image: string }> };
 
-export function createThumbnailRenderer(deps: Pick<ContainerRendererDeps, "root" | "kitDir" | "runChild" | "hostLimits" | "image" | "workerId" | "sweepDelayMs">) {
+export function createThumbnailRenderer(deps: Pick<ContainerRendererDeps, "root" | "kitDir" | "runChild" | "hostLimits" | "image" | "workerId" | "sweepDelayMs" | "hostPath">) {
   const renderer: ThumbnailRenderer = {
     async draw(ctx: StageContext, a: ThumbnailInput): Promise<{ outPath: string; image: string }> {
       if (a.outFile === "" || a.outFile !== path.basename(a.outFile) || a.outFile.startsWith(".") || !a.outFile.endsWith(".png")) throw new Error("outFile must be a plain .png file name");
@@ -71,7 +71,7 @@ export function createThumbnailRenderer(deps: Pick<ContainerRendererDeps, "root"
         const lim = ctx.config.render;
         const host = await (deps.hostLimits ?? daemonLimits)();
         const image = deps.image ? await deps.image() : await resolveRenderImage();
-        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, entry: ["/in", "/out/out.png", "--thumbnail"] });
+        const args = renderArgs({ name, limits: lim, host, imageRef: image.ref, workerId: deps.workerId, inDir, outDir, kitDir, hostPath: deps.hostPath, entry: ["/in", "/out/out.png", "--thumbnail"] });
         const { r, tail } = await runRenderContainer(deps, ctx, { name, args, timeoutMs: Math.min(lim.timeoutS, 300) * 1000, maxOutputBytes: 256 * 1024 });
         if (r.aborted) throw ctx.signal.reason ?? new Error("render aborted");
         if (r.timedOut) throw new KnownFailure("The thumbnail took too long and was stopped.");
