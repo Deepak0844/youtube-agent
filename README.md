@@ -38,7 +38,7 @@ Start Redis and SearXNG before `dev:all`, and your voice server before the first
 
 ## Run everything in Docker
 
-Needs only Docker (Compose v2) and Node 22 to run the first command. On a machine with no Node, `docker compose up` works once `.env` exists (see below).
+Needs Docker (Compose v2) and Node 22 (only to run the wrapper below; the studio itself runs in containers). Use `npm run compose:up`, not a bare `docker compose up`: the wrapper also writes `.env` and builds the render image the worker needs.
 
 ```
 npm install
