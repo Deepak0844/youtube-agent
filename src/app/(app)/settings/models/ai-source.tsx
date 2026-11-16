@@ -22,7 +22,7 @@ function Status({ state }: { state: FormState }) {
 export function AiSourceForm({ on }: { on: boolean }) {
   const [state, action, pending] = useActionState(setAiSourceAction, idle);
   return (
-    <form action={action} className="flex flex-col gap-3">
+    <form id="ai-source" action={action} className="flex scroll-mt-24 flex-col gap-3">
       <fieldset className="flex flex-col gap-1">
         <legend className="text-body font-medium">AI source for text stages</legend>
         {(
@@ -76,19 +76,33 @@ export function TestClaudeCodeButton({ disabled }: { disabled: boolean }) {
 
 // Connect Claude: log in to Claude Code without a terminal. The server holds the login; `waitingUrl` is its link (null = none waiting).
 // Plain forms. The pasted code is only ever sent to the server action; autocomplete is off so the browser keeps no copy.
-export function ConnectClaudeForm({ waitingUrl }: { waitingUrl: string | null }) {
+export function ConnectClaudeForm({ waitingUrl, connect }: { waitingUrl: string | null; connect: "not_connected" | "turn_on" | "on" }) {
   const [started, startAction, starting] = useActionState(startClaudeLoginAction, idle);
   const [sent, sendAction, sending] = useActionState(submitClaudeLoginCodeAction, idle);
   const [cancelled, cancelAction, cancelling] = useActionState(cancelClaudeLoginAction, idle);
   if (!waitingUrl) {
     return (
-      <form action={startAction} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-        <Button type="submit" variant="secondary" disabled={starting}>
-          {starting ? "Starting" : "Connect Claude"}
-        </Button>
-        <span className="text-small text-faint">Signs this app in to Claude Code with your claude.ai subscription. No terminal needed.</span>
-        <Status state={sent.ok !== undefined || sent.error ? sent : started.error ? started : cancelled} />
-      </form>
+      <div className="flex flex-col gap-2">
+        {connect !== "not_connected" ? (
+          <p role="status" className="text-body text-positive">
+            Claude is connected.
+            {connect === "on" ? " Claude Code is the source for the text stages." : null}
+          </p>
+        ) : null}
+        {connect === "turn_on" ? (
+          <p className="text-body">
+            Next: turn on Claude Code as the text source, or Draft stops with &ldquo;No model is chosen&rdquo;.{" "}
+            <a href="#ai-source" className={cn("text-accent underline", focusRing)}>Go to AI source</a>
+          </p>
+        ) : null}
+        <form action={startAction} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+          <Button type="submit" variant="secondary" disabled={starting}>
+            {starting ? "Starting" : connect === "not_connected" ? "Connect Claude" : "Connect again"}
+          </Button>
+          <span className="text-small text-faint">Signs this app in to Claude Code with your claude.ai subscription. No terminal needed.</span>
+          <Status state={sent.ok !== undefined || sent.error ? sent : started.error ? started : cancelled} />
+        </form>
+      </div>
     );
   }
   return (
