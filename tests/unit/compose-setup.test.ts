@@ -12,14 +12,14 @@ describe("compose first-run setup", () => {
     expect(refuseInit({ ...good, YTSTUDIO_BACKUP_PASSWORD: undefined })).toBe("Set real passwords in .env: YTSTUDIO_BACKUP_PASSWORD is missing.");
     expect(refuseInit({})).toContain("POSTGRES_PASSWORD");
   });
-  it("runs bootstrap, migrate, owner:create in that order", () => expect(INIT_STEPS).toEqual(["db:bootstrap", "db:migrate", "owner:create"]));
+  it("runs bootstrap, migrate, the sound library import, owner:create in that order", () => expect(INIT_STEPS).toEqual(["db:bootstrap", "db:migrate", "audio:import", "owner:create"]));
   it("an existing owner is a skip; any other owner:create failure is a fail", () => {
     expect(stepOutcome("owner:create", 1, "An owner already exists. Use `npm run owner:reset` to recover access.\n")).toBe("skip");
     expect(stepOutcome("owner:create", 1, "APP_URL must be an http(s) URL")).toBe("fail");
     expect(stepOutcome("owner:create", 0, "")).toBe("ok");
   });
-  it("bootstrap and migrate: zero is ok, anything else is fail (an 'already exists' text does not rescue them)", () => {
-    for (const s of ["db:bootstrap", "db:migrate"] as const) {
+  it("bootstrap, migrate and the sound import: zero is ok, anything else is fail (an 'already exists' text does not rescue them)", () => {
+    for (const s of ["db:bootstrap", "db:migrate", "audio:import"] as const) {
       expect(stepOutcome(s, 0, "")).toBe("ok");
       expect(stepOutcome(s, 1, "An owner already exists.")).toBe("fail");
     }

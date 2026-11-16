@@ -40,6 +40,9 @@ describe("docker-compose.yml", () => {
     for (const name of ["web", "worker"]) expect(s[name]!.depends_on!.init!.condition, name).toBe("service_completed_successfully");
     expect(s.init!.depends_on!.postgres!.condition).toBe("service_healthy");
   });
+  it("init also gets the data folder: the sound library import writes <storage>/audio there for the worker to read", () => {
+    expect(s.init!.volumes).toContain("${HOST_STORAGE_ROOT}:/data");
+  });
   it("web is told tool checks come from the worker", () => {
     expect(s.web!.environment!.TOOLS_CHECKED_BY).toBe("worker");
     expect(s.worker!.environment!.TOOLS_CHECKED_BY).toBeUndefined();

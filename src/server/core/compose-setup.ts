@@ -1,6 +1,7 @@
 // First-run setup inside compose (scripts/compose-init.ts). Pure decisions only; the script does the running.
 
-export const INIT_STEPS = ["db:bootstrap", "db:migrate", "owner:create"] as const;
+// audio:import loads the built-in sounds into <storage>/audio; without it the sound step can never pass. Safe to run again.
+export const INIT_STEPS = ["db:bootstrap", "db:migrate", "audio:import", "owner:create"] as const;
 export type InitStep = (typeof INIT_STEPS)[number];
 
 const REQUIRED = ["POSTGRES_PASSWORD", "YTSTUDIO_OWNER_PASSWORD", "YTSTUDIO_APP_PASSWORD", "YTSTUDIO_BACKUP_PASSWORD", "VAULT_MASTER_KEY"] as const;

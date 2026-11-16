@@ -64,6 +64,8 @@ services:
       YTSTUDIO_BACKUP_PASSWORD: ${YTSTUDIO_BACKUP_PASSWORD}
       BOOTSTRAP_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ytstudio
       MIGRATE_DATABASE_URL: postgres://ytstudio_owner:${YTSTUDIO_OWNER_PASSWORD}@postgres:5432/ytstudio
+    volumes:
+      - ${HOST_STORAGE_ROOT}:/data # audio:import writes the sound library here for the worker
     depends_on:
       postgres:
         condition: service_healthy
