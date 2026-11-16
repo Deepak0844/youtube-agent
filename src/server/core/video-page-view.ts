@@ -12,6 +12,7 @@ export const TABS = [
   { id: "preview", label: "Preview" },
   { id: "evidence", label: "Evidence" },
   { id: "titles", label: "Titles" },
+  { id: "clips", label: "Clips" },
   { id: "cost", label: "Cost" },
   { id: "qa", label: "QA" },
   { id: "sound", label: "Sound" },

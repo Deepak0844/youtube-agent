@@ -11,6 +11,7 @@ import type { StageOutcome } from "@/server/core/stage-runner";
 import { approveGate, liveGateHash } from "@/server/db/approvals";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { createClipShorts } from "@/server/db/clip-shorts";
+import { loadClipsTab } from "@/server/db/clips-tab";
 import { advanceVideo, readNextAction } from "@/server/db/pipeline";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { insertQueuedStage } from "@/server/db/stages";
@@ -134,6 +135,23 @@ describe("createClipShorts", () => {
     expect(out.kind).toBe("committed");
     expect(await latestContent(db.pool, child, "video")).not.toBeNull();
     expect(await readNextAction(db.pool, child, approvalReaders)).toMatchObject({ kind: "wait_gate", gate: "video" });
+  }, 240_000);
+
+  it("the Clips tab loader shows the newest batch, each clip's warnings and the Short already made from a clip", async () => {
+    const src = await sourceWithBatch();
+    const before = await loadClipsTab(db.pool, src);
+    expect(before).toMatchObject({ canCut: true, busy: false, failure: null, batch: 1 });
+    expect(before.clips.length).toBeGreaterThanOrEqual(2);
+    expect(before.clips.every((c) => c.short === null && c.file.startsWith(`videos/${src}/clips-b1-`))).toBe(true);
+    const r = await createClipShorts(db.pool, queue, { root, sourceVideoId: src, batch: 1, clipIds: ["c1"] });
+    if (!r.ok) throw new Error(r.message);
+    const after = await loadClipsTab(db.pool, src);
+    expect(after.clips[0]!.short).toMatchObject({ id: r.created[0]!.videoId });
+    expect(after.clips[1]!.short).toBeNull();
+    await db.pool.query("insert into stage_runs (id, video_id, name, status, input_hash) values ($1, $2, 'clips', 'failed', 'x')", [uuidv7(), src]);
+    expect((await loadClipsTab(db.pool, src)).failure).toMatch(/failed/);
+    const bare = await createVideoRow(db.pool, { format: "short", kind: "tsx", language: "en", topic: "bare" });
+    expect(await loadClipsTab(db.pool, bare.id)).toMatchObject({ canCut: false, batch: null, clips: [] });
   }, 240_000);
 
   it("a second request for the same clip makes nothing, and refusals are plain", async () => {
