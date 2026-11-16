@@ -29,12 +29,20 @@ export function parseServerVersion(output: string): string {
   return v;
 }
 
-export async function assertDockerUp(): Promise<void> {
-  let stdout: string;
-  try {
-    ({ stdout } = await run("docker", ["info", "--format", "{{.ServerVersion}}"], { timeout: 4000 }));
-  } catch {
-    throw new Error(NOT_REACHABLE);
+type Exec = (cmd: string, args: string[], opts: { timeout: number }) => Promise<{ stdout: string }>;
+
+// A daemon that answers late (a busy CI runner) is retried; one that is not there fails at once (the infra smoke test needs that).
+export async function assertDockerUp(exec: Exec = run): Promise<void> {
+  const ATTEMPTS = 3;
+  let stdout = "";
+  for (let attempt = 1; ; attempt++) {
+    try {
+      ({ stdout } = await exec("docker", ["info", "--format", "{{.ServerVersion}}"], { timeout: 10_000 }));
+      break;
+    } catch (e) {
+      const late = (e as { killed?: boolean }).killed === true; // execFile kills the child when the timeout hits
+      if (!late || attempt === ATTEMPTS) throw new Error(NOT_REACHABLE);
+    }
   }
   parseServerVersion(stdout);
 }
