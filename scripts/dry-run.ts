@@ -22,7 +22,7 @@ import { getPool } from "@/server/db/pool";
 import { advanceVideo, createVideo, type PipelineReaders } from "@/server/db/pipeline";
 import { runStage } from "@/server/db/stage-runner-adapter";
 import { latestContent } from "@/server/db/videos";
-import { dryRunRefusal } from "@/worker/stages/guard";
+import { dryRunRefusal } from "@/server/db/dry-run-guard";
 import { storageRoot } from "@/server/storage/paths";
 
 const readers: PipelineReaders = {

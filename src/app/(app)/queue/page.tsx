@@ -5,7 +5,7 @@ import { dryRunAllowed } from "@/lib/dry-run";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { jobCheckers } from "./job-checkers";
 import { getPool } from "@/server/db/pool";
-import { dryRunRefusal } from "@/worker/stages/guard";
+import { dryRunRefusal } from "@/server/db/dry-run-guard";
 import { loadInrRate } from "@/server/db/system-settings";
 import { loadQueue } from "@/server/db/queue-data";
 import { listUploads } from "@/server/db/upload-actions";
