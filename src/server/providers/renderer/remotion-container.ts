@@ -10,7 +10,7 @@ import { assetRefs } from "@/server/core/scene-build";
 import type { ProbeResult } from "@/server/core/qa";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { assertRealDir, daemonLimits, JOB_LABEL, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
-import { chunkArg, mountable, NAME_PREFIX, renderArgs, WORKER_ID, WORKER_LABEL } from "@/server/render/render-job";
+import { chunkArg, MAX_OUTPUT_BYTES, mountable, NAME_PREFIX, renderArgs, WORKER_ID, WORKER_LABEL } from "@/server/render/render-job";
 import { safeJoin } from "@/server/storage/paths";
 import { buildVideoProps } from "@/shared/scene/video-props";
 import { copyRegular, MAX_VIDEO_BYTES } from "@/server/storage/regular-file";
@@ -35,7 +35,6 @@ export const ASSET_EXT: ReadonlySet<string> = new Set([".png", ".jpg", ".jpeg", 
 export const AUDIO_EXT: ReadonlySet<string> = new Set([".wav", ".mp3", ".flac", ".m4a", ".aac"]);
 const ASSET_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/; // same rule as the scene schema
 const CONTAINER_ID = /^[0-9a-f]{12,64}$/;
-const MAX_OUTPUT_BYTES = 1024 * 1024;
 const FPS = 30; // keep equal to remotion/kit/theme.ts
 
 export interface ContainerRendererDeps {
