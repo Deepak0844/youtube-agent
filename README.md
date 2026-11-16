@@ -38,20 +38,44 @@ Start Redis and SearXNG before `dev:all`, and your voice server before the first
 
 ## Run everything in Docker
 
-Needs Docker (Compose v2) and Node 22 (only to run the wrapper below; the studio itself runs in containers). Use `npm run compose:up`, not a bare `docker compose up`: the wrapper also writes `.env` and builds the render image the worker needs.
+One command starts the whole studio on any machine with Docker (Compose v2): your Mac, a VPS, or someone else's computer. Node 22 is needed only to run the wrapper; the studio itself runs in containers. Use `npm run compose:up`, not a bare `docker compose up`: the wrapper also writes `.env`, builds the render image and runs the first-run setup.
 
 ```
 npm install
 npm run compose:up
 ```
 
-What it does: writes `.env` once (random database passwords, the vault key, the data folder; never overwritten), builds the images (the first build takes a few minutes), starts the web app, the worker, Postgres, Redis and SearXNG, runs the one-time setup, and prints the owner's setup link. Open http://localhost:3000, finish the owner setup, then go to **Settings, Models, Connect Claude** and follow the three steps (no terminal needed). If you would rather use API keys, add one on the Keys page instead.
+```
+ browser ──► 127.0.0.1:3000
+┌──────────────────────── docker compose ────────────────────────┐
+│ init      one-time setup: database roles, migrations,          │
+│           sound library, owner setup link                      │
+│ web       the app (no Docker access)                           │
+│ worker    makes the videos; Claude Code inside                 │
+│ postgres · redis · searxng   (not reachable from outside)      │
+└──────┬─────────────────────────────────────────────────────────┘
+       │ Docker socket (worker only)
+       ▼
+ render container per video: no network, read-only, deleted after
+```
 
-- Stop with `docker compose down`; start again with `npm run compose:up` (no new secrets). Your data stays in `./data` and in the `pgdata` and `claude-home` volumes.
-- Web listens on `127.0.0.1` only. To use another port, set `WEB_PORT` (and `APP_URL`) in `.env`.
-- A local service on the same machine (VoiceStudio, Ollama) is reached as `host.docker.internal:<port>`; add it under Settings, System, Local services.
-- **One trade-off to know:** the worker container can start containers on this machine (it needs that to run the locked-down render container for each video). Only the worker has this; the web app does not. Do not run this on a machine where that is not acceptable. Details: `docs/adr/0016-compose-and-docker-socket.md`.
-- The native way (`npm run dev:all` below) still works and is unchanged.
+**First run, step by step**
+1. `npm run compose:up` prints a one-time setup link (`docker compose logs init` shows it again). Open it and create the owner account.
+2. **Settings → Models → Connect Claude:** open the sign-in link, sign in with your claude.ai subscription, paste the code. No terminal needed. It then says "Claude is connected".
+3. **Settings → Models → AI source:** choose "Claude Code (this machine)", tick the box, press Switch. Without this, Draft stops with "No model is chosen". (Or add an API key on the Keys page instead.)
+4. **Voice, if VoiceStudio or Ollama runs on this same machine** (outside Docker): in Settings → Providers use `http://host.docker.internal:<port>` (for example `http://host.docker.internal:3900`), and in Settings → System → Local services add `host.docker.internal:<port>` (no `http://`). Inside a container, `127.0.0.1` means the container itself, not your machine.
+5. Make a short. Settings → System shows Docker and the render image as "checked by the worker".
+
+**Day to day**
+- Stop with `docker compose down`; start again with `npm run compose:up`. No new secrets; your Claude login, videos and settings stay. Data lives in `./data` and the `pgdata` and `claude-home` volumes.
+- Backups run as before (a read-only database role is created for them).
+- Web listens on `127.0.0.1` only. To use another port, set `WEB_PORT` and `APP_URL` in `.env`.
+- `.env` holds your database passwords and the vault key (mode 600). Keep it private; database passwords may only use letters, digits and `- _ . ~`.
+- After editing `remotion/kit`, run `npm run compose:up` again (the kit is built into the render image).
+
+**One trade-off to know:** the worker container can start containers on this machine (it needs that to run the locked-down render container for each video). Only the worker has this; the web app does not. Do not run this on a machine where that is not acceptable. Details: `docs/adr/0016-compose-and-docker-socket.md`.
+
+The native way (`npm run dev:all` below) still works and is unchanged.
 
 ## Environment variables
 
