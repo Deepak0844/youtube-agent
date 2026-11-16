@@ -1,5 +1,5 @@
 // Provider API keys: the fixed provider list, key-shape sanity checks, the fixed free "test" request per provider and the
-// vault notice. Pure: no IO. The DB side is src/server/db/provider-keys.ts, the network side src/server/providers/key-test.ts.
+// vault notice. Pure: no IO. The DB side is src/server/db/provider-keys.ts, the network side src/server/net/key-test.ts.
 // Rule: a test is ONE read-only GET to a hard-coded https host (list models / key info). Nothing here can build a paid call.
 
 export const PROVIDER_IDS = ["anthropic", "openai", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "moonshot", "qwen", "together", "siliconflow", "custom", "elevenlabs", "pexels", "pixabay", "google_tts", "azure_speech", "coverr", "fal", "voicestudio", "local_voice", "seedance", "kling", "vertex"] as const;
