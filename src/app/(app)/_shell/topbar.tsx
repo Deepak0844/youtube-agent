@@ -7,12 +7,12 @@ import { loadInrRate } from "@/server/db/system-settings";
 import { formatMoney } from "@/server/core/display-format";
 import { getBudget } from "@/server/db/spend";
 import { logoutAction } from "@/app/_actions/logout";
-import { cn, focusRing } from "../lib/cn";
-import { AccountMenu } from "./account-menu";
-import { CommandMenu } from "./command-menu";
+import { cn, focusRing } from "@/ui/lib/cn";
+import { AccountMenu } from "@/ui/shell/account-menu";
+import { CommandMenu } from "@/ui/shell/command-menu";
 import { NotificationBell } from "./bell";
-import { Mark } from "./mark";
-import { BreadcrumbsLive } from "./nav-live";
+import { Mark } from "@/ui/shell/mark";
+import { BreadcrumbsLive } from "@/ui/shell/nav-live";
 
 const DEFAULT_DAY_CAP_USD = 15; // Doc 2 §4.5; used only until the budgets row is seeded
 

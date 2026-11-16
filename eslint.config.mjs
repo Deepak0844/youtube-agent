@@ -53,11 +53,7 @@ const boundaryBaseline = {
     "src/server/providers/video/wire.ts"
   ],
   db: [],
-  ui: [
-    "src/ui/shell/area-menu-counts.tsx",
-    "src/ui/shell/bell.tsx",
-    "src/ui/shell/topbar.tsx"
-  ],
+  ui: [],
   app: [],
 };
 const boundaryRules = [

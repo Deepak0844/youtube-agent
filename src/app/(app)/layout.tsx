@@ -1,10 +1,10 @@
 import { Suspense } from "react";
 import { BottomBar } from "@/ui/shell/bottom-bar";
-import { AreaMenuWithCounts } from "@/ui/shell/area-menu-counts";
+import { AreaMenuWithCounts } from "./_shell/area-menu-counts";
 import { RailLive } from "@/ui/shell/nav-live";
 import { Rail } from "@/ui/shell/rail";
 import { SkipLink } from "@/ui/shell/skip-link";
-import { TopBar } from "@/ui/shell/topbar";
+import { TopBar } from "./_shell/topbar";
 
 // Frame (spec 2026-11-12 §2, layout C + D): icon strip and area menu on the grey ground, the page in a bordered framed
 // panel with an 8 px inset. The window scrolls (so back/forward keep their place); strip and menu stay put.

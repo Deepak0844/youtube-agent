@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { capAllows, dollarsToMicro, microToDollars } from "@/server/core/spend";
-import { spendTodayText } from "@/ui/shell/topbar";
+import { spendTodayText } from "@/app/(app)/_shell/topbar";
 
 describe("capAllows", () => {
   it("a null cap (no limit) always allows, however much is wanted", () => {
