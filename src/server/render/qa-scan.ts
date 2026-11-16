@@ -12,6 +12,9 @@ export interface ScanOptions extends ProbeOptions {
   /** Narration audio to compare lengths with (absolute path under the storage root), when there is one. */
   narrationFile?: string;
 }
+// framelog=verbose, not quiet: ffmpeg 5.1 (Debian stable) fails the scan with "Error reinitializing filters!" on framelog=quiet. Verbose keeps the
+// per-frame lines out of the output (shown only at ffmpeg's verbose level) and still prints the same summary on every version.
+export const AUDIO_QA_FILTER = "ebur128=peak=true:framelog=verbose,volumedetect";
 export const STILLS = ["poster-first.png", "poster-middle.png", "poster-last.png"] as const;
 export type QaScanner = (file: string, signal: AbortSignal, o: ScanOptions) => Promise<Scan>;
 
@@ -27,7 +30,7 @@ export const scanVideo: QaScanner = async (file, signal, o) => {
   const facts = parseFfprobe((await probe(real)).toString("utf8"));
   const still = o.stillMinS ?? 2;
   const vf = `blackdetect=d=0.05:pix_th=0.10,freezedetect=n=-60dB:d=${still}`;
-  const text = (await exec(ffmpeg, ["-hide_banner", "-nostats", "-i", real, "-vf", vf, "-af", "ebur128=peak=true:framelog=quiet,volumedetect", "-f", "null", "-"], { ...base, withStderr: true })).toString("utf8");
+  const text = (await exec(ffmpeg, ["-hide_banner", "-nostats", "-i", real, "-vf", vf, "-af", AUDIO_QA_FILTER, "-f", "null", "-"], { ...base, withStderr: true })).toString("utf8");
 
   await fs.mkdir(o.attemptDir, { recursive: true });
   const at = (s: number) => ["-v", "error", "-y", "-ss", String(s), "-i", real, "-frames:v", "1"];
