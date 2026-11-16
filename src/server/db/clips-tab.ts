@@ -26,7 +26,7 @@ export interface ClipsTab {
 
 /** Everything the Clips tab shows for a source video: the newest batch, each clip's warnings, and the Shorts already made from it. Read only. */
 export async function loadClipsTab(db: pg.Pool, videoId: string): Promise<ClipsTab> {
-  const qa = await db.query("select 1 from stage_runs where video_id = $1 and name = 'qa' and status = 'succeeded' limit 1", [videoId]);
+  const qa = await db.query("select 1 from stage_runs where video_id = $1 and name in ('qa', 'ingest_source') and status = 'succeeded' limit 1", [videoId]);
   const runs = await db.query<{ status: string; result: { error?: unknown } | null }>(
     "select status, result from stage_runs where video_id = $1 and name = 'clips' order by created_at desc, id desc limit 1",
     [videoId],

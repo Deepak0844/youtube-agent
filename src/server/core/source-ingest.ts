@@ -4,6 +4,8 @@
 // (2) the file is RE-ENCODED to a fresh mp4 by ffmpeg, and only that re-encoded file is ever cut, rendered or shown. The audio is cut into
 // short wav chunks for VoiceStudio's speech-to-text and the word times are put back together on the video's own timeline.
 
+/** The name an uploaded file has next to its video row until the step that checks and re-encodes it has run (then it is deleted). */
+export const UPLOAD_FILE = "upload.bin";
 export const SOURCE_MIN_S = 21; // a clip is at least 15 s and at most 70% of the video (stages/clips.ts), so shorter is refused up front
 export const SOURCE_MAX_S = 30 * 60;
 export const SOURCE_MAX_BYTES = 1024 * 1024 * 1024;

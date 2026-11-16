@@ -9,7 +9,7 @@ export type ClipsRequest = { ok: true; stageRunId: string } | { ok: false; messa
 /**
  * The owner asked for a batch of short clips from a finished video (Clip Factory, CF4a). Only queues the on-demand `clips` stage:
  * free and local (ffmpeg and the locked renderer; no model, no voice, no money). The source is any video whose checks finished
- * (QA succeeded) and has caption words. One run at a time per video; asking again makes a NEW batch (old batches stay).
+ * (QA succeeded, or an uploaded video that was prepared) and has caption words. One run at a time per video; asking again makes a NEW batch (old batches stay).
  * Nothing is published or approved here: the batch waits for the owner's gate (CF4b).
  */
 export async function requestClips(db: pg.Pool, queue: EnqueueOnly, videoId: string, sessionId?: string): Promise<ClipsRequest> {
@@ -17,7 +17,7 @@ export async function requestClips(db: pg.Pool, queue: EnqueueOnly, videoId: str
     const v = await c.query<{ status: string }>("select status from videos where id = $1 for update", [videoId]);
     if (!v.rows[0]) return { ok: false, message: "That video was not found." };
     if (v.rows[0].status === "cancelled") return { ok: false, message: "This video was cancelled." };
-    const done = await c.query("select 1 from stage_runs where video_id = $1 and name = 'qa' and status = 'succeeded' limit 1", [videoId]);
+    const done = await c.query("select 1 from stage_runs where video_id = $1 and name in ('qa', 'ingest_source') and status = 'succeeded' limit 1", [videoId]);
     if (!done.rowCount) return { ok: false, message: "Clips can be cut only from a video that has finished and passed its checks." };
     const busy = await c.query("select 1 from stage_runs where video_id = $1 and name = 'clips' and status in ('queued', 'running', 'needs_decision')", [videoId]);
     if (busy.rowCount) return { ok: false, message: "Clips are already being cut from this video." };

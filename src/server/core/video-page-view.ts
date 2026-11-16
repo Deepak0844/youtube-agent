@@ -28,10 +28,10 @@ export function parseTab(raw: unknown): TabId {
 }
 
 export const STAGE_LABELS: Record<StageName, string> = {
-  outline: "Outline", draft: "Draft", pictures: "Pictures", build: "Build", generate: "Generate", shots: "Shots", tts: "Narration", render: "Render", tsx_author: "Code scene", voice: "Voice", sfx: "Sound", qa: "Check", repair_scenes: "Scene repair", reframe: "Re-frame", thumbnail: "Thumbnail", derive: "Clip from the long video", seo: "Titles", reply_drafts: "Reply drafts", clips: "Clips",
+  outline: "Outline", draft: "Draft", pictures: "Pictures", build: "Build", generate: "Generate", shots: "Shots", tts: "Narration", render: "Render", tsx_author: "Code scene", voice: "Voice", sfx: "Sound", qa: "Check", repair_scenes: "Scene repair", reframe: "Re-frame", thumbnail: "Thumbnail", derive: "Clip from the long video", seo: "Titles", reply_drafts: "Reply drafts", clips: "Clips", ingest_source: "Prepare uploaded video",
 };
 const VERB: Record<StageName, string> = {
-  outline: "Planning the outline", draft: "Drafting", pictures: "Finding pictures", build: "Building", generate: "Generating", shots: "Planning the clips", tts: "Recording narration", render: "Rendering", tsx_author: "Writing and rendering the code scene", voice: "Mixing voice", sfx: "Adding sound", qa: "Checking quality", repair_scenes: "Repairing scenes", reframe: "Re-framing", thumbnail: "Drawing the thumbnail", derive: "Cutting the clip", seo: "Writing titles", reply_drafts: "Drafting replies", clips: "Cutting clips",
+  outline: "Planning the outline", draft: "Drafting", pictures: "Finding pictures", build: "Building", generate: "Generating", shots: "Planning the clips", tts: "Recording narration", render: "Rendering", tsx_author: "Writing and rendering the code scene", voice: "Mixing voice", sfx: "Adding sound", qa: "Checking quality", repair_scenes: "Repairing scenes", reframe: "Re-framing", thumbnail: "Drawing the thumbnail", derive: "Cutting the clip", seo: "Writing titles", reply_drafts: "Drafting replies", clips: "Cutting clips", ingest_source: "Preparing the uploaded video",
 };
 
 /** Samples needed before a time estimate is shown. */
