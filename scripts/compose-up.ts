@@ -63,5 +63,5 @@ if (!dry) {
   if (compose(["up", "-d", "--build"]) !== 0) stop("docker compose up failed.");
   say("Setting up (the one-time owner link is printed below):");
   compose(["logs", "init"]); // no -f: up -d already waited for init to finish (web and worker depend on it), and -f never returns for an exited container
-  say("Open http://localhost:3000");
+  say(`Open ${/^APP_URL=(\S+)$/m.exec(readFileSync(envFile, "utf8"))?.[1] ?? "http://localhost:3000"}`); // the address .env says (WEB_PORT/APP_URL may differ)
 }
