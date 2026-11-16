@@ -41,8 +41,8 @@ export function createThumbnailRenderer(deps: Pick<ContainerRendererDeps, "root"
       if (a.title.trim() === "" || a.title.length > 300) throw new KnownFailure("The thumbnail needs a title of up to 300 characters.");
       const inDir = mountable(path.join(ctx.attemptDir, "thumb-in"));
       const outDir = mountable(path.join(ctx.attemptDir, "thumb-out"));
-      const kitDir = mountable(deps.kitDir);
-      await realDir(kitDir, "kit");
+      const kitDir = deps.kitDir === undefined ? undefined : mountable(deps.kitDir); // dev override only
+      if (kitDir !== undefined) await realDir(kitDir, "kit");
       const name = `${NAME_PREFIX}${ctx.claim.stageRunId.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 36)}-${randomBytes(4).toString("hex")}`;
       const cleanup = () => Promise.all([rm(inDir, { recursive: true, force: true }), rm(outDir, { recursive: true, force: true })]).catch(() => undefined);
       await cleanup();

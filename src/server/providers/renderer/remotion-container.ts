@@ -22,7 +22,7 @@ import type { Renderer, RenderArgs } from "./index";
 // sha256 id when the worker could resolve it. It sees exactly three mounts, each an existing symlink-free directory:
 //   /in  (ro)  a fresh staging folder: props.json, the narration copy, and copies of ONLY the asset files the doc names;
 //   /out (rw)  a fresh empty folder inside this attempt folder;
-//   /opt/render/kit (ro)  the scene kit code.
+//   /opt/render/kit  the scene kit code: baked into the image (a dev override mounts the repo's kit read-only over it).
 // The storage root, the repo and the docker socket are never mounted. The container has a unique name and label and is
 // force-removed whatever happens, by name and again by label (now and ~1 s later, for a create that raced the first
 // remove); the worker also sweeps leftovers at boot. The output is read back without following symlinks or blocking on a
@@ -45,8 +45,8 @@ const WORKER_ID = /^[A-Za-z0-9_.-]{1,64}$/;
 export interface ContainerRendererDeps {
   /** Storage root: asset files are copied from here (never mounted). */
   root: string;
-  /** Absolute, symlink-free path of remotion/kit, mounted read-only. */
-  kitDir: string;
+  /** Dev override: absolute, symlink-free path of remotion/kit, mounted read-only over the kit baked into the image. */
+  kitDir?: string;
   /** Host-side path of a folder under the storage root, for the docker mounts when the worker runs in a container. Default: as is. */
   hostPath?: (p: string) => string;
   /** storageRef (relative to root) of an asset's main file, or null when there is no such asset. */
@@ -124,7 +124,7 @@ export interface RenderArgsInput {
   /** Mount sources: absolute, already checked with mountable() and realDir(). */
   inDir: string;
   outDir: string;
-  kitDir: string;
+  kitDir?: string;
   /** Rewrites /in and /out mount sources to host paths (worker in a container). */
   hostPath?: (p: string) => string;
   /** Extra hardening flags placed after the shared locks; only ever adds limits (see tsx-sandbox.ts). */
@@ -145,7 +145,7 @@ export function renderArgs(o: RenderArgsInput): string[] {
     "--label", `${WORKER_LABEL}=${o.workerId && WORKER_ID.test(o.workerId) ? o.workerId : "unknown"}`,
     "-v", `${(o.hostPath ?? same)(o.inDir)}:/in:ro`,
     "-v", `${(o.hostPath ?? same)(o.outDir)}:/out:rw`,
-    "-v", `${o.kitDir}:/opt/render/kit:ro`,
+    ...(o.kitDir === undefined ? [] : ["-v", `${o.kitDir}:/opt/render/kit:ro`]),
     "-w", "/tmp",
     "--entrypoint", "node",
     o.imageRef,
@@ -300,8 +300,8 @@ export function createContainerRenderer(deps: ContainerRendererDeps): Renderer {
       if (!a.doc) throw new KnownFailure("The render step needs the checked scenes. Run the build step again.");
       const inDir = mountable(path.join(ctx.attemptDir, "render-in"));
       const outDir = mountable(path.join(ctx.attemptDir, "render-out"));
-      const kitDir = mountable(deps.kitDir);
-      await realDir(kitDir, "kit");
+      const kitDir = deps.kitDir === undefined ? undefined : mountable(deps.kitDir); // dev override only
+      if (kitDir !== undefined) await realDir(kitDir, "kit");
       const name = `${NAME_PREFIX}${ctx.claim.stageRunId.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 36)}-${randomBytes(4).toString("hex")}`;
       const cleanup = () => Promise.all([rm(inDir, { recursive: true, force: true }), rm(outDir, { recursive: true, force: true })]).catch(() => undefined);
       await cleanup();

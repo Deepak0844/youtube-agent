@@ -37,6 +37,11 @@ RUN npm init -y >/dev/null \
  && chmod -R a+rX /opt/render \
  && rm -rf /root/.npm /tmp/*
 
+# The scene kit is part of the image, so a container (or any machine) needs no checkout. Copied after the slow npm/Chrome
+# layer above, so editing the kit rebuilds in seconds. Dev scripts may still mount a working copy over it.
+COPY remotion/kit /opt/render/kit
+RUN chmod -R a+rX /opt/render/kit
+
 ENV NODE_PATH=/opt/render/node_modules \
     REMOTION_BROWSER_EXECUTABLE=/opt/render/chrome-headless-shell \
     NODE_ENV=production
