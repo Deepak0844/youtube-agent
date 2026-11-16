@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SETTINGS } from "@/server/core/settings-registry";
 import { chunkArg, MAX_OUTPUT_BYTES, renderArgs, renderJobSchema, renderPlan, RENDER_KINDS, TSX_ENTRY, TSX_EXTRA_FLAGS, TSX_SANDBOX, tsxRenderPlan, type RenderJob } from "@/server/render/render-job";
 
 // A job is the only thing the worker hands to whoever starts the container. renderPlan must give exactly the commands the five
@@ -105,5 +106,18 @@ describe("renderJobSchema", () => {
     expect(ok({ worker: "w-1.a_b" }).success).toBe(true);
     expect(ok({ worker: "w 1" }).success).toBe(false);
     expect(ok({ worker: "a".repeat(65) }).success).toBe(false);
+  });
+});
+
+describe("the schema ceilings never reject what the settings page allows", () => {
+  // The service refuses a job above its ceilings instead of clamping it, so every setting's own maximum must fit under them.
+  it.each([["render.timeout_s", "timeoutS"], ["render.cpus", "cpus"], ["render.memory_mb", "memoryMb"], ["render.pids", "pids"]] as const)("%s", (key, field) => {
+    const schema = SETTINGS[key].schema;
+    let max = 1;
+    while (schema.safeParse(max * 2).success) max *= 2; // the largest power of two it takes
+    let hi = max * 2, lo = max;
+    while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); if (schema.safeParse(mid).success) lo = mid; else hi = mid; }
+    const config = { ...CONFIG, [field]: lo };
+    expect(renderJobSchema.safeParse({ ...job(), config }).success, `${key} max ${lo}`).toBe(true);
   });
 });

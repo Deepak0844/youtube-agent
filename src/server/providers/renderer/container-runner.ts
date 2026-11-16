@@ -114,7 +114,8 @@ export function createHttpRunner(deps: HttpRunnerDeps): ContainerRunner {
   /** One request. A connection that fails is "not reachable"; an abort we asked for is rethrown as is. */
   async function call(pathname: string, init: RequestInit & { headers?: Record<string, string> }, signal?: AbortSignal): Promise<Response> {
     try {
-      return await doFetch(base + pathname, { ...init, headers: { ...init.headers, authorization: `Bearer ${deps.token}` }, ...(signal && { signal }) });
+      // redirect: "error": the service never redirects, and a token must never follow one somewhere else.
+      return await doFetch(base + pathname, { ...init, redirect: "error", headers: { ...init.headers, authorization: `Bearer ${deps.token}` }, ...(signal && { signal }) });
     } catch (e) {
       if (signal?.aborted) throw e;
       throw new NotProcessedError("The render service is not reachable.");

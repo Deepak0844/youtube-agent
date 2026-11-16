@@ -1,6 +1,6 @@
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -165,6 +165,28 @@ describe("running a render", () => {
     await c;
     expect(peak).toBe(1);
     expect(calls.map((x) => x.args.at(x.args.indexOf("--name") + 1))).toEqual([job.name, second.name]); // the departed third never ran
+  });
+});
+
+describe("folders are checked again when the job's turn comes", () => {
+  it("a queued job whose folder became a symlink while it waited never runs", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    await start({ exec: async () => { await gate; return OK; } });
+    const second = { ...job, name: "ytstudio-render-run2-bbbb", inDir: "videos/v1/a2/render-in", outDir: "videos/v1/a2/render-out" };
+    mkdirSync(path.join(tmp, "data/videos/v1/a2/render-in"), { recursive: true });
+    mkdirSync(path.join(tmp, "data/videos/v1/a2/render-out"), { recursive: true });
+    const a = post(job);
+    await until(() => calls.length === 1);
+    const b = post(second); // passes the first check and queues
+    await new Promise((r) => setTimeout(r, 80));
+    rmSync(path.join(tmp, "data/videos/v1/a2/render-in"), { recursive: true });
+    symlinkSync("/etc", path.join(tmp, "data/videos/v1/a2/render-in"));
+    release();
+    await events(await a);
+    const ev = await events(await b);
+    expect(ev.at(-1)).toMatchObject({ t: "end", code: null, error: "The render service could not run the job." });
+    expect(calls).toHaveLength(1); // the second never reached docker
   });
 });
 
