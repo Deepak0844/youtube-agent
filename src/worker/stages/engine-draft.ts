@@ -74,12 +74,12 @@ export function engineDraftHandler(d: EngineDraftDeps): StageHandler {
     const video = await loadDraftVideo(d.db, videoId);
     if (!video) throw new KnownFailure("The video for this draft no longer exists.");
     // A long video's script follows the chapters the owner approved, inside the length range they chose.
-    let long: { outline: Outline; range: { min: number; max: number } } | undefined;
+    let long: { outline: Outline; range: { min: number; max: number; qaMinS?: number } } | undefined;
     if (video.format === "long") {
       if (video.length_min_minutes === null || video.length_max_minutes === null) throw new KnownFailure("This long video has no length range saved.");
       const o = await approvedOutline(d.db, videoId);
       if (!o.ok) throw new KnownFailure(o.reason);
-      long = { outline: o.outline, range: { min: video.length_min_minutes, max: video.length_max_minutes } };
+      long = { outline: o.outline, range: { min: video.length_min_minutes, max: video.length_max_minutes, qaMinS: ctx.config.qa.long.minS } };
     }
 
     const feedback = await pendingScriptFeedback(d.db, videoId);

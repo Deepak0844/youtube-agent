@@ -60,6 +60,15 @@ export function longEngineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Att
     if (!outline.ok) throw new KnownFailure(outline.reason);
     const cw = chapterWindows({ outline: outline.outline, beats, words, narrationS });
     if (!cw.ok) throw new KnownFailure(cw.reason);
+    // The QA check fails a long video outside its length range, and a real run found that out only AFTER all five chapters were drawn. Check it first.
+    const qa = ctx.config.qa.long;
+    const videoS = cw.totalFrames / 30;
+    const tol = ctx.config.qa.durationToleranceS;
+    if (videoS < qa.minS - tol) {
+      const extra = Math.ceil((qa.minS * 1.03 - videoS) * (words.length / narrationS));
+      throw new KnownFailure(`The narration is ${videoS.toFixed(0)} s, but a long video must run at least ${qa.minS} s (the QA setting "QA long: shortest"). Nothing was drawn. Send the script back and ask for about ${extra} more words, or lower that setting, then run the narration again.`);
+    }
+    if (videoS > qa.maxS + tol) throw new KnownFailure(`The narration is ${videoS.toFixed(0)} s, but a long video may run at most ${qa.maxS} s (the QA setting "QA long: longest"). Nothing was drawn. Shorten the script or raise that setting, then run the narration again.`);
     if (cw.chapters.length > MAX_CHAPTERS) throw new KnownFailure(`The outline has ${cw.chapters.length} chapters; a code-scene video has at most ${MAX_CHAPTERS}.`);
 
     const saved = await savedChapters(deps.db, video.id);

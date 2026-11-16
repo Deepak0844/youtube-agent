@@ -33,7 +33,9 @@ import { assertFfprobeAvailable } from "../support/tools";
 let db: TestDb;
 let root: string;
 const SESSION = { kind: "session", sessionId: "11111111-1111-4111-8111-111111111111" } as const;
-const ON = buildEngineConfig(new Map<string, unknown>([["engine.enabled", true]]));
+// The test videos are 2 to 4 minutes of fake speech: the QA minimum is lowered so they pass; the refusal below uses the default 180 s.
+const ON = buildEngineConfig(new Map<string, unknown>([["engine.enabled", true], ["qa.long_min_s", 60]]));
+const ON_DEFAULT_QA = buildEngineConfig(new Map<string, unknown>([["engine.enabled", true]]));
 const OFF = buildEngineConfig(new Map());
 
 beforeAll(async () => {
@@ -213,6 +215,21 @@ describe("long video code-scene step", () => {
     expect(await reason(limited)).toMatch(/Claude limit reached\. This step resumes about .* IST by itself\./);
     expect((await db.pool.query("select count(*)::int n from video_content where video_id = $1 and kind = 'chapter_scene'", [v3.id])).rows[0].n).toBe(2);
   }, 300_000);
+
+  it("refuses BEFORE any chapter is drawn when the narration is shorter than the QA minimum (a real run found this out only after drawing all five chapters)", async () => {
+    const v = await longVideo([8, 9, 10, 9, 8]); // 147 s of speech: under the default 180 s
+    const eng = fakeEngine();
+    const { deps, e } = mkDeps(fakeTsx(), v.narrationS);
+    const out = await play(v.id, withAttempt({ db: db.pool, root }, codeSceneAttempt(deps, { ...e, runEngine: eng.run })), ON_DEFAULT_QA);
+    expect(out.kind).toBe("known_failure");
+    expect(await reason(out)).toMatch(/The narration is 14\d s, but a long video must run at least 180 s.*Nothing was drawn.*about \d+ more words/);
+    expect(eng.calls).toHaveLength(0);
+    expect((await db.pool.query("select count(*)::int n from video_content where video_id = $1 and kind = 'chapter_scene'", [v.id])).rows[0].n).toBe(0);
+    const tooLong = buildEngineConfig(new Map<string, unknown>([["engine.enabled", true], ["qa.long_min_s", 60], ["qa.long_max_s", 100]]));
+    const long = await play(v.id, withAttempt({ db: db.pool, root }, codeSceneAttempt(deps, { ...e, runEngine: eng.run })), tooLong);
+    expect(await reason(long)).toMatch(/may run at most 100 s/);
+    expect(eng.calls).toHaveLength(0);
+  }, 120_000);
 
   it("refuses in plain words: outline not approved, the engine off for a long video, a chapter over 90 s, and beats that do not follow the chapters", async () => {
     const eng = fakeEngine();

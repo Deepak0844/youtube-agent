@@ -18,7 +18,12 @@ export const TSX_LONG_MAX_MINUTES = (OUTLINE_CHAPTERS.max * TSX_CHAPTER_MAX_S) /
 export interface LengthRange {
   min: number;
   max: number;
+  /** The QA check's shortest long video in seconds. When given, the script's minimum words also guarantee the voice runs at least that long (see longWordRange). */
+  qaMinS?: number;
 }
+
+/** A real voice can speak up to this much faster than the language's average rate (a real run's voice did: 2.67 words a second against 2.5). */
+export const VOICE_PACE_MARGIN = 1.1;
 
 /** Why a minutes range is not allowed, or null. `settingMax` is the video.max_long_minutes setting. */
 export function lengthRangeProblem(min: unknown, max: unknown, settingMax: number): string | null {
@@ -70,7 +75,10 @@ export function validateOutline(raw: unknown, range: LengthRange, opts: { maxCha
 /** Narration words the whole script should have: the chosen minutes at this language's speaking pace, with a little room either side. */
 export function longWordRange(lang: Lang, range: LengthRange): { min: number; max: number } {
   const wps = speakingRate(lang);
-  return { min: Math.round(range.min * 60 * wps * 0.9), max: Math.round(range.max * 60 * wps * 1.1) };
+  const max = Math.round(range.max * 60 * wps * 1.1);
+  // At least the chosen minutes (with a little room) AND, when the QA minimum is known, enough words that even a voice 10% faster than average runs that long.
+  const fromQa = range.qaMinS ? Math.ceil(range.qaMinS * wps * VOICE_PACE_MARGIN) : 0;
+  return { min: Math.min(max, Math.max(Math.round(range.min * 60 * wps * 0.9), fromQa)), max };
 }
 
 export interface OutlineEstimate {
