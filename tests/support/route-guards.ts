@@ -4,7 +4,7 @@
 export const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 export const ROUTE_FILE = /(^|[\\/])(page|route)\.(ts|tsx|js|jsx|mjs|cjs)$/;
 // Paths the proxy matcher skips entirely: the Host guard does not run there, so handlers must call it themselves.
-export const PROXY_EXCLUDED = ["/api/uploads", "/api/media", "/api/webhooks", "/api/events", "/api/oauth"];
+export const PROXY_EXCLUDED = ["/api/uploads", "/api/clip-sources", "/api/media", "/api/webhooks", "/api/events", "/api/oauth"];
 export const ACTION_ALLOW = ["loginAction", "setupAction", "logoutAction"];
 export const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 /** Route files allowed to re-export handlers from another module (`export { GET } from`, `export * from`). Empty on purpose. */

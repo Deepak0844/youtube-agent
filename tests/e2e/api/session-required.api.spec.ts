@@ -75,6 +75,7 @@ function expectDenied(e: RouteEntry, method: string, state: string, r: Sent) {
 const CONTROL_STATUS: Record<string, number> = {
   "POST /api/uploads": 400, // valid session + same Origin, no batch id -> the route's own 400 (not 401, not 403)
   "GET /api/uploads/x": 404, // valid session, no such upload
+  "POST /api/clip-sources": 400, // valid session + same Origin, no language -> the route's own 400 (not 401, not 403)
 };
 // Routes that answer with a never-ending stream (server-sent events).
 const STREAMING = new Set(["GET /api/events"]);
