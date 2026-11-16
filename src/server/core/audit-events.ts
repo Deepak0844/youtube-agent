@@ -16,6 +16,8 @@ export const AUDIT_EVENTS = {
   // Claude Code on this machine (ADR 0014; detail: source, stage -> model id before/after; result class only)
   "ai_source.changed": "The AI source for text stages was switched",
   "claude_code.tested": "Claude Code was tested with one tiny call",
+  "claude_code.login_started": "A Claude sign-in was started on the Models page",
+  "claude_code.login_submitted": "A sign-in code was sent to Claude (detail: accepted or not; never the code)",
   "google_app.saved": "The Google app details were saved",
   "google_app.tested": "The Google app details were format-checked",
   "youtube.channel_connected": "A YouTube channel was connected (detail: channel id, status, old and new Google account ids; never a token or code)",

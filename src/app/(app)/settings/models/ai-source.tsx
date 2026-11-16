@@ -2,8 +2,9 @@
 
 import { useActionState } from "react";
 import { Button } from "@/ui/primitives/button";
+import { Input } from "@/ui/primitives/input";
 import { cn, focusRing } from "@/ui/lib/cn";
-import { setAiSourceAction, testClaudeCodeAction, type FormState } from "./actions";
+import { cancelClaudeLoginAction, setAiSourceAction, startClaudeLoginAction, submitClaudeLoginCodeAction, testClaudeCodeAction, type FormState } from "./actions";
 
 // The "AI source for text stages" switch and the Claude Code Test connection button (ADR 0014). Plain forms: they work
 // before hydration. Only fixed sentences come back from the server.
@@ -70,5 +71,41 @@ export function TestClaudeCodeButton({ disabled }: { disabled: boolean }) {
       <span className="text-small text-faint">One tiny call. Counts toward the daily cap. At most once every 10 seconds.</span>
       <Status state={state} />
     </form>
+  );
+}
+
+// Connect Claude: log in to Claude Code without a terminal. The server holds the login; `waitingUrl` is its link (null = none waiting).
+// Plain forms. The pasted code is only ever sent to the server action; autocomplete is off so the browser keeps no copy.
+export function ConnectClaudeForm({ waitingUrl }: { waitingUrl: string | null }) {
+  const [started, startAction, starting] = useActionState(startClaudeLoginAction, idle);
+  const [sent, sendAction, sending] = useActionState(submitClaudeLoginCodeAction, idle);
+  const [cancelled, cancelAction, cancelling] = useActionState(cancelClaudeLoginAction, idle);
+  if (!waitingUrl) {
+    return (
+      <form action={startAction} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+        <Button type="submit" variant="secondary" disabled={starting}>
+          {starting ? "Starting" : "Connect Claude"}
+        </Button>
+        <span className="text-small text-faint">Signs this app in to Claude Code with your claude.ai subscription. No terminal needed.</span>
+        <Status state={sent.ok !== undefined || sent.error ? sent : started.error ? started : cancelled} />
+      </form>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <ol className="flex list-decimal flex-col gap-1 pl-5 text-body">
+        <li>
+          <a href={waitingUrl} target="_blank" rel="noopener noreferrer" className={cn("text-accent underline", focusRing)}>Open the sign-in page</a> and sign in with your claude.ai subscription.
+        </li>
+        <li>Copy the code it shows and paste it here.</li>
+      </ol>
+      <form action={sendAction} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <label className="sr-only" htmlFor="claude-code-paste">Code from the sign-in page</label>
+        <Input id="claude-code-paste" name="code" required autoComplete="off" spellCheck={false} placeholder="Paste the code" className="min-h-11 sm:min-h-9 sm:max-w-md" />
+        <Button type="submit" disabled={sending}>{sending ? "Checking" : "Connect"}</Button>
+        <Button type="submit" variant="ghost" formAction={cancelAction} formNoValidate disabled={sending || cancelling}>Cancel</Button>
+      </form>
+      <Status state={sent} />
+    </div>
   );
 }

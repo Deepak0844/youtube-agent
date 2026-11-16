@@ -21,7 +21,8 @@ import { LastTestLine } from "./last-test";
 import { getEvalBadges } from "@/server/db/llm-eval";
 import type { Badge } from "@/server/core/eval-rules";
 import { EvalBadge } from "./eval-badge";
-import { AiSourceForm, TestClaudeCodeButton } from "./ai-source";
+import { claudeLogin } from "@/server/llm/claude-login";
+import { AiSourceForm, ConnectClaudeForm, TestClaudeCodeButton } from "./ai-source";
 import { EMPTY_MODEL, IdButton, ModelForm, RouteForm, TestModelButton, TestVisionButton, type ModelFormValues } from "./model-form";
 
 export const metadata = { title: "Models" };
@@ -112,6 +113,12 @@ const LAST: Record<NonNullable<ClaudeCodeStatus["last"]>["result"], { text: stri
 const WHEN = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" });
 
 /** The switch and the Claude Code status box. Everything here is read from the database: nothing is started on page load. */
+// Reads the web process's login (claude-login.ts) at request time; this page is already dynamic (requireOwner above).
+function ConnectClaude() {
+  const s = claudeLogin().state();
+  return <ConnectClaudeForm waitingUrl={s.phase === "waiting_code" ? s.url : null} />;
+}
+
 function ClaudeCodeSection({ cc }: { cc: ClaudeCodeStatus }) {
   const fit = claudeCodeStageFit();
   const stays = fit.filter((f) => !f.ok);
@@ -171,6 +178,7 @@ function ClaudeCodeSection({ cc }: { cc: ClaudeCodeStatus }) {
             </p>
           ) : null}
           <p className="text-small text-warning">Log in to claude with your claude.ai subscription, not a Console API key: a key would bill the API while the books here say $0.</p>
+          <ConnectClaude />
           <TestClaudeCodeButton disabled={!cc.enabled} />
         </div>
       </div>
