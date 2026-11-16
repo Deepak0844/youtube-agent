@@ -10,7 +10,7 @@ import { getSecret, hasSecret } from "@/server/db/vault";
 import { storageRoot, safeJoin } from "@/server/storage/paths";
 import type { ImageProvider } from "../media";
 import type { JobCheckers } from "../media-types";
-import { safeFetch } from "../net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 import type { SafeFetch } from "../voice/eleven-types";
 import { createFalJobChecker, createFalImage, falCdnUrl } from "./fal";
 import { createGeminiImage } from "./gemini";

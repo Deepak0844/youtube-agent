@@ -1,6 +1,6 @@
 import { APICallError } from "ai";
 import { NotProcessedError } from "@/server/core/error-class";
-import { BlockedAddressError } from "@/server/providers/net/safe-fetch";
+import { BlockedAddressError } from "@/server/net/safe-fetch";
 import { isClaudeCodeError } from "./claude-code";
 
 // The only way a model-call failure leaves the LLM layer. An SDK error carries the request URL, request body, response

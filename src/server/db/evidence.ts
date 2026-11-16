@@ -3,7 +3,7 @@ import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approv
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { claimsOf, claimsSha, HEAD_TIMEOUT_MS, MAX_SOURCE_URLS, parseClaims, seedClaims, sourceUrls, type UrlResult, type Verification } from "@/server/core/evidence-edit";
 import type { Claim } from "@/server/core/script-contract";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 import { recordAudit } from "./audit";
 import { addContent, latestContent } from "./videos";
 

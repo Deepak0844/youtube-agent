@@ -5,7 +5,7 @@ import { isAuditEvent, redactDetail } from "@/server/core/audit-events";
 import { PROVIDERS, checkKeyShape, isProviderId, keyTestRequest, secretName, statusToResult, vaultNotice } from "@/server/core/provider-keys";
 import { hintFor } from "@/server/core/vault-crypto";
 import { runKeyTest } from "@/server/providers/key-test";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 
 const SAMPLES: Record<string, string> = {
   anthropic: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123",

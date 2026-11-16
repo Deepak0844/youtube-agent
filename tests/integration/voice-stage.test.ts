@@ -17,7 +17,7 @@ import { createFakeVoice, type FakeVoiceOptions } from "@/server/providers/voice
 import { ok, throwsUnknown } from "@/server/providers/fake-base";
 import { prepareAttempt, withAttempt } from "@/worker/stages/attempt";
 import { sweepLostAttempts } from "@/server/storage/store";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 import http from "node:http";
 import type { StageDeps } from "@/worker/stages/deps";
 import { ttsAttempt } from "@/worker/stages/tts";

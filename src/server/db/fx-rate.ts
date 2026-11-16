@@ -2,7 +2,7 @@ import type pg from "pg";
 import { FX_SOURCES, fxRefreshDue, parseFxAnswer, rateInRange, type FxMeta } from "@/server/core/fx-rate";
 import { recordAudit } from "@/server/db/audit";
 import { getSetting, setSessionSettings } from "@/server/db/settings";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 
 // The daily rupee-rate refresh (owner 2026-11-14): no AI, no browser, no account. A plain request to a free public rate service
 // through the app's safe fetcher (public hosts only, no redirects, a short timeout), the answer size-capped and checked against

@@ -10,7 +10,7 @@ const presentation = ["@/app/*", "@/ui/*", "**/ui", "**/ui/*", "**/app", "**/app
 const nodeIo = ["fs", "fs/promises", "net", "http", "http2", "https", "child_process", "dgram", "dns", "tls"];
 const ioPackages = ["pg", "ioredis", "bullmq", "undici"];
 const io = [...nodeIo, ...nodeIo.map((m) => `node:${m}`), ...ioPackages];
-const effectDirs = ["db", "providers", "llm", "queue", "render", "authoring"];
+const effectDirs = ["db", "providers", "llm", "queue", "render", "authoring", "net"];
 const effects = effectDirs.flatMap((d) => [`@/server/${d}`, `@/server/${d}/*`, `**/${d}`, `**/${d}/*`]);
 const orm = ["drizzle-orm", "drizzle-orm/*"];
 // The vault and its master key are server-only. Client code (src/ui, and .tsx under src/app other than the server-only
@@ -25,11 +25,11 @@ const restrict = (...groups) => ({
 const coreOnly = {
   "no-restricted-globals": [
     "error",
-    ...["fetch", "WebSocket", "XMLHttpRequest"].map((name) => ({ name, message: "server/core does no IO; inject a port." })),
+    ...["fetch", "WebSocket", "XMLHttpRequest"].map((name) => ({ name, message: "server/core does no IO; inject a port." }))
   ],
   "no-restricted-syntax": [
     "error",
-    { selector: "ImportExpression", message: "server/core does no IO; dynamic import could hide it." },
+    { selector: "ImportExpression", message: "server/core does no IO; dynamic import could hide it." }
   ],
 };
 
@@ -55,12 +55,9 @@ const boundaryBaseline = {
   ],
   db: [
     "src/server/db/clip-shorts.ts",
-    "src/server/db/evidence.ts",
-    "src/server/db/fx-rate.ts",
     "src/server/db/provider-keys.ts",
     "src/server/db/system-settings.ts",
-    "src/server/db/thumbnail-upload.ts",
-    "src/server/db/youtube-channels.ts"
+    "src/server/db/thumbnail-upload.ts"
   ],
   ui: [
     "src/ui/shell/area-menu-counts.tsx",
@@ -103,7 +100,7 @@ const eslintConfig = defineConfig([
     // Remotion fixture: bundled by Remotion inside the render container, not by Next/tsc.
     "tests/fixtures/remotion-spike/**",
     "tests/fixtures/remotion-tsx/**",
-    "tests/fixtures/old-shorts/**",
+    "tests/fixtures/old-shorts/**"
   ]),
   // Import boundaries (Doc 2 §2). Raw table access is db-only; the package is
   // not installed yet, the rule is pre-wired.

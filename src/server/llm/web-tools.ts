@@ -1,6 +1,6 @@
 import type { AgentTool } from "@/server/core/agent-loop";
 import { searxSearch, type SearxResult } from "@/server/llm/searxng-client";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 
 // Read-only web tools for the Draft agent (Doc 8 §2). Output is untrusted data: it is returned as plain text with
 // a size cap and nothing in it is ever executed. Every URL a tool returns is recorded in `seen`, so a caller can

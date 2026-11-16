@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { makeKeyring, VaultError } from "@/server/core/vault-crypto";
 import { getSecret } from "@/server/db/vault";
 import { getVaultState, listProviderKeys, removeProviderKey, saveProviderKey, testProviderKey } from "@/server/db/provider-keys";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;

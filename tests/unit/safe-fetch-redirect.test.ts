@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BlockedRedirectError, originKey, planRedirect, policyFor } from "@/server/providers/net/safe-fetch";
+import { BlockedRedirectError, originKey, planRedirect, policyFor } from "@/server/net/safe-fetch";
 
 const secretHeaders = () =>
   new Headers({

@@ -2,7 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { matchLocalService } from "@/server/core/local-services";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 import { PROVIDERS, deriveEndpointKind, type ModelRow, type ProviderId } from "@/server/core/llm-catalog";
 import { PROVIDER_ENDPOINTS, keySlotFor } from "@/server/llm/provider-endpoints";
 import { createClaudeCodeModel, type ClaudeCodeDeps } from "./claude-code";

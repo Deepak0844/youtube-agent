@@ -1,6 +1,6 @@
 import { NotProcessedError } from "@/server/core/error-class";
 import type { PriceRule } from "@/server/core/media-catalog";
-import { BlockedAddressError } from "../net/safe-fetch";
+import { BlockedAddressError } from "@/server/net/safe-fetch";
 
 /** safeFetch bound to the typed host; the per-call options (no redirects, 120 s) are passed here. */
 export type SafeFetch = (url: string, init: RequestInit, opts: { timeoutMs: number; maxRedirects: number }) => Promise<Response>;

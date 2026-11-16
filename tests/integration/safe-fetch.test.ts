@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { BlockedAddressError, BlockedRedirectError, safeFetch as realSafeFetch, type SafeFetchOptions } from "@/server/providers/net/safe-fetch";
+import { BlockedAddressError, BlockedRedirectError, safeFetch as realSafeFetch, type SafeFetchOptions } from "@/server/net/safe-fetch";
 
 // These tests exercise the address policy, redirects, pinning and timeouts, not the owner's allow-list (that is
 // safe-fetch-local-services.test.ts). Typed calls therefore list the exact host:port they were pointed at, as an owner

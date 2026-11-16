@@ -11,7 +11,7 @@ import { createAzureVoice } from "@/server/providers/voice/azure";
 import { createOpenAiCompatibleVoice } from "@/server/providers/voice/openai-compatible";
 import { assertVoiceStudioUrl, isLoopbackHost, createVoiceStudioVoice } from "@/server/providers/voice/voicestudio";
 import { getSecret, hasSecret } from "@/server/db/vault";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 import { createEdgeVoice, connectEdge } from "@/server/providers/voice/edge";
 import { createElevenLabsVoice } from "@/server/providers/voice/elevenlabs";
 import { createGoogleVoice } from "@/server/providers/voice/google";

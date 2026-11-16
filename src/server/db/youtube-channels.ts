@@ -27,7 +27,7 @@ import { loadPolicy } from "@/server/db/policy-file";
 import type { Keyring } from "@/server/core/vault-crypto";
 import { recordAudit } from "@/server/db/audit";
 import { deleteSecret, getSecret, putSecret } from "@/server/db/vault";
-import { safeFetch } from "@/server/providers/net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 
 type Ring = Keyring | (() => Keyring);
 const keyringOf = (r: Ring) => (typeof r === "function" ? r() : r);

@@ -1,7 +1,7 @@
 import { open, rm } from "node:fs/promises";
 import { KnownFailure } from "@/server/core/paid-call";
 import { NotProcessedError } from "@/server/core/error-class";
-import { BlockedAddressError, BlockedRedirectError, safeFetch } from "../net/safe-fetch";
+import { BlockedAddressError, BlockedRedirectError, safeFetch } from "@/server/net/safe-fetch";
 
 // SECURITY CONTROL: the one door the three local voice adapters use to reach a server. Typed mode (so a private or loopback
 // address must be on the owner's local-service list), no redirects at all, the key only in one request header and never in

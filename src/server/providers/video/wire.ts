@@ -8,7 +8,7 @@ import { getPriceRule } from "@/server/db/media-registry";
 import { getSecret, hasSecret } from "@/server/db/vault";
 import { safeJoin, storageRoot } from "@/server/storage/paths";
 import { hostedApiFetch } from "../image/wire";
-import { safeFetch } from "../net/safe-fetch";
+import { safeFetch } from "@/server/net/safe-fetch";
 import type { JobCheckers } from "../media-types";
 import type { SafeFetch } from "../voice/eleven-types";
 import type { VideoProvider } from "./index";
