@@ -11,6 +11,7 @@ x-env: &env
   RENDER_IMAGE: ${RENDER_IMAGE:-ytstudio-render:dev}
   VAULT_MASTER_KEY: ${VAULT_MASTER_KEY}
   APP_URL: ${APP_URL:-http://localhost:3000}
+  OWN_SERVICE_PORTS: ${WEB_PORT:-3000} # the published web port is this app: never a listable local service
 
 x-app: &app
   image: ytstudio-app:dev
