@@ -5,7 +5,8 @@ import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
 import { daemonLimits } from "@/server/render/runner";
 import { safeJoin } from "@/server/storage/paths";
-import { ASSET_EXT, copyRegular, mountable, NAME_PREFIX, realDir, renderArgs, resolveRenderImage, runRenderContainer, type ContainerRendererDeps } from "./remotion-container";
+import { ASSET_EXT, mountable, NAME_PREFIX, realDir, renderArgs, resolveRenderImage, runRenderContainer, type ContainerRendererDeps } from "./remotion-container";
+import { copyRegular } from "@/server/storage/regular-file";
 
 // The long-video thumbnail card (1280x720 png), drawn in the same sandbox as every render: no network, read-only root, the kit mounted read-only,
 // the title and an optional picture staged in a private input folder. The picture is a plain image file from the storage root (never a path the

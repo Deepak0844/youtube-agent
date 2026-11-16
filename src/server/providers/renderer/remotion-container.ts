@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmod, lstat, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { redactLine } from "@/server/core/log-redact";
@@ -12,7 +12,7 @@ import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { assertRealDir, daemonLimits, JOB_LABEL, lockFlags, RENDER_IMAGE, type HostLimits } from "@/server/render/runner";
 import { safeJoin } from "@/server/storage/paths";
 import { buildVideoProps } from "@/shared/scene/video-props";
-import { openRegular } from "@/worker/stages/attempt";
+import { copyRegular, MAX_VIDEO_BYTES } from "@/server/storage/regular-file";
 import type { Renderer, RenderArgs } from "./index";
 
 // SECURITY CONTROL: the production renderer. The scene document is model-written, so the render runs in the render image
@@ -36,7 +36,6 @@ const ASSET_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/; // same rule as the scene schema
 const CONTAINER_ID = /^[0-9a-f]{12,64}$/;
 const MOUNT_SAFE = /^[^:,\0\r\n]+$/;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
-export const MAX_VIDEO_BYTES = 2 * 1024 ** 3;
 const FPS = 30; // keep equal to remotion/kit/theme.ts
 export const NAME_PREFIX = "ytstudio-render-";
 const WORKER_LABEL = "ytstudio.worker";
@@ -163,39 +162,6 @@ export async function realDir(p: string, what: string): Promise<void> {
     await assertRealDir(p, what);
   } catch (e) {
     throw new KnownFailure(`The render ${what} folder is missing or not a plain folder (${(e as Error).message}).`);
-  }
-}
-
-/**
- * Copies a regular file (no symlink followed, no FIFO opened blocking) to dest, readable by the container user. Reads at most
- * maxBytes + 1 bytes, so a file still growing cannot push the copy past the cap; a bigger file is refused and the partial copy removed.
- */
-export async function copyRegular(src: string, dest: string, maxBytes = MAX_VIDEO_BYTES): Promise<void> {
-  const st = await lstat(src).catch(() => null);
-  if (!st?.isFile()) throw new KnownFailure(`The file ${path.basename(src)} is missing or not a plain file.`);
-  let fh;
-  try {
-    fh = await openRegular(src);
-  } catch {
-    throw new KnownFailure(`The file ${path.basename(src)} is missing or not a plain file.`);
-  }
-  let n = 0;
-  const tooBig = () => new KnownFailure(`The file ${path.basename(src)} is bigger than ${maxBytes} bytes.`);
-  try {
-    if ((await fh.stat()).size > maxBytes) throw tooBig();
-    const stream = fh.createReadStream({ autoClose: false, end: maxBytes }); // end is inclusive: at most maxBytes + 1 bytes
-    await writeFile(dest, (async function* () {
-      for await (const chunk of stream) {
-        n += (chunk as Buffer).length;
-        if (n > maxBytes) throw tooBig();
-        yield chunk as Buffer;
-      }
-    })(), { mode: 0o644, flag: "wx" });
-  } catch (e) {
-    if (n > 0) await rm(dest, { force: true });
-    throw e;
-  } finally {
-    await fh.close();
   }
 }
 

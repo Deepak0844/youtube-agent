@@ -7,7 +7,8 @@ import { buildEngineConfig } from "@/server/core/engine-config";
 import { KnownFailure } from "@/server/core/paid-call";
 import { StageAbort, type StageContext } from "@/server/core/stage-handler";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
-import { copyRegular, createContainerRenderer, parseProgress, sweepRenderContainers, type ContainerRendererDeps } from "@/server/providers/renderer/remotion-container";
+import { createContainerRenderer, parseProgress, sweepRenderContainers, type ContainerRendererDeps } from "@/server/providers/renderer/remotion-container";
+import { copyRegular } from "@/server/storage/regular-file";
 
 
 const GOOD = path.resolve("tests/fixtures/video/good.mp4");
