@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { getPool } from "@/server/db/pool";
 import { ENGINE_NUMBER_FIELDS } from "@/server/core/engine-numbers";
-import { hostPortOf, isVoiceField } from "@/server/providers/voice/endpoints";
+import { hostPortOf, isVoiceField } from "@/server/core/voice-endpoints";
 import { loadLocalServices, loadVoiceServers, saveEngineNumbers, saveEngineSwitch, saveLocalServices, saveSystemSettings, saveUploadSwitches } from "@/server/db/system-settings";
 
 export interface FormState {

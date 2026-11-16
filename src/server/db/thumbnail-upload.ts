@@ -1,6 +1,6 @@
 import type pg from "pg";
 import type { Uploader } from "@/server/providers/uploader";
-import { THUMBNAIL_PNG_MAX_BYTES } from "@/server/providers/renderer/thumbnail-container";
+import { THUMBNAIL_PNG_MAX_BYTES } from "@/server/core/asset-rules";
 import { hashStoredFile, openStoredFile } from "@/server/storage/hash-file";
 import { storageRoot } from "@/server/storage/paths";
 import { approvalState, readSnapshot } from "./approvals";

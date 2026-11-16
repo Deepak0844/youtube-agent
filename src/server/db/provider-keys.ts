@@ -16,7 +16,7 @@ import {
 import { hintFor, type Keyring } from "@/server/core/vault-crypto";
 import { recordAudit } from "@/server/db/audit";
 import { deleteSecret, getSecret, hasSecret, listSecrets, putSecret, vaultStatus } from "@/server/db/vault";
-import { runKeyTest, type KeyFetcher } from "@/server/providers/key-test";
+import { runKeyTest, type KeyFetcher } from "@/server/net/key-test";
 
 type Db = Pick<pg.Pool, "query">;
 export type KeyringLoader = () => Keyring;
