@@ -219,6 +219,13 @@ describe("info, list, remove", () => {
     await start({ dockerVersion: async () => null });
     expect((await (await fetch(`${base}/v1/info`, { headers: auth })).json() as { ready: boolean }).ready).toBe(false);
   });
+  it("GET /v1/info says not ready, with the reason, when the host storage root is wrong", async () => {
+    await start({ hostRootProblem: async () => "HOST_STORAGE_ROOT is wrong" });
+    const j = await (await fetch(`${base}/v1/info`, { headers: auth })).json() as { ready: boolean; problem?: string };
+    expect(j).toMatchObject({ ready: false, problem: "HOST_STORAGE_ROOT is wrong" });
+    await start({ hostRootProblem: async () => null });
+    expect(await (await fetch(`${base}/v1/info`, { headers: auth })).json()).toMatchObject({ ready: true });
+  });
   it("GET /v1/containers lists render containers", async () => {
     listed = [{ name: "ytstudio-render-a-1111", worker: "w-1" }];
     await start();
