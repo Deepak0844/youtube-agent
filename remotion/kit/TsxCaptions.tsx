@@ -5,7 +5,7 @@ import { useStyle } from "./tsxlib/style";
 import type { TsxStyle } from "./tsxlib/styledata";
 import type { CaptionWord } from "./timeline";
 
-// Drawn by tsx-root around the model's scene (the scene draws no captions). Bottom safe zone: below y = 1497.
+// Drawn by tsx-root around the model's scene (the scene draws no captions). Bottom safe zone: below y = 1497 (portrait); landscape: the pill ends at y 1026 of 1080, so it stays in the band y 864-1026 the scene keeps free.
 // The look follows the video's style (presets.ts `captions`): pill (a block behind the words), paged (big outlined words),
 // tags (one tilted paper tag per word) or kinetic (big staggered words). Always inside the caption band; never in the scene.
 const FALLBACK_PILL = "rgba(10,12,28,0.72)";
@@ -32,13 +32,13 @@ function look(st: TsxStyle): { box: React.CSSProperties; word: React.CSSProperti
 }
 
 export const TsxCaptions: React.FC<{ words: CaptionWord[] }> = ({ words }) => {
-  const { fps } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
   const st = useStyle();
   const lk = look(st);
   const page = captionAt(words, useCurrentFrame() / fps, lk.per);
   if (!page) return null;
   return (
-    <div style={{ position: "absolute", left: 60, right: 60, bottom: 150, display: "flex", justifyContent: st.captions.align === "left" ? "flex-start" : "center", pointerEvents: "none" }}>
+    <div style={{ position: "absolute", left: 60, right: 60, bottom: width > height ? 54 : 150, display: "flex", justifyContent: st.captions.align === "left" ? "flex-start" : "center", pointerEvents: "none" }}>
       <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: lk.tag ? "0" : "0 22px", ...lk.box }}>
         {page.words.map((w, i) => (
           <span key={i} style={{ ...lk.word, ...(i === page.active ? { color: lk.tag ? "#ffffff" : lk.active } : {}) }}>{w}</span>
