@@ -22,9 +22,12 @@ function stop(msg: string): never {
 if (!dry && docker(["info", "--format", "{{.ServerVersion}}"]).status !== 0) stop("Docker is not running. Start Docker (or OrbStack) and run this again.");
 mkdirSync(dataDir, { recursive: true });
 
-if (!dry && docker(["image", "inspect", RENDER_IMAGE]).status !== 0) {
-  say("Building the render image (first run only, a few minutes)...");
-  if (docker(["build", "-f", "infra/Dockerfile.render", "-t", RENDER_IMAGE, "."], true).status !== 0) stop("The render image did not build.");
+// Every run: the render image holds its own copy of the video kit (captions, scenes), so an old image keeps rendering old code after an update.
+// Docker's layer cache makes this a few seconds when nothing changed.
+if (!dry) {
+  const first = docker(["image", "inspect", RENDER_IMAGE]).status !== 0;
+  say(first ? "Building the render image (first run only, a few minutes)..." : "Checking the render image is current...");
+  if (docker(["build", "-f", "infra/Dockerfile.render", "-t", RENDER_IMAGE, "."], first).status !== 0) stop("The render image did not build.");
 }
 
 if (existsSync(envFile)) {
