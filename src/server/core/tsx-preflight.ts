@@ -51,6 +51,13 @@ export function preflightFrames(durationInFrames: number): number[] {
   return [...new Set([0, Math.floor((durationInFrames - 1) / 2), durationInFrames - 1])];
 }
 
+/** Frames of a landscape scene for the caption-band check: up to 8, evenly spread from the first to the last, so a label that shows only in a middle beat is seen too. */
+export function bandCheckFrames(durationInFrames: number, count = 8): number[] {
+  if (!Number.isInteger(durationInFrames) || durationInFrames < 1) return [];
+  const n = Math.min(count, durationInFrames);
+  return [...new Set(Array.from({ length: n }, (_, i) => (n === 1 ? 0 : Math.round((i * (durationInFrames - 1)) / (n - 1)))))];
+}
+
 /** Most stills one attempt renders for the frame review (the three preflight frames are always among them). */
 export const REVIEW_STILLS_MAX = 8;
 
@@ -204,7 +211,7 @@ export function captionBandEdgeShare(f: RgbFrame): number {
  * Checks the sampled stills: each must be a readable frame of the expected size, not black and not one flat colour, and
  * (with two or more stills) at least one pair must differ, i.e. something moves. The last frame may equal frame 0 (a loop).
  */
-export function checkPreflight(frames: unknown, size: { width: number; height: number }, opts: { maxEmptyBand?: number } = {}): { ok: boolean; problems: string[] } {
+export function checkPreflight(frames: unknown, size: { width: number; height: number }, opts: { maxEmptyBand?: number; bandFrames?: readonly RgbFrame[] } = {}): { ok: boolean; problems: string[] } {
   const problems: string[] = [];
   try {
     if (!Array.isArray(frames) || frames.length === 0) return { ok: false, problems: ["No preview frames were rendered."] };
@@ -222,6 +229,11 @@ export function checkPreflight(frames: unknown, size: { width: number; height: n
         if (band > opts.maxEmptyBand) problems.push(`Frame ${f.frame}: an empty band covers ${Math.round(band * 100)}% of the picture's height; spread the objects over the whole height (the largest empty band must stay under ${Math.round(opts.maxEmptyBand * 100)}%).`);
       }
       good.push(f);
+    }
+    // Extra frames (spread over the scene) are checked for the caption band only: a label that appears in a middle beat is not on frame 0, the middle or the last.
+    for (const f of opts.maxEmptyBand === undefined ? [] : opts.bandFrames ?? []) {
+      if (!validFrame(f) || f.width !== size.width || f.height !== size.height) continue;
+      if (captionBandEdgeShare(f) > CAPTION_BAND_EDGE_MAX) problems.push(`Frame ${f.frame}: a picture or label runs into the caption band (the bottom 20% of the frame, where the captions go); keep everything above y ${Math.round(f.height * CAPTION_TOP)} of ${f.height}.`);
     }
     if (problems.length === 0 && good.length >= 2) {
       const moves = good.some((a, i) => good.slice(i + 1).some((b) => (changedShare(a, b) ?? 0) >= CHANGE_SHARE));
