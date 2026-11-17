@@ -40,6 +40,8 @@ RUN find / -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -group 
 WORKDIR /app
 COPY --chown=app:app package.json package-lock.json ./
 # Dev dependencies stay: tsx runs the worker and the setup scripts.
+# onnxruntime-node would download a CUDA binary from a GitHub release that is gone (404); the CPU build ships in the package.
+ENV npm_config_onnxruntime_node_install_cuda=skip
 RUN npm ci --no-audit --no-fund && chown -R app:app /app
 COPY --chown=app:app . .
 ENV NEXT_TELEMETRY_DISABLED=1
