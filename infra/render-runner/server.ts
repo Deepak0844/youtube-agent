@@ -36,6 +36,8 @@ export interface RunnerDeps {
   removeContainer(name: string): Promise<void>;
   /** Delay of the second clean-up (a create that raced the first remove). Default 1000 ms. */
   cleanupDelayMs?: number;
+  /** How often a blank line keeps a quiet or queued render's connection alive. Default 30 s. */
+  heartbeatMs?: number;
 }
 
 type Res = http.ServerResponse;
@@ -71,10 +73,13 @@ export function createRunnerServer(deps: RunnerDeps): http.Server {
 
     const ac = new AbortController();
     let finished = false;
-    res.on("close", () => { if (!finished) ac.abort(); }); // the worker went away (abort, crash, timeout): stop the render
+    // Headers now and a blank line every heartbeat: the worker's fetch gives up after 300 s without headers (a job waiting its turn) or
+    // without data (a render that prints nothing while it bundles or draws a heavy frame). The worker skips blank lines.
+    res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store" });
+    const beat = setInterval(() => { if (!res.writableEnded) res.write("\n"); }, deps.heartbeatMs ?? 30_000);
+    res.on("close", () => { clearInterval(beat); if (!finished) ac.abort(); }); // the worker went away (abort, crash, timeout): stop the render
     const turn = tail.then(async () => {
       if (ac.signal.aborted) return; // left while queued: never runs
-      res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store" });
       const write = (o: unknown) => { if (!res.writableEnded && !ac.signal.aborted) res.write(JSON.stringify(o) + "\n"); };
       let out: ExecResult & { error?: string };
       try {
@@ -89,6 +94,7 @@ export function createRunnerServer(deps: RunnerDeps): http.Server {
       } finally {
         await cleanup(job.name);
       }
+      clearInterval(beat);
       write({ t: "end", ...out });
       finished = true;
       if (!res.writableEnded) res.end();
