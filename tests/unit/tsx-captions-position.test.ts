@@ -14,8 +14,8 @@ async function bottomOf(): Promise<string> {
 }
 
 describe("TsxCaptions position", () => {
-  it("landscape captions end inside the band y 864-1026 (bottom 54 of 1080); portrait keeps 150", async () => {
-    expect(await bottomOf()).toBe("54");
+  it("landscape captions end inside the low band (bottom 40 of 1080); portrait keeps 150", async () => {
+    expect(await bottomOf()).toBe("40");
     size = { width: 1080, height: 1920 };
     expect(await bottomOf()).toBe("150");
   });
