@@ -168,6 +168,26 @@ describe("running a render", () => {
   });
 });
 
+describe("a quiet or queued render keeps its connection (fetch gives up after 300 s without headers or data)", () => {
+  it("headers arrive at once even for a queued job, and a blank line is sent every heartbeat while nothing else is", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    await start({ heartbeatMs: 20, exec: async () => { await gate; return OK; } });
+    const a = await post(job); // running, prints nothing
+    expect(a.status).toBe(200);
+    const b = await post({ ...job, name: "ytstudio-render-run2-bbbb" }); // queued: headers anyway
+    expect(b.status).toBe(200);
+    const reader = a.body!.getReader();
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toMatch(/^\n+$/); // a heartbeat, before any event
+    release();
+    let rest = "";
+    for (;;) { const { value, done } = await reader.read(); if (done) break; rest += new TextDecoder().decode(value); }
+    expect(rest.split("\n").filter(Boolean).map((l) => JSON.parse(l))).toEqual([{ t: "end", ...OK }]);
+    expect((await events(b)).at(-1)).toMatchObject({ t: "end", code: 0 });
+  });
+});
+
 describe("folders are checked again when the job's turn comes", () => {
   it("a queued job whose folder became a symlink while it waited never runs", async () => {
     let release!: () => void;
