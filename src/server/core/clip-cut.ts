@@ -15,6 +15,8 @@ export interface ClipCut {
   outFile: string;
   startS: number;
   endS: number;
+  /** Share of the picture's height cut off its bottom before it is fitted (0 to 0.2). An app-made landscape video has its own captions burned in there; the clip draws new ones. */
+  cropBottom?: number;
 }
 
 /** A plain sentence saying what is wrong with the cut, or null when it is fine. */
@@ -22,6 +24,7 @@ export function clipCutProblem(c: ClipCut): string | null {
   if (!Number.isFinite(c.startS) || !Number.isFinite(c.endS) || c.startS < 0) return "The clip times are not valid.";
   if (!(c.endS > c.startS)) return "The clip must end after it starts.";
   if (c.endS - c.startS > MAX_CLIP_S) return `A clip can be at most ${MAX_CLIP_S} seconds.`;
+  if (c.cropBottom !== undefined && !(c.cropBottom >= 0 && c.cropBottom <= 0.2)) return "The bottom crop must be between 0 and 0.2.";
   if (!c.inFile || !c.outFile || c.inFile.startsWith("-") || c.outFile.startsWith("-")) return "The file names are not valid."; // never read as an option
   return null;
 }
@@ -32,7 +35,7 @@ export function cutClipArgs(c: ClipCut): string[] {
   if (bad) throw new Error(bad);
   const size = `${CLIP_W}:${CLIP_H}`;
   const graph =
-    `[0:v]split=2[a][b];` +
+    `[0:v]${c.cropBottom ? `crop=iw:trunc(ih*${(1 - c.cropBottom).toFixed(3)}/2)*2:0:0,` : ""}split=2[a][b];` +
     `[a]scale=${size}:force_original_aspect_ratio=increase,crop=${size},boxblur=40:5,eq=brightness=-0.15[bg];` +
     `[b]scale=${size}:force_original_aspect_ratio=decrease[fg];` +
     `[bg][fg]overlay=(W-w)/2:(H-h)/2,fps=${CLIP_FPS},format=yuv420p[v]`;

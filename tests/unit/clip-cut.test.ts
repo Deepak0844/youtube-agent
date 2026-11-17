@@ -22,6 +22,13 @@ describe("cutClipArgs", () => {
     expect(graph).toContain("force_original_aspect_ratio=increase,crop=1080:1920"); // blurred copy fills the frame
   });
 
+  it("can crop the bottom off the sharp picture (burned-in captions) from both copies and refuses a silly crop", () => {
+    const g = cutClipArgs({ ...base, cropBottom: 0.1 }).join(" ");
+    expect(g).toContain("[0:v]crop=iw:trunc(ih*0.900/2)*2:0:0,split=2[a][b]");
+    expect(cutClipArgs(base).join(" ")).not.toContain("trunc(ih");
+    expect(clipCutProblem({ ...base, cropBottom: 0.5 })).toMatch(/crop/);
+  });
+
   it("refuses bad times and option-looking file names in plain words", () => {
     for (const bad of [{ startS: -1 }, { endS: 5 }, { startS: Number.NaN }, { endS: Number.POSITIVE_INFINITY }, { endS: 12.5 }, { endS: 200 }]) {
       expect(clipCutProblem({ ...base, ...bad }), JSON.stringify(bad)).toEqual(expect.any(String));
