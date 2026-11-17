@@ -8,7 +8,7 @@ import { redactLine } from "@/server/core/log-redact";
 import type { ProbeResult } from "@/server/core/qa";
 import type { StageContext } from "@/server/core/stage-handler";
 import { checkTsx, echo, isStaticName, tsxDuration, tsxMetaFor, type TsxOrientation } from "@/server/core/tsx-check";
-import { checkPreflight, preflightFrames, reviewStillFrames, type RgbFrame } from "@/server/core/tsx-preflight";
+import { bandCheckFrames, checkPreflight, preflightFrames, reviewStillFrames, type RgbFrame } from "@/server/core/tsx-preflight";
 import type { ChildResult, ChildSpec } from "@/server/render/child";
 import { RENDER_IMAGE } from "@/server/render/runner";
 import { mountable, NAME_PREFIX, renderConfig, renderLimits, TSX_SANDBOX } from "@/server/render/render-job";
@@ -188,7 +188,9 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
     const bad = input.stillsOnly.find((f) => !Number.isInteger(f) || f < 0 || f >= frames);
     if (input.stillsOnly.length < 1 || input.stillsOnly.length > 8 || bad !== undefined) return failure("check", bad !== undefined ? `Frame ${bad} is outside the video (0-${frames - 1}).` : "Ask for 1 to 8 frames.");
   }
-  const stillList = input.stillsOnly ? [...new Set(input.stillsOnly)] : input.review ? reviewStillFrames(frames, input.reviewAt ?? []) : preflightFrames(frames);
+  // A landscape engine preview also draws frames spread over the scene, for the caption-band check only.
+  const bandFrames = input.maxEmptyBand !== undefined && input.orientation === "landscape" && !input.stillsOnly && !input.review ? bandCheckFrames(frames) : [];
+  const stillList = input.stillsOnly ? [...new Set(input.stillsOnly)] : input.review ? reviewStillFrames(frames, input.reviewAt ?? []) : [...new Set([...preflightFrames(frames), ...bandFrames])].sort((a, b) => a - b);
   const inDir = mountable(path.join(ctx.attemptDir, "tsx-in"));
   const outDir = mountable(path.join(ctx.attemptDir, "tsx-out"));
   const stillsDir = path.join(ctx.attemptDir, "tsx-stills");
@@ -261,6 +263,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       return { ok: true, outPath: "", image: imageRef, stills: names };
     }
     const stills: RgbFrame[] = [];
+    const bandStills: RgbFrame[] = [];
     const shots: ReviewShot[] = [];
     const problems: string[] = [];
     const base = new Set(preflightFrames(frames));
@@ -270,11 +273,12 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
         if (base.has(f)) problems.push(got); // a missing extra frame only thins the review
       } else {
         if (base.has(f)) stills.push(got.rgb);
+        else if (bandFrames.includes(f)) bandStills.push(got.rgb);
         if (got.jpeg) shots.push({ frame: f, jpeg: got.jpeg });
       }
     }
     if (problems.length > 0) return failure("preflight", "The preview frames could not be read.", problems);
-    const pre = checkPreflight(stills, SIZE, input.maxEmptyBand === undefined ? {} : { maxEmptyBand: input.maxEmptyBand });
+    const pre = checkPreflight(stills, SIZE, input.maxEmptyBand === undefined ? {} : { maxEmptyBand: input.maxEmptyBand, bandFrames: bandStills });
     if (!pre.ok) return failure("preflight", "The preview frames show a problem.", pre.problems);
     if (input.review && shots.length > 0) {
       const found = await input.review(shots); // throws go up: a budget refusal or an unclear paid outcome is never swallowed here
