@@ -38,7 +38,7 @@ describe("preset shape", () => {
   it("every new style has picker copy, the approved palette and a caption colour that reads", () => {
     for (const id of STYLE_IDS) {
       const p = PRESETS[id];
-      expect(p.bestFor && p.sheet?.length).toBeTruthy();
+      expect(p.bestFor && p.does && p.sheet?.length).toBeTruthy();
       expect(p.antiPatterns.length).toBeGreaterThan(0);
       expect(styleGuidance(id)).toMatch(/Never:[\s\S]*Pace:/);
     }

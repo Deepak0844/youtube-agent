@@ -44,6 +44,8 @@ export type StylePreset = {
   mood: string;
   /** Picker line, e.g. "Finance, how-it-works". */
   bestFor?: string;
+  /** Picker line: what the look changes in the video, in plain words. */
+  does?: string;
   /** The owner-approved palette (page first), shown as the swatch strip and mock frame in the picker. Light styles show their real light colours here. */
   sheet?: readonly string[];
   /** null = today's behaviour: the gradient is picked from the video seed. */
@@ -143,6 +145,7 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     label: "Clean Professional",
     mood: "Calm, trustworthy, lots of white space.",
     bestFor: "Finance, how-it-works, trust",
+    does: "White page, blue accent, gentle fades, no bounce. Scenes hold 2.5 to 12 s; leans on charts, browser and network scenes.",
     sheet: ["#FFFFFF", "#1F2937", "#2563EB", "#F59E0B"],
     light: true,
     look: { name: "clean-professional", from: "#ffffff", to: "#ffffff", accent: "#2563eb", accent2: "#f59e0b" },
@@ -160,6 +163,7 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     label: "Flat Motion",
     mood: "Fast, bold, bouncy tech energy.",
     bestFor: "Tech, AI, startups, hot takes",
+    does: "Dark navy with purple, pink and cyan. Things pop in with a bounce; uneven cuts of 1.5 to 8 s; leans on charts, terminal and orbit scenes.",
     sheet: ["#0F172A", "#F8FAFC", "#7C3AED", "#EC4899", "#22D3EE"],
     look: { name: "flat-motion", from: "#0f172a", to: "#1e1b4b", accent: "#22d3ee", accent2: "#ec4899" },
     palette: { bg: "#0f172a", surface: "#1e293b", text: "#f8fafc", muted: "#94a3b8", accent: "#7c3aed", accent2: "#ec4899", chart: ["#7c3aed", "#22d3ee", "#ec4899", "#facc15", "#34d399", "#fb923c"] },
@@ -176,6 +180,7 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     label: "Minimal Diagram",
     mood: "Exact, quiet, drawn by a steady hand.",
     bestFor: "How it works, maths, coding",
+    does: "Off-white page, one red accent, no gradients, no motion. Long 3 to 15 s holds; leans on diagrams and maths, no stock clips.",
     sheet: ["#FAFAFA", "#1A1A2E", "#E94560"],
     light: true,
     look: { name: "minimal-diagram", from: "#fafafa", to: "#fafafa", accent: "#e94560", accent2: "#e94560" },
@@ -193,6 +198,7 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     label: "Premium Editorial",
     mood: "Magazine calm: one big idea per frame.",
     bestFor: "Premium explainers, ideas",
+    does: "Light page, one big idea per frame, left-aligned captions with no pill. Slow and steady cuts.",
     sheet: ["#F9FAFB", "#111827", "#2563EB", "#0D9488"],
     light: true,
     look: { name: "premium-editorial", from: "#f9fafb", to: "#f9fafb", accent: "#2563eb", accent2: "#0d9488" },
@@ -210,6 +216,7 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     label: "Storybook Calm",
     mood: "Slow, warm, wonder at night.",
     bestFor: "Stories, science wonder",
+    does: "Dark purple, serif type, soft glow, vignette and floating light dots. Slow fades; avoids terminal and algorithm scenes.",
     sheet: ["#0A0A1A", "#F5F0E8", "#FFB347", "#2F6B4F"],
     look: { name: "storybook-calm", from: "#0a0a1a", to: "#1a1740", accent: "#ffb347", accent2: "#2f6b4f" },
     palette: { bg: "#0a0a1a", surface: "#161630", text: "#f5f0e8", muted: "#b5afa3", accent: "#ffb347", accent2: "#2f6b4f", chart: ["#ffb347", "#f5f0e8", "#7fc4a0", "#b5afa3", "#ffe9b5", "#9b7cc4"] },
@@ -227,6 +234,7 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     label: "Paper Cutout",
     mood: "Stop-motion paper, tactile and loud in a good way.",
     bestFor: "The most distinctive Shorts look",
+    does: "Dark teal and orange with paper grain and a boiling banner. One-word tag captions, hard cuts every 1.8 to 3 s.",
     sheet: ["#132124", "#DACEC0", "#D67354", "#C9573C", "#2DA34D"],
     look: { name: "paper-cutout", from: "#132124", to: "#132124", accent: "#d67354", accent2: "#c9573c" },
     palette: { bg: "#132124", surface: "#1f3236", text: "#dacec0", muted: "#a89e92", accent: "#d67354", accent2: "#c9573c", chart: ["#d67354", "#dacec0", "#2da34d", "#c9573c", "#8a7a60", "#f0b27a"] },
@@ -244,6 +252,7 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     label: "Kinetic Type",
     mood: "The words are the picture.",
     bestFor: "Facts, quotes, any subject",
+    does: "Black, yellow and pink with huge 3-word captions. Very fast cuts of 1.2 to 3 s; no photos.",
     sheet: ["#0B0B0F", "#FFFFFF", "#FFE45E", "#FF4D6D"],
     look: { name: "kinetic-type", from: "#0b0b0f", to: "#0b0b0f", accent: "#ffe45e", accent2: "#ff4d6d" },
     palette: { bg: "#0b0b0f", surface: "#17171f", text: "#ffffff", muted: "#a1a1aa", accent: "#ffe45e", accent2: "#ff4d6d", chart: ["#ffe45e", "#ff4d6d", "#ffffff", "#a1a1aa", "#fde68a", "#fda4af"] },
@@ -260,6 +269,7 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     label: "Retention Shorts",
     mood: "Built to keep people watching.",
     bestFor: "Maximum watch time",
+    does: "Blue and yellow with a punchy bounce. Hook on the first frame, outlined captions, uneven cuts; never fades up from black.",
     sheet: ["#111827", "#1D4ED8", "#FFE45E", "#000000"],
     look: { name: "retention-shorts", from: "#111827", to: "#1d4ed8", accent: "#ffe45e", accent2: "#93c5fd" },
     palette: { bg: "#111827", surface: "#1e293b", text: "#ffffff", muted: "#cbd5e1", accent: "#ffe45e", accent2: "#60a5fa", chart: ["#ffe45e", "#60a5fa", "#ffffff", "#f472b6", "#34d399", "#cbd5e1"] },
@@ -276,6 +286,7 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     label: "Wrapped Stats",
     mood: "Numbers as a story that builds.",
     bestFor: "Data and ranking Shorts",
+    does: "Dark purple with yellow, pink and green. Builds up to the biggest number, one highlight per scene; leans on charts.",
     sheet: ["#0B1020", "#FDE047", "#F472B6", "#34D399"],
     look: { name: "wrapped-stats", from: "#0b1020", to: "#1f1450", accent: "#fde047", accent2: "#f472b6" },
     palette: { bg: "#0b1020", surface: "#151b33", text: "#ffffff", muted: "#a5b0cc", accent: "#fde047", accent2: "#f472b6", chart: ["#fde047", "#f472b6", "#34d399", "#60a5fa", "#fb923c", "#c4b5fd"] },
@@ -292,6 +303,7 @@ export const PRESETS: Record<AnyStyleId, StylePreset> = {
     label: "AI Studio",
     mood: "Airy, premium glow with big drawn objects.",
     bestFor: "Explainers with big drawn objects",
+    does: "Navy with a gold glow and big drawn objects. Smooth 3 to 12 s scenes; the default look.",
     sheet: ["#0E1226", "#6366F1", "#9B7CC4", "#4DB8A8", "#F5D76E"],
     look: { name: "ai-studio", from: "#0e1226", to: "#161a3a", accent: "#f5d76e", accent2: "#6366f1" },
     palette: { bg: "#0e1226", surface: "#171c38", text: "#ffffff", muted: "#a9b0cc", accent: "#f5d76e", accent2: "#6366f1", chart: ["#f5d76e", "#6366f1", "#4db8a8", "#9b7cc4", "#ffffff", "#a9b0cc"] },
