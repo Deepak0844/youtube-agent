@@ -30,6 +30,8 @@ export interface RunnerDeps {
   image(): Promise<{ ref: string; pinned: boolean }>;
   hostLimits(): Promise<HostLimits>;
   dockerVersion(): Promise<string | null>;
+  /** null when HOST_STORAGE_ROOT is the folder this service sees as its storage root; else a plain sentence. Optional: a service without it asks nothing. */
+  hostRootProblem?(): Promise<string | null>;
   /** Runs `docker <args>`; resolves when it ends (or is killed by the signal, the time limit or the output cap). */
   exec(args: string[], o: ExecOpts): Promise<ExecResult>;
   listContainers(): Promise<Array<{ name: string; worker: string }>>;
@@ -113,7 +115,8 @@ export function createRunnerServer(deps: RunnerDeps): http.Server {
         if (url.pathname === "/v1/info") {
           if (method !== "GET") return send(res, 405, { error: "method not allowed" });
           const dockerVersion = await deps.dockerVersion();
-          return send(res, 200, { dockerVersion, host: await deps.hostLimits(), image: await deps.image(), ready: dockerVersion !== null });
+          const problem = dockerVersion === null ? null : (await deps.hostRootProblem?.()) ?? null;
+          return send(res, 200, { dockerVersion, host: await deps.hostLimits(), image: await deps.image(), ready: dockerVersion !== null && problem === null, ...(problem !== null && { problem }) });
         }
         if (url.pathname === "/v1/containers") {
           if (method !== "GET") return send(res, 405, { error: "method not allowed" });
