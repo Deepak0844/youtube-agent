@@ -67,11 +67,15 @@ jobs:
       # prints every test as it finishes instead of one silent block per file.
       - name: Run integration suites (without the engine suites)
         timeout-minutes: 35
-        run: npm run test:integration -- --exclude tests/integration/engine-resilience.test.ts --exclude tests/integration/engine-chaos.test.ts --exclude tests/integration/render-runner.test.ts
+        run: npm run test:integration -- --exclude tests/integration/engine-resilience.test.ts --exclude tests/integration/engine-chaos.test.ts --exclude tests/integration/render-runner.test.ts --exclude tests/integration/old-kit-render.test.ts
       # Real renders through the render service, alone: next to the parallel suites it slows the code-scene renders past their 300 s cap.
       - name: Run the render service suite
         timeout-minutes: 10
         run: npm run test:integration -- --run tests/integration/render-runner.test.ts --reporter=verbose
+      # The old shorts' full code-scene render needs 225-275 s of a 300 s cap when it shares the machine: alone it has room.
+      - name: Run the old shorts render suite
+        timeout-minutes: 15
+        run: npm run test:integration -- --run tests/integration/old-kit-render.test.ts --reporter=verbose
       - name: Run the engine resilience suite
         timeout-minutes: 15
         run: npm run test:integration -- --run tests/integration/engine-resilience.test.ts --reporter=verbose
