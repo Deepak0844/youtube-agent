@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { captionBandEdgeShare, changedShare, checkPreflight, EMPTY_BAND_MAX, EMPTY_FRAME0, isBlack, longestEmptyBand, isFlat, preflightFrames, zoneEdgeShare, type RgbFrame } from "@/server/core/tsx-preflight";
+import { bandCheckFrames, captionBandEdgeShare, changedShare, checkPreflight, EMPTY_BAND_MAX, EMPTY_FRAME0, isBlack, longestEmptyBand, isFlat, preflightFrames, zoneEdgeShare, type RgbFrame } from "@/server/core/tsx-preflight";
 
 const W = 100;
 const H = 200;
@@ -177,6 +177,24 @@ describe("landscape frames (L1)", () => {
     expect(r.ok).toBe(false);
     expect(r.problems.join()).toMatch(/Frame 10: .*caption/i);
     expect(checkPreflight([rows(0, 40, 60), rows(10, 30, 85)], lsize, { maxEmptyBand: EMPTY_BAND_MAX }).problems.join()).not.toMatch(/caption/i); // ends at 76%: clear
+  });
+  it("a_label_in_a_middle_frame_is_caught_by_the_spread_frames", () => {
+    const base = [rows(0, 40, 60), rows(10, 40, 60), rows(20, 40, 60)];
+    const mid = rows(7, 40, 100); // a label that shows only mid-scene
+    expect(checkPreflight(base, lsize, { maxEmptyBand: EMPTY_BAND_MAX }).problems.join()).not.toMatch(/caption/i);
+    const r = checkPreflight(base, lsize, { maxEmptyBand: EMPTY_BAND_MAX, bandFrames: [mid] });
+    expect(r.ok).toBe(false);
+    expect(r.problems.join()).toMatch(/Frame 7: .*caption/i);
+    expect(checkPreflight(base, lsize, { bandFrames: [mid] }).problems.join()).not.toMatch(/caption/i); // only the engine check asks
+  });
+  it("bandCheckFrames_spreads_up_to_eight_frames_from_first_to_last", () => {
+    expect(bandCheckFrames(0)).toEqual([]);
+    expect(bandCheckFrames(1)).toEqual([0]);
+    expect(bandCheckFrames(3)).toEqual([0, 1, 2]);
+    const f = bandCheckFrames(1001);
+    expect(f).toHaveLength(8);
+    expect([f[0], f.at(-1)]).toEqual([0, 1000]);
+    expect([...f].sort((a, b) => a - b)).toEqual(f);
   });
   it("a_tall_frame_has_no_caption_band_check", () => {
     expect(captionBandEdgeShare(frame(1, (x, y) => (y > 150 ? [255, 255, 255] : [20, 30, 60]), 100, 200))).toBe(0);
