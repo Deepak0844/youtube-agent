@@ -75,10 +75,10 @@ describe("stageTimeoutS", () => {
     const off = buildEngineConfig(new Map());
     const on = buildEngineConfig(new Map<string, unknown>([["engine.enabled", true]]));
     expect(stageTimeoutS(off, "tsx_author")).toBe(1800);
-    expect(stageTimeoutS(on, "tsx_author")).toBe(2700 + 900);
+    expect(stageTimeoutS(on, "tsx_author")).toBe(5400 + 900); // a long video draws all its chapters in this one step
     expect(stageTimeoutS(on, "render")).toBe(1800);
     expect(stageTimeoutS(off, "draft")).toBe(1800);
     expect(stageTimeoutS(on, "draft")).toBe(2700 + 300); // the research run's limit plus a little to judge and save
-    expect(stageTimeoutS(buildEngineConfig(new Map<string, unknown>([["engine.enabled", true], ["engine.build_timeout_s", 600]])), "tsx_author")).toBe(1800); // never shorter than the stage limit
+    expect(stageTimeoutS(buildEngineConfig(new Map<string, unknown>([["engine.enabled", true], ["engine.build_timeout_s", 600], ["engine.long_build_timeout_s", 600]])), "tsx_author")).toBe(1800); // never shorter than the stage limit
   });
 });
