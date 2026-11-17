@@ -155,6 +155,7 @@ export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], ini
                 </span>
                 <span aria-hidden className="truncate text-body" style={{ fontFamily: `"${s?.fonts.heading ?? "Inter"}", system-ui, sans-serif`, fontWeight: s?.fonts.headingWeight ?? 800 }}>Aa {s?.fonts.heading ?? "Inter"}</span>
                 <span className="text-small text-muted">{s ? s.mood : "The original look, with a new colour mix for every video."}</span>
+                {s?.does ? <span className="text-small text-muted">{s.does}</span> : null}
                 {s?.bestFor ? <span className="text-small text-faint">Best for: {s.bestFor}</span> : null}
               </span>
             </label>
