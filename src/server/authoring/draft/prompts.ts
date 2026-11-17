@@ -50,7 +50,7 @@ ${fenceUntrusted("approved outline", chapters)}
 - Open with a HOOK (the payoff or the question is visible at once), then a PROMISE (what the viewer will know by the end), then the chapters, then a CLOSING PAYOFF that answers the promise. No call-to-action.
 - Add a pattern interrupt about every 45 seconds (a surprising fact, a question, a change of picture) so the viewer does not drift.
 - Continuity: each chapter's first lines pick up where the last chapter stopped (one short link sentence, never a full recap) and never repeat a fact already told.
-- Beats: one object per few sentences (about 15 to 40 spoken words), in order, ids lowercase letters, digits and underscores (for example c1_b1, c1_b2, c2_b1), each with "text", "visual" and "search" as above. Do not use the hook/setup/quiz/reveal/twist/loop ids. The beats' text, read in order, is the narration.`;
+- Beats: one object per few sentences (about 15 to 40 spoken words), in order, ids lowercase letters, digits and underscores (for example c1_b1, c1_b2, c2_b1), each with "text", "visual" and "search" as above. Every beat id must start with its chapter number, as c<chapter>_b<n>: the opening hook and promise are the first beats of chapter 1 (c1_b1, c1_b2 ...) and the closing payoff belongs to the last chapter. Never use open, hook, intro, outro, setup, quiz, reveal, twist or loop as an id. The beats' text, read in order, is the narration.`;
 }
 
 const SYSTEM_QUERIES = `You plan web searches for a short faceless video. ${RULES}
