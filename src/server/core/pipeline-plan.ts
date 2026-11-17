@@ -45,19 +45,8 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
     if (kind !== "tsx" || format !== "short") throw new Error("a clip Short is a code-scene short");
     return [{ stage: "qa", gateBefore: "script", gateAfter: "video", resource: "cpu" }];
   }
-  // Derived short (Phase 6b.4): scene kit only, and never imported. Nothing is drafted, built or narrated: `derive` writes all of it from the long video.
-  if (flags.derived) {
-    throw new Error("clips from a long video are not available: they were made with the scene kit, which is removed");
-    return [
-      { stage: "derive", gateAfter: "script", resource: "cpu" },
-      { stage: "render", resource: "render" },
-      { stage: "voice", resource: "cpu" },
-      { stage: "sfx", resource: "cpu" },
-      { stage: "qa", gateAfter: "video", resource: "cpu" },
-    ];
-  }
-  // Long (Phase 6b.2): scene kit only. The short route with the outline step (and its gate) in front; the render stage picks the
-  // landscape composition. Every other kind keeps refusing until its own slice ships.
+  // Derived short (Phase 6b.4) was made with the scene kit, which is removed: refused. (Clip Factory shorts use `flags.clip` above.)
+  if (flags.derived) throw new Error("clips from a long video are not available: they were made with the scene kit, which is removed");
   // Long code-scene video: the outline (the owner approves the chapters), the script that follows them (the owner approves it), the narration of the whole
   // script, one code scene per chapter joined into one video (L3), then voice, sound and QA exactly as for a Short. The New video screen keeps refusing a
   // long video until a real run passes (L6), so this route is only reached by a developer script today.
@@ -72,12 +61,8 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
       { stage: "qa", gateAfter: "video", resource: "cpu" },
     ];
   }
-  if (format === "long") {
-    throw new Error("long videos are not available: they were made with the scene kit, which is removed");
-    // An imported project has no outline to approve, and Draft and Render both need one: refuse instead of building a video that cannot render.
-    if (flags.imported) throw new Error("imported long videos are not supported");
-    return [{ stage: "outline", gateAfter: "outline", resource: "net" }, ...stagePlan(kind, "short", flags)];
-  }
+  // Every other long video (scene kit, imported, AI) is refused: only the code-scene route above exists.
+  if (format === "long") throw new Error("long videos are not available: they were made with the scene kit, which is removed");
   // tsx: the model writes one Remotion file after narration exists (word times), then it is checked, previewed and rendered
   // in one stage that replaces build + render. It never uses pictures, so tsx has no pictures step. Every other kind keeps the route below exactly as it was.
   if (kind === "tsx") {
