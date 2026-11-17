@@ -73,7 +73,7 @@ npm run compose:up
 - Backups run as before (a read-only database role is created for them).
 - Web listens on `127.0.0.1` only. To use another port, set `WEB_PORT` and `APP_URL` in `.env`.
 - `.env` holds your database passwords and the vault key (mode 600). Keep it private; database passwords may only use letters, digits and `- _ . ~`.
-- After editing `remotion/kit`, run `npm run compose:up` again (the kit is built into the render image).
+- After pulling new code, or editing `remotion/kit`, run `npm run compose:up` again: it rebuilds the images and adds any new setting to `.env` (for example the render service's token), leaving your existing values alone.
 
 **One trade-off to know:** starting the render containers needs the machine's Docker socket, and a socket is a root-level handle on the machine. Only one small container has it: the `render-runner` service. It accepts a short description of a render job (never docker commands), checks it, and starts the locked-down render container itself; it holds no passwords, keys or logins and sits on a private network that only the worker shares. The worker and the web app have no Docker access at all. Details: `docs/adr/0017-render-service.md`.
 
