@@ -119,10 +119,36 @@ export function joinArgs(listFile: string, out: string): string[] {
 }
 
 /**
- * Joins the chapter clips (plain file names in the attempt folder, in order) into `out`. Returns the length of the joined video in seconds.
- * Only the stage's own folder is touched; a failed ffmpeg is a plain failure that names no path.
+ * Joins the clips with a short dip through black at every seam (each clip fades out at its end and the next fades in). The total length is NOT
+ * changed (unlike xfade), so the narration, captions and sound cues keep their times. `lengthsS` are the clips' exact lengths. Re-encodes (fades need it).
  */
-export async function joinClips(mix: MixDeps, ctx: StageContext, f: { clips: readonly string[]; out: string }): Promise<number> {
+export function joinFadeArgs(clips: readonly string[], lengthsS: readonly number[], fadeS: number, out: string): string[] {
+  joinListText(clips); // same file-name rules as the plain join
+  if (clips.length !== lengthsS.length) throw new KnownFailure("The chapter clips and their lengths do not match.");
+  const n = clips.length;
+  const parts = clips.map((_, i) => {
+    const len = lengthsS[i]!;
+    const d = Math.min(fadeS, len / 3);
+    const f = [...(i > 0 ? [`fade=t=in:st=0:d=${d.toFixed(3)}`] : []), ...(i < n - 1 ? [`fade=t=out:st=${(len - d).toFixed(3)}:d=${d.toFixed(3)}`] : [])];
+    return `[${i}:v]${f.length ? f.join(",") : "null"}[v${i}]`;
+  });
+  const graph = `${parts.join(";")};${clips.map((_, i) => `[v${i}]`).join("")}concat=n=${n}:v=1:a=0[outv]`;
+  return [
+    "-nostdin", "-hide_banner", "-y",
+    ...clips.flatMap((c) => [...IN, c]),
+    "-filter_complex", graph, "-map", "[outv]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", "-r", "30", "-movflags", "+faststart", out,
+  ];
+}
+
+/**
+ * Joins the chapter clips (plain file names in the attempt folder, in order) into `out`. Returns the length of the joined video in seconds.
+ * With `fade` the seams dip through black (joinFadeArgs); without it the streams are copied. Only the stage's own folder is touched; a failed ffmpeg is a plain failure that names no path.
+ */
+export async function joinClips(mix: MixDeps, ctx: StageContext, f: { clips: readonly string[]; out: string; fade?: { lengthsS: readonly number[]; fadeS: number } }): Promise<number> {
+  if (f.fade && f.clips.length > 1) {
+    await run(mix, ctx, "ffmpeg", joinFadeArgs(f.clips, f.fade.lengthsS, f.fade.fadeS, f.out), "Joining the chapters");
+    return durationS(mix, ctx, f.out);
+  }
   const list = path.join(ctx.attemptDir, "chapters.txt");
   await writeFile(list, joinListText(f.clips), { mode: 0o600 });
   await run(mix, ctx, "ffmpeg", joinArgs(list, f.out), "Joining the chapters");

@@ -1,7 +1,7 @@
 import { rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type pg from "pg";
-import { chapterFingerprint, chapterWindows } from "@/server/core/chapter-windows";
+import { chapterFingerprint, chapterSeamCues, chapterWindows } from "@/server/core/chapter-windows";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { reviewRecord } from "@/server/core/frame-review";
 import { KnownFailure } from "@/server/core/paid-call";
@@ -27,6 +27,7 @@ import { loadTsxInputs } from "./tsx-author";
 // engine runs on the owner's subscription, and the usage limit pauses the step (EngineLimitError).
 
 const CUES = "sfx-cues.json";
+const SEAM_FADE_S = 0.2; // each side of a chapter seam
 const MAX_CHAPTERS = 6;
 
 interface SavedChapter {
@@ -128,11 +129,11 @@ export function longEngineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Att
     }
 
     for (const s of stills) await rename(path.join(ctx.attemptDir, `ch01-${s}`), path.join(ctx.attemptDir, s));
-    const joinedS = await joinClips(deps.mix, ctx, { clips, out: path.join(ctx.attemptDir, "render.mp4") });
+    const joinedS = await joinClips(deps.mix, ctx, { clips, out: path.join(ctx.attemptDir, "render.mp4"), fade: { lengthsS: cw.chapters.map((c) => c.frames / 30), fadeS: SEAM_FADE_S } });
     for (const f of clips) await rm(path.join(ctx.attemptDir, f), { force: true });
     const wantS = cw.totalFrames / 30;
     if (Math.abs(joinedS - wantS) > 1) throw new KnownFailure(`The joined video is ${joinedS.toFixed(1)} s but the narration needs ${wantS.toFixed(1)} s. Run the step again.`);
-    await writeFile(path.join(ctx.attemptDir, CUES), JSON.stringify({ cues: [] })); // sound cues are not planned per chapter yet; an empty sheet adds none
+    await writeFile(path.join(ctx.attemptDir, CUES), JSON.stringify(chapterSeamCues(cw.chapters))); // a soft whoosh at each seam; the chapters' own sound cues are not planned yet
     const review = reviewRecord({ status: "skipped", reason: "frame review skipped: the engine looked at its own previews" }, 1);
     const chaptersBody = cw.chapters.map((c) => ({ index: c.index, title: c.title, frames: c.frames }));
     return {
