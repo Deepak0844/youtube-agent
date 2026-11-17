@@ -17,6 +17,12 @@ export function qaSizeFor(qa: StageContext["config"]["qa"], format: "short" | "l
   return { size, qaConfig: { ...qa, [format]: { ...qa[format], width: size.width, height: size.height } } };
 }
 
+/** Options for the ffmpeg scan findings: the format's own length limits, not the short-video defaults (a 4 minute long video is fine). */
+export function qaFindingOpts(qaConfig: StageContext["config"]["qa"], format: "short" | "long", size: { width: number; height: number }) {
+  const f = qaConfig[format];
+  return { ...FINDING_DEFAULTS, stillMaxS: 2, width: size.width, height: size.height, minS: f.minS, maxS: f.maxS };
+}
+
 /**
  * QA: measures final.mp4 (Task 19 probe), judges it with the QA rules, and on a pass records it as the `video` content
  * version with the SHA-256 of its bytes (hashed while streaming). The owner's video gate hashes that version, so a changed
@@ -44,7 +50,7 @@ export function qaAttempt(deps: StageDeps): AttemptHandler {
       const narrationFile = narration ? await promotedPath(deps.root, video.id, narration.file).catch(() => undefined) : undefined;
       const scan = await run(() => deps.qaScan!(file, ctx.signal, { storageRoot: deps.root, attemptDir: ctx.attemptDir, narrationFile }));
       const known = new Set(findings.map((f) => f.id));
-      findings.push(...qaFindings(scan, { ...FINDING_DEFAULTS, stillMaxS: 2, width: size.width, height: size.height }).filter((f) => f.id !== "all_clear" && !known.has(f.id)));
+      findings.push(...qaFindings(scan, qaFindingOpts(qaConfig, video.format, size)).filter((f) => f.id !== "all_clear" && !known.has(f.id)));
       files.push(...STILLS);
     }
     if (video.kind === "tsx") {

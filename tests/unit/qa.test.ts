@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildEngineConfig } from "@/server/core/engine-config";
 import { evaluateQa, type ProbeResult } from "@/server/core/qa";
-import { qaSizeFor } from "@/worker/stages/qa";
+import { qaFindingOpts, qaSizeFor } from "@/worker/stages/qa";
 
 const cfg = buildEngineConfig(new Map()).qa;
 const good: ProbeResult = { width: 1080, height: 1920, durationS: 30, hasAudio: true, meanDb: -20, peakDb: -3, loopDiff: 2 };
@@ -56,5 +56,13 @@ describe("qaSizeFor", () => {
     expect(evaluateQa(good, land.qaConfig, short).checks.find((c) => c.id === "size")?.ok).toBe(false);
     expect(qaSizeFor(cfg, "short", "sideways").size).toEqual({ width: 1080, height: 1920 }); // anything else is portrait
     expect(cfg.short.width).toBe(1080); // the shared config is not changed
+  });
+});
+
+describe("qaFindingOpts", () => {
+  it("uses the format's own length limits for the scan findings", () => {
+    const size = { width: 1920, height: 1080 };
+    expect(qaFindingOpts(cfg, "long", size)).toMatchObject({ minS: cfg.long.minS, maxS: cfg.long.maxS, width: 1920, height: 1080 });
+    expect(qaFindingOpts(cfg, "short", size).maxS).toBe(cfg.short.maxS);
   });
 });
