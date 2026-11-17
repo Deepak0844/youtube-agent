@@ -69,6 +69,9 @@ describe("rerun", () => {
     expect(forceRerunOffered("render", "succeeded", "waiting")).toBe(true);
     expect(forceRerunOffered("qa", "succeeded", "active")).toBe(true);
     expect(forceRerunOffered("tts", "succeeded", "active")).toBe(false); // unknown voice route
+    expect(forceRerunOffered("tsx_author", "succeeded", "waiting", false, false, null, null, "long")).toBe(true); // saved chapters are reused
+    expect(forceRerunOffered("tsx_author", "succeeded", "waiting", false, false, null, null, "short")).toBe(false); // would call the engine
+    expect(forceRerunOffered("tsx_author", "succeeded", "waiting")).toBe(false);
     expect(forceRerunOffered("tts", "succeeded", "active", false, false, "voicestudio")).toBe(true);
     expect(forceRerunOffered("tts", "succeeded", "active", false, false, "edge")).toBe(true);
     expect(forceRerunOffered("tts", "succeeded", "active", false, false, "elevenlabs")).toBe(false);

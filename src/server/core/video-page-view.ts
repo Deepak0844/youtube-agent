@@ -1,5 +1,5 @@
 import type { GateId } from "@/server/core/gates";
-import { FORCE_RERUN_STAGES, ttsRerunProblem, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
+import { FORCE_RERUN_LONG_ONLY, FORCE_RERUN_STAGES, ttsRerunProblem, type RunStatus, type StageName } from "@/server/core/pipeline-plan";
 import { microToUsd } from "@/server/core/llm-catalog";
 import { isReframeFormat, REFRAME_FORMATS, type ReframeFormat } from "./reframe";
 
@@ -126,9 +126,9 @@ export function headline(views: readonly StageView[], status: string): string {
 export const rerunOffered = (runStatus: RunStatus | undefined, videoStatus: string): boolean =>
   (runStatus === "failed" || runStatus === "cancelled") && (videoStatus === "active" || videoStatus === "waiting");
 
-/** "Re-run this step" is offered for a finished free step (render, voice, sfx, qa; tts only while the current voice route is free) of a live video with nothing running and no upload. */
-export const forceRerunOffered = (stage: StageName, runStatus: RunStatus | undefined, videoStatus: string, anyActive = false, hasUpload = false, voiceProvider?: string | null, localUrl?: string | null): boolean =>
-  FORCE_RERUN_STAGES.includes(stage) && (stage !== "tts" || ttsRerunProblem(voiceProvider, localUrl) === null) && runStatus === "succeeded" && (videoStatus === "active" || videoStatus === "waiting") && !anyActive && !hasUpload;
+/** "Re-run this step" is offered for a finished free step (render, voice, sfx, qa; the code scene of a long video, which reuses its saved chapters; tts only while the current voice route is free) of a live video with nothing running and no upload. */
+export const forceRerunOffered = (stage: StageName, runStatus: RunStatus | undefined, videoStatus: string, anyActive = false, hasUpload = false, voiceProvider?: string | null, localUrl?: string | null, format?: "short" | "long"): boolean =>
+  FORCE_RERUN_STAGES.includes(stage) && (!FORCE_RERUN_LONG_ONLY.includes(stage) || format === "long") && (stage !== "tts" || ttsRerunProblem(voiceProvider, localUrl) === null) && runStatus === "succeeded" && (videoStatus === "active" || videoStatus === "waiting") && !anyActive && !hasUpload;
 
 export interface VoiceId { provider: string; voice: string }
 /** The narration voice setting no longer matches the voice that made the narration. Unknown stored voice (old rows) is never "changed". */

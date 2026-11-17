@@ -213,7 +213,10 @@ export interface PipelineView {
 }
 
 /** Steps the owner may force to run again. tts is paid for some voices, so it is only allowed while the voice route is free (ttsRerunProblem). Never a model step. */
-export const FORCE_RERUN_STAGES: readonly StageName[] = ["tts", "render", "voice", "sfx", "qa"];
+export const FORCE_RERUN_STAGES: readonly StageName[] = ["tts", "render", "voice", "sfx", "qa", "tsx_author"];
+
+/** tsx_author is a model step, but for a LONG video it only redraws a chapter whose inputs changed: saved chapters are reused, so a forced rerun re-renders them locally (free). A short video's code scene has no saved chapters and would call the engine, so it is not offered. */
+export const FORCE_RERUN_LONG_ONLY: readonly StageName[] = ["tsx_author"];
 
 /** Voice providers that run on the owner's own machine or free service. custom_http is not here: it can bill. */
 export const FREE_VOICE_PROVIDERS: readonly string[] = ["voicestudio", "local_openai", "edge"]; // local_openai also needs a loopback address (ttsRerunProblem)
