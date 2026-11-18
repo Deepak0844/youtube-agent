@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CLIPS_TOTAL_MAX_BYTES, CLIP_MAX_BYTES, clipBudget, countClipLinks, rankClips, scoreClip, wantsMotion, type ClipCandidate } from "@/server/core/clip-rank";
 import { checkPictureIds, limitRepeats, planPictureBeat } from "@/server/core/scene-build";
 import { chooseRendition, parsePixabayVideos, pixabayVideoSearchUrl } from "@/server/providers/stock/pixabay-videos";
-import { clipProbeOk } from "@/server/render/ingest";
+import { CLIP_BRANDS, clipProbeOk } from "@/server/render/ingest";
 
 const f = (h: number, size: number, host = "cdn.pixabay.com", ext = "mp4") => ({ url: `https://${host}/video/a_${h}.${ext}`, width: Math.round((h * 16) / 9), height: h, size });
 const brief = { search: ["ocean waves"], visual: "ocean waves rolling onto a beach" };
@@ -135,5 +135,13 @@ describe("montage clips must show the subject", () => {
     expect(showsSubject([], moon)).toBe(true); // a phrase of only mood words has no rule
     expect(showsSubject(["sleeper", "cabin"], c("log cabin night", "cabin, forest", "u"))).toBe(false); // the main subject (sleeper) is needed, not just cabin
     expect(showsSubject(["sleeper", "cabin"], c("sleeper train cabin", "", "u"))).toBe(true);
+  });
+});
+
+describe("CLIP_BRANDS", () => {
+  it("accepts the iso5 brand Pixabay ships, and still refuses a non-MP4 brand", () => {
+    expect(CLIP_BRANDS.has("iso5")).toBe(true);
+    expect(CLIP_BRANDS.has("isom")).toBe(true);
+    expect(CLIP_BRANDS.has("heic")).toBe(false);
   });
 });
