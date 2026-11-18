@@ -1,6 +1,6 @@
 // Montage M2 (pure, no IO): the ffmpeg arguments that turn picked stock clips into one film with ONE colour grade across mixed footage.
 // Each clip is trimmed to its slot (from its middle, where stock clips are steadiest), cover-fitted to the frame (scaled up and centre-cropped, never
-// stretched), set to 30 fps, graded, and joined with a short dip through black at the seams. Total length = sum of the slot seconds exactly. Local only.
+// stretched), set to 30 fps, graded, and joined with a short dip through black at the seams, and the film starts and ends on black so a looping Short has no jump (QA loop_seam). Total length = sum of the slot seconds exactly. Local only.
 
 export const GRADES = {
   /** gentle contrast, slightly muted */
@@ -56,7 +56,7 @@ export function montageArgs(e: MontageEdit): string[] {
   const parts = e.clips.map((c, i) => {
     const start = (c.durationS - c.slotS) / 2;
     const d = Math.min(e.fadeS, c.slotS / 3);
-    const fades = e.fadeS > 0 ? [...(i > 0 ? [`fade=t=in:st=0:d=${r3(d)}`] : []), ...(i < n - 1 ? [`fade=t=out:st=${r3(c.slotS - d)}:d=${r3(d)}`] : [])] : [];
+    const fades = e.fadeS > 0 ? [`fade=t=in:st=0:d=${r3(d)}`, `fade=t=out:st=${r3(c.slotS - d)}:d=${r3(d)}`] : [];
     const chain = [
       `trim=start=${r3(start)}:duration=${r3(c.slotS)}`, "setpts=PTS-STARTPTS",
       `scale=${e.width}:${e.height}:force_original_aspect_ratio=increase`, `crop=${e.width}:${e.height}`, "setsar=1", `fps=${MONTAGE_FPS}`,

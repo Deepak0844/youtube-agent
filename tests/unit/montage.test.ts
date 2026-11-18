@@ -29,15 +29,15 @@ describe("montage footage (M1)", () => {
 const edit = (o: Partial<MontageEdit> = {}): MontageEdit => ({ clips: [{ file: "a.mp4", durationS: 10, slotS: 4 }, { file: "b.mp4", durationS: 8, slotS: 3 }], grade: "film", width: 1920, height: 1080, fadeS: 0.2, out: "film.mp4", ...o });
 
 describe("montage edit (M2)", () => {
-  it("trims from the middle, cover-fits, grades every clip alike and dips at the inner seam only", () => {
+  it("trims from the middle, cover-fits, grades every clip alike and dips through black at every seam and at both ends", () => {
     const g = montageArgs(edit()).join(" ");
     expect(g).toContain("trim=start=3.000:duration=4.000");
     expect(g).toContain("trim=start=2.500:duration=3.000");
     expect(g).toContain("scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080");
     expect((g.match(/colorbalance=rs=0.03/g) ?? []).length).toBe(2);
-    expect(g).toContain("fade=t=out:st=3.800:d=0.200[v0]");
-    expect(g).toContain("fade=t=in:st=0:d=0.200[v1]");
-    expect(g).not.toContain("fade=t=out:st=2.800");
+    // every clip dips in and out, so the film starts and ends on black: first and last frame match and a looping Short has no jump
+    expect(g).toContain("fade=t=in:st=0:d=0.200,fade=t=out:st=3.800:d=0.200[v0]");
+    expect(g).toContain("fade=t=in:st=0:d=0.200,fade=t=out:st=2.800:d=0.200[v1]");
     expect(g).toContain("concat=n=2:v=1:a=0[outv]");
   });
   it("refuses a bad edit with a plain sentence", () => {
