@@ -21,6 +21,7 @@ export interface ClipCandidate {
 
 export const CLIP_MIN_SECONDS = 5;
 export const CLIP_MAX_SECONDS = 20;
+export const MONTAGE_CLIP_MAX_SECONDS = 60;
 export const CLIP_MAX_BYTES = 25 * 1024 * 1024;
 export const CLIP_MIN_HEIGHT = 720;
 /** At most this many clips in one video, and at most this many downloaded bytes of clips per pictures run. */
@@ -36,8 +37,9 @@ export function wantsMotion(visual: string): boolean {
   return MOTION.test(visual) && !DIAGRAM.test(visual);
 }
 
-export function scoreClip(brief: PictureBrief, c: ClipCandidate): number | null {
-  if (!(c.durationS >= CLIP_MIN_SECONDS && c.durationS <= CLIP_MAX_SECONDS)) return null;
+/** `maxS`: the longest clip taken (default CLIP_MAX_SECONDS). A montage trims its clips from the middle, so it takes longer ones (MONTAGE_CLIP_MAX_SECONDS). */
+export function scoreClip(brief: PictureBrief, c: ClipCandidate, maxS = CLIP_MAX_SECONDS): number | null {
+  if (!(c.durationS >= CLIP_MIN_SECONDS && c.durationS <= maxS)) return null;
   if (!(c.bytes > 0 && c.bytes <= CLIP_MAX_BYTES) || !(c.height >= CLIP_MIN_HEIGHT) || !(c.width > 0)) return null;
   if (PERSON_TAGS.test(c.text) && !namesPerson(brief)) return null;
   const want = words([...brief.search, brief.visual].join(" "));
@@ -50,10 +52,10 @@ export function scoreClip(brief: PictureBrief, c: ClipCandidate): number | null 
 }
 
 /** Acceptable clips at or above MIN_SCORE, best first; equal scores keep input order. */
-export function rankClips(brief: PictureBrief, cands: readonly ClipCandidate[]): Array<{ cand: ClipCandidate; score: number }> {
+export function rankClips(brief: PictureBrief, cands: readonly ClipCandidate[], maxS = CLIP_MAX_SECONDS): Array<{ cand: ClipCandidate; score: number }> {
   const out: Array<{ cand: ClipCandidate; score: number }> = [];
   for (const cand of cands) {
-    const score = scoreClip(brief, cand);
+    const score = scoreClip(brief, cand, maxS);
     if (score !== null && score >= MIN_SCORE) out.push({ cand, score });
   }
   return out.sort((a, b) => b.score - a.score);
@@ -75,10 +77,10 @@ export function countClipLinks(links: ReadonlyArray<{ beatId: string; kind?: str
  * phrase it was found by and keeps its best score. (Scored against every word of every phrase plus the beat's long picture sentence, no clip could reach MIN_SCORE:
  * the first real run found no footage for any beat.) Best first; a clip found by two phrases counts once.
  */
-export function rankClipsByPhrase(found: ReadonlyArray<{ phrase: string; cands: readonly ClipCandidate[] }>): Array<{ cand: ClipCandidate; score: number }> {
+export function rankClipsByPhrase(found: ReadonlyArray<{ phrase: string; cands: readonly ClipCandidate[] }>, maxS = MONTAGE_CLIP_MAX_SECONDS): Array<{ cand: ClipCandidate; score: number }> {
   const best = new Map<string, { cand: ClipCandidate; score: number }>();
   for (const { phrase, cands } of found) {
-    for (const r of rankClips({ search: [phrase], visual: "" }, cands)) {
+    for (const r of rankClips({ search: [phrase], visual: "" }, cands, maxS)) {
       const old = best.get(r.cand.url);
       if (!old || r.score > old.score) best.set(r.cand.url, r);
     }

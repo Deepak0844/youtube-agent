@@ -108,3 +108,13 @@ describe("rankClipsByPhrase (montage)", () => {
     expect(rankClipsByPhrase([{ phrase: "ocean waves", cands: [a] }])).toEqual([]);
   });
 });
+
+describe("montage takes longer clips", () => {
+  it("a 45 s clip is refused by default and taken by a montage (which trims from the middle)", async () => {
+    const { rankClips, rankClipsByPhrase, MONTAGE_CLIP_MAX_SECONDS } = await import("@/server/core/clip-rank");
+    const long = { title: "dark sleeper cabin night", url: "https://x/l.mp4", width: 1280, height: 720, durationS: 45, bytes: 9e6, licence: "Pixabay Content License", credit: "c", pageUrl: null, text: "cabin, dark, night" };
+    expect(rankClips({ search: ["dark sleeper cabin"], visual: "" }, [long])).toEqual([]);
+    expect(rankClipsByPhrase([{ phrase: "dark sleeper cabin", cands: [long] }]).length).toBe(1);
+    expect(rankClipsByPhrase([{ phrase: "dark sleeper cabin", cands: [{ ...long, durationS: MONTAGE_CLIP_MAX_SECONDS + 1 }] }])).toEqual([]);
+  });
+});

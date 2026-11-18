@@ -277,8 +277,8 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
       }
     }
     // A montage with a beat that has no footage is not done: fail the step (the clips found stay linked) so the owner can run it again, instead of a green step and a failed edit.
-    const empty = outcomes.filter((o) => !o.found).map((o) => o.beatId);
-    if (montage && empty.length > 0) throw new KnownFailure(`No footage was found for beat${empty.length > 1 ? "s" : ""} ${empty.join(", ")}. Run the step again, or send the script back with clearer pictures to show.`);
+    const empty = outcomes.filter((o) => !o.found);
+    if (montage && empty.length > 0) throw new KnownFailure(`No footage was found for beat${empty.length > 1 ? "s" : ""} ${empty.map((o) => `${o.beatId} (${o.reason})`).join(", ")}. Free stock may not have what the beat shows: send the script back with simpler pictures to show.`);
     return { beats: outcomes, linked };
   };
 }
