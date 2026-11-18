@@ -28,6 +28,12 @@ const isWord = (w: unknown): w is { word: string; startS: number; endS: number }
  * `clip_batch` version of the source video. A clip with a warning stays in the batch: the owner decides at the gate (CF4b). Nothing here
  * publishes or approves anything; the clip files are kept next to the source video's own files.
  */
+/** A code-scene video made in this app has its caption pill burned into the picture, and the clip draws new captions: crop the old ones off. Landscape: the bottom 10%. Portrait: the caption safe zone (below y 1497 of 1920). */
+export function sourceCaptionCrop(v: { kind: string; format: string }): number | undefined {
+  if (v.kind !== "tsx") return undefined;
+  return v.format === "long" ? 0.1 : 0.22;
+}
+
 export function clipsAttempt(deps: StageDeps, o: ClipsOverrides = {}): AttemptHandler {
   return async (ctx) => {
     if (!deps.mix) throw new KnownFailure("No video tool is wired, so clips cannot be cut.");
@@ -51,8 +57,8 @@ export function clipsAttempt(deps: StageDeps, o: ClipsOverrides = {}): AttemptHa
     const prev = await deps.db.query<{ n: string }>("select count(*)::text as n from video_content where video_id = $1 and kind = 'clip_batch'", [video.id]);
     const batch = Number(prev.rows[0]!.n) + 1;
 
-    // A long (landscape) video made in this app has its own caption pill burned into the bottom 10% of the picture; the clip draws new captions, so the old ones are cropped off.
-    const burnedCaptions = video.format === "long" && !(await deps.db.query("select 1 from stage_runs where video_id = $1 and name = 'ingest_source' and status = 'succeeded' limit 1", [video.id])).rowCount;
+    const uploaded = (await deps.db.query("select 1 from stage_runs where video_id = $1 and name = 'ingest_source' and status = 'succeeded' limit 1", [video.id])).rowCount !== 0;
+    const cropBottom = uploaded ? undefined : sourceCaptionCrop(video);
 
     const clips: ClipBatchBody["clips"] = [];
     const measured: Record<string, Measured> = {};
@@ -65,7 +71,7 @@ export function clipsAttempt(deps: StageDeps, o: ClipsOverrides = {}): AttemptHa
       }
       const cut = path.join(ctx.attemptDir, `cut-${c.id}.mp4`);
       const outName = `clips-b${batch}-${c.id}.mp4`;
-      const cutS = await cutClipFile(deps.mix, ctx, { inFile: source, outFile: cut, startS: c.startS, endS, ...(burnedCaptions ? { cropBottom: 0.1 } : {}) });
+      const cutS = await cutClipFile(deps.mix, ctx, { inFile: source, outFile: cut, startS: c.startS, endS, ...(cropBottom ? { cropBottom } : {}) });
       const done = await render(ctx, { clipFile: cut, captions: c.words, style: video.style, durationS: cutS, outFile: outName });
       await rm(cut, { force: true });
       if (!done.ok) throw new KnownFailure(`Clip ${c.id}: ${done.message}`);
