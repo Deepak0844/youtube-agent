@@ -119,3 +119,21 @@ describe("montage takes longer clips", () => {
     expect(rankClipsByPhrase([{ phrase: "dark sleeper cabin", cands: [{ ...long, durationS: MONTAGE_CLIP_MAX_SECONDS + 1 }] }])).toEqual([]);
   });
 });
+
+describe("montage clips must show the subject", () => {
+  const c = (title: string, text: string, url: string) => ({ title, url, width: 1920, height: 1080, durationS: 12, bytes: 3e6, licence: "Pixabay Content License", credit: "c", pageUrl: null, text });
+  it("a moon clip tagged night is refused for 'night train window'; a train clip is taken", async () => {
+    const { rankClipsByPhrase, subjectWords, showsSubject } = await import("@/server/core/clip-rank");
+    expect(subjectWords("night train window")).toEqual(["train", "window"]);
+    expect(subjectWords("dark night")).toEqual([]);
+    const moon = c("moon moonlight night full moon", "night, moon, dark, window", "https://x/moon.mp4");
+    const train = c("train night city lights window view", "train, window, travel", "https://x/train.mp4");
+    const r = rankClipsByPhrase([{ phrase: "night train window", cands: [moon, train] }]);
+    expect(r.map((x) => x.cand.url)).toEqual(["https://x/train.mp4"]);
+    const ai = c("ai generated rain train window", "anime lofi train window", "https://x/ai.mp4");
+    expect(rankClipsByPhrase([{ phrase: "rain train window", cands: [ai] }])).toEqual([]); // drawn or AI-made clips are not real footage
+    expect(showsSubject([], moon)).toBe(true); // a phrase of only mood words has no rule
+    expect(showsSubject(["sleeper", "cabin"], c("log cabin night", "cabin, forest", "u"))).toBe(false); // the main subject (sleeper) is needed, not just cabin
+    expect(showsSubject(["sleeper", "cabin"], c("sleeper train cabin", "", "u"))).toBe(true);
+  });
+});

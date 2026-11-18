@@ -80,10 +80,29 @@ export function countClipLinks(links: ReadonlyArray<{ beatId: string; kind?: str
 export function rankClipsByPhrase(found: ReadonlyArray<{ phrase: string; cands: readonly ClipCandidate[] }>, maxS = MONTAGE_CLIP_MAX_SECONDS): Array<{ cand: ClipCandidate; score: number }> {
   const best = new Map<string, { cand: ClipCandidate; score: number }>();
   for (const { phrase, cands } of found) {
+    const subject = subjectWords(phrase);
     for (const r of rankClips({ search: [phrase], visual: "" }, cands, maxS)) {
+      if (!showsSubject(subject, r.cand) || SYNTHETIC.test(`${r.cand.title} ${r.cand.text}`)) continue;
       const old = best.get(r.cand.url);
       if (!old || r.score > old.score) best.set(r.cand.url, r);
     }
   }
   return [...best.values()].sort((a, b) => b.score - a.score);
+}
+
+// A montage is real footage: drawn, animated or AI-made clips are skipped.
+const SYNTHETIC = /\b(ai[- ]generated|ai art|anime|cartoon|animation|animated|illustration|3d|cgi|rendered|render|lofi|digital art|midjourney)\b/i;
+
+// Words that colour a shot but are not what it shows. A clip tagged only "night, moon, dark" matches "night train window" on them and shows no train.
+const MODIFIERS = new Set(["night", "dark", "dim", "light", "lights", "evening", "dawn", "dusk", "sunset", "sunrise", "morning", "empty", "quiet", "lonely", "blurred", "blur", "slow", "old", "cozy", "moody", "calm", "misty", "foggy", "lit", "late", "deep", "bright", "soft", "gentle", "wide", "close", "shot", "view", "footage", "video", "scene", "background", "dramatic", "beautiful", "aerial"]);
+
+/** What a search phrase is about: its words without the mood and light words. */
+export function subjectWords(phrase: string): string[] {
+  return words(phrase).filter((w) => !MODIFIERS.has(w));
+}
+
+/** A clip must show the phrase's main subject: its first word that is not a mood or light word ("train" in "night train window", "sleeper" in "dark sleeper cabin"). Phrases are written topic first. No subject words (all mood) = no rule. */
+export function showsSubject(subject: readonly string[], c: Pick<ClipCandidate, "title" | "text">): boolean {
+  if (subject.length === 0) return true;
+  return new Set(words(`${c.title} ${c.text}`)).has(subject[0]!);
 }
