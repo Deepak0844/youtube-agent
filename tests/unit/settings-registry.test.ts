@@ -81,6 +81,7 @@ describe("settings registry", () => {
     expect(BUDGET_DEFAULTS).toEqual({
       "video:tsx": 5_000_000,
       "video:collage": 5_000_000,
+      "video:montage": 5_000_000,
       "video:ai": 15_000_000,
       "video:long": 8_000_000,
       day: 15_000_000,
