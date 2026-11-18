@@ -8,6 +8,8 @@ import { beatTimings, TAIL_S, type PromptBeat, type PromptWord } from "@/server/
 import { TSX_MAX_FRAMES } from "@/server/core/tsx-check";
 
 const FPS = 30;
+/** how far before the seam the whoosh starts */
+const SEAM_LEAD_S = 0.15;
 const CHAPTER_OF = /^c(\d{1,2})_/;
 
 export interface ChapterWindow {
@@ -101,4 +103,11 @@ export function chapterFingerprint(c: ChapterWindow, extra: { style: string | nu
       orientation: extra.orientation,
     }),
   );
+}
+
+/** A soft whoosh just before each chapter after the first (the picture dips through black there). Optional: a missing clip drops it, never fails the video. */
+export function chapterSeamCues(chapters: readonly Pick<ChapterWindow, "index" | "startS">[]): { cues: { id: string; sound: string; atS: number; gainDb: number; optional: boolean }[] } {
+  return {
+    cues: chapters.filter((c) => c.index > 1).map((c) => ({ id: `seam-${c.index}`, sound: "whoosh-soft", atS: Math.max(0, r3(c.startS - SEAM_LEAD_S)), gainDb: -8, optional: true })),
+  };
 }

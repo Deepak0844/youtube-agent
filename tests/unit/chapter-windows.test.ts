@@ -111,3 +111,12 @@ describe("the 90-second chapter rule in the outline", () => {
     expect(String(outlineMessages({ topic: "t", lang: "en", range })[0]!.content)).toMatch(/no chapter is over 1800 seconds/);
   });
 });
+
+describe("chapterSeamCues", () => {
+  it("one soft whoosh just before every chapter after the first, optional", async () => {
+    const { chapterSeamCues } = await import("@/server/core/chapter-windows");
+    const r = chapterSeamCues([{ index: 1, startS: 0 }, { index: 2, startS: 40 }, { index: 3, startS: 81.5 }]);
+    expect(r.cues.map((c) => [c.id, c.sound, c.atS, c.optional])).toEqual([["seam-2", "whoosh-soft", 39.85, true], ["seam-3", "whoosh-soft", 81.35, true]]);
+    expect(chapterSeamCues([{ index: 1, startS: 0 }]).cues).toEqual([]);
+  });
+});
