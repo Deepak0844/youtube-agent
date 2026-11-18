@@ -46,6 +46,7 @@ export function buildAttempt(deps: StageDeps): AttemptHandler {
       provider: deps.imageProvider ?? DEFAULTS.imageProvider,
       quoteMicroUsd: deps.imageQuoteMicroUsd ?? DEFAULTS.imageQuoteMicroUsd,
     }));
+    if (video.kind === "montage") throw new KnownFailure("A montage has no build step.");
     let plan;
     try {
       plan = buildCostPlan(items, video.kind);

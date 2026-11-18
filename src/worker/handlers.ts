@@ -48,6 +48,7 @@ import { thumbnailAttempt } from "./stages/thumbnail";
 import { replyDraftsAttempt } from "./stages/reply-drafts";
 import { seoAttempt } from "./stages/seo";
 import { clipsAttempt } from "./stages/clips";
+import { montageAttempt } from "./stages/montage";
 import { ingestSourceAttempt } from "./stages/ingest-source";
 import { createTranscriberFor } from "./stages/stt-for";
 import type { StageDeps } from "./stages/deps";
@@ -265,6 +266,7 @@ export function productionHandlers(pool: pg.Pool, env: { childRegistry?: ChildRe
     reframe: refuseDryRunVideos(pool, withAttempt(fin, reframeAttempt(deps))),
     thumbnail: refuseDryRunVideos(pool, withAttempt(fin, thumbnailAttempt(deps))),
     derive: refuseDryRunVideos(pool, withAttempt(fin, deriveAttempt(deps))),
+    montage: refuseDryRunVideos(pool, withAttempt(fin, montageAttempt(deps))), // a montage Short: footage clips edited and graded, captions on top (free, local)
     clips: refuseDryRunVideos(pool, withAttempt(fin, clipsAttempt(deps))), // on demand: free, local; nothing is published or approved
     ingest_source: refuseDryRunVideos(pool, withAttempt(fin, ingestSourceAttempt(deps, { transcriber: createTranscriberFor(pool, () => loadKeyring()) }))), // on demand: an uploaded video becomes a clip source (free, local)
     shots: refuseDryRunVideos(pool, withAttempt(fin, shotsAttempt(deps))),

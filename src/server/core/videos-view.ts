@@ -8,7 +8,7 @@ import { LONG_DEFAULT_RANGE } from "@/server/core/long-form";
 export const PAGE_SIZE = 25;
 export const STATUSES = ["active", "waiting", "done", "failed", "cancelled"] as const;
 export const FORMATS = ["short", "long"] as const;
-export const KINDS = ["tsx", "collage", "ai"] as const;
+export const KINDS = ["tsx", "collage", "ai", "montage"] as const;
 export type Status = (typeof STATUSES)[number];
 
 export const STATUS_WORDS: Record<Status, { label: string; tone: "positive" | "negative" | "warning" | "neutral" }> = {
@@ -19,7 +19,7 @@ export const STATUS_WORDS: Record<Status, { label: string; tone: "positive" | "n
   cancelled: { label: "Cancelled", tone: "neutral" },
 };
 export const FORMAT_WORDS = { short: "Short", long: "Long" } as const;
-export const KIND_WORDS = { tsx: "Custom animation", collage: "Collage", ai: "AI" } as const;
+export const KIND_WORDS = { tsx: "Custom animation", collage: "Collage", ai: "AI", montage: "Montage" } as const;
 export const LANGUAGE_WORDS = { en: "English", hi: "Hindi", ta: "Tamil", te: "Telugu", kn: "Kannada", ml: "Malayalam" } as const;
 /** Order shown in the New form. */
 export const LANGUAGE_ORDER = ["en", "hi", "ta", "te", "kn", "ml"] as const;
@@ -66,7 +66,7 @@ export function ageLabel(then: Date, now: Date = new Date()): string {
 export const newVideoSchema = z.object({
   topic: z.string().trim().min(1, "Enter a topic.").max(200, "Keep the topic to 200 characters or fewer."),
   language: z.enum(LANGS, "Pick a narration language."),
-  kind: z.enum(["tsx", "collage", "ai"], "Pick a video type."),
+  kind: z.enum(["tsx", "collage", "ai", "montage"], "Pick a video type."),
   format: z.enum(["short", "long"], "Pick Short or Long."),
   // Long only: the length range in whole minutes (blank = the default 3 to 8). Checked against the max-length setting in parseNewVideoForm.
   minMinutes: z.coerce.number().optional(),

@@ -306,3 +306,16 @@ describe("existing kinds", () => {
     expect(stagePlan("collage", "short", f).map((s) => s.stage)).toEqual(["draft", "pictures", "build", "tts", "render", "voice", "sfx", "qa"]);
   });
 });
+
+describe("montage route", () => {
+  it("a_montage_short_runs_draft_narration_footage_edit_voice_sound_and_qa", async () => {
+    const { stagePlan } = await import("@/server/core/pipeline-plan");
+    const flags = { requireEvidence: false } as Parameters<typeof stagePlan>[2];
+    const plan = stagePlan("montage", "short", flags);
+    expect(plan.map((s) => s.stage)).toEqual(["draft", "tts", "pictures", "montage", "voice", "sfx", "qa"]);
+    expect(plan[0]!.gateAfter).toBe("script");
+    expect(plan.at(-1)!.gateAfter).toBe("video");
+    expect(() => stagePlan("montage", "long", flags)).toThrow(/long videos are not available/);
+    expect(() => stagePlan("montage", "short", { ...flags, imported: true })).toThrow(/imported montage/);
+  });
+});
