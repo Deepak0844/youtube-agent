@@ -9,7 +9,7 @@ import { getPool } from "@/server/db/pool";
 import type { ActionResult } from "@/server/db/queue-actions";
 import { requestReframe } from "@/server/db/reframe";
 import { approveTsxLibrarySave } from "@/server/db/tsx-library";
-import { forceRerunStageById, rerunStageById } from "@/server/db/video-page-actions";
+import { forceRerunStageById, rerunStageById, swapClipById } from "@/server/db/video-page-actions";
 import { webStageQueue } from "@/server/queue/web-queues";
 
 // Run a failed or cancelled step again. Same guard order as /queue: requireOwner first (the session comes from it), then
@@ -37,6 +37,19 @@ export async function forceRerunStageAction(_prev: RerunState, form: FormData): 
   const stage = z.string().max(20).safeParse(form.get("stage"));
   if (!id.ok || !stage.success) return { ok: false, message: BAD_FORM };
   const r = await forceRerunStageById(getPool(), webStageQueue(), { kind: "session", sessionId: owner.sessionId }, id.value, stage.data);
+  refresh();
+  return r;
+}
+
+// Owner "Try another clip" on one beat of a Montage. Free and local. Same guard order.
+export async function swapClipAction(_prev: RerunState, form: FormData): Promise<RerunState> {
+  const owner = await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { ok: false, message: origin };
+  const id = parseIdForm(form, "videoId");
+  const beat = z.string().min(1).max(80).safeParse(form.get("beatId"));
+  if (!id.ok || !beat.success) return { ok: false, message: BAD_FORM };
+  const r = await swapClipById(getPool(), webStageQueue(), { kind: "session", sessionId: owner.sessionId }, id.value, beat.data);
   refresh();
   return r;
 }

@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -312,5 +313,28 @@ describe("pictures stage for a collage video", () => {
     only.deps.ingestClipFn = f.deps.ingestClipFn;
     await expect(run(only, v2)).rejects.toThrow(/No footage was found for beat b2/);
     expect((await assetsForVideo(db.pool, v2)).map((l) => l.beatId)).toEqual(["b1"]);
+  });
+
+  it("a montage beat marked 'swap' picks again, never the clip it had, and leaves the other beats alone", async () => {
+    const clipHit = (tags: string, id: number) => ({ id, pageURL: `https://pixabay.com/videos/x-${id}/`, tags, user: "bob", duration: 9, videos: { large: { url: `https://cdn.pixabay.com/video/x${id}.mp4`, width: 1920, height: 1080, size: 3_000_000 } } });
+    const beats = [{ id: "b1", text: "x", visual: "A train speeds through dark countryside at night, its lit windows gliding past black fields with no one visible outside.", search: ["night train station"] }, { id: "b2", text: "y", visual: "Rain streaks down a train window, blurred city lights sliding past in the dark.", search: ["rain train window"] }];
+    const v = await seed(beats, undefined, "montage");
+    const hits = [clipHit("night, train, railway, travel", 1), clipHit("night, train, station, platform", 3), clipHit("rain, train, window, glass", 2)];
+    const mkRun = () => {
+      const f = mk({ pixabay: () => new Response(JSON.stringify({ hits }), { headers: { "content-type": "application/json" } }) });
+      f.deps.fetcher = ((inner) => async (url: string, init?: RequestInit) => (/\.mp4$/.test(url) ? new Response(new TextEncoder().encode(url), { headers: { "content-type": "video/mp4" } }) : inner(url, init as RequestInit)))(f.deps.fetcher);
+      // the same file bytes give the same sha, as the real door does: the library hands back the same asset
+      f.deps.ingestClipFn = async (_d, a) => ({ ok: true, kind: "video", mime: "video/mp4", width: 1920, height: 1080, durationS: 9, bytes: 4, originalBytes: 4, sha256: createHash("sha256").update(await readFile(a.srcPath)).digest("hex"), files: { main: path.join(a.destDir, "main.mp4") } });
+      return f;
+    };
+    await run(mkRun(), v);
+    const before = await assetsForVideo(db.pool, v);
+    await db.pool.query("update video_assets set brief_hash = 'swap' where video_id = $1 and beat_id = 'b1'", [v]);
+    await run(mkRun(), v);
+    const after = await assetsForVideo(db.pool, v);
+    const of = (l: typeof before, b: string) => l.find((x) => x.beatId === b)?.assetId;
+    expect(of(after, "b1")).toBeDefined();
+    expect(of(after, "b1")).not.toBe(of(before, "b1"));
+    expect(of(after, "b2")).toBe(of(before, "b2"));
   });
 });

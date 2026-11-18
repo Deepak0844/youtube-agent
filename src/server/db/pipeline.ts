@@ -338,6 +338,28 @@ export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: 
 }
 
 /**
+ * Montage: the owner wants a different clip on one beat. The beat's stage-made link is marked stale (the footage step then
+ * picks again for that beat only, and never the clip it had), and the footage and edit steps get new nonces so both run
+ * again and the voice, sound and check steps after them follow. Free: no paid call. A finished approval no longer matches.
+ */
+export async function swapMontageClip(db: pg.Pool, queue: EnqueueOnly, videoId: string, beatId: string, readers: PipelineReaders = NO_DECISIONS): Promise<AdvanceResult> {
+  await inTx(db, async (c) => {
+    const v = await lockVideo(c, videoId);
+    if (v.kind !== "montage") throw new Error("swap_not_montage");
+    if (!LIVE_VIDEO.includes(v.status)) throw new Error(`video is ${v.status}`);
+    const view = await buildView(c, v, readers);
+    if (Object.values(view.runs).some((r) => ACTIVE_STATUSES.includes(r.status))) throw new Error("cannot_rerun_while_job_active");
+    if (view.runs.pictures?.status !== "succeeded" || view.runs.montage?.status !== "succeeded") throw new Error("swap_needs_finished");
+    if ((await c.query("select 1 from uploads where video_id = $1 and status <> 'upload_failed' limit 1", [videoId])).rowCount) throw new Error("force_rerun_uploaded");
+    const marked = await c.query("update video_assets set brief_hash = 'swap' where video_id = $1 and beat_id = $2 and brief_hash is not null", [videoId, beatId]);
+    if (marked.rowCount === 0) throw new Error("swap_no_clip");
+    const nonces = { pictures: uuidv7(), montage: uuidv7() };
+    await c.query("update videos set stage_nonces = stage_nonces || $2::jsonb where id = $1", [videoId, JSON.stringify(nonces)]);
+  });
+  return advanceVideo(db, queue, videoId, readers);
+}
+
+/**
  * The input hash `stage` must have right now for this video, or null when the video is not live, the stage is not on its
  * route, or the stage before it has not succeeded. Locks the video row (the caller supplies the transaction). Retries use
  * it to refuse a run whose input changed since it failed.

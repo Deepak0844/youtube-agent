@@ -3,7 +3,7 @@ import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approv
 import { STAGE_NAMES, type StageName } from "@/server/core/pipeline-plan";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { recordAudit } from "@/server/db/audit";
-import { forceRerunStage, rerunStage, type EnqueueOnly } from "@/server/db/pipeline";
+import { forceRerunStage, rerunStage, swapMontageClip, type EnqueueOnly } from "@/server/db/pipeline";
 import type { ActionResult } from "@/server/db/queue-actions";
 
 // The DB part of the video page's "Run again" button. The caller (actions.ts) has done requireOwner and the Origin check.
@@ -58,4 +58,26 @@ export async function forceRerunStageById(db: pg.Pool, queue: EnqueueOnly, actor
   await recordAudit(db, "stage.force_rerun_requested", { videoId, stage, sessionId: actor.sessionId, ...(r.routed && { voiceProvider: r.routed.provider, voiceName: r.routed.voice }) });
   if (r.held) return { ok: true, message: "This step is paused after repeated failures, so it will start when the pause ends." };
   return { ok: true, message: "Queued. The step and the steps after it will run again." };
+}
+
+const SWAP_REFUSALS: Record<string, string> = {
+  swap_not_montage: "Only a Montage video has footage clips to change.",
+  swap_needs_finished: "The footage and edit steps must both be finished first.",
+  swap_no_clip: "That beat has no clip the app picked, so there is nothing to swap.",
+  force_rerun_uploaded: "This video is already being or has been uploaded: it can no longer be changed.",
+  cannot_rerun_while_job_active: "Another step of this video is still running or waiting to run.",
+};
+
+/** Owner "Try another clip" on one beat of a Montage. Free and local; the caller did requireOwner and the Origin check. */
+export async function swapClipById(db: pg.Pool, queue: EnqueueOnly, actor: GateActor, videoId: string, beatId: string): Promise<ActionResult> {
+  if (actorProblem(actor)) return refuse(ACTOR_REASON);
+  try {
+    await swapMontageClip(db, queue, videoId, beatId, approvalReaders);
+  } catch (e) {
+    const m = e instanceof Error ? e.message : "";
+    if (/^video is /.test(m)) return refuse("This video is no longer in production.");
+    return refuse(SWAP_REFUSALS[m] ?? "The clip could not be swapped.");
+  }
+  await recordAudit(db, "montage.clip_swap_requested", { videoId, beatId, sessionId: actor.sessionId });
+  return { ok: true, message: "Looking for another clip. The edit, voice, sound and check run again after it." };
 }
