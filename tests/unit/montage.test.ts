@@ -14,6 +14,8 @@ describe("montage footage (M1)", () => {
     expect(scoreFootage(slot(), clip({ height: 480 }))).toBeNull();
     expect(scoreFootage(slot(), clip({ bytes: 60e6 }))).toBeNull();
     expect(scoreFootage(slot({ query: [] }), clip())).toBeNull();
+    expect(scoreFootage(slot(), clip({ text: "sea woman smiling" }))).toBeNull(); // a person in a shot that is not about people
+    expect(scoreFootage(slot({ query: ["ocean", "woman"] }), clip({ title: "ocean woman", text: "woman" }))).not.toBeNull();
   });
   it("uses each clip once and reports a slot with no good match", () => {
     const found = new Map([["s1", [clip()]], ["s2", [clip(), clip({ url: "https://cdn/b.mp4", title: "ocean waves" })]], ["s3", [clip({ title: "city traffic", text: "cars", url: "https://cdn/c.mp4" })]]]);
