@@ -120,3 +120,24 @@ describe("chapterSeamCues", () => {
     expect(chapterSeamCues([{ index: 1, startS: 0 }]).cues).toEqual([]);
   });
 });
+
+describe("chapterSoundCues", () => {
+  const chapters = [{ index: 1, startS: 0 }, { index: 2, startS: 40 }, { index: 3, startS: 80 }];
+  it("moves each chapter's own cues to the video's clock and keeps the seam whooshes", async () => {
+    const { chapterSoundCues } = await import("@/server/core/chapter-windows");
+    const own = new Map([[1, [{ id: "a", sound: "pop", atS: 5 }]], [2, [{ id: "a", sound: "pop", atS: 3.5, gainDb: -10 }]]]);
+    const r = chapterSoundCues(chapters, own, 120);
+    expect(r.cues.map((c) => [c.id, c.atS])).toEqual([["ch1-a", 5], ["seam-2", 39.85], ["ch2-a", 43.5], ["seam-3", 79.85]]);
+    expect(r.cues.every((c) => c.optional)).toBe(true);
+  });
+  it("drops a cue that lands outside the video, and a chapter with no saved cues adds none", async () => {
+    const { chapterSoundCues } = await import("@/server/core/chapter-windows");
+    const r = chapterSoundCues(chapters, new Map([[3, [{ id: "late", sound: "pop", atS: 45 }]]]), 120);
+    expect(r.cues.map((c) => c.id)).toEqual(["seam-2", "seam-3"]);
+  });
+  it("never passes 60 cues", async () => {
+    const { chapterSoundCues } = await import("@/server/core/chapter-windows");
+    const many = Array.from({ length: 70 }, (_, i) => ({ id: `c${i}`, sound: `s${i}`, atS: i * 0.5 }));
+    expect(chapterSoundCues(chapters, new Map([[1, many]]), 120).cues.length).toBe(60);
+  });
+});

@@ -114,7 +114,7 @@ export function chapterBuildRequest(v: { topic: string; chapter: ChapterWindow; 
     last ? "- This is the LAST chapter: end on the payoff. No call to action ('like', 'subscribe', 'follow')." : "- End on a settled picture at a natural pause; the next chapter takes over. Do not loop back to frame 0 and do not add a call to action.",
     "- Show the idea, not a diagram of it (draw-objects section 5c): an everyday picture people know, one picture per idea, a short label on each main object, the frame filled, and a story that reads with the sound off." + (land ? " This chapter is landscape: use draw-objects section 5d." : ""),
     `- Last, run check_frames on ${file} and fix the file until it passes; only then finish.`,
-    "- Do not write sfx-cues.json and do not render the video: the app renders this chapter after you finish.",
+    "- Do not render the video: the app renders this chapter after you finish. After check_frames passes, read the suggest-sfx skill's engine section and write sfx-cues.json next to scene/ (light sound effects named by sound, timed on THIS chapter's own clock: 0 is its first frame, at most " + round(durS) + " s; the app moves them to the right place in the whole video and adds the chapter-seam whooshes itself, so add none at the very start or end). Sound is never a reason to fail: if unsure, write {\"cues\":[]}.",
     "",
     "Finish with one line per beat: its id and what is drawn in it.",
   ].join("\n");

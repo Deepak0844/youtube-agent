@@ -58,7 +58,7 @@ const CUES_MAX_BYTES = 64 * 1024;
 
 /** The engine's sound cues, made safe (see sanitizeCueSheet). A missing, linked, oversized or unreadable file is an empty sheet: sound is never a reason to fail the video.
  * The result is always written, so an older attempt's cues never stay behind for a video whose timing changed. */
-async function engineCues(workDir: string, durationS: number): Promise<{ json: string; count: number }> {
+export async function engineCues(workDir: string, durationS: number): Promise<{ json: string; count: number; cues: ReturnType<typeof sanitizeCueSheet>["cues"] }> {
   let raw: unknown = null;
   try {
     const f = path.join(workDir, CUES);
@@ -66,7 +66,7 @@ async function engineCues(workDir: string, durationS: number): Promise<{ json: s
     if (st.isFile() && st.size <= CUES_MAX_BYTES) raw = JSON.parse(await readFile(f, "utf8"));
   } catch { /* none or not JSON: no cues */ }
   const sheet = sanitizeCueSheet(raw, durationS);
-  return { json: JSON.stringify(sheet), count: sheet.cues.length };
+  return { json: JSON.stringify(sheet), count: sheet.cues.length, cues: sheet.cues };
 }
 
 export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): AttemptHandler {

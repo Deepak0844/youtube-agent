@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -99,7 +99,7 @@ async function longVideo(per = [8, 9, 10, 9, 8], opts: { outline?: boolean } = {
 const landscape = (frames: number) => GOOD_SCENE.replace("durationInFrames: 270", `durationInFrames: ${frames}`).replace("width: 1080, height: 1920", "width: 1920, height: 1080");
 
 /** A scripted engine: for each chapter it reads the frames and the file name from the prompt it was given. `skip` chapters write nothing; `wrongFrames` write the wrong length. */
-function fakeEngine(o: { skip?: number[]; wrongFrames?: number[]; limitAt?: number } = {}) {
+function fakeEngine(o: { skip?: number[]; wrongFrames?: number[]; limitAt?: number; cues?: Record<number, unknown> } = {}) {
   const calls: Array<{ chapter: number; frames: number; file: string; req: EngineRequest }> = [];
   const run = async (_deps: EngineDeps, req: EngineRequest): Promise<EngineResult> => {
     const frames = Number(/durationInFrames: (\d+)/.exec(req.prompt)![1]);
@@ -111,6 +111,7 @@ function fakeEngine(o: { skip?: number[]; wrongFrames?: number[]; limitAt?: numb
     if (!o.skip?.includes(chapter)) {
       mkdirSync(path.join(workDir, "scene"), { recursive: true });
       writeFileSync(path.join(workDir, file), landscape(o.wrongFrames?.includes(chapter) ? frames + 30 : frames));
+      if (o.cues?.[chapter]) writeFileSync(path.join(workDir, "sfx-cues.json"), JSON.stringify({ cues: o.cues[chapter] }));
     }
     return { ok: true, text: "done", usage: { inputTokens: 1, outputTokens: 1, costUsdEquiv: 0 } as never, turns: 10, workDir };
   };
@@ -193,6 +194,23 @@ describe("long video code-scene step", () => {
     expect(tsx2.sources).toHaveLength(5); // every chapter is rendered again (cheap) so the join has all five
     const stored = (await db.pool.query("select result from stage_runs where id = $1", [(again as { claim: { stageRunId: string } }).claim.stageRunId])).rows[0]!.result as { drawnNow: number; keptFromBefore: number };
     expect(stored).toMatchObject({ drawnNow: 3, keptFromBefore: 2 });
+  }, 300_000);
+
+  it("each chapter's own sound cues are moved to the video's clock beside the seam whooshes, and a kept chapter keeps its cues", async () => {
+    const v = await longVideo();
+    const { deps, e } = mkDeps(fakeTsx(), v.narrationS);
+    const first = fakeEngine({ skip: [3], cues: { 1: [{ id: "a", sound: "pop", atS: 4 }], 2: [{ id: "b", sound: "pop", atS: 2 }] } });
+    expect((await play(v.id, withAttempt({ db: db.pool, root }, codeSceneAttempt(deps, { ...e, runEngine: first.run })))).kind).toBe("known_failure");
+    const second = fakeEngine({ cues: { 3: [{ id: "c", sound: "pop", atS: 1 }, { id: "bad", sound: "pop", atS: 9999 }] } }); // chapters 1 and 2 are kept; a cue past the end is dropped
+    const out = await play(v.id, withAttempt({ db: db.pool, root }, codeSceneAttempt(mkDeps(fakeTsx(), v.narrationS).deps, { ...e, runEngine: second.run })));
+    expect(out.kind, await reason(out)).toBe("committed");
+    expect(second.calls.map((c) => c.chapter)).toEqual([3, 4, 5]);
+    const sheet = JSON.parse(readFileSync(path.join(root, "videos", v.id, "sfx-cues.json"), "utf8")) as { cues: { id: string; atS: number }[] };
+    const ids = sheet.cues.map((c) => c.id);
+    expect(ids).toEqual(expect.arrayContaining(["ch1-a", "ch2-b", "ch3-c", "seam-2", "seam-5"]));
+    expect(ids).not.toContain("ch3-bad");
+    expect(sheet.cues.find((c) => c.id === "ch1-a")!.atS).toBe(4);
+    expect(sheet.cues.find((c) => c.id === "ch2-b")!.atS).toBeGreaterThan(sheet.cues.find((c) => c.id === "seam-2")!.atS);
   }, 300_000);
 
   it("refuses a chapter file of the wrong length, a chapter that does not render, and a usage limit pauses with the finished chapters kept", async () => {
