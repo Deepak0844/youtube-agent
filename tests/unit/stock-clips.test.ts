@@ -61,7 +61,8 @@ describe("clipProbeOk", () => {
   it("accepts a plain h264 clip", () => expect(clipProbeOk(ok)).toMatchObject({ ok: true, durationS: 10.2 }));
   it("refuses other codecs, long, short, huge and extra video streams", () => {
     expect(clipProbeOk({ ...ok, streams: [{ ...v, codec_name: "vp9" }] }).ok).toBe(false);
-    expect(clipProbeOk({ ...ok, format: { duration: "40" } }).ok).toBe(false);
+    expect(clipProbeOk({ ...ok, format: { duration: "90" } }).ok).toBe(false);
+    expect(clipProbeOk({ ...ok, format: { duration: "45" } }).ok).toBe(true); // a montage trims a longer clip
     expect(clipProbeOk({ ...ok, format: { duration: "2" } }).ok).toBe(false);
     expect(clipProbeOk({ ...ok, streams: [{ ...v, width: 9000 }] }).ok).toBe(false);
     expect(clipProbeOk({ ...ok, streams: [v, v] }).ok).toBe(false);
@@ -93,5 +94,46 @@ describe("clip budgets", () => {
     const links = [{ beatId: "a", kind: "video" }, { beatId: "b", kind: "video" }, { beatId: "b", kind: "image" }, { beatId: "gone", kind: "video" }];
     expect(countClipLinks(links, new Set(["a", "b"]))).toBe(2);
     expect(countClipLinks([], new Set(["a"]))).toBe(0);
+  });
+});
+
+describe("rankClipsByPhrase (montage)", () => {
+  const cand = (url: string, title: string, text: string) => ({ title, url, width: 1920, height: 1080, durationS: 9, bytes: 3e6, licence: "Pixabay Content License", credit: "c", pageUrl: null, text });
+  it("scores a clip against the phrase that found it, so a long picture sentence cannot sink it, and keeps each clip once, best first", async () => {
+    const { rankClipsByPhrase } = await import("@/server/core/clip-rank");
+    const a = cand("https://x/a.mp4", "night train railway", "train, night, travel");
+    const b = cand("https://x/b.mp4", "dark countryside field", "countryside, dark");
+    const r = rankClipsByPhrase([{ phrase: "night train window", cands: [a, b] }, { phrase: "dark countryside train", cands: [a, b] }]);
+    expect(r.map((x) => x.cand.url)).toEqual(["https://x/a.mp4", "https://x/b.mp4"]);
+    expect(r.every((x) => x.score >= 0.35)).toBe(true);
+    expect(rankClipsByPhrase([{ phrase: "ocean waves", cands: [a] }])).toEqual([]);
+  });
+});
+
+describe("montage takes longer clips", () => {
+  it("a 45 s clip is refused by default and taken by a montage (which trims from the middle)", async () => {
+    const { rankClips, rankClipsByPhrase, MONTAGE_CLIP_MAX_SECONDS } = await import("@/server/core/clip-rank");
+    const long = { title: "dark sleeper cabin night", url: "https://x/l.mp4", width: 1280, height: 720, durationS: 45, bytes: 9e6, licence: "Pixabay Content License", credit: "c", pageUrl: null, text: "cabin, dark, night" };
+    expect(rankClips({ search: ["dark sleeper cabin"], visual: "" }, [long])).toEqual([]);
+    expect(rankClipsByPhrase([{ phrase: "dark sleeper cabin", cands: [long] }]).length).toBe(1);
+    expect(rankClipsByPhrase([{ phrase: "dark sleeper cabin", cands: [{ ...long, durationS: MONTAGE_CLIP_MAX_SECONDS + 1 }] }])).toEqual([]);
+  });
+});
+
+describe("montage clips must show the subject", () => {
+  const c = (title: string, text: string, url: string) => ({ title, url, width: 1920, height: 1080, durationS: 12, bytes: 3e6, licence: "Pixabay Content License", credit: "c", pageUrl: null, text });
+  it("a moon clip tagged night is refused for 'night train window'; a train clip is taken", async () => {
+    const { rankClipsByPhrase, subjectWords, showsSubject } = await import("@/server/core/clip-rank");
+    expect(subjectWords("night train window")).toEqual(["train", "window"]);
+    expect(subjectWords("dark night")).toEqual([]);
+    const moon = c("moon moonlight night full moon", "night, moon, dark, window", "https://x/moon.mp4");
+    const train = c("train night city lights window view", "train, window, travel", "https://x/train.mp4");
+    const r = rankClipsByPhrase([{ phrase: "night train window", cands: [moon, train] }]);
+    expect(r.map((x) => x.cand.url)).toEqual(["https://x/train.mp4"]);
+    const ai = c("ai generated rain train window", "anime lofi train window", "https://x/ai.mp4");
+    expect(rankClipsByPhrase([{ phrase: "rain train window", cands: [ai] }])).toEqual([]); // drawn or AI-made clips are not real footage
+    expect(showsSubject([], moon)).toBe(true); // a phrase of only mood words has no rule
+    expect(showsSubject(["sleeper", "cabin"], c("log cabin night", "cabin, forest", "u"))).toBe(false); // the main subject (sleeper) is needed, not just cabin
+    expect(showsSubject(["sleeper", "cabin"], c("sleeper train cabin", "", "u"))).toBe(true);
   });
 });

@@ -291,9 +291,9 @@ describe("pictures stage for a collage video", () => {
 
   it("a montage links a clip on every beat, never a picture, and refuses to run without the Pixabay key", async () => {
     const clipHit = (tags: string, id: number) => ({ id, pageURL: `https://pixabay.com/videos/x-${id}/`, tags, user: "bob", duration: 9, videos: { large: { url: `https://cdn.pixabay.com/video/x${id}.mp4`, width: 1920, height: 1080, size: 3_000_000 } } });
-    const beats = [{ id: "b1", text: "x", visual: "night train station", search: ["night train station"] }, { id: "b2", text: "y", visual: "rain on window", search: ["rain window"] }];
+    const beats = [{ id: "b1", text: "x", visual: "A train speeds through dark countryside at night, its lit windows gliding past black fields with no one visible outside.", search: ["night train station", "dark platform lamps"] }, { id: "b2", text: "y", visual: "Rain streaks down a train window, blurred city lights sliding past in long smears of orange and white.", search: ["rain window", "blurred city lights"] }];
     const v = await seed(beats, undefined, "montage");
-    const f = mk({ pixabay: () => new Response(JSON.stringify({ hits: [clipHit("night, train, station", 1), clipHit("rain, window, glass", 2)] }), { headers: { "content-type": "application/json" } }) });
+    const f = mk({ pixabay: () => new Response(JSON.stringify({ hits: [clipHit("night, train, railway, travel", 1), clipHit("rain, window, glass, drops", 2)] }), { headers: { "content-type": "application/json" } }) });
     let n = 0;
     f.deps.fetcher = ((inner) => async (url: string, init?: RequestInit) => (/\.mp4$/.test(url) ? new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "content-type": "video/mp4" } }) : inner(url, init as RequestInit)))(f.deps.fetcher);
     f.deps.ingestClipFn = async (_d, a) => ({ ok: true, kind: "video", mime: "video/mp4", width: 1920, height: 1080, durationS: 9, bytes: 4, originalBytes: 4, sha256: createHash("sha256").update(`clip-${n++}`).digest("hex"), files: { main: path.join(a.destDir, "main.mp4") } });
@@ -304,5 +304,13 @@ describe("pictures stage for a collage video", () => {
     expect(f.urls.some((u) => u.includes("commons.wikimedia.org"))).toBe(false); // no picture search
 
     await expect(run(mk(), await seed(beats, undefined, "montage"))).rejects.toThrow(/Pixabay key/);
+
+    // a beat with no matching clip fails the step and names the beat; the clip found for the other beat stays linked
+    const v2 = await seed(beats, undefined, "montage");
+    const only = mk({ pixabay: () => new Response(JSON.stringify({ hits: [clipHit("night, train, railway, travel", 9)] }), { headers: { "content-type": "application/json" } }) });
+    only.deps.fetcher = ((inner) => async (url: string, init?: RequestInit) => (/\.mp4$/.test(url) ? new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "content-type": "video/mp4" } }) : inner(url, init as RequestInit)))(only.deps.fetcher);
+    only.deps.ingestClipFn = f.deps.ingestClipFn;
+    await expect(run(only, v2)).rejects.toThrow(/No footage was found for beat b2/);
+    expect((await assetsForVideo(db.pool, v2)).map((l) => l.beatId)).toEqual(["b1"]);
   });
 });

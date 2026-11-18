@@ -199,7 +199,8 @@ export async function ingestAudio(deps: IngestDeps, a: IngestArgs): Promise<Inge
 
 // ---- Stock clips (pictures stage only; uploads never take video). ----
 export const CLIP_BRANDS = new Set(["isom", "iso2", "mp41", "mp42", "avc1", "M4V "]);
-export const CLIP_LIMITS = { minSeconds: 4.5, maxSeconds: 21, maxSide: 4096, maxStreams: 4 } as const;
+// maxSeconds 61: a montage takes clips up to 60 s (it trims them); the pictures step still asks for 20 s or less for every other kind.
+export const CLIP_LIMITS = { minSeconds: 4.5, maxSeconds: 61, maxSide: 4096, maxStreams: 4 } as const;
 
 /** Pure: the ffprobe answer for a clip is acceptable (one H.264 video stream of the allowed size and length). */
 export function clipProbeOk(info: ProbeJson): { ok: true; durationS: number; width: number; height: number } | { ok: false } {
