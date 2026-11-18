@@ -193,6 +193,8 @@ export interface PipelineView {
   paramsHash: string;
   /** chosen look and caption layer; absent when none was chosen (then no hash changes) */
   style?: { style: string | null; captionStyle: string | null };
+  /** montage only: the chosen colour grade; absent = the default (and no hash changes) */
+  grade?: string;
   /** latest owner send-back note for the script, or null */
   feedback: string | null;
   /** derived shorts only: a hash of the long video's scenes, beats, narration and captions the clip is made from. Absent = not derived (no hash changes). */
@@ -276,6 +278,7 @@ export function expectedInputHash(view: PipelineView, stage: StageName, prevHash
   const nonce = view.nonces?.[stage];
   if (view.style && (stage === "build" || stage === "render")) Object.assign(upstream, styleHashParts(view.style.style, view.style.captionStyle)); // only when chosen: older hashes stay identical
   if (view.style?.style && stage === "tsx_author") upstream.style = view.style.style; // only when chosen: a tsx video with no style keeps its old hash
+  if (view.grade && stage === "montage") upstream.grade = view.grade; // only when chosen: older montage hashes stay identical
   if (nonce) upstream.nonce = nonce; // only when set: every hash made before forced reruns existed stays identical
   return stageInputHash(stage, upstream, {});
 }

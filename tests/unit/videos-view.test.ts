@@ -103,3 +103,14 @@ describe("parseNewVideoForm", () => {
     expect(r.ok && r.value.notes).toBe("keep it short");
   });
 });
+
+describe("parseNewVideoForm: montage grade", () => {
+  it("keeps a chosen grade for a montage only, and refuses an unknown one", () => {
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "montage", grade: "mono" }))).toMatchObject({ ok: true, value: { kind: "montage", grade: "mono" } });
+    const none = parseNewVideoForm(form({ topic: "x", language: "en", kind: "montage" }));
+    expect(none.ok && "grade" in none.value).toBe(false);
+    const other = parseNewVideoForm(form({ topic: "x", language: "en", kind: "collage", grade: "mono" }));
+    expect(other.ok && "grade" in other.value).toBe(false);
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "montage", grade: "sepia" }))).toMatchObject({ ok: false });
+  });
+});

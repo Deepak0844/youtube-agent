@@ -75,6 +75,8 @@ export const newVideoSchema = z.object({
   // Empty or missing = the default look (stored as null).
   style: z.enum(STYLE_IDS, "Pick one of the listed styles.").optional(),
   captionStyle: z.enum(CAPTION_STYLE_IDS, "Pick a listed caption style.").optional(),
+  // Montage only: the colour grade. Empty = the default (film).
+  grade: z.enum(["film", "warm", "cool", "mono"], "Pick a listed colour grade.").optional(),
   // AI videos only: the library picture every clip starts from (a locked character). Empty = none.
   character: z.string().uuid("Pick a picture from the list.").optional(),
 });
@@ -89,7 +91,7 @@ export type NewVideoInput = Omit<z.infer<typeof newVideoSchema>, "minMinutes" | 
 /** `maxLongMinutes` is the video.max_long_minutes setting. */
 export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
   const g = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
-  const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "tsx", format: g("format") ?? "short", notes: g("notes") || undefined, character: g("character") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined, minMinutes: g("minMinutes") || undefined, maxMinutes: g("maxMinutes") || undefined });
+  const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "tsx", format: g("format") ?? "short", notes: g("notes") || undefined, character: g("character") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined, grade: g("grade") || undefined, minMinutes: g("minMinutes") || undefined, maxMinutes: g("maxMinutes") || undefined });
   // A long video is a Custom animation only (one code scene per chapter). The other types stay Shorts.
   if (r.success && r.data.format === "long" && r.data.kind !== "tsx") return { ok: false, message: "Only a Custom animation can be a long video. Pick that type, or pick Short." };
   // Custom animation (tsx) burns its own captions: the caption picker does not apply. The style does (it shapes the TSX look).
@@ -106,8 +108,8 @@ export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoIn
   }
   if (!r.success) return { ok: false, message: r.error.issues[0]?.message ?? "Check the form and try again." };
   // A Short has no length range: it is dropped, so the value is exactly what it always was.
-  const { topic, language, kind, format, notes, style, captionStyle } = r.data;
-  return { ok: true, value: { topic, language, kind, format, notes, style, captionStyle } };
+  const { topic, language, kind, format, notes, style, captionStyle, grade } = r.data;
+  return { ok: true, value: { topic, language, kind, format, notes, style, captionStyle, ...(kind === "montage" && grade ? { grade } : {}) } };
 }
 
 /** The video types a Short can be remade as (the New form's own list for Shorts). */
