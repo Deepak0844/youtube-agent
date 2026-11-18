@@ -20,7 +20,7 @@ const cardTitle = "text-section font-semibold";
 
 export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], initialFormat = "short" }: { maxLongMinutes: number; aiNote: string | null; characters: Array<{ id: string; name: string }>; channels?: Array<{ id: string; title: string; language: string; style: string | null }>; initialFormat?: "short" | "long" }) {
   const [state, run, pending] = useActionState<NewVideoState, FormData>(createVideoAction, {});
-  const [kind, setKind] = useState<"tsx" | "collage" | "ai">("tsx");
+  const [kind, setKind] = useState<"tsx" | "collage" | "ai" | "montage">("tsx");
   const [format, setFormat] = useState<"short" | "long">(initialFormat);
   const [dirty, setDirty] = useState(false);
   useUnsavedWarning(dirty && !pending);
@@ -112,6 +112,7 @@ export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], ini
           [
             ["tsx", "Custom animation (TSX, experimental)", "Claude writes the animation code. Slower; if the code does not pass the safety checks, the step fails and you run it again."],
             ["collage", "Collage (cut-out layers, Shorts)", "Free pictures are found for each beat, the background is removed with the background remover, and the cut-outs are layered over the look. Free: no money. Needs the worker running; a picture whose cut-out fails is used as it is."],
+            ["montage", "Montage (free stock footage, Shorts)", "A mood film from free stock video: real footage for each beat, one colour grade, your captions on top. Free: no money for footage. Needs the Pixabay key on the Keys page. Best for places, nature and moods, not for diagrams or code."],
             ["ai", "AI video (paid clips, Shorts)", "A video model draws a short clip for every beat, as long as that beat of narration. The voice is made first, then you see the price of every clip and approve it before anything is bought. Optionally keep one character the same in every clip."],
           ] as const
         ).map(([id, title, help]) => (

@@ -7,11 +7,11 @@ import type { GateId } from "@/server/core/gates";
 // covers the hash of the stage before it, so rerunning an early stage makes every later one stale automatically.
 
 export type VideoFormat = "short" | "long";
-export type VideoKind = "tsx" | "collage" | "ai";
+export type VideoKind = "tsx" | "collage" | "ai" | "montage";
 export type ContentKindName = "outline" | "script" | "beats" | "evidence" | "cost_plan" | "video" | "metadata" | "titles" | "narration" | "captions" | "scenes" | "tsx" | "thumbnail" | "clips" | "clip_batch" | "chapter_scene";
 
 // `repair_scenes` is on demand only (the owner asks for it): it is not in stagePlan, so nothing runs it automatically.
-export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "voice", "sfx", "qa", "repair_scenes", "reframe", "thumbnail", "derive", "shots", "seo", "reply_drafts", "clips", "ingest_source"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
+export const STAGE_NAMES = ["outline", "draft", "pictures", "build", "generate", "tts", "render", "tsx_author", "voice", "sfx", "qa", "repair_scenes", "reframe", "thumbnail", "derive", "shots", "seo", "reply_drafts", "clips", "ingest_source", "montage"] as const; // seo = titles, description, tags: on demand, off the hash chain; reply_drafts = drafts for new comments, on demand
 export type StageName = (typeof STAGE_NAMES)[number];
 
 export interface PlanStep {
@@ -71,6 +71,20 @@ export function stagePlan(kind: VideoKind, format: VideoFormat, flags: PlanFlags
       ...head,
       { stage: "tts", resource: "net" },
       { stage: "tsx_author", resource: "render" },
+      { stage: "voice", resource: "cpu" },
+      { stage: "sfx", resource: "cpu" },
+      { stage: "qa", gateAfter: "video", resource: "cpu" },
+    ];
+  }
+  // montage (M3): a Short of free stock footage. Script (owner approves), narration, footage (the pictures step: one clip per beat, Pixabay key needed), edit + captions
+  // (one grade, local), then voice, sound and QA as for any Short. Nothing here costs money apart from the draft.
+  if (kind === "montage") {
+    if (flags.imported) throw new Error("imported montage videos are not supported");
+    return [
+      { stage: "draft", gateAfter: "script", resource: "net" },
+      { stage: "tts", resource: "net" },
+      { stage: "pictures", resource: "net" },
+      { stage: "montage", resource: "render" },
       { stage: "voice", resource: "cpu" },
       { stage: "sfx", resource: "cpu" },
       { stage: "qa", gateAfter: "video", resource: "cpu" },
@@ -142,6 +156,7 @@ export const STAGE_CONTENT_INPUTS: Readonly<Record<StageName, readonly ContentKi
   seo: ["script"],
   reply_drafts: [],
   ingest_source: [], // on demand (Clip Factory upload source)
+  montage: ["script", "beats", "narration"], // the footage links come from Pictures (the previous stage), which its hash covers
   clips: [], // on demand (Clip Factory), off the hash chain: its own input hash is the request count
 };
 

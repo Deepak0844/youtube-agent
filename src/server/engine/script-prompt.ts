@@ -9,7 +9,7 @@ import { draftSystem, writeBlocks } from "@/server/authoring/draft/prompts";
 export interface ScriptRequestInput {
   topic: string;
   lang: Lang;
-  kind: "tsx" | "collage" | "ai";
+  kind: "tsx" | "collage" | "ai" | "montage";
   notes?: string;
   feedback?: string;
   learning?: string[];

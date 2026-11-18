@@ -23,7 +23,7 @@ export interface DraftDeps {
 export interface DraftInput {
   topic: string;
   lang: Lang;
-  kind: "tsx" | "collage" | "ai";
+  kind: "tsx" | "collage" | "ai" | "montage";
   /** Defaults to "short". */
   format?: "short" | "long";
   notes?: string;

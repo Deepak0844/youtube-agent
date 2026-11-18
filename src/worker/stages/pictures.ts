@@ -7,6 +7,7 @@ import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { presetOf } from "../../../remotion/kit/presets";
 import { clipBudget, countClipLinks, MAX_CLIPS_PER_VIDEO, type ClipCandidate, rankClips, wantsMotion } from "@/server/core/clip-rank";
 import { rankCandidates, type PictureBrief, type PictureCandidate } from "@/server/core/picture-rank";
+import { KnownFailure } from "@/server/core/paid-call";
 import type { StageHandler } from "@/server/core/stage-handler";
 import { registerAsset } from "@/server/db/assets";
 import { approvedScript } from "@/server/db/stage-content";
@@ -101,7 +102,10 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
     // A style may ask for clips on every beat and a higher clip cap (documentary_montage); everyone else keeps today's rules.
     const styleRow = await deps.db.query<{ style: string | null; kind: string }>("select style, kind from videos where id = $1", [videoId]);
     const collage = styleRow.rows[0]?.kind === "collage" && deps.cutout !== undefined; // a collage is made of cut-outs and never of clips
-    const clipRule = presetOf(styleRow.rows[0]?.style).clips ?? { wantAll: false, max: MAX_CLIPS_PER_VIDEO };
+    // A montage is made of footage only: a clip on every beat, no pictures, and it cannot be made without the saved Pixabay key.
+    const montage = styleRow.rows[0]?.kind === "montage";
+    if (montage && !(deps.pixabayKey && (await deps.pixabayKey()))) throw new KnownFailure("A montage needs free stock footage. Save your Pixabay key on the Keys page first.");
+    const clipRule = montage ? { wantAll: true, max: MAX_BEATS } : presetOf(styleRow.rows[0]?.style).clips ?? { wantAll: false, max: MAX_CLIPS_PER_VIDEO };
 
     const outcomes: BeatOutcome[] = [];
     let clips = countClipLinks(existing, live); // clip links on every live beat before the loop; a beat that is re-picked gives its clips back
@@ -239,7 +243,7 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
             }
           }
         }
-        for (const source of done ? [] : sources) {
+        for (const source of done || montage ? [] : sources) {
           for (const { cand } of rankCandidates(brief, await source())) {
             if (tries++ >= MAX_TRIES_PER_BEAT) break;
             const a = await attempt(beat, { ...cand, hosts: cand.source === "wikimedia" ? WIKIMEDIA_FILE_HOSTS : PIXABAY_FILE_HOSTS, maxBytes: PICTURE_MAX_BYTES, accept: IMAGE_TYPES, clip: false });
