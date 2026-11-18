@@ -69,3 +69,19 @@ export function clipBudget(bytesSoFar: number): number {
 export function countClipLinks(links: ReadonlyArray<{ beatId: string; kind?: string }>, liveBeats: ReadonlySet<string>): number {
   return links.filter((l) => l.kind === "video" && liveBeats.has(l.beatId)).length;
 }
+
+/**
+ * Montage: a beat's search phrases are ALTERNATIVES ("night train window" or "dark countryside train"), not one long wish, so each clip is scored against the
+ * phrase it was found by and keeps its best score. (Scored against every word of every phrase plus the beat's long picture sentence, no clip could reach MIN_SCORE:
+ * the first real run found no footage for any beat.) Best first; a clip found by two phrases counts once.
+ */
+export function rankClipsByPhrase(found: ReadonlyArray<{ phrase: string; cands: readonly ClipCandidate[] }>): Array<{ cand: ClipCandidate; score: number }> {
+  const best = new Map<string, { cand: ClipCandidate; score: number }>();
+  for (const { phrase, cands } of found) {
+    for (const r of rankClips({ search: [phrase], visual: "" }, cands)) {
+      const old = best.get(r.cand.url);
+      if (!old || r.score > old.score) best.set(r.cand.url, r);
+    }
+  }
+  return [...best.values()].sort((a, b) => b.score - a.score);
+}

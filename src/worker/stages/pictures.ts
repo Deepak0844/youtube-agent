@@ -5,7 +5,7 @@ import type pg from "pg";
 import { systemRightsText } from "@/server/core/asset-rules";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { presetOf } from "../../../remotion/kit/presets";
-import { clipBudget, countClipLinks, MAX_CLIPS_PER_VIDEO, type ClipCandidate, rankClips, wantsMotion } from "@/server/core/clip-rank";
+import { clipBudget, countClipLinks, MAX_CLIPS_PER_VIDEO, type ClipCandidate, rankClips, rankClipsByPhrase, wantsMotion } from "@/server/core/clip-rank";
 import { rankCandidates, type PictureBrief, type PictureCandidate } from "@/server/core/picture-rank";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageHandler } from "@/server/core/stage-handler";
@@ -108,6 +108,7 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
     const clipRule = montage ? { wantAll: true, max: MAX_BEATS } : presetOf(styleRow.rows[0]?.style).clips ?? { wantAll: false, max: MAX_CLIPS_PER_VIDEO };
 
     const outcomes: BeatOutcome[] = [];
+    const usedAssets = new Set(existing.filter((l) => live.has(l.beatId) && l.kind === "video").map((l) => l.assetId)); // montage: clips already on a beat
     let clips = countClipLinks(existing, live); // clip links on every live beat before the loop; a beat that is re-picked gives its clips back
     let clipBytes = 0; // real bytes of every clip download this run, kept or not
     let linked = 0;
@@ -228,12 +229,23 @@ export function picturesHandler(deps: PicturesDeps): StageHandler {
           const key = deps.pixabayKey ? await deps.pixabayKey() : null;
           if (key) {
             const found: ClipCandidate[] = [];
-            for (const q of beat.queries) found.push(...parsePixabayVideos(await getJson(pixabayVideoSearchUrl(q, key, SEARCH_LIMIT), PIXABAY_API_HOSTS)));
+            const byPhrase: Array<{ phrase: string; cands: ClipCandidate[] }> = [];
+            for (const q of beat.queries) {
+              const cands = parsePixabayVideos(await getJson(pixabayVideoSearchUrl(q, key, SEARCH_LIMIT), PIXABAY_API_HOSTS));
+              found.push(...cands);
+              byPhrase.push({ phrase: q, cands });
+            }
             let ctries = 0;
-            for (const { cand } of rankClips(brief, found)) {
-              if (ctries++ >= 2 || clipBudget(clipBytes) === 0) break;
+            for (const { cand } of montage ? rankClipsByPhrase(byPhrase) : rankClips(brief, found)) {
+              if (ctries++ >= (montage ? 4 : 2) || clipBudget(clipBytes) === 0) break;
               const a = await attempt(beat, { ...cand, hosts: PIXABAY_FILE_HOSTS, maxBytes: clipBudget(clipBytes), accept: VIDEO_TYPE, acceptHeader: "video/mp4", clip: true, source: "pixabay" });
+              if (a.ok && montage && usedAssets.has(a.assetId)) { // one clip never serves two beats: undo the link and try the next one
+                await unlinkStageBeats(deps.db, videoId, [beat.id]);
+                last = "that clip is already used on another beat";
+                continue;
+              }
               if (a.ok) {
+                usedAssets.add(a.assetId);
                 linked++; clips++;
                 out(true, a.duplicate ? "linked clip (already in library)" : "linked clip", cand);
                 done = true;

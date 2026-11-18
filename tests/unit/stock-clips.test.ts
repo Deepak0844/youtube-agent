@@ -95,3 +95,16 @@ describe("clip budgets", () => {
     expect(countClipLinks([], new Set(["a"]))).toBe(0);
   });
 });
+
+describe("rankClipsByPhrase (montage)", () => {
+  const cand = (url: string, title: string, text: string) => ({ title, url, width: 1920, height: 1080, durationS: 9, bytes: 3e6, licence: "Pixabay Content License", credit: "c", pageUrl: null, text });
+  it("scores a clip against the phrase that found it, so a long picture sentence cannot sink it, and keeps each clip once, best first", async () => {
+    const { rankClipsByPhrase } = await import("@/server/core/clip-rank");
+    const a = cand("https://x/a.mp4", "night train railway", "train, night, travel");
+    const b = cand("https://x/b.mp4", "dark countryside field", "countryside, dark");
+    const r = rankClipsByPhrase([{ phrase: "night train window", cands: [a, b] }, { phrase: "dark countryside train", cands: [a, b] }]);
+    expect(r.map((x) => x.cand.url)).toEqual(["https://x/a.mp4", "https://x/b.mp4"]);
+    expect(r.every((x) => x.score >= 0.35)).toBe(true);
+    expect(rankClipsByPhrase([{ phrase: "ocean waves", cands: [a] }])).toEqual([]);
+  });
+});
