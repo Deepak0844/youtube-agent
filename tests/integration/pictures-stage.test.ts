@@ -304,5 +304,13 @@ describe("pictures stage for a collage video", () => {
     expect(f.urls.some((u) => u.includes("commons.wikimedia.org"))).toBe(false); // no picture search
 
     await expect(run(mk(), await seed(beats, undefined, "montage"))).rejects.toThrow(/Pixabay key/);
+
+    // a beat with no matching clip fails the step and names the beat; the clip found for the other beat stays linked
+    const v2 = await seed(beats, undefined, "montage");
+    const only = mk({ pixabay: () => new Response(JSON.stringify({ hits: [clipHit("night, train, railway, travel", 9)] }), { headers: { "content-type": "application/json" } }) });
+    only.deps.fetcher = ((inner) => async (url: string, init?: RequestInit) => (/\.mp4$/.test(url) ? new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "content-type": "video/mp4" } }) : inner(url, init as RequestInit)))(only.deps.fetcher);
+    only.deps.ingestClipFn = f.deps.ingestClipFn;
+    await expect(run(only, v2)).rejects.toThrow(/No footage was found for beat b2/);
+    expect((await assetsForVideo(db.pool, v2)).map((l) => l.beatId)).toEqual(["b1"]);
   });
 });
