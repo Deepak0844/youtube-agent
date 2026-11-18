@@ -1,4 +1,4 @@
-import { MIN_SCORE, words } from "./picture-rank";
+import { MIN_SCORE, namesPerson, PERSON_TAGS, words } from "./picture-rank";
 import { CLIP_MAX_BYTES, CLIP_MIN_HEIGHT, type ClipCandidate } from "./clip-rank";
 
 // Montage M1 (pure, no IO): for each slot of a thematic brief (what the footage should show and for how many seconds), pick the best free stock clip.
@@ -32,6 +32,7 @@ export function scoreFootage(slot: FootageSlot, c: ClipCandidate): number | null
   if (!(slot.seconds > 0) || !(c.durationS >= slot.seconds)) return null;
   if (!(c.bytes > 0 && c.bytes <= CLIP_MAX_BYTES) || !(c.height >= CLIP_MIN_HEIGHT) || !(c.width > 0)) return null;
   if (c.licence.trim() === "") return null;
+  if (PERSON_TAGS.test(c.text) && !namesPerson({ search: slot.query, visual: "" })) return null; // a stranger's face only where the shot is about people
   const want = words(slot.query.join(" "));
   if (want.length === 0) return null;
   const title = new Set(words(c.title));
