@@ -37,6 +37,7 @@ import { EvidenceTabPanel } from "./evidence-tab";
 import { TitlesTabPanel } from "./titles-tab";
 import { ClipsTabPanel } from "./clips-tab";
 import { FootagePanel } from "./footage-panel";
+import { FootageCredits } from "./footage-credits";
 
 export const metadata = { title: "Video" };
 
@@ -111,6 +112,7 @@ async function Owned({ params, searchParams }: { params: PageProps<"/videos/[id]
             <Detail label="Spent"><span data-testid="total-spend" className="tabular-nums">{usd(p.spend.totalMicroUsd)} spent</span></Detail>
             <Detail label="Started"><span>{dt.format(new Date(p.head.createdAt))} UTC</span></Detail>
           </dl>
+          {p.head.kind === "montage" && card?.kind === "gate" && card.gate === "video" ? <FootageCredits videoId={p.head.id} /> : null}
           {card ? card.kind === "gate" ? <GateCard item={card} index={0} rate={await loadInrRate(db)} /> : <DecisionCard item={card} /> : null}
           {live && !card ? <CancelForm videoId={p.head.id} topic={p.head.topic} /> : null}
         </div>
