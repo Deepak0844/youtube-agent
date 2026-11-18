@@ -75,6 +75,7 @@ export const AUDIT_EVENTS = {
   // Phase 2 queue page (detail: ids and session id only)
   "stage.rerun_requested": "The owner asked to run a failed step again (detail: video id, stage, session id)",
   "stage.force_rerun_requested": "The owner asked to run a finished free step again (detail: video id, stage, session id)",
+  "montage.clip_swap_requested": "The owner asked for another footage clip on one beat of a Montage (detail: video id, beat id, session id)",
   "video.cancelled": "The owner cancelled a video",
   "upload.retry_requested": "The owner asked to send a failed upload again (detail: upload id, session id, whether Studio was checked first)",
   "upload.retry_started": "A human-requested re-send began after the job-time checks (detail: upload id, video id, approval id, attempt)",
