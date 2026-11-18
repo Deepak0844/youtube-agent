@@ -1,7 +1,7 @@
 import { rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type pg from "pg";
-import { chapterFingerprint, chapterSeamCues, chapterWindows } from "@/server/core/chapter-windows";
+import { chapterFingerprint, chapterSoundCues, chapterWindows } from "@/server/core/chapter-windows";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import { reviewRecord } from "@/server/core/frame-review";
 import { KnownFailure } from "@/server/core/paid-call";
@@ -16,7 +16,7 @@ import { joinClips } from "@/server/render/mix";
 import { addContent } from "@/server/db/videos";
 import type { AttemptHandler } from "./attempt";
 import { loadVideo, type StageDeps } from "./deps";
-import { readSceneFile, type EngineBuildDeps } from "./engine-build";
+import { engineCues, readSceneFile, type EngineBuildDeps } from "./engine-build";
 import { loadTsxInputs } from "./tsx-author";
 
 // Long videos, L3: the code-scene step of a long video. The narration of the WHOLE script is recorded first, so every chapter knows its seconds and its
@@ -34,16 +34,19 @@ interface SavedChapter {
   index: number;
   fingerprint: string;
   source: string;
+  /** the chapter's own sound cues on its own clock; absent for a chapter drawn before cues existed */
+  cues: Cue[];
 }
+type Cue = { id: string; sound: string; atS: number; gainDb: number; optional: boolean };
 
 /** The newest saved file of every chapter of this video. */
 async function savedChapters(db: pg.Pool, videoId: string): Promise<Map<number, SavedChapter>> {
-  const r = await db.query<{ body: { index?: unknown; fingerprint?: unknown; source?: unknown } }>(
+  const r = await db.query<{ body: { index?: unknown; fingerprint?: unknown; source?: unknown; cues?: unknown } }>(
     "select distinct on ((body->>'index')) body from video_content where video_id = $1 and kind = 'chapter_scene' order by (body->>'index'), version desc",
     [videoId],
   );
   const out = new Map<number, SavedChapter>();
-  for (const { body } of r.rows) if (Number.isInteger(body.index) && typeof body.fingerprint === "string" && typeof body.source === "string") out.set(body.index as number, { index: body.index as number, fingerprint: body.fingerprint, source: body.source });
+  for (const { body } of r.rows) if (Number.isInteger(body.index) && typeof body.fingerprint === "string" && typeof body.source === "string") out.set(body.index as number, { index: body.index as number, fingerprint: body.fingerprint, source: body.source, cues: Array.isArray(body.cues) ? (body.cues as Cue[]) : [] });
   return out;
 }
 
@@ -76,6 +79,7 @@ export function longEngineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Att
     const total = cw.chapters.length;
     const clips: string[] = [];
     let lookSource: string | undefined;
+    const ownCues = new Map<number, Cue[]>();
     let turns = 0;
     let drawn = 0;
     let stills: string[] = [];
@@ -102,13 +106,16 @@ export function longEngineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Att
         if (!checked.ok) throw new KnownFailure(`Chapter ${c.index} of ${total}: the scene file did not pass the safety check: ${checked.problems.slice(0, 3).join(" ")}`);
         const frames = tsxDuration(fresh);
         if (frames !== c.frames) throw new KnownFailure(`Chapter ${c.index} of ${total}: the scene file is ${frames ?? "an unknown number of"} frames; meta.durationInFrames must be ${c.frames} (this chapter's share of the narration). Run the step again.`);
-        const body = { index: c.index, fingerprint: fp, source: fresh, frames, engine: { turns: r.turns } };
+        const chapterCues = (await engineCues(r.workDir, frames / 30)).cues; // sound is never a reason to fail: none or a bad file = no cues
+        const body = { index: c.index, fingerprint: fp, source: fresh, frames, cues: chapterCues, engine: { turns: r.turns } };
         await addContent(deps.db, video.id, "chapter_scene", { body, sha256: sha256Hex(canonicalJson(body)) }); // saved at once: a later failure keeps this chapter
         source = fresh;
+        ownCues.set(c.index, chapterCues);
         turns += r.turns;
         drawn++;
         ctx.log(`engine: chapter ${c.index} of ${total} drawn in ${r.turns} turns`);
       } else {
+        ownCues.set(c.index, have?.cues ?? []);
         ctx.log(`engine: chapter ${c.index} of ${total} kept from an earlier run`);
       }
       if (c.index === 1) lookSource = source;
@@ -133,7 +140,7 @@ export function longEngineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Att
     for (const f of clips) await rm(path.join(ctx.attemptDir, f), { force: true });
     const wantS = cw.totalFrames / 30;
     if (Math.abs(joinedS - wantS) > 1) throw new KnownFailure(`The joined video is ${joinedS.toFixed(1)} s but the narration needs ${wantS.toFixed(1)} s. Run the step again.`);
-    await writeFile(path.join(ctx.attemptDir, CUES), JSON.stringify(chapterSeamCues(cw.chapters))); // a soft whoosh at each seam; the chapters' own sound cues are not planned yet
+    await writeFile(path.join(ctx.attemptDir, CUES), JSON.stringify(chapterSoundCues(cw.chapters, ownCues, wantS))); // a soft whoosh at each seam plus each chapter's own cues moved to the video's clock
     const review = reviewRecord({ status: "skipped", reason: "frame review skipped: the engine looked at its own previews" }, 1);
     const chaptersBody = cw.chapters.map((c) => ({ index: c.index, title: c.title, frames: c.frames }));
     return {

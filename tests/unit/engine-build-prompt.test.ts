@@ -109,7 +109,8 @@ describe("chapterBuildRequest (long videos, L3)", () => {
     expect(mid).toMatch(/continues the video/);
     expect(mid).toMatch(/Do not loop back to frame 0/);
     expect(last).toMatch(/LAST chapter: end on the payoff/);
-    expect(mid).toMatch(/Do not write sfx-cues\.json/); // sound is planned for the whole video, not per chapter
+    expect(mid).toMatch(/write sfx-cues\.json/); // each chapter plans its own cues, on its own clock
+    expect(mid).toMatch(/THIS chapter's own clock/);
   });
 
   it("every input file of a chapter run is accepted by the REAL engine workspace (a bad file name stopped a real run at chapter 2)", async () => {

@@ -4,6 +4,7 @@
 // file, so it may run at most TSX_MAX_FRAMES (90 s).
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import type { Outline } from "@/server/core/long-form";
+import { sanitizeCueSheet } from "@/server/core/sfx-plan";
 import { beatTimings, TAIL_S, type PromptBeat, type PromptWord } from "@/server/core/tsx-prompt";
 import { TSX_MAX_FRAMES } from "@/server/core/tsx-check";
 
@@ -110,4 +111,16 @@ export function chapterSeamCues(chapters: readonly Pick<ChapterWindow, "index" |
   return {
     cues: chapters.filter((c) => c.index > 1).map((c) => ({ id: `seam-${c.index}`, sound: "whoosh-soft", atS: Math.max(0, r3(c.startS - SEAM_LEAD_S)), gainDb: -8, optional: true })),
   };
+}
+
+type OwnCue = { id: string; sound: string; atS: number; gainDb?: number; optional?: boolean };
+
+/**
+ * The whole video's cue sheet: the seam whooshes plus each chapter's own cues (written on that chapter's clock, 0 = its first frame) moved to the
+ * video's clock. Made safe the same way as a Short's sheet (inside the video, no repeat within 0.15 s, all optional, at most 60 cues: a long video that
+ * asks for more loses its latest cues). A chapter with no saved cues (drawn before cues existed) adds none.
+ */
+export function chapterSoundCues(chapters: readonly Pick<ChapterWindow, "index" | "startS">[], own: ReadonlyMap<number, readonly OwnCue[]>, totalS: number): { cues: { id: string; sound: string; atS: number; gainDb: number; optional: boolean }[] } {
+  const shifted = chapters.flatMap((c) => (own.get(c.index) ?? []).map((q) => ({ ...q, id: `ch${c.index}-${q.id}`, atS: r3(q.atS + c.startS) })));
+  return sanitizeCueSheet({ cues: [...chapterSeamCues(chapters).cues, ...shifted] }, totalS);
 }
