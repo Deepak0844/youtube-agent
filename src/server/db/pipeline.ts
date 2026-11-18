@@ -79,6 +79,7 @@ interface VideoLocked {
   notes: string | null;
   style: string | null;
   caption_style: string | null;
+  grade: string | null;
   status: string;
   stage_nonces: Partial<Record<StageName, string>>;
   /** long videos only: the minutes range chosen in the New form */
@@ -92,7 +93,7 @@ interface VideoLocked {
   clip_batch: number | null;
 }
 
-const VIDEO_LOCK_COLS = "id, format, kind, kind_origin, language, topic, notes, style, caption_style, status, stage_nonces, length_min_minutes, length_max_minutes, derived_from, derive_from_scene, derive_to_scene, clip_batch";
+const VIDEO_LOCK_COLS = "id, format, kind, kind_origin, language, topic, notes, style, caption_style, grade, status, stage_nonces, length_min_minutes, length_max_minutes, derived_from, derive_from_scene, derive_to_scene, clip_batch";
 
 /** The finished content of a long video a clip is made from. A new version of any of these makes the derived short stale. */
 export const DERIVE_SOURCE_KINDS = ["script", "scenes", "beats", "evidence", "narration", "captions"] as const;
@@ -151,6 +152,7 @@ async function buildView(c: pg.PoolClient, v: VideoLocked, readers: PipelineRead
     runs,
     approved: await readers.approvedGates(c, v.id),
     nonces: v.stage_nonces ?? {},
+    ...(v.grade ? { grade: v.grade } : {}),
     ...(v.style || v.caption_style ? { style: { style: v.style, captionStyle: v.caption_style } } : {}),
   };
 }

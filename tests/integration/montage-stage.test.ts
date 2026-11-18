@@ -141,6 +141,21 @@ describe("montage stage", () => {
     expect(rec.picks[0]!.credit).toBe("Video by A on Pixabay");
   }, 180_000);
 
+  it("grades the film the way the owner chose, and with film when none was chosen", async () => {
+    const run = async (grade: string | null) => {
+      const id = await seedVideo();
+      if (grade) await db.pool.query("update videos set grade = $2 where id = $1", [id, grade]);
+      for (const b of BEATS) await footage(id, b.id);
+      const args: string[] = [];
+      const d = { ...deps(), mix: { runChild: (spec: ChildSpec) => (args.push(...spec.args), runChild(spec)), audioRoot: root } } as unknown as StageDeps;
+      const out = await play(id, withAttempt({ db: db.pool, root }, montageAttempt(d, { render: fakeRender() })));
+      expect(out.kind, await failure(id, out)).toBe("committed");
+      return args.join(" ");
+    };
+    expect(await run("mono")).toContain("hue=s=0");
+    expect(await run(null)).toContain("colorbalance=rs=0.03:bs=-0.03"); // film
+  }, 240_000);
+
   it("fails naming the beat that has no footage", async () => {
     const id = await seedVideo();
     await footage(id, "b1");

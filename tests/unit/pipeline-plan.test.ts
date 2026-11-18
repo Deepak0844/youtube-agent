@@ -318,4 +318,11 @@ describe("montage route", () => {
     expect(() => stagePlan("montage", "long", flags)).toThrow(/long videos are not available/);
     expect(() => stagePlan("montage", "short", { ...flags, imported: true })).toThrow(/imported montage/);
   });
+  it("a_chosen_grade_changes_only_the_edit_steps_hash", async () => {
+    const { expectedInputHash } = await import("@/server/core/pipeline-plan");
+    const base = { kind: "montage", format: "short", flags: { requireEvidence: false }, paramsHash: "p", feedback: null, runs: {}, content: {} } as unknown as Parameters<typeof expectedInputHash>[0];
+    const plain = expectedInputHash(base, "montage", "prev");
+    expect(expectedInputHash({ ...base, grade: "mono" }, "montage", "prev")).not.toBe(plain);
+    expect(expectedInputHash({ ...base, grade: "mono" }, "voice", "prev")).toBe(expectedInputHash(base, "voice", "prev"));
+  });
 });

@@ -15,6 +15,8 @@ export interface VideoInput {
   /** null = default look */
   style?: string | null;
   captionStyle?: string | null;
+  /** montage only: the colour grade (null = the default, film) */
+  grade?: string | null;
   /** long videos only: the minutes range chosen in the New form (both or neither) */
   lengthMinMinutes?: number | null;
   lengthMaxMinutes?: number | null;
@@ -39,16 +41,16 @@ export interface ContentRow {
   createdAt: Date;
 }
 
-const VCOLS = "id, format, kind, language, topic, notes, channel_id, style, caption_style, length_min_minutes, length_max_minutes, status, created_at, updated_at";
+const VCOLS = "id, format, kind, language, topic, notes, channel_id, style, caption_style, grade, length_min_minutes, length_max_minutes, status, created_at, updated_at";
 const CCOLS = "id, video_id, kind, version, sha256, body, file_path, produced_by, created_at";
 
 export async function createVideoRow(db: Pick<pg.Pool, "query">, i: VideoInput): Promise<VideoRow> {
   const r = await db.query(
-    `insert into videos (format, kind, language, topic, notes, channel_id, style, caption_style, length_min_minutes, length_max_minutes, derived_from, derive_from_scene, derive_to_scene) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning ${VCOLS}`,
-    [i.format, i.kind, i.language, i.topic, i.notes ?? null, i.channelId ?? null, i.style ?? null, i.captionStyle ?? null, i.lengthMinMinutes ?? null, i.lengthMaxMinutes ?? null, i.derive?.sourceId ?? null, i.derive?.fromScene ?? null, i.derive?.toScene ?? null],
+    `insert into videos (format, kind, language, topic, notes, channel_id, style, caption_style, grade, length_min_minutes, length_max_minutes, derived_from, derive_from_scene, derive_to_scene) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning ${VCOLS}`,
+    [i.format, i.kind, i.language, i.topic, i.notes ?? null, i.channelId ?? null, i.style ?? null, i.captionStyle ?? null, i.grade ?? null, i.lengthMinMinutes ?? null, i.lengthMaxMinutes ?? null, i.derive?.sourceId ?? null, i.derive?.fromScene ?? null, i.derive?.toScene ?? null],
   );
   const x = r.rows[0];
-  return { id: x.id, format: x.format, kind: x.kind, language: x.language, topic: x.topic, notes: x.notes, channelId: x.channel_id, style: x.style, captionStyle: x.caption_style, lengthMinMinutes: x.length_min_minutes, lengthMaxMinutes: x.length_max_minutes, status: x.status, createdAt: x.created_at, updatedAt: x.updated_at };
+  return { id: x.id, format: x.format, kind: x.kind, language: x.language, topic: x.topic, notes: x.notes, channelId: x.channel_id, style: x.style, captionStyle: x.caption_style, grade: x.grade, lengthMinMinutes: x.length_min_minutes, lengthMaxMinutes: x.length_max_minutes, status: x.status, createdAt: x.created_at, updatedAt: x.updated_at };
 }
 
 export type ContentInput = { sha256: string; producedBy?: string | null } & ({ body: unknown; filePath?: undefined } | { filePath: string; body?: undefined });

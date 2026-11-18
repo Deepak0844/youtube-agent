@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { GRADES, type GradeName } from "@/server/core/montage-edit";
 import { montageSlots, type MontageBeat } from "@/server/core/montage-slots";
 import { KnownFailure } from "@/server/core/paid-call";
 import type { StageContext } from "@/server/core/stage-handler";
@@ -70,7 +71,9 @@ export function montageAttempt(deps: StageDeps, o: MontageOverrides = {}): Attem
     }
     if (missing.length > 0) throw new KnownFailure(`No footage was found for beat${missing.length > 1 ? "s" : ""} ${missing.join(", ")}. Send the script back with clearer pictures to show, or run the footage step again.`);
 
-    const filmS = await montageFile(deps.mix, ctx, { clips, grade: "film", width: 1080, height: 1920, fadeS: FADE_S, out: path.join(ctx.attemptDir, "film.mp4") });
+    const g = (await deps.db.query<{ grade: string | null }>("select grade from videos where id = $1", [video.id])).rows[0]?.grade;
+    const grade: GradeName = g && g in GRADES ? (g as GradeName) : "film"; // the owner's pick from the New form; film when none
+    const filmS = await montageFile(deps.mix, ctx, { clips, grade, width: 1080, height: 1920, fadeS: FADE_S, out: path.join(ctx.attemptDir, "film.mp4") });
     const done = await render(ctx, { clipFile: path.join(ctx.attemptDir, "film.mp4"), captions: tsxCaptionWords(words), style: video.style, durationS: filmS, outFile: "render.mp4" });
     if (!done.ok) throw new KnownFailure(`The captions did not render: ${done.message}`);
     ctx.log(`montage: ${clips.length} clips, ${filmS.toFixed(1)} s`);

@@ -125,6 +125,18 @@ export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], ini
           </label>
         ))}
       </fieldset>
+      {kind === "montage" ? (
+        <fieldset data-testid="montage-options" className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+          <legend className="mb-1 text-body font-medium">Colour grade</legend>
+          <select id="grade" name="grade" defaultValue="" aria-label="Colour grade" className={selectClass}>
+            <option value="">Film (soft contrast, slightly muted)</option>
+            <option value="warm">Warm (golden, friendly)</option>
+            <option value="cool">Cool (blue, calm, night)</option>
+            <option value="mono">Black and white</option>
+          </select>
+          <p className="m-0 max-w-[68ch] text-small text-muted">One grade is applied to every clip so mixed stock footage looks like one film.</p>
+        </fieldset>
+      ) : null}
       {kind === "ai" ? (
         <fieldset data-testid="ai-options" className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
           <legend className="mb-1 text-body font-medium">Character (optional)</legend>
