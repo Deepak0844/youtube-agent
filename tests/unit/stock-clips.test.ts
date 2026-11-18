@@ -61,7 +61,8 @@ describe("clipProbeOk", () => {
   it("accepts a plain h264 clip", () => expect(clipProbeOk(ok)).toMatchObject({ ok: true, durationS: 10.2 }));
   it("refuses other codecs, long, short, huge and extra video streams", () => {
     expect(clipProbeOk({ ...ok, streams: [{ ...v, codec_name: "vp9" }] }).ok).toBe(false);
-    expect(clipProbeOk({ ...ok, format: { duration: "40" } }).ok).toBe(false);
+    expect(clipProbeOk({ ...ok, format: { duration: "90" } }).ok).toBe(false);
+    expect(clipProbeOk({ ...ok, format: { duration: "45" } }).ok).toBe(true); // a montage trims a longer clip
     expect(clipProbeOk({ ...ok, format: { duration: "2" } }).ok).toBe(false);
     expect(clipProbeOk({ ...ok, streams: [{ ...v, width: 9000 }] }).ok).toBe(false);
     expect(clipProbeOk({ ...ok, streams: [v, v] }).ok).toBe(false);
