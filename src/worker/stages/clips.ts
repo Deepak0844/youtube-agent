@@ -51,6 +51,9 @@ export function clipsAttempt(deps: StageDeps, o: ClipsOverrides = {}): AttemptHa
     const prev = await deps.db.query<{ n: string }>("select count(*)::text as n from video_content where video_id = $1 and kind = 'clip_batch'", [video.id]);
     const batch = Number(prev.rows[0]!.n) + 1;
 
+    // A long (landscape) video made in this app has its own caption pill burned into the bottom 10% of the picture; the clip draws new captions, so the old ones are cropped off.
+    const burnedCaptions = video.format === "long" && !(await deps.db.query("select 1 from stage_runs where video_id = $1 and name = 'ingest_source' and status = 'succeeded' limit 1", [video.id])).rowCount;
+
     const clips: ClipBatchBody["clips"] = [];
     const measured: Record<string, Measured> = {};
     const files: string[] = [];
@@ -62,7 +65,7 @@ export function clipsAttempt(deps: StageDeps, o: ClipsOverrides = {}): AttemptHa
       }
       const cut = path.join(ctx.attemptDir, `cut-${c.id}.mp4`);
       const outName = `clips-b${batch}-${c.id}.mp4`;
-      const cutS = await cutClipFile(deps.mix, ctx, { inFile: source, outFile: cut, startS: c.startS, endS });
+      const cutS = await cutClipFile(deps.mix, ctx, { inFile: source, outFile: cut, startS: c.startS, endS, ...(burnedCaptions ? { cropBottom: 0.1 } : {}) });
       const done = await render(ctx, { clipFile: cut, captions: c.words, style: video.style, durationS: cutS, outFile: outName });
       await rm(cut, { force: true });
       if (!done.ok) throw new KnownFailure(`Clip ${c.id}: ${done.message}`);
