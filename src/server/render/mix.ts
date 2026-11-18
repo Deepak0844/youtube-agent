@@ -5,6 +5,7 @@ import { bedAudibility, cueAudibility, type Verdict } from "@/server/core/sound-
 import { KnownFailure } from "@/server/core/paid-call";
 import { cutAudioArgs, type ClipWindow } from "@/server/core/derive-short";
 import { cutClipArgs, type ClipCut } from "@/server/core/clip-cut";
+import { montageArgs, type MontageEdit } from "@/server/core/montage-edit";
 import { cueSheet, SfxPlan } from "@/server/core/sfx-plan";
 import type { StageContext } from "@/server/core/stage-handler";
 import { audioFilePaths } from "@/server/db/audio-library";
@@ -153,6 +154,15 @@ export async function joinClips(mix: MixDeps, ctx: StageContext, f: { clips: rea
   await writeFile(list, joinListText(f.clips), { mode: 0o600 });
   await run(mix, ctx, "ffmpeg", joinArgs(list, f.out), "Joining the chapters");
   return durationS(mix, ctx, f.out);
+}
+
+/** Edits the picked footage (plain file names in the attempt folder) into one graded film (core/montage-edit.ts). Returns its length in seconds; it must match the slots' total. */
+export async function montageFile(mix: MixDeps, ctx: StageContext, e: MontageEdit): Promise<number> {
+  await run(mix, ctx, "ffmpeg", montageArgs(e), "Editing the footage");
+  const s = await durationS(mix, ctx, e.out);
+  const want = e.clips.reduce((a, c) => a + c.slotS, 0);
+  if (Math.abs(s - want) > 0.7) throw new KnownFailure(`The edited film is ${s.toFixed(1)} s but the narration needs ${want.toFixed(1)} s. Run the step again.`);
+  return s;
 }
 
 /** Cuts one clip out of a finished video into a 1080x1920 portrait file (core/clip-cut.ts), then checks the cut's length. Throws a KnownFailure. */
