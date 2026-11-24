@@ -91,6 +91,11 @@
       "path": "remotion/kit/toon/upstream/toon.js",
       "sha256": "76f9990512599dceb752fe5f1842a4b6b068450936150bed4790dd4c2b4e431e",
       "patched": true
+    },
+    {
+      "path": "remotion/kit/toon/upstream/anime.js",
+      "sha256": "dc5b6d0a50337e25cc955b1c1e9c7c7b90f7fe1e3b0cd2ac5a4d1e6897588e8e",
+      "patched": true
     }
   ]
 }

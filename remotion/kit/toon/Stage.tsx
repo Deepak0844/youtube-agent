@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useLayoutEffect, useMemo, useRef } from "react";
 import { AbsoluteFill, continueRender, delayRender, useCurrentFrame, useVideoConfig } from "remotion";
 import { ToonContext } from "./context";
-import { COMIC_CSS, CORE_CSS } from "./css";
+import { CORE_CSS } from "./css";
 import { createToonRuntime, type ToonRuntime } from "./runtime";
+import { CARTOON_LOOKS, cartoonStyleModule } from "./styles";
 import { resolveMark, type ToonTimeline } from "./time";
 
 // The film: one cartoon-shorts page (#v with #world, #flash, #vig, #grain, #cap) drawn in the real DOM. Children (scenes, puppets, set
@@ -80,14 +81,15 @@ export const ToonFilm: React.FC<{ palette?: ToonPalette; bg?: string; children?:
   });
   const [W, H] = input.orientation === "landscape" ? [1920, 1080] : [1080, 1920];
   const vars: Record<string, string> = { "--title": `'Anton',Impact,${NOTO},sans-serif`, "--comic": `'Bangers','Anton',${NOTO},sans-serif`, "--body": `'Inter',${NOTO},system-ui,sans-serif` };
-  for (const [k, v] of Object.entries(palette ?? {})) vars[`--${k}`] = v;
+  const look = CARTOON_LOOKS[cartoonStyleModule(input.style ?? "cartoon_comic")];
+  for (const [k, v] of Object.entries({ ...look.palette, ...(palette ?? {}) })) vars[`--${k}`] = v;
   const landscape = input.orientation === "landscape" ? `#v{width:${W}px;height:${H}px}.scene>svg{width:${W}px;height:${H}px}#cap{left:160px;right:160px;top:${H - 300}px;height:200px;font-size:78px}` : "";
   return (
     <TimelineContext.Provider value={input.timeline}>
       <RuntimeContext.Provider value={rt}>
         <AbsoluteFill>
-          <style>{CORE_CSS + COMIC_CSS + landscape}</style>
-          <div id="v" style={{ ...(vars as React.CSSProperties), ...(bg ? { background: bg } : {}) }} data-w={W} data-h={H}>
+          <style>{CORE_CSS + look.css + landscape}</style>
+          <div id="v" style={{ ...(vars as React.CSSProperties), background: bg ?? look.bg }} data-w={W} data-h={H}>
             <div id="world">{children}</div>
             <div id="flash" />
             <div id="vig" />

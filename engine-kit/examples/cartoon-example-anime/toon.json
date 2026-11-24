@@ -1,0 +1,50 @@
+{
+ "timeline": {
+  "beats": [
+   {
+    "startS": 0.3,
+    "endS": 2.4619999999999997,
+    "cap": "One *year* of waiting."
+   },
+   {
+    "startS": 2.582,
+    "endS": 4.471,
+    "cap": "Her hands *won't stop shaking.*"
+   },
+   {
+    "startS": 4.791,
+    "endS": 7.426,
+    "cap": "She reads the *first word.*"
+   },
+   {
+    "startS": 7.746,
+    "endS": 8.567,
+    "cap": "*Accepted.*"
+   },
+   {
+    "startS": 9.138,
+    "endS": 10.615,
+    "cap": "Worth *every single day.*"
+   }
+  ],
+  "scenes": [
+   {
+    "id": "wait",
+    "startS": 0,
+    "endS": 4.599
+   },
+   {
+    "id": "open",
+    "startS": 4.599,
+    "endS": 7.554
+   },
+   {
+    "id": "joy",
+    "startS": 7.554,
+    "endS": 13.115
+   }
+  ]
+ },
+ "cast": [],
+ "orientation": "portrait"
+}

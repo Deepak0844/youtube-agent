@@ -11,6 +11,7 @@ export type ToonCharacter = {
 export type ToonInput = {
     timeline: ToonTimeline;
     cast: ToonCharacter[];
-    orientation: "portrait" | "landscape";
+    orientation: "portrait" | "landscape"; /** The video's cartoon style (set by the frame from the host's style id); picks the page look. */
+    style?: CartoonStyleId;
 };
 export declare const ToonContext: import("react").Context<ToonInput | null>;
