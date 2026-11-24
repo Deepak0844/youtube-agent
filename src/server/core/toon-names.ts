@@ -3,5 +3,5 @@
 export const TOON_LIBS: Readonly<Record<string, readonly string[]>> = {
   "yt-toon/core": ["Anim","Camera","Chroma","DotsPattern","ENTRANCE_PRESETS","FlashAt","Impact","LinGrad","Ov","RadGrad","Scene","Shake","Show","ToonFilm","clamp","eio","eout","lerp","trf","useToon"],
   "yt-toon/fx": ["Box","Burst","CamRig","Confetti","Court","Crowd","Desk","Flames","Football","Hoop","House","Jersey","Palm","PopIn","Rain","Rays","Ring","School","Skyline","SpeedLines","Stars","Streaks","Streetlight","Trophy"],
-  "yt-toon/comic": ["EASE","P","Puppet","cycle","mix","track"],
+  "yt-toon/comic": ["EASE","Follow","P","Puppet","cycle","mix","pose","track"],
 };

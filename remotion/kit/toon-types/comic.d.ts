@@ -16,6 +16,8 @@ export declare const cycle: (phase: number, amp?: number, kind?: "run" | "walk" 
 /** A value that moves through keys [[seconds, value, ease?], ...] (numbers, arrays or poses). */
 export declare const track: <V>(keys: [number, V, string?][]) => (t: number) => V;
 export declare const EASE: Record<string, (x: number) => number>;
+/** Pose `over` on top of pose `base`: pose(P.stand, { face: "grin" }). */
+export declare const pose: (base: Pose, over: Pose) => Pose;
 /** Where a puppet is and how it stands at one moment. `dir` -1 faces left; `s` is the scale. */
 export type PuppetFrame = {
     pose: Pose;
@@ -25,24 +27,31 @@ export type PuppetFrame = {
     s?: number;
 };
 export type PuppetOptions = Record<string, string | number | boolean | null>;
-/** A thing the puppet holds or wears at a joint: an SVG child moved with it (e.g. a phone in the hand). `at` is a joint name: hand, fhand, head, neck, hip, foot, ffoot, knee, elbow, shoulder. */
-export type Held = {
-    at: "hand" | "fhand" | "head" | "neck" | "hip" | "foot" | "ffoot" | "knee" | "elbow" | "shoulder" | "fshoulder";
-    dx?: number;
-    dy?: number;
-    s?: number;
-    r?: number | ((t: number) => number);
-    /** Full control: where the held piece goes for time t, given the joint's position: [x, y, scale, rotation]. Replaces dx, dy, s and r. */
-    place?: (t: number, joint: [number, number]) => [number, number, number, number];
-    node: React.ReactNode;
-};
+/** Joint names a puppet can report: hand, fhand (far hand), head, neck, hip, foot, ffoot, knee, elbow, shoulder, fshoulder. */
+export type Joint = "hand" | "fhand" | "head" | "neck" | "hip" | "foot" | "ffoot" | "knee" | "elbow" | "shoulder" | "fshoulder";
 /**
  * One character. `who` takes the look from the series cast (ref/cast.json); `options` is a one-off look (or overrides): the puppet
  * options of cartoon-shorts (skin, skinD, hair, hairStyle, top, shirt, shirtD, tie, pants, shoe, beard, cap, glasses, kid, build...).
+ * `id` lets a <Follow> hold a prop at one of its joints.
  */
 export declare const Puppet: React.FC<{
+    id?: string;
     who?: string;
     options?: PuppetOptions;
     act: (t: number) => PuppetFrame;
-    held?: Held[];
+}>;
+/**
+ * Holds its children (a phone, a cup, a letter) at a joint of the puppet with this `id`, drawn where you write it (so put it after
+ * the puppet, and after anything that should cover the prop's z-order). `place` gives where it goes at time t: [x, y, scale, rotation].
+ * Show or hide the children yourself (style display) for the times the prop is not in hand.
+ */
+export declare const Follow: React.FC<{
+    of: string;
+    at?: Joint;
+    dx?: number;
+    dy?: number;
+    s?: number;
+    r?: number;
+    place?: (t: number, joint: [number, number]) => [number, number, number, number];
+    children?: React.ReactNode;
 }>;

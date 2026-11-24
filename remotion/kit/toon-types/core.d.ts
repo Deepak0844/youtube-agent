@@ -8,16 +8,29 @@ export declare const trf: (x: number, y: number, s?: number, r?: number) => stri
 export declare const ENTRANCE_PRESETS: readonly ["slam", "smash", "up", "down", "left", "right", "fade", "out", "pop", "stamp", "growx", "growy", "nudge", "wipe"];
 export type EntrancePreset = (typeof ENTRANCE_PRESETS)[number];
 export type Transition = "flash" | "zoom" | "whip" | "glitch" | "cut";
+/** A comic sound word: a burst star that pops in at `at` with the word on top, until `until`. Position is the centre of the word (stage units). */
+export type SoundWord = {
+    word: string;
+    x: number;
+    y: number;
+    rot: number;
+    at: string | number;
+    until: string | number;
+    fill?: string;
+    size?: number;
+};
 /**
  * One scene of the film: shown only between its start and its end (the scene id must be in the timeline), entered with `tr`.
  * `children` are drawn in the scene's SVG layer (1080 x 1920 portrait, 1920 x 1080 landscape) and move with <Camera>; `above` is SVG drawn over
- * that layer which the camera does not move (sound words, bursts); `overlays` are HTML text boxes (<Ov>) above both.
+ * that layer which the camera does not move; `words` are comic sound words (burst + word, above the camera); `overlays` are HTML text boxes
+ * (<Ov>), drawn over everything, after the sound words.
  */
 export declare const Scene: React.FC<{
     id: string;
     tr?: Transition;
     children?: React.ReactNode;
     above?: React.ReactNode;
+    words?: SoundWord[];
     overlays?: React.ReactNode;
 }>;
 /** `slam@B3+.2` style entrance list: one preset at a time or several ("slam" in, "out" later). */
@@ -26,12 +39,12 @@ export type EntranceStep = {
     at: string | number;
     dur?: number;
 };
-/** An HTML text box over the scene (titles, kickers, labels, cards). `css` is the box's position and look, e.g. "left:0;right:0;top:300px;text-align:center". */
+/** An HTML text box over the scene (titles, kickers, labels, cards). `css` is the box's position and look, e.g. "left:0;right:0;top:300px;text-align:center"; `during` shows it only in a window of marks ("B2..B4e"). */
 export declare const Ov: React.FC<{
     css?: string;
     cls?: string;
     enter?: EntranceStep[];
-    on?: string;
+    during?: string;
     fit?: boolean;
     children?: React.ReactNode;
 }>;
