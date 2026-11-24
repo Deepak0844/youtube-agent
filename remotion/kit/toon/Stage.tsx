@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useLayoutEffect, useMemo, useRef } from "react";
 import { AbsoluteFill, continueRender, delayRender, useCurrentFrame, useVideoConfig } from "remotion";
 import { ToonContext } from "./context";
-import { CORE_CSS } from "./css";
+import { COMIC_CSS, CORE_CSS } from "./css";
 import { createToonRuntime, type ToonRuntime } from "./runtime";
 import { resolveMark, type ToonTimeline } from "./time";
 
@@ -86,7 +86,7 @@ export const ToonFilm: React.FC<{ palette?: ToonPalette; bg?: string; children?:
     <TimelineContext.Provider value={input.timeline}>
       <RuntimeContext.Provider value={rt}>
         <AbsoluteFill>
-          <style>{CORE_CSS + landscape}</style>
+          <style>{CORE_CSS + COMIC_CSS + landscape}</style>
           <div id="v" style={{ ...(vars as React.CSSProperties), ...(bg ? { background: bg } : {}) }} data-w={W} data-h={H}>
             <div id="world">{children}</div>
             <div id="flash" />

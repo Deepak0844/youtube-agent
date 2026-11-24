@@ -32,6 +32,8 @@ export type Held = {
     dy?: number;
     s?: number;
     r?: number | ((t: number) => number);
+    /** Full control: where the held piece goes for time t, given the joint's position: [x, y, scale, rotation]. Replaces dx, dy, s and r. */
+    place?: (t: number, joint: [number, number]) => [number, number, number, number];
     node: React.ReactNode;
 };
 /**

@@ -32,3 +32,6 @@ html,body{margin:0;background:#000}
 .panel{border:10px solid var(--ink);border-radius:8px;overflow:hidden;box-shadow:12px 12px 0 rgba(0,0,0,.5)}
 .src{font:600 22px/1.3 var(--body);color:rgba(251,243,228,.7);letter-spacing:.02em}
 `;
+
+// Look shared by the comic episodes (their short.html): the sound word box. Always drawn after core.css.
+export const COMIC_CSS = `.word{font:400 150px/1 var(--comic);letter-spacing:.03em;color:#fff;-webkit-text-stroke:14px var(--ink);paint-order:stroke fill;filter:drop-shadow(8px 10px 0 var(--ink))}`;
