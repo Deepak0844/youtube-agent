@@ -1,0 +1,105 @@
+{
+ "timeline": {
+  "beats": [
+   {
+    "startS": 0.1,
+    "endS": 2.399,
+    "cap": "The map says: *traffic jam!*"
+   },
+   {
+    "startS": 2.519,
+    "endS": 4.518000000000001,
+    "cap": "But *who* told it?"
+   },
+   {
+    "startS": 4.837,
+    "endS": 7.635999999999999,
+    "cap": "Phones on the road share *where they are...*"
+   },
+   {
+    "startS": 7.756,
+    "endS": 10.355,
+    "cap": "...as *anonymous dots* with a speed."
+   },
+   {
+    "startS": 10.675,
+    "endS": 12.674000000000001,
+    "cap": "Fast dots: *green.*"
+   },
+   {
+    "startS": 12.793,
+    "endS": 14.792,
+    "cap": "Slow dots: *orange.*"
+   },
+   {
+    "startS": 14.912,
+    "endS": 16.911,
+    "cap": "Stuck dots: *RED!*"
+   },
+   {
+    "startS": 17.23,
+    "endS": 20.029,
+    "cap": "It checks the *usual* for this road and hour..."
+   },
+   {
+    "startS": 20.149,
+    "endS": 22.348,
+    "cap": "...and *predicts* what's next."
+   },
+   {
+    "startS": 22.668,
+    "endS": 25.866999999999997,
+    "cap": "2020, Berlin: an artist pulls *99 phones* in a wagon..."
+   },
+   {
+    "startS": 25.986,
+    "endS": 28.985,
+    "cap": "...down an *empty* street. The map shows a *jam!*"
+   },
+   {
+    "startS": 29.305,
+    "endS": 31.304,
+    "cap": "So *who* is the traffic?"
+   },
+   {
+    "startS": 31.424,
+    "endS": 35.423,
+    "cap": "*US!* Our phones."
+   }
+  ],
+  "scenes": [
+   {
+    "id": "hook",
+    "startS": 0,
+    "endS": 4.646
+   },
+   {
+    "id": "phones",
+    "startS": 4.646,
+    "endS": 10.483
+   },
+   {
+    "id": "colors",
+    "startS": 10.483,
+    "endS": 17.039
+   },
+   {
+    "id": "usual",
+    "startS": 17.039,
+    "endS": 22.476
+   },
+   {
+    "id": "twist",
+    "startS": 22.476,
+    "endS": 29.113
+   },
+   {
+    "id": "end",
+    "startS": 29.113,
+    "endS": 37.822
+   }
+  ]
+ },
+ "cast": [],
+ "orientation": "portrait"
+}
