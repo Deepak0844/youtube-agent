@@ -81,6 +81,7 @@ const eslintConfig = defineConfig([
     "remotion/kit/om/**",
     "remotion/kit/toon/upstream/**",
     "remotion/kit/om-types/**",
+    "remotion/kit/toon-types/**",
     // Remotion fixture: bundled by Remotion inside the render container, not by Next/tsc.
     "tests/fixtures/remotion-spike/**",
     "tests/fixtures/remotion-tsx/**",

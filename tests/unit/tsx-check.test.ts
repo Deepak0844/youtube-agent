@@ -41,11 +41,11 @@ const withLine = (line: string) => GOOD.replace("// A title that fades in.", () 
 const bad = (src: string) => {
   const r = checkTsx(src);
   expect(r.ok, `expected a problem for:\n${src.slice(0, 300)}`).toBe(false);
-  // retry feedback for the model: "rule: problem; alternative", at most 120 characters after the line prefix
+  // retry feedback for the model: "rule: problem; alternative", at most 130 characters after the line prefix (the import refusal lists every kit family)
   for (const p of r.problems) {
     const msg = p.replace(/^line [\d?]+: /, "");
     expect(msg, p).toMatch(/^[a-z]+( error)?: .+; .+/);
-    expect(msg.length, p).toBeLessThanOrEqual(120);
+    expect(msg.length, p).toBeLessThanOrEqual(130);
   }
   return r.problems.join("\n");
 };
