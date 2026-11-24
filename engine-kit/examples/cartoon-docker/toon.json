@@ -1,0 +1,105 @@
+{
+ "timeline": {
+  "beats": [
+   {
+    "startS": 0.1,
+    "endS": 2.399,
+    "cap": "It works on *MY* machine!"
+   },
+   {
+    "startS": 2.519,
+    "endS": 4.918,
+    "cap": "...but it *crashes* on the server."
+   },
+   {
+    "startS": 5.237,
+    "endS": 7.936,
+    "cap": "Different *OS.* A *missing* library."
+   },
+   {
+    "startS": 8.256,
+    "endS": 11.255,
+    "cap": "Docker packs the app *with everything* it needs."
+   },
+   {
+    "startS": 11.575,
+    "endS": 13.974,
+    "cap": "A *Dockerfile* is the recipe..."
+   },
+   {
+    "startS": 14.093,
+    "endS": 16.892,
+    "cap": "...it builds an *image*, layer by layer."
+   },
+   {
+    "startS": 17.212,
+    "endS": 19.411,
+    "cap": "*Push* it to a registry..."
+   },
+   {
+    "startS": 19.53,
+    "endS": 21.729,
+    "cap": "...*pull* it on any server..."
+   },
+   {
+    "startS": 21.849,
+    "endS": 24.448,
+    "cap": "...run it: *same box, same result!*"
+   },
+   {
+    "startS": 24.768,
+    "endS": 27.567,
+    "cap": "A virtual machine carries a *whole OS.*"
+   },
+   {
+    "startS": 27.686,
+    "endS": 30.685,
+    "cap": "Containers share *one kernel*: lighter, faster!"
+   },
+   {
+    "startS": 31.005,
+    "endS": 35.004,
+    "cap": "*Build once.* Run anywhere!"
+   }
+  ],
+  "scenes": [
+   {
+    "id": "hook",
+    "startS": 0,
+    "endS": 5.046
+   },
+   {
+    "id": "why",
+    "startS": 5.046,
+    "endS": 8.064
+   },
+   {
+    "id": "pack",
+    "startS": 8.064,
+    "endS": 11.383
+   },
+   {
+    "id": "recipe",
+    "startS": 11.383,
+    "endS": 17.02
+   },
+   {
+    "id": "ship",
+    "startS": 17.02,
+    "endS": 24.576
+   },
+   {
+    "id": "vm",
+    "startS": 24.576,
+    "endS": 30.813
+   },
+   {
+    "id": "end",
+    "startS": 30.813,
+    "endS": 37.404
+   }
+  ]
+ },
+ "cast": [],
+ "orientation": "portrait"
+}
