@@ -1,7 +1,8 @@
 // Exact-match proof for the cartoon kit (dev only; not in CI, no render in CI). Draws a frame every 0.5 s of an upstream cartoon-shorts episode
 // with cartoon-shorts' own renderer (headless Chrome) and the same frames of the yt-toon port (Remotion, same chromium settings as the app's
 // render), then prints the pixel difference. Writes .data/compare/toon/<name>/sheet.png (upstream | port per frame).
-//   npx tsx scripts/toon-compare.ts <upstreamEpisodeDir> <exampleDir> [--until <s>] [--from <s>] [--step <s>]
+//   npx tsx scripts/toon-compare.ts <upstreamEpisodeDir> <exampleDir> [--until <s>] [--from <s>] [--step <s>] [--stills]
+// --stills also writes <exampleDir>/stills/beat-NN.jpg (the port at the middle of every beat, 540 px wide) for the engine to look at.
 // <upstreamEpisodeDir> holds short.html, scenes.js, timeline.js (an episode made with cartoon-shorts); <exampleDir> holds video.tsx and
 // toon.json (the beats and scenes from timeline.js; written here when missing). Exit 1 when a frame's mean difference is over 2/255 (mean of
 // frames) or any frame is over 4/255. A failing frame is fixed in the kit, never by changing these numbers.
@@ -108,6 +109,16 @@ async function ours(tmp: string): Promise<string[]> {
     const f = path.join(tmp, `ours-${t}.png`);
     await renderStill({ composition, serveUrl, frame: Math.round(t * 30), output: f, imageFormat: "png", inputProps, chromiumOptions, overwrite: true });
     files.push(f);
+  }
+  if (args.includes("--stills")) {
+    const dir = path.join(exDir, "stills");
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    for (const [i, b] of (toon.timeline as { beats: { startS: number; endS: number }[] }).beats.entries()) {
+      const f = path.join(tmp, `still-${i}.png`);
+      await renderStill({ composition, serveUrl, frame: Math.min(total - 1, Math.round(((b.startS + b.endS) / 2) * 30)), output: f, imageFormat: "png", inputProps, chromiumOptions, overwrite: true });
+      execFileSync("ffmpeg", ["-v", "error", "-y", "-i", f, "-vf", "scale=540:-1", "-q:v", "4", path.join(dir, `beat-${String(i).padStart(2, "0")}.jpg`)]);
+    }
   }
   return files;
 }

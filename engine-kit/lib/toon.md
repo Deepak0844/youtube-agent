@@ -18,16 +18,29 @@ export declare const trf: (x: number, y: number, s?: number, r?: number) => stri
 export declare const ENTRANCE_PRESETS: readonly ["slam", "smash", "up", "down", "left", "right", "fade", "out", "pop", "stamp", "growx", "growy", "nudge", "wipe"];
 export type EntrancePreset = (typeof ENTRANCE_PRESETS)[number];
 export type Transition = "flash" | "zoom" | "whip" | "glitch" | "cut";
+/** A comic sound word: a burst star that pops in at `at` with the word on top, until `until`. Position is the centre of the word (stage units). */
+export type SoundWord = {
+    word: string;
+    x: number;
+    y: number;
+    rot: number;
+    at: string | number;
+    until: string | number;
+    fill?: string;
+    size?: number;
+};
 /**
  * One scene of the film: shown only between its start and its end (the scene id must be in the timeline), entered with `tr`.
  * `children` are drawn in the scene's SVG layer (1080 x 1920 portrait, 1920 x 1080 landscape) and move with <Camera>; `above` is SVG drawn over
- * that layer which the camera does not move (sound words, bursts); `overlays` are HTML text boxes (<Ov>) above both.
+ * that layer which the camera does not move; `words` are comic sound words (burst + word, above the camera); `overlays` are HTML text boxes
+ * (<Ov>), drawn over everything, after the sound words.
  */
 export declare const Scene: React.FC<{
     id: string;
     tr?: Transition;
     children?: React.ReactNode;
     above?: React.ReactNode;
+    words?: SoundWord[];
     overlays?: React.ReactNode;
 }>;
 /** `slam@B3+.2` style entrance list: one preset at a time or several ("slam" in, "out" later). */
@@ -36,12 +49,12 @@ export type EntranceStep = {
     at: string | number;
     dur?: number;
 };
-/** An HTML text box over the scene (titles, kickers, labels, cards). `css` is the box's position and look, e.g. "left:0;right:0;top:300px;text-align:center". */
+/** An HTML text box over the scene (titles, kickers, labels, cards). `css` is the box's position and look, e.g. "left:0;right:0;top:300px;text-align:center"; `during` shows it only in a window of marks ("B2..B4e"). */
 export declare const Ov: React.FC<{
     css?: string;
     cls?: string;
     enter?: EntranceStep[];
-    on?: string;
+    during?: string;
     fit?: boolean;
     children?: React.ReactNode;
 }>;
@@ -324,7 +337,7 @@ export {};
 
 ## yt-toon/comic
 
-`import { EASE, P, Puppet, cycle, mix, track } from "yt-toon/comic";`
+`import { EASE, Follow, P, Puppet, cycle, mix, pose, track } from "yt-toon/comic";`
 
 ```ts
 import React from "react";
@@ -345,6 +358,8 @@ export declare const cycle: (phase: number, amp?: number, kind?: "run" | "walk" 
 /** A value that moves through keys [[seconds, value, ease?], ...] (numbers, arrays or poses). */
 export declare const track: <V>(keys: [number, V, string?][]) => (t: number) => V;
 export declare const EASE: Record<string, (x: number) => number>;
+/** Pose `over` on top of pose `base`: pose(P.stand, { face: "grin" }). */
+export declare const pose: (base: Pose, over: Pose) => Pose;
 /** Where a puppet is and how it stands at one moment. `dir` -1 faces left; `s` is the scale. */
 export type PuppetFrame = {
     pose: Pose;
@@ -354,25 +369,32 @@ export type PuppetFrame = {
     s?: number;
 };
 export type PuppetOptions = Record<string, string | number | boolean | null>;
-/** A thing the puppet holds or wears at a joint: an SVG child moved with it (e.g. a phone in the hand). `at` is a joint name: hand, fhand, head, neck, hip, foot, ffoot, knee, elbow, shoulder. */
-export type Held = {
-    at: "hand" | "fhand" | "head" | "neck" | "hip" | "foot" | "ffoot" | "knee" | "elbow" | "shoulder" | "fshoulder";
-    dx?: number;
-    dy?: number;
-    s?: number;
-    r?: number | ((t: number) => number);
-    /** Full control: where the held piece goes for time t, given the joint's position: [x, y, scale, rotation]. Replaces dx, dy, s and r. */
-    place?: (t: number, joint: [number, number]) => [number, number, number, number];
-    node: React.ReactNode;
-};
+/** Joint names a puppet can report: hand, fhand (far hand), head, neck, hip, foot, ffoot, knee, elbow, shoulder, fshoulder. */
+export type Joint = "hand" | "fhand" | "head" | "neck" | "hip" | "foot" | "ffoot" | "knee" | "elbow" | "shoulder" | "fshoulder";
 /**
  * One character. `who` takes the look from the series cast (ref/cast.json); `options` is a one-off look (or overrides): the puppet
  * options of cartoon-shorts (skin, skinD, hair, hairStyle, top, shirt, shirtD, tie, pants, shoe, beard, cap, glasses, kid, build...).
+ * `id` lets a <Follow> hold a prop at one of its joints.
  */
 export declare const Puppet: React.FC<{
+    id?: string;
     who?: string;
     options?: PuppetOptions;
     act: (t: number) => PuppetFrame;
-    held?: Held[];
+}>;
+/**
+ * Holds its children (a phone, a cup, a letter) at a joint of the puppet with this `id`, drawn where you write it (so put it after
+ * the puppet, and after anything that should cover the prop's z-order). `place` gives where it goes at time t: [x, y, scale, rotation].
+ * Show or hide the children yourself (style display) for the times the prop is not in hand.
+ */
+export declare const Follow: React.FC<{
+    of: string;
+    at?: Joint;
+    dx?: number;
+    dy?: number;
+    s?: number;
+    r?: number;
+    place?: (t: number, joint: [number, number]) => [number, number, number, number];
+    children?: React.ReactNode;
 }>;
 ```

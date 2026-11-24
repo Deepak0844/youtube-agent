@@ -29,67 +29,69 @@ export const cycle = lib.cycle;
 export const track = lib.track;
 export const EASE = lib.EASE;
 
+/** Pose `over` on top of pose `base`: pose(P.stand, { face: "grin" }). */
+export const pose = (base: Pose, over: Pose): Pose => ({ ...base, ...over });
+
 /** Where a puppet is and how it stands at one moment. `dir` -1 faces left; `s` is the scale. */
 export type PuppetFrame = { pose: Pose; x: number; y: number; dir?: 1 | -1; s?: number };
 export type PuppetOptions = Record<string, string | number | boolean | null>;
-/** A thing the puppet holds or wears at a joint: an SVG child moved with it (e.g. a phone in the hand). `at` is a joint name: hand, fhand, head, neck, hip, foot, ffoot, knee, elbow, shoulder. */
-export type Held = {
-  at: "hand" | "fhand" | "head" | "neck" | "hip" | "foot" | "ffoot" | "knee" | "elbow" | "shoulder" | "fshoulder";
-  dx?: number;
-  dy?: number;
-  s?: number;
-  r?: number | ((t: number) => number);
-  /** Full control: where the held piece goes for time t, given the joint's position: [x, y, scale, rotation]. Replaces dx, dy, s and r. */
-  place?: (t: number, joint: [number, number]) => [number, number, number, number];
-  node: React.ReactNode;
+/** Joint names a puppet can report: hand, fhand (far hand), head, neck, hip, foot, ffoot, knee, elbow, shoulder, fshoulder. */
+export type Joint = "hand" | "fhand" | "head" | "neck" | "hip" | "foot" | "ffoot" | "knee" | "elbow" | "shoulder" | "fshoulder";
+
+// puppets of this film by id, so a <Follow> can find the one it follows (a Follow must be written after its Puppet)
+type Rig = { at(j: string): number[] };
+const registry = (rt: { win: Record<string, unknown> }): Map<string, Rig> => {
+  const w = rt.win as { __puppets?: Map<string, Rig> };
+  return (w.__puppets ??= new Map());
 };
 
 /**
  * One character. `who` takes the look from the series cast (ref/cast.json); `options` is a one-off look (or overrides): the puppet
  * options of cartoon-shorts (skin, skinD, hair, hairStyle, top, shirt, shirtD, tie, pants, shoe, beard, cap, glasses, kid, build...).
+ * `id` lets a <Follow> hold a prop at one of its joints.
  */
-export const Puppet: React.FC<{ who?: string; options?: PuppetOptions; act: (t: number) => PuppetFrame; held?: Held[] }> = ({ who, options, act, held = [] }) => {
+export const Puppet: React.FC<{ id?: string; who?: string; options?: PuppetOptions; act: (t: number) => PuppetFrame }> = ({ id, who, options, act }) => {
   const rt = useRuntime();
   const input = useContext(ToonContext);
   const ref = useRef<SVGGElement>(null);
-  const heldRefs = useRef<(SVGGElement | null)[]>([]);
   const actRef = useRef(act);
-  const heldRef = useRef(held);
   useLayoutEffect(() => {
     actRef.current = act;
-    heldRef.current = held;
   });
   useSceneId();
   useToonBuild(() => {
     const member: ToonCharacter | undefined = who ? input?.cast.find((c) => c.name === who) : undefined;
     if (who && !member && !options) throw new Error(`cast: '${who}' is not in the cast (${(input?.cast ?? []).map((c) => c.name).join(", ") || "empty"})`);
     const puppet = new rt.Toon(ref.current, { ...(member?.options ?? {}), ...(options ?? {}) });
-    // the held layers draw after the puppet (on top of it), each in its own group moved to the joint every frame
+    if (id) registry(rt).set(id, puppet);
     rt.short.ups.push((t: number) => {
       const f = actRef.current(t);
       puppet.set({ ...f.pose }, f.x, f.y, f.dir ?? 1, f.s ?? 1, t);
-      heldRef.current.forEach((h, i) => {
-        const el = heldRefs.current[i];
-        if (!el) return;
-        const p = puppet.at(h.at);
-        if (h.place) {
-          const q = h.place(t, [p[0], p[1]]);
-          rt.short.tr(el, q[0], q[1], q[2], q[3]);
-        } else {
-          const r = typeof h.r === "function" ? h.r(t) : (h.r ?? 0);
-          rt.short.tr(el, p[0] + (h.dx ?? 0), p[1] + (h.dy ?? 0), h.s ?? 1, r);
-        }
-      });
     });
   });
-  return (
-    <>
-      <g ref={ref} />
-      {held.map((h, i) => (
-        <g key={i} ref={(el) => void (heldRefs.current[i] = el)}>
-          {h.node}
-        </g>
-      ))}
-    </>
-  );
+  return <g ref={ref} />;
+};
+
+/**
+ * Holds its children (a phone, a cup, a letter) at a joint of the puppet with this `id`, drawn where you write it (so put it after
+ * the puppet, and after anything that should cover the prop's z-order). `place` gives where it goes at time t: [x, y, scale, rotation].
+ * Show or hide the children yourself (style display) for the times the prop is not in hand.
+ */
+export const Follow: React.FC<{ of: string; at?: Joint; dx?: number; dy?: number; s?: number; r?: number; place?: (t: number, joint: [number, number]) => [number, number, number, number]; children?: React.ReactNode }> = ({ of, at = "hand", dx = 0, dy = 0, s = 1, r = 0, place, children }) => {
+  const rt = useRuntime();
+  const ref = useRef<SVGGElement>(null);
+  const placeRef = useRef(place);
+  useLayoutEffect(() => {
+    placeRef.current = place;
+  });
+  useToonBuild(() => {
+    rt.short.ups.push((t: number) => {
+      const puppet = registry(rt).get(of);
+      if (!puppet || !ref.current) return;
+      const p = puppet.at(at);
+      const q = placeRef.current ? placeRef.current(t, [p[0]!, p[1]!]) : [p[0]! + dx, p[1]! + dy, s, r];
+      rt.short.tr(ref.current, q[0], q[1], q[2], q[3]);
+    });
+  });
+  return <g ref={ref}>{children}</g>;
 };
