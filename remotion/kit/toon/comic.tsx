@@ -95,3 +95,39 @@ export const Follow: React.FC<{ of: string; at?: Joint; dx?: number; dy?: number
   });
   return <g ref={ref}>{children}</g>;
 };
+
+/**
+ * A line from a joint of the puppet with this `id` to wherever `to` says for time t (a fishing rod, a catching pole), with an optional ring at
+ * its tip. Draw it where it should sit in the stack, after the puppet.
+ */
+export const Tether: React.FC<{ of: string; at?: Joint; to: (t: number, joint: [number, number]) => [number, number]; stroke: string; width: number; tip?: { r: number; stroke: string; width: number } }> = ({ of, at = "hand", to, stroke, width, tip }) => {
+  const rt = useRuntime();
+  const line = useRef<SVGLineElement>(null);
+  const ring = useRef<SVGCircleElement>(null);
+  const toRef = useRef(to);
+  useLayoutEffect(() => {
+    toRef.current = to;
+  });
+  useToonBuild(() => {
+    rt.short.ups.push((t: number) => {
+      const puppet = registry(rt).get(of);
+      if (!puppet || !line.current) return;
+      const h = puppet.at(at);
+      const e = toRef.current(t, [h[0]!, h[1]!]);
+      line.current.setAttribute("x1", String(h[0]));
+      line.current.setAttribute("y1", String(h[1]));
+      line.current.setAttribute("x2", String(e[0]));
+      line.current.setAttribute("y2", String(e[1]));
+      if (ring.current) {
+        ring.current.setAttribute("cx", String(e[0]));
+        ring.current.setAttribute("cy", String(e[1]));
+      }
+    });
+  });
+  return (
+    <>
+      <line ref={line} stroke={stroke} strokeWidth={width} strokeLinecap="round" />
+      {tip ? <circle ref={ring} r={tip.r} fill="none" stroke={tip.stroke} strokeWidth={tip.width} /> : null}
+    </>
+  );
+};

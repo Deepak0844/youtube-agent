@@ -4,7 +4,7 @@ import { CamRig, Rays, Skyline, Stars, Streetlight } from "yt-toon/fx";
 import { Follow, P, Puppet, cycle, mix, pose } from "yt-toon/comic";
 
 // Where does your ₹20 go? A UPI payment as a comic short (cartoon-shorts, comic style). Every time is a beat mark (B0..B13) or a scene id.
-export const meta = { durationInFrames: 1243, fps: 30, width: 1080, height: 1920 };
+export const meta = { durationInFrames: 1244, fps: 30, width: 1080, height: 1920 };
 
 const OL = "#17111b";
 const blink = (t: number) => (((t + 0.4) % 3.3) < 0.09 ? 1 : 0);
