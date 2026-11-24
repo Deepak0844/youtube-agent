@@ -28,6 +28,9 @@ describe("parseSeriesForm", () => {
     expect(r).toMatchObject({ ok: true, value: { settings: { style: "flat_motion", captionStyle: "punchy_captions", voice: "abc_123" } } });
     expect(parseSeriesForm(form({ title: "Series one", voice: "bad voice!" }))).toMatchObject({ ok: false });
   });
+  it("accepts a cartoon style for a series", () => {
+    expect(parseSeriesForm(form({ title: "Series one", style: "cartoon_paper" }))).toMatchObject({ ok: true, value: { settings: { style: "cartoon_paper" } } });
+  });
   it("rejects a channel id with odd characters", () => {
     expect(parseSeriesForm(form({ title: "Series one", channel: "a b;" }))).toMatchObject({ ok: false });
   });

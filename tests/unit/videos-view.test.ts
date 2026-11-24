@@ -46,6 +46,21 @@ describe("parseNewVideoForm: collage", () => {
   });
 });
 
+describe("parseNewVideoForm: cartoon styles", () => {
+  it("a code-scene Short or long video may pick a cartoon style", () => {
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", style: "cartoon_comic" }))).toMatchObject({ ok: true, value: { kind: "tsx", format: "short", style: "cartoon_comic" } });
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", format: "long", style: "cartoon_painted" }))).toMatchObject({ ok: true, value: { format: "long", style: "cartoon_painted" } });
+  });
+  it("other video types refuse a cartoon style", () => {
+    for (const kind of ["montage", "collage", "ai"]) {
+      expect(parseNewVideoForm(form({ topic: "x", language: "en", kind, style: "cartoon_comic" }))).toEqual({ ok: false, message: "Cartoon styles are for code-scene videos." });
+    }
+  });
+  it("an unknown style is still refused", () => {
+    expect(parseNewVideoForm(form({ topic: "x", language: "en", kind: "tsx", style: "cartoon_nope" }))).toMatchObject({ ok: false });
+  });
+});
+
 describe("parseNewVideoForm: AI videos", () => {
   const id = "0190f3a2-7c1e-7a55-9d3b-2f6c8a1b4e91";
   it("is a Short with an optional locked character and the usual look", () => {

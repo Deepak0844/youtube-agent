@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { LOOKS } from "../../../../../remotion/kit/look";
 import { PRESETS, STYLE_IDS } from "../../../../../remotion/kit/presets";
+import { CARTOON_INFO, CARTOON_LOOKS, CARTOON_STYLE_IDS, cartoonStyleModule } from "../../../../../remotion/kit/toon/styles";
 import { TSX_LONG_MAX_MINUTES } from "@/server/core/long-form";
 import { LANGUAGE_ORDER, LANGUAGE_WORDS } from "@/server/core/videos-view";
 import { cn, control, fade, focusRing } from "@/ui/lib/cn";
@@ -174,6 +175,29 @@ export function NewForm({ maxLongMinutes, aiNote, characters, channels = [], ini
             </label>
           ))}
         </div>
+        {custom ? (
+          <>
+            <p aria-hidden className={cardTitle}>Cartoon</p>
+            <p className="m-0 text-small text-muted">Cartoon looks draw puppets and set pieces in the style of cartoon-shorts, with the app&apos;s own narration. They use more of the Claude limit.</p>
+            <div data-testid="cartoon-styles" className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
+              {CARTOON_STYLE_IDS.map((id) => {
+                const info = CARTOON_INFO[id];
+                const look = CARTOON_LOOKS[cartoonStyleModule(id)];
+                return (
+                  <label key={id} className="relative flex min-w-0 cursor-pointer flex-col gap-2 rounded-card border border-border bg-page p-2 has-checked:outline-2 has-checked:outline has-focus-visible:outline-2 has-focus-visible:outline-offset-2">
+                    <input type="radio" name="style" value={id} checked={style === id} onChange={() => setPicked(id)} className="sr-only" />
+                    <span aria-hidden className="flex h-3 overflow-hidden rounded-full border border-rule">
+                      {[look.bg, look.palette.ink ?? look.bg, look.palette.gold ?? look.bg, look.palette.red ?? look.bg].map((c, i) => <span key={i} className="flex-1" style={{ background: c }} />)}
+                    </span>
+                    <span className="text-body font-medium">{info.label}</span>
+                    <span className="text-small text-muted">{info.mood}</span>
+                    <span className="text-small text-faint">Best for: {info.bestFor}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
       </fieldset>
       <label className="flex items-start gap-3 text-body xl:col-span-2">
         <input type="checkbox" name="captionStyle" value="punchy_captions" disabled={custom} className="mt-1" />

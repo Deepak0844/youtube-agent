@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { CAPTION_STYLE_IDS, STYLE_IDS } from "../../../../../remotion/kit/presets";
+import { CARTOON_INFO, CARTOON_STYLE_IDS } from "../../../../../remotion/kit/toon/styles";
 import { LANGUAGE_ORDER, LANGUAGE_WORDS } from "@/server/core/videos-view";
 import { cn, control, fade, focusRing } from "@/ui/lib/cn";
 import { Button } from "@/ui/primitives/button";
@@ -57,6 +58,11 @@ export function NewSeriesForm({ channels }: { channels: ReadonlyArray<{ channelI
           {STYLE_IDS.map((s) => (
             <option key={s} value={s}>{words(s)}</option>
           ))}
+          <optgroup label="Cartoon">
+            {CARTOON_STYLE_IDS.map((s) => (
+              <option key={s} value={s}>{CARTOON_INFO[s].label}</option>
+            ))}
+          </optgroup>
         </select>
       </div>
       <div className="flex flex-col gap-2">

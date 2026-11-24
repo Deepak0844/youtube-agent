@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CAPTION_STYLE_IDS, STYLE_IDS } from "../../../remotion/kit/presets";
+import { CARTOON_STYLE_IDS, isCartoonStyle } from "../../../remotion/kit/toon/styles";
 import { LANGS } from "@/server/core/lang";
 import { LONG_DEFAULT_RANGE } from "@/server/core/long-form";
 
@@ -63,6 +64,9 @@ export function ageLabel(then: Date, now: Date = new Date()): string {
   return `${Math.floor(s / 86_400)} d ago`;
 }
 
+/** Every look a video can pick: the ten code-scene styles and the five cartoon styles (cartoon styles only for code-scene videos). */
+export const ALL_STYLE_IDS = [...STYLE_IDS, ...CARTOON_STYLE_IDS] as const;
+
 export const newVideoSchema = z.object({
   topic: z.string().trim().min(1, "Enter a topic.").max(200, "Keep the topic to 200 characters or fewer."),
   language: z.enum(LANGS, "Pick a narration language."),
@@ -73,7 +77,7 @@ export const newVideoSchema = z.object({
   maxMinutes: z.coerce.number().optional(),
   notes: z.string().trim().max(2000, "Keep the notes to 2000 characters or fewer.").optional(),
   // Empty or missing = the default look (stored as null).
-  style: z.enum(STYLE_IDS, "Pick one of the listed styles.").optional(),
+  style: z.enum(ALL_STYLE_IDS, "Pick one of the listed styles.").optional(),
   captionStyle: z.enum(CAPTION_STYLE_IDS, "Pick a listed caption style.").optional(),
   // Montage only: the colour grade. Empty = the default (film).
   grade: z.enum(["film", "warm", "cool", "mono"], "Pick a listed colour grade.").optional(),
@@ -92,6 +96,8 @@ export type NewVideoInput = Omit<z.infer<typeof newVideoSchema>, "minMinutes" | 
 export function parseNewVideoForm(form: FormData): { ok: true; value: NewVideoInput } | { ok: false; message: string } {
   const g = (k: string) => (typeof form.get(k) === "string" ? (form.get(k) as string) : undefined);
   const r = newVideoSchema.safeParse({ topic: g("topic"), language: g("language"), kind: g("kind") ?? "tsx", format: g("format") ?? "short", notes: g("notes") || undefined, character: g("character") || undefined, style: g("style") || undefined, captionStyle: g("captionStyle") || undefined, grade: g("grade") || undefined, minMinutes: g("minMinutes") || undefined, maxMinutes: g("maxMinutes") || undefined });
+  // Cartoon styles draw with code scenes: no other video type takes one.
+  if (r.success && r.data.kind !== "tsx" && isCartoonStyle(r.data.style)) return { ok: false, message: "Cartoon styles are for code-scene videos." };
   // A long video is a Custom animation only (one code scene per chapter). The other types stay Shorts.
   if (r.success && r.data.format === "long" && r.data.kind !== "tsx") return { ok: false, message: "Only a Custom animation can be a long video. Pick that type, or pick Short." };
   // Custom animation (tsx) burns its own captions: the caption picker does not apply. The style does (it shapes the TSX look).
@@ -137,7 +143,7 @@ export function versionInput(src: VersionSource, kind: unknown): { ok: true; val
   if (!(LANGS as readonly string[]).includes(src.language)) return { ok: false, message: "This video has an unknown language." };
   const k = kind as (typeof VERSION_KINDS)[number];
   const base = { topic: src.topic, language: src.language as (typeof LANGS)[number], kind: k, format: "short" as const, notes: src.notes ?? undefined };
-  const style = src.style && (STYLE_IDS as readonly string[]).includes(src.style) ? (src.style as (typeof STYLE_IDS)[number]) : undefined;
+  const style = src.style && (ALL_STYLE_IDS as readonly string[]).includes(src.style) ? (src.style as (typeof ALL_STYLE_IDS)[number]) : undefined;
   if (k === "tsx") return { ok: true, value: { ...base, ...(style ? { style } : {}) } };
-  return { ok: true, value: base };
+  return { ok: true, value: base }; // a cartoon style stays with code scenes
 }
