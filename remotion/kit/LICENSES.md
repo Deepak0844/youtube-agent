@@ -26,10 +26,12 @@ Read from files on disk 2026-10-31. Versions: infra/Dockerfile.render (image) an
 | cartoon-shorts (drawing code in `remotion/kit/toon/upstream/`) | commit in `engine-kit/cartoon-shorts/MANIFEST.json` | Cartoon styles (`yt-toon`): puppets, set pieces, timeline, five styles | MIT, Copyright (c) 2026 Matteoikarieth96 | https://github.com/Matteoikarieth96/cartoon-shorts | Copyright and permission notice must stay with copies | Met: `engine-kit/cartoon-shorts/LICENSE`, header notes in the copied files, MANIFEST lists every file and local patch. |
 | Natural Earth 110m | rounded to 0.5 deg | remotion/kit/world.ts | Public domain | https://www.naturalearthdata.com/about/terms-of-use/ | Nothing | Met (section above). |
 | Chess piece glyphs | original | remotion/kit/Chess.tsx | Own work | n/a | Nothing. Old kit used the cburnett set (GPL/BSD/GFDL tri-licence, not CC0/MIT/CC-BY), so it was NOT copied. | Met. |
-| SFX library (4 clips) | assets-builtin/audio/sfx | Post-mix SFX | See below | catalog.json | See below | See below |
-| Music library (0 clips) | assets-builtin/audio/music | Background beds | See below | catalog.json | See below | See below |
+| SFX library (23 clips + 27 toon-*) | assets-builtin/audio/sfx | Post-mix SFX | See below | catalog.json | See below | See below |
+| Music library (10 toon-* loops) | assets-builtin/audio/music | Background beds | See below | catalog.json | See below | See below |
 
-## Audio provenance (assets-builtin/audio, 4 mp3 clips, 4 json)
+## Audio provenance (assets-builtin/audio)
+
+- ADDED on 2026-11-24: 27 comic sound effects and 10 music loops (`toon-*`), generated locally by `scripts/toon-sound-pack.ts` from cartoon-shorts' own numpy synth (`engine/audio.py`, MIT, Copyright (c) 2026 Matteoikarieth96). No samples, no third-party audio; the licence is in each catalog entry and in `assets-builtin/audio/sfx/LICENCES.md`.
 
 - REMOVED on 2026-11-03: 35 clips (29 SFX + 6 music) generated with an ElevenLabs account, because their licence was not guaranteed (no plan name, no date). Nothing from ElevenLabs ships any more.
 - REMAIN: 4 clips (piano-c-maj, piano-g-maj, piano-a-min, piano-f-maj), `source` = gen_chords.py deterministic synth. Own work, no third-party terms. The generator script is not in the repo; the catalog entry is the only evidence.

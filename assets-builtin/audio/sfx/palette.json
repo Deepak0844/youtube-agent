@@ -2,7 +2,7 @@
   "note": "Generation recipes for the shared SFX library (assets/sfx/). SOURCE OF TRUTH for what the library should contain: one entry per reusable, generically-named sound. tools/gen_sfx.py reads this, generates any MISSING clip via the ElevenLabs Sound Effects API, loudness-normalizes it, and writes assets/sfx/catalog.json. Organized by FUNCTION (what the sound's JOB is), after the pro-editor model (see brand.md §10): motion (whoosh) · tension (riser) · emphasis (impact/reveal) · snap (click). page-flip + chime-reward are brand-specific extras. Brand taste: calm/premium (Linear/Anthropic/Vercel) — soft, understated, felt-not-heard; we take the pro's STRUCTURE + layering but keep our restraint (no cymbal-urgency risers, no trailer slams).",
   "defaults": {
     "prompt_influence": 0.45,
-    "target_lufs": -20.0,
+    "target_lufs": -20,
     "ceiling_dbfs": -1.5,
     "model": "eleven_text_to_sound_v2"
   },
@@ -53,7 +53,7 @@
     {
       "id": "impact-soft",
       "category": "emphasis",
-      "duration_s": 1.0,
+      "duration_s": 1,
       "tags": [
         "impact",
         "hit",
@@ -413,7 +413,7 @@
     {
       "id": "launch-thump",
       "category": "impact",
-      "duration_s": 1.0,
+      "duration_s": 1,
       "tags": [
         "cannon",
         "launch",
@@ -424,6 +424,412 @@
         "physics"
       ],
       "prompt": "A deep muffled launch thump, like a distant mortar or a rocket igniting far away: a soft round low-frequency push with a short body and a gentle tail. Warm and restrained, no sharp crack, no explosion debris, no reverb tail of a war film. Dry, clean, close to a felt mallet on a large drum."
+    },
+    {
+      "id": "toon-bell",
+      "category": "chime",
+      "duration_s": 2.49,
+      "tags": [
+        "bell",
+        "school",
+        "ring",
+        "alarm",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a school bell ringing."
+    },
+    {
+      "id": "toon-bounce",
+      "category": "motion",
+      "duration_s": 1.67,
+      "tags": [
+        "bounce",
+        "boing",
+        "spring",
+        "rubber",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a rubber bounce."
+    },
+    {
+      "id": "toon-buzzer",
+      "category": "emphasis",
+      "duration_s": 2.72,
+      "tags": [
+        "buzzer",
+        "wrong",
+        "no",
+        "error",
+        "nope",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a wrong-answer buzzer."
+    },
+    {
+      "id": "toon-chop",
+      "category": "snap",
+      "duration_s": 0.75,
+      "tags": [
+        "chop",
+        "knife",
+        "cut",
+        "kitchen",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: one knife chop."
+    },
+    {
+      "id": "toon-chops",
+      "category": "snap",
+      "duration_s": 2.57,
+      "tags": [
+        "chops",
+        "knife",
+        "chopping",
+        "kitchen",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a run of knife chops."
+    },
+    {
+      "id": "toon-cymbal",
+      "category": "emphasis",
+      "duration_s": 5.04,
+      "tags": [
+        "cymbal",
+        "crash",
+        "finale",
+        "big",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a crash cymbal swell."
+    },
+    {
+      "id": "toon-ding",
+      "category": "chime",
+      "duration_s": 2.36,
+      "tags": [
+        "ding",
+        "bell",
+        "received",
+        "correct",
+        "notification",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a small bright bell: payment received, a correct answer."
+    },
+    {
+      "id": "toon-flash",
+      "category": "motion",
+      "duration_s": 1.65,
+      "tags": [
+        "flash",
+        "zap",
+        "photo",
+        "light",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a camera flash zap."
+    },
+    {
+      "id": "toon-heartbeat",
+      "category": "tension",
+      "duration_s": 2.25,
+      "tags": [
+        "heartbeat",
+        "thump",
+        "nervous",
+        "tension",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a heartbeat thump."
+    },
+    {
+      "id": "toon-hit",
+      "category": "impact",
+      "duration_s": 1.92,
+      "tags": [
+        "hit",
+        "punch",
+        "thud",
+        "comic",
+        "toon",
+        "cartoon"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a short comic hit."
+    },
+    {
+      "id": "toon-impact",
+      "category": "impact",
+      "duration_s": 3.41,
+      "tags": [
+        "impact",
+        "boom",
+        "slam",
+        "crash",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a big comic impact."
+    },
+    {
+      "id": "toon-kick",
+      "category": "impact",
+      "duration_s": 1.78,
+      "tags": [
+        "kick",
+        "drum",
+        "beat",
+        "thump",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a kick drum."
+    },
+    {
+      "id": "toon-plop",
+      "category": "motion",
+      "duration_s": 1.66,
+      "tags": [
+        "plop",
+        "drop",
+        "water",
+        "land",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a drop landing in water or a basket."
+    },
+    {
+      "id": "toon-pop",
+      "category": "snap",
+      "duration_s": 1.69,
+      "tags": [
+        "pop",
+        "appear",
+        "bubble",
+        "reveal",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a small pop: something appears."
+    },
+    {
+      "id": "toon-pour",
+      "category": "motion",
+      "duration_s": 2.03,
+      "tags": [
+        "pour",
+        "liquid",
+        "water",
+        "kitchen",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: liquid poured."
+    },
+    {
+      "id": "toon-riser",
+      "category": "tension",
+      "duration_s": 2.83,
+      "tags": [
+        "riser",
+        "build",
+        "tension",
+        "reveal",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a rising whoosh into a reveal."
+    },
+    {
+      "id": "toon-rewind",
+      "category": "motion",
+      "duration_s": 3.21,
+      "tags": [
+        "rewind",
+        "tape",
+        "back",
+        "undo",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a tape rewind."
+    },
+    {
+      "id": "toon-sizzle",
+      "category": "ambience",
+      "duration_s": 2.82,
+      "tags": [
+        "sizzle",
+        "fry",
+        "pan",
+        "kitchen",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: food sizzling in a pan."
+    },
+    {
+      "id": "toon-sparkle",
+      "category": "chime",
+      "duration_s": 2.12,
+      "tags": [
+        "sparkle",
+        "magic",
+        "shine",
+        "twinkle",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a magic sparkle."
+    },
+    {
+      "id": "toon-squeak",
+      "category": "snap",
+      "duration_s": 1.31,
+      "tags": [
+        "squeak",
+        "worry",
+        "mouse",
+        "funny",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a comic squeak."
+    },
+    {
+      "id": "toon-sub",
+      "category": "impact",
+      "duration_s": 2.15,
+      "tags": [
+        "sub",
+        "bass",
+        "drop",
+        "deep",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a deep sub drop."
+    },
+    {
+      "id": "toon-swish",
+      "category": "motion",
+      "duration_s": 1.19,
+      "tags": [
+        "swish",
+        "swoosh",
+        "fast",
+        "pass",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a quick swish."
+    },
+    {
+      "id": "toon-taiko",
+      "category": "impact",
+      "duration_s": 2.16,
+      "tags": [
+        "taiko",
+        "drum",
+        "epic",
+        "big",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a taiko drum hit."
+    },
+    {
+      "id": "toon-tick",
+      "category": "snap",
+      "duration_s": 1.65,
+      "tags": [
+        "tick",
+        "clock",
+        "time",
+        "click",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a clock tick."
+    },
+    {
+      "id": "toon-trumpet",
+      "category": "emphasis",
+      "duration_s": 3.31,
+      "tags": [
+        "trumpet",
+        "fanfare",
+        "win",
+        "announce",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a short trumpet fanfare call."
+    },
+    {
+      "id": "toon-typewriter",
+      "category": "snap",
+      "duration_s": 2.93,
+      "tags": [
+        "typewriter",
+        "typing",
+        "keys",
+        "text",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: typewriter keys."
+    },
+    {
+      "id": "toon-whoosh",
+      "category": "motion",
+      "duration_s": 1.44,
+      "tags": [
+        "whoosh",
+        "cut",
+        "transition",
+        "air",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a scene-cut whoosh."
     }
   ]
 }

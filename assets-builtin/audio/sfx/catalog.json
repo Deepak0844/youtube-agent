@@ -420,6 +420,520 @@
       "duration_s": 0.95,
       "source": "gen_whoosh.py (synthetic noise)",
       "recipe": "whoosh-reverse"
+    },
+    {
+      "id": "toon-bell",
+      "file": "clips/toon-bell.mp3",
+      "category": "chime",
+      "desc": "toon-bell — a school bell ringing (cartoon styles)",
+      "tags": [
+        "bell",
+        "school",
+        "ring",
+        "alarm",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.49,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-bell"
+    },
+    {
+      "id": "toon-bounce",
+      "file": "clips/toon-bounce.mp3",
+      "category": "motion",
+      "desc": "toon-bounce — a rubber bounce (cartoon styles)",
+      "tags": [
+        "bounce",
+        "boing",
+        "spring",
+        "rubber",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 1.67,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-bounce"
+    },
+    {
+      "id": "toon-buzzer",
+      "file": "clips/toon-buzzer.mp3",
+      "category": "emphasis",
+      "desc": "toon-buzzer — a wrong-answer buzzer (cartoon styles)",
+      "tags": [
+        "buzzer",
+        "wrong",
+        "no",
+        "error",
+        "nope",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.72,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-buzzer"
+    },
+    {
+      "id": "toon-chop",
+      "file": "clips/toon-chop.mp3",
+      "category": "snap",
+      "desc": "toon-chop — one knife chop (cartoon styles)",
+      "tags": [
+        "chop",
+        "knife",
+        "cut",
+        "kitchen",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 0.75,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-chop"
+    },
+    {
+      "id": "toon-chops",
+      "file": "clips/toon-chops.mp3",
+      "category": "snap",
+      "desc": "toon-chops — a run of knife chops (cartoon styles)",
+      "tags": [
+        "chops",
+        "knife",
+        "chopping",
+        "kitchen",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.57,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-chops"
+    },
+    {
+      "id": "toon-cymbal",
+      "file": "clips/toon-cymbal.mp3",
+      "category": "emphasis",
+      "desc": "toon-cymbal — a crash cymbal swell (cartoon styles)",
+      "tags": [
+        "cymbal",
+        "crash",
+        "finale",
+        "big",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 5.04,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-cymbal"
+    },
+    {
+      "id": "toon-ding",
+      "file": "clips/toon-ding.mp3",
+      "category": "chime",
+      "desc": "toon-ding — a small bright bell: payment received, a correct answer (cartoon styles)",
+      "tags": [
+        "ding",
+        "bell",
+        "received",
+        "correct",
+        "notification",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.36,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-ding"
+    },
+    {
+      "id": "toon-flash",
+      "file": "clips/toon-flash.mp3",
+      "category": "motion",
+      "desc": "toon-flash — a camera flash zap (cartoon styles)",
+      "tags": [
+        "flash",
+        "zap",
+        "photo",
+        "light",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 1.65,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-flash"
+    },
+    {
+      "id": "toon-heartbeat",
+      "file": "clips/toon-heartbeat.mp3",
+      "category": "tension",
+      "desc": "toon-heartbeat — a heartbeat thump (cartoon styles)",
+      "tags": [
+        "heartbeat",
+        "thump",
+        "nervous",
+        "tension",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.25,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-heartbeat"
+    },
+    {
+      "id": "toon-hit",
+      "file": "clips/toon-hit.mp3",
+      "category": "impact",
+      "desc": "toon-hit — a short comic hit (cartoon styles)",
+      "tags": [
+        "hit",
+        "punch",
+        "thud",
+        "comic",
+        "toon",
+        "cartoon"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 1.92,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-hit"
+    },
+    {
+      "id": "toon-impact",
+      "file": "clips/toon-impact.mp3",
+      "category": "impact",
+      "desc": "toon-impact — a big comic impact (cartoon styles)",
+      "tags": [
+        "impact",
+        "boom",
+        "slam",
+        "crash",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 3.41,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-impact"
+    },
+    {
+      "id": "toon-kick",
+      "file": "clips/toon-kick.mp3",
+      "category": "impact",
+      "desc": "toon-kick — a kick drum (cartoon styles)",
+      "tags": [
+        "kick",
+        "drum",
+        "beat",
+        "thump",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 1.78,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-kick"
+    },
+    {
+      "id": "toon-plop",
+      "file": "clips/toon-plop.mp3",
+      "category": "motion",
+      "desc": "toon-plop — a drop landing in water or a basket (cartoon styles)",
+      "tags": [
+        "plop",
+        "drop",
+        "water",
+        "land",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 1.66,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-plop"
+    },
+    {
+      "id": "toon-pop",
+      "file": "clips/toon-pop.mp3",
+      "category": "snap",
+      "desc": "toon-pop — a small pop: something appears (cartoon styles)",
+      "tags": [
+        "pop",
+        "appear",
+        "bubble",
+        "reveal",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 1.69,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-pop"
+    },
+    {
+      "id": "toon-pour",
+      "file": "clips/toon-pour.mp3",
+      "category": "motion",
+      "desc": "toon-pour — liquid poured (cartoon styles)",
+      "tags": [
+        "pour",
+        "liquid",
+        "water",
+        "kitchen",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.03,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-pour"
+    },
+    {
+      "id": "toon-riser",
+      "file": "clips/toon-riser.mp3",
+      "category": "tension",
+      "desc": "toon-riser — a rising whoosh into a reveal (cartoon styles)",
+      "tags": [
+        "riser",
+        "build",
+        "tension",
+        "reveal",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.83,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-riser"
+    },
+    {
+      "id": "toon-rewind",
+      "file": "clips/toon-rewind.mp3",
+      "category": "motion",
+      "desc": "toon-rewind — a tape rewind (cartoon styles)",
+      "tags": [
+        "rewind",
+        "tape",
+        "back",
+        "undo",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 3.21,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-rewind"
+    },
+    {
+      "id": "toon-sizzle",
+      "file": "clips/toon-sizzle.mp3",
+      "category": "ambience",
+      "desc": "toon-sizzle — food sizzling in a pan (cartoon styles)",
+      "tags": [
+        "sizzle",
+        "fry",
+        "pan",
+        "kitchen",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.82,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-sizzle"
+    },
+    {
+      "id": "toon-sparkle",
+      "file": "clips/toon-sparkle.mp3",
+      "category": "chime",
+      "desc": "toon-sparkle — a magic sparkle (cartoon styles)",
+      "tags": [
+        "sparkle",
+        "magic",
+        "shine",
+        "twinkle",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.12,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-sparkle"
+    },
+    {
+      "id": "toon-squeak",
+      "file": "clips/toon-squeak.mp3",
+      "category": "snap",
+      "desc": "toon-squeak — a comic squeak (cartoon styles)",
+      "tags": [
+        "squeak",
+        "worry",
+        "mouse",
+        "funny",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 1.31,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-squeak"
+    },
+    {
+      "id": "toon-sub",
+      "file": "clips/toon-sub.mp3",
+      "category": "impact",
+      "desc": "toon-sub — a deep sub drop (cartoon styles)",
+      "tags": [
+        "sub",
+        "bass",
+        "drop",
+        "deep",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.15,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-sub"
+    },
+    {
+      "id": "toon-swish",
+      "file": "clips/toon-swish.mp3",
+      "category": "motion",
+      "desc": "toon-swish — a quick swish (cartoon styles)",
+      "tags": [
+        "swish",
+        "swoosh",
+        "fast",
+        "pass",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 1.19,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-swish"
+    },
+    {
+      "id": "toon-taiko",
+      "file": "clips/toon-taiko.mp3",
+      "category": "impact",
+      "desc": "toon-taiko — a taiko drum hit (cartoon styles)",
+      "tags": [
+        "taiko",
+        "drum",
+        "epic",
+        "big",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.16,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-taiko"
+    },
+    {
+      "id": "toon-tick",
+      "file": "clips/toon-tick.mp3",
+      "category": "snap",
+      "desc": "toon-tick — a clock tick (cartoon styles)",
+      "tags": [
+        "tick",
+        "clock",
+        "time",
+        "click",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 1.65,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-tick"
+    },
+    {
+      "id": "toon-trumpet",
+      "file": "clips/toon-trumpet.mp3",
+      "category": "emphasis",
+      "desc": "toon-trumpet — a short trumpet fanfare call (cartoon styles)",
+      "tags": [
+        "trumpet",
+        "fanfare",
+        "win",
+        "announce",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 3.31,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-trumpet"
+    },
+    {
+      "id": "toon-typewriter",
+      "file": "clips/toon-typewriter.mp3",
+      "category": "snap",
+      "desc": "toon-typewriter — typewriter keys (cartoon styles)",
+      "tags": [
+        "typewriter",
+        "typing",
+        "keys",
+        "text",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 2.93,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-typewriter"
+    },
+    {
+      "id": "toon-whoosh",
+      "file": "clips/toon-whoosh.mp3",
+      "category": "motion",
+      "desc": "toon-whoosh — a scene-cut whoosh (cartoon styles)",
+      "tags": [
+        "whoosh",
+        "cut",
+        "transition",
+        "air",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "licence": "generated locally by scripts/toon-sound-pack.ts from cartoon-shorts engine/audio.py (MIT, Copyright (c) 2026 Matteoikarieth96; numpy synthesis); no third-party samples; redistributable",
+      "duration_s": 1.44,
+      "source": "scripts/toon-sound-pack.ts (cartoon-shorts audio.py synth)",
+      "recipe": "toon-whoosh"
     }
   ]
 }

@@ -18,7 +18,7 @@ describe("audio catalog mapping", () => {
     expect(unlistedFiles(["clips/whoosh.mp3", "clips/rogue.mp3"], mapCatalog("sfx", cat))).toEqual(["clips/rogue.mp3"]);
   });
   it("shipped_catalogs_map_and_match_files_on_disk", () => {
-    for (const [kind, n] of [["sfx", 23], ["music", 0]] as const) {
+    for (const [kind, n] of [["sfx", 50], ["music", 10]] as const) {
       const dir = `assets-builtin/audio/${kind}`;
       const entries = mapCatalog(kind, JSON.parse(readFileSync(`${dir}/catalog.json`, "utf8")));
       expect(entries).toHaveLength(n);
@@ -31,6 +31,25 @@ describe("audio catalog mapping", () => {
     expect(mapCatalog("sfx", { clips: [own] })[0]).toMatchObject({ licence: "CC0 1.0, Kenney", provenance: { sourceUrl: "https://kenney.nl/assets/ui-audio" } });
     expect(() => mapCatalog("sfx", { clips: [{ ...own, licence: "  " }] })).toThrow();
     expect(mapCatalog("sfx", cat)[0]!.licence).toBe(SHIPPED_LICENCE);
+  });
+  it("the cartoon pack: 27 comic sounds and 10 music loops, each with a licence, tags the engine can find by, and a palette recipe", () => {
+    for (const [kind, n, key] of [["sfx", 27, "sounds"], ["music", 10, "beds"]] as const) {
+      const dir = `assets-builtin/audio/${kind}`;
+      const raw = JSON.parse(readFileSync(`${dir}/catalog.json`, "utf8")) as { clips: { id: string; file: string; licence?: string; tags: string[]; duration_s: number }[] };
+      const palette = (JSON.parse(readFileSync(`${dir}/palette.json`, "utf8")) as Record<string, { id: string; tags: string[] }[]>)[key]!;
+      const toon = raw.clips.filter((c) => c.id.startsWith("toon-"));
+      expect(toon).toHaveLength(n);
+      for (const c of toon) {
+        expect(c.licence, c.id).toMatch(/generated locally.*cartoon-shorts.*MIT/);
+        expect(c.tags, c.id).toEqual(expect.arrayContaining(["toon", "cartoon"]));
+        expect(palette.some((p) => p.id === c.id), c.id).toBe(true);
+        expect(c.duration_s, c.id).toBeGreaterThan(0.1);
+        expect(existsSync(`${dir}/${c.file}`), c.id).toBe(true);
+      }
+    }
+    // the sounds the four test episodes use are all here
+    const ids = (JSON.parse(readFileSync("assets-builtin/audio/sfx/catalog.json", "utf8")) as { clips: { id: string }[] }).clips.map((c) => c.id);
+    for (const n of ["ding", "pop", "tick", "squeak", "sparkle", "buzzer", "whoosh", "impact", "riser", "hit", "bell", "swish", "bounce", "rewind"]) expect(ids, n).toContain(`toon-${n}`);
   });
   it("every added clip names its licence and covers its recipe's tags (a cue finds clips by tag)", () => {
     const dir = "assets-builtin/audio/sfx";

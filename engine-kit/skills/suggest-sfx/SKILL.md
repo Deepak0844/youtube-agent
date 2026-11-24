@@ -77,3 +77,10 @@ Sounds you can name: `whoosh-soft`, `whoosh-wind`, `whoosh-reverse` (rewinds, su
 `impact-soft`, `impact-deep-soft` (the twist or payoff), `pop-reveal` (something appears), `ui-click-soft`, `ui-toggle-on`,
 `ui-send`, `chime-reward` (a win), `chime-magic`, `sparkle-soft`, `stamp-hit` (a verdict or label lands), `knock-solid`,
 `trap-snap`, `glitch-zap` (an error; use once at most). A name not in this list is ignored.
+
+**Cartoon styles** (cartoon_comic, cartoon_anime, cartoon_manga, cartoon_paper, cartoon_painted): prefer the comic `toon-*` sounds, named the same way:
+`toon-ding` (payment received, a correct answer), `toon-bell`, `toon-pop` (something appears), `toon-tick` (a clock), `toon-squeak` (worry), `toon-sparkle`,
+`toon-buzzer` (wrong), `toon-whoosh` (a scene cut), `toon-swish`, `toon-impact` and `toon-hit` (a slam or the twist), `toon-sub`, `toon-kick`, `toon-taiko`,
+`toon-riser` (build before a reveal), `toon-rewind`, `toon-bounce`, `toon-plop` (a drop lands), `toon-pour`, `toon-sizzle`, `toon-chop`, `toon-chops`,
+`toon-cymbal` and `toon-trumpet` (a win), `toon-flash`, `toon-heartbeat` (nerves), `toon-typewriter`. Put each at the beat its picture happens (a ding at the `DING!` word,
+a whoosh at a scene cut). The usual rules still hold: a light touch, gain as above.

@@ -32,3 +32,12 @@ Every clip has its licence line in catalog.json; this is the human-readable summ
 | whoosh-wind | gen_whoosh.py | - |
 | riser-soft | ffmpeg | - |
 | whoosh-reverse | gen_whoosh.py | - |
+
+## Cartoon sound pack (added 2026-11-24)
+
+- **toon-*.mp3 (27 sound effects here, 10 music loops in ../music/clips):** generated locally by `scripts/toon-sound-pack.ts`, which runs the synth of cartoon-shorts
+  (`engine/audio.py`, MIT, Copyright (c) 2026 Matteoikarieth96; https://github.com/Matteoikarieth96/cartoon-shorts; numpy synthesis, no samples). Each effect is the same
+  sound an episode of cartoon-shorts makes (with its effects reverb), normalised to about -20 LUFS and converted to mp3; each music loop is one score mood
+  (groove, rise, tense, triumph, warm, end, sad, home, promise, epic) for 30 seconds with its reverb tail folded onto the start, so it loops. No third-party material; redistributable.
+  The generator needs Python with numpy and runs only on the owner's Mac; nothing in the app or its render container runs Python.
+

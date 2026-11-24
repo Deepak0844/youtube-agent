@@ -3,7 +3,7 @@
   "defaults": {
     "model": "music_v2",
     "force_instrumental": true,
-    "target_lufs": -20.0,
+    "target_lufs": -20,
     "ceiling_dbfs": -1.5,
     "output_format": "mp3_44100_128"
   },
@@ -96,6 +96,156 @@
         "bed"
       ],
       "prompt": "A curious documentary explainer background bed. Playful pizzicato strings and soft marimba plucks over a gentle pad, with very light brushed hand percussion, understated and steady. The mood of a Vox or New York Times explainer: inquisitive, warm, intelligent, never comedic. Designed to sit under a spoken voiceover: consistent energy, no build-ups, no drops, no foreground melody hooks. Around 95 BPM, instrumental."
+    },
+    {
+      "id": "toon-groove",
+      "category": "bed",
+      "duration_s": 30,
+      "tags": [
+        "groove",
+        "fun",
+        "light",
+        "upbeat",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: light fun momentum, a groove under quick explainers."
+    },
+    {
+      "id": "toon-rise",
+      "category": "bed",
+      "duration_s": 30,
+      "tags": [
+        "rise",
+        "build",
+        "hope",
+        "energy",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a building, hopeful rise."
+    },
+    {
+      "id": "toon-tense",
+      "category": "bed",
+      "duration_s": 30,
+      "tags": [
+        "tense",
+        "suspense",
+        "clock",
+        "stakes",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: ticking clock and heartbeat, something is at stake."
+    },
+    {
+      "id": "toon-triumph",
+      "category": "bed",
+      "duration_s": 30,
+      "tags": [
+        "triumph",
+        "win",
+        "victory",
+        "fanfare",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a bright, winning fanfare feel."
+    },
+    {
+      "id": "toon-warm",
+      "category": "bed",
+      "duration_s": 30,
+      "tags": [
+        "warm",
+        "cosy",
+        "gentle",
+        "friendly",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: warm, cosy chords."
+    },
+    {
+      "id": "toon-end",
+      "category": "bed",
+      "duration_s": 30,
+      "tags": [
+        "end",
+        "finale",
+        "resolve",
+        "settle",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a settling final-chord mood for the last scene."
+    },
+    {
+      "id": "toon-sad",
+      "category": "bed",
+      "duration_s": 30,
+      "tags": [
+        "sad",
+        "soft",
+        "emotional",
+        "slow",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a soft sad piano and strings mood."
+    },
+    {
+      "id": "toon-home",
+      "category": "bed",
+      "duration_s": 30,
+      "tags": [
+        "home",
+        "comfort",
+        "family",
+        "calm",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a homely, comforting mood."
+    },
+    {
+      "id": "toon-promise",
+      "category": "bed",
+      "duration_s": 30,
+      "tags": [
+        "promise",
+        "hope",
+        "bright",
+        "begin",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: a hopeful, promising mood."
+    },
+    {
+      "id": "toon-epic",
+      "category": "bed",
+      "duration_s": 30,
+      "tags": [
+        "epic",
+        "drums",
+        "big",
+        "heroic",
+        "toon",
+        "cartoon",
+        "comic"
+      ],
+      "prompt": "Synthesised by scripts/toon-sound-pack.ts from cartoon-shorts audio.py: big drums and brass for a big moment."
     }
   ]
 }
