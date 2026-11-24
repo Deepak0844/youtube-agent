@@ -51,6 +51,7 @@ const ALTERNATE: Record<string, unknown> = {
   "engine.long_build_timeout_s": 1200,
   "engine.max_turns": 20,
   "engine.model": "opus",
+  "engine.cartoon_model": "sonnet",
   "engine.limit_retry_s": 600,
   "engine.timeout_live_s": 99,
   "engine.lease_s": 99,

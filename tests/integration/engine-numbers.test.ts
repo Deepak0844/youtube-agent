@@ -4,7 +4,7 @@ import { ENGINE_NUMBER_FIELDS } from "@/server/core/engine-numbers";
 import { SETTINGS } from "@/server/core/settings-registry";
 import { getSetting, setSetting } from "@/server/db/settings";
 import { listAudit } from "@/server/db/audit";
-import { loadEngineModel, loadEngineNumbers, loadEngineSwitch, saveEngineNumbers, saveEngineSwitch } from "@/server/db/system-settings";
+import { loadEngineCartoonModel, loadEngineModel, loadEngineNumbers, loadEngineSwitch, saveEngineNumbers, saveEngineSwitch } from "@/server/db/system-settings";
 
 let db: TestDb;
 beforeAll(async () => {
@@ -60,6 +60,15 @@ describe("the engine switch (engine.enabled)", () => {
     expect(audit.find((d) => d.setting === "engine.enabled")).toMatchObject({ from: false, to: true });
     expect(await saveEngineSwitch(db.pool, false)).toMatchObject({ ok: true });
     expect(await loadEngineSwitch(db.pool)).toBe(false);
+  });
+
+  it("the cartoon model is Opus until the owner picks Sonnet, and only those two", async () => {
+    expect(await loadEngineCartoonModel(db.pool)).toBe("opus");
+    expect(await saveEngineSwitch(db.pool, true, undefined, "sonnet")).toMatchObject({ ok: true });
+    expect(await loadEngineCartoonModel(db.pool)).toBe("sonnet");
+    expect((await db.pool.query("select updated_by from settings where key = 'engine.cartoon_model'")).rows[0].updated_by).toBe("session");
+    expect(await saveEngineSwitch(db.pool, true, undefined, "haiku" as never)).toMatchObject({ ok: false });
+    expect(await loadEngineCartoonModel(db.pool)).toBe("sonnet");
   });
 
   it("the engine model is Sonnet until the owner picks Opus, and only those two", async () => {

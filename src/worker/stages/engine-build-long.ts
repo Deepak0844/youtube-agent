@@ -3,6 +3,7 @@ import path from "node:path";
 import type pg from "pg";
 import { chapterFingerprint, chapterSoundCues, chapterWindows } from "@/server/core/chapter-windows";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
+import { engineModelFor } from "@/server/core/engine-config";
 import { reviewRecord } from "@/server/core/frame-review";
 import { KnownFailure } from "@/server/core/paid-call";
 import { checkTsx, tsxDuration } from "@/server/core/tsx-check";
@@ -95,7 +96,7 @@ export function longEngineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Att
             db: deps.db, root: e.root, config: ctx.config.engine, registry: e.registry,
             tools: (ws) => buildEngineTools({ db: deps.db, ctx, workDir: ws.workDir, orientation, storageRoot: deps.root, render: e.render, style: video.style }),
           },
-          { videoId: video.id, stageRunId: ctx.claim.stageRunId, kind: "build", prompt, inputs, long: false, signal: ctx.signal, model: ctx.config.engine.model },
+          { videoId: video.id, stageRunId: ctx.claim.stageRunId, kind: "build", prompt, inputs, long: false, signal: ctx.signal, model: engineModelFor(ctx.config, video.style) },
         );
         if (!r.ok) {
           if (r.limit) throw new EngineLimitError(r.resumeAt); // chapters before this one are already saved

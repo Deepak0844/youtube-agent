@@ -4,7 +4,7 @@ import { requireOwner } from "@/lib/auth/require-owner";
 import { localServiceBlockers, MAX_LOCAL_SERVICES, ownServiceConfigProblem } from "@/server/core/local-services";
 import { getPool } from "@/server/db/pool";
 import { FX_SOURCES, fxNote } from "@/server/core/fx-rate";
-import { loadEngineModel, loadEngineSwitch, loadInrAuto, loadInrRate, loadSystemSettings } from "@/server/db/system-settings";
+import { loadEngineCartoonModel, loadEngineModel, loadEngineSwitch, loadInrAuto, loadInrRate, loadSystemSettings } from "@/server/db/system-settings";
 import { getSystemStatus, type SystemStatus } from "@/server/db/system-status";
 import { engineUsageSummary } from "@/server/db/engine-runs";
 import { Pill } from "@/ui/primitives/pill";
@@ -34,7 +34,7 @@ async function rateCard(db: ReturnType<typeof getPool>) {
 async function Owned() {
   await requireOwner();
   const db = getPool();
-  const [status, view, engine, engineOn, engineModel] = await Promise.all([getSystemStatus(db), loadSystemSettings(db), engineUsageSummary(db).catch(() => null), loadEngineSwitch(db), loadEngineModel(db)]);
+  const [status, view, engine, engineOn, engineModel, cartoonModel] = await Promise.all([getSystemStatus(db), loadSystemSettings(db), engineUsageSummary(db).catch(() => null), loadEngineSwitch(db), loadEngineModel(db), loadEngineCartoonModel(db)]);
   const { renders, jobs, warnGb, longMinutes, services } = view;
   const blockers = localServiceBlockers();
   const configProblem = ownServiceConfigProblem();
@@ -63,7 +63,7 @@ async function Owned() {
           On: Claude Code on your subscription writes the scenes of Custom animation videos, drawing the objects in code and
           checking its own preview frames. Off: the paid model writes them, as before. The script, voice and approvals are the same.
         </p>
-        <EngineSwitchForm on={engineOn} model={engineModel} />
+        <EngineSwitchForm on={engineOn} model={engineModel} cartoonModel={cartoonModel} />
       </section>
       <section aria-labelledby="uploads-h" className="rounded-card border border-border bg-surface p-pad">
         <h2 id="uploads-h" className="text-title font-semibold">Uploads to YouTube</h2>

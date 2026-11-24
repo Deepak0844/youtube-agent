@@ -82,7 +82,7 @@ export function KillSwitchForm({ on }: { on: boolean }) {
 
 const selectClass = cn("w-full rounded-control border border-control bg-surface px-4 text-body text-text", control, focusRing);
 
-export function EngineSwitchForm({ on, model }: { on: boolean; model: "sonnet" | "opus" }) {
+export function EngineSwitchForm({ on, model, cartoonModel }: { on: boolean; model: "sonnet" | "opus"; cartoonModel: "sonnet" | "opus" }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveEngineSwitchAction, {});
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -95,6 +95,13 @@ export function EngineSwitchForm({ on, model }: { on: boolean; model: "sonnet" |
         <select id="engine-model" name="model" defaultValue={model} className={selectClass}>
           <option value="sonnet">Sonnet (default)</option>
           <option value="opus">Opus: draws more carefully, uses your Claude limit faster</option>
+        </select>
+      </div>
+      <div className={field}>
+        <Label htmlFor="engine-cartoon-model">Model for cartoon videos</Label>
+        <select id="engine-cartoon-model" name="cartoonModel" defaultValue={cartoonModel} className={selectClass}>
+          <option value="opus">Opus (default): the cartoon test videos were made with it</option>
+          <option value="sonnet">Sonnet: uses less of your Claude limit</option>
         </select>
       </div>
       <div className="flex flex-wrap items-center gap-4">

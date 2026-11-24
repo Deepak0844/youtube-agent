@@ -93,11 +93,16 @@ export async function loadEngineModel(db: pg.Pool): Promise<"sonnet" | "opus"> {
   return (await getSetting(db, "engine.model")) === "opus" ? "opus" : "sonnet";
 }
 
-/** Turns the new video engine on or off and, when given, sets its model (Sonnet or Opus). Session only (writeAudited), audited as setting.changed. */
-export async function saveEngineSwitch(db: pg.Pool, on: boolean, model?: "sonnet" | "opus"): Promise<SaveResult> {
-  if (model !== undefined && model !== "sonnet" && model !== "opus") return { ok: false, error: "Pick Sonnet or Opus. Nothing was saved." };
+/** The Claude model cartoon videos use: Opus unless the owner picked Sonnet. */
+export async function loadEngineCartoonModel(db: pg.Pool): Promise<"sonnet" | "opus"> {
+  return (await getSetting(db, "engine.cartoon_model")) === "sonnet" ? "sonnet" : "opus";
+}
+
+/** Turns the new video engine on or off and, when given, sets its model and the cartoon model (Sonnet or Opus). Session only (writeAudited), audited as setting.changed. */
+export async function saveEngineSwitch(db: pg.Pool, on: boolean, model?: "sonnet" | "opus", cartoonModel?: "sonnet" | "opus"): Promise<SaveResult> {
+  for (const m of [model, cartoonModel]) if (m !== undefined && m !== "sonnet" && m !== "opus") return { ok: false, error: "Pick Sonnet or Opus. Nothing was saved." };
   try {
-    return { ok: true, changed: await writeAudited(db, [{ key: "engine.enabled", value: on }, ...(model ? [{ key: "engine.model", value: model }] : [])]) };
+    return { ok: true, changed: await writeAudited(db, [{ key: "engine.enabled", value: on }, ...(model ? [{ key: "engine.model", value: model }] : []), ...(cartoonModel ? [{ key: "engine.cartoon_model", value: cartoonModel }] : [])]) };
   } catch {
     return { ok: false, error: GENERIC };
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type pg from "pg";
 import { SETTINGS, SAFETY_KEYS } from "@/server/core/settings-registry";
-import { buildEngineConfig, ENGINE_KEYS } from "@/server/core/engine-config";
+import { buildEngineConfig, ENGINE_KEYS, engineModelFor } from "@/server/core/engine-config";
 import { getEngineConfig } from "@/server/db/engine-config";
 
 const d = (k: string) => (SETTINGS as Record<string, { default: unknown }>)[k]!.default;
@@ -38,7 +38,7 @@ describe("engine numbers", () => {
         durationToleranceS: 1.5,
       },
       render: { timeoutS: 600, cpus: 4, memoryMb: 4096, pids: 512 },
-      engine: { enabled: false, buildTimeoutS: 2700, longBuildTimeoutS: 5400, maxTurns: 150, limitRetryS: 1800, model: "sonnet" },
+      engine: { enabled: false, buildTimeoutS: 2700, longBuildTimeoutS: 5400, maxTurns: 150, limitRetryS: 1800, model: "sonnet", cartoonModel: "opus" },
     });
     expect(d("engine.retry_backoff_seconds")).toEqual([30, 120, 480]);
   });
@@ -80,5 +80,19 @@ describe("stageTimeoutS", () => {
     expect(stageTimeoutS(off, "draft")).toBe(1800);
     expect(stageTimeoutS(on, "draft")).toBe(2700 + 300); // the research run's limit plus a little to judge and save
     expect(stageTimeoutS(buildEngineConfig(new Map<string, unknown>([["engine.enabled", true], ["engine.build_timeout_s", 600], ["engine.long_build_timeout_s", 600]])), "tsx_author")).toBe(1800); // never shorter than the stage limit
+  });
+});
+
+describe("engineModelFor", () => {
+  it("a cartoon video runs on the cartoon model, the others on the engine model", () => {
+    const sonnet = buildEngineConfig(new Map([["engine.model", "sonnet"]]));
+    expect(engineModelFor(sonnet, "cartoon_comic")).toBe("opus");
+    expect(engineModelFor(sonnet, "clean_professional")).toBe("sonnet");
+    expect(engineModelFor(sonnet, null)).toBe("sonnet");
+    const lighter = buildEngineConfig(new Map([["engine.model", "sonnet"], ["engine.cartoon_model", "sonnet"]]));
+    expect(engineModelFor(lighter, "cartoon_paper")).toBe("sonnet");
+  });
+  it("refuses a model that is not sonnet or opus", () => {
+    expect(() => buildEngineConfig(new Map([["engine.cartoon_model", "haiku"]]))).toThrow(/engine\.cartoon_model/);
   });
 });

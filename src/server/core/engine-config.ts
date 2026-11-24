@@ -1,3 +1,4 @@
+import { isCartoonStyle } from "../../../remotion/kit/toon/styles";
 import { SETTINGS, parseSetting, type SettingKey } from "./settings-registry";
 
 export interface QaTrack {
@@ -21,7 +22,7 @@ export interface EngineConfig {
   qa: { short: QaTrack; long: QaTrack; meanDbMin: number; peakDbMax: number; loopDiffMax: number; durationToleranceS: number };
   render: { timeoutS: number; cpus: number; memoryMb: number; pids: number };
   /** The new video engine (ADR 0015). */
-  engine: { enabled: boolean; buildTimeoutS: number; longBuildTimeoutS: number; maxTurns: number; limitRetryS: number; model: "sonnet" | "opus" };
+  engine: { enabled: boolean; buildTimeoutS: number; longBuildTimeoutS: number; maxTurns: number; limitRetryS: number; model: "sonnet" | "opus"; cartoonModel: "sonnet" | "opus" };
 }
 
 export const ENGINE_KEYS = (Object.keys(SETTINGS) as SettingKey[]).filter((k) => /^(engine|breaker|qa|render)\./.test(k) || k === "uploads.concurrent");
@@ -60,7 +61,7 @@ export function buildEngineConfig(stored: ReadonlyMap<string, unknown>): EngineC
       durationToleranceS: get("qa.duration_tolerance_s"),
     },
     render: { timeoutS: get("render.timeout_s"), cpus: get("render.cpus"), memoryMb: get("render.memory_mb"), pids: get("render.pids") },
-    engine: { enabled: get("engine.enabled"), buildTimeoutS: get("engine.build_timeout_s"), longBuildTimeoutS: get("engine.long_build_timeout_s"), maxTurns: get("engine.max_turns"), limitRetryS: get("engine.limit_retry_s"), model: get("engine.model") },
+    engine: { enabled: get("engine.enabled"), buildTimeoutS: get("engine.build_timeout_s"), longBuildTimeoutS: get("engine.long_build_timeout_s"), maxTurns: get("engine.max_turns"), limitRetryS: get("engine.limit_retry_s"), model: get("engine.model"), cartoonModel: get("engine.cartoon_model") },
   };
   // Same cross-checks as the old config.py validate().
   if (c.leaseS <= c.heartbeatS * 2) throw new Error("engine.lease_s must be more than twice engine.heartbeat_s");
@@ -74,4 +75,9 @@ export function stageTimeoutS(config: EngineConfig, stageName: string): number {
   if (stageName === "tsx_author" && config.engine.enabled) return Math.max(config.timeoutStageS, Math.max(config.engine.buildTimeoutS, config.engine.longBuildTimeoutS) + 900);
   if (stageName === "draft" && config.engine.enabled) return Math.max(config.timeoutStageS, config.engine.buildTimeoutS + 300);
   return config.timeoutStageS;
+}
+
+/** The Claude model an engine run for a video with this style uses: cartoon styles have their own setting (Opus by default). */
+export function engineModelFor(config: EngineConfig, style: string | null | undefined): "sonnet" | "opus" {
+  return isCartoonStyle(style) ? config.engine.cartoonModel : config.engine.model;
 }
