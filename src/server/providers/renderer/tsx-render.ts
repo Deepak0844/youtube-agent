@@ -389,8 +389,8 @@ async function readStill(deps: TsxRendererDeps, ctx: StageContext, outDir: strin
 }
 
 /** Engine preview frames (ADR 0015): the same checks and locked container as renderTsx, only the asked frames, as PNG paths. */
-export async function renderTsxStills(deps: TsxRendererDeps, ctx: StageContext, input: { source: string; frames: readonly number[]; style?: string | null; orientation?: TsxOrientation }): Promise<{ ok: true; files: string[]; frameCount: number } | { ok: false; message: string; problems: string[] }> {
-  const r = await renderTsx(deps, ctx, { source: input.source, stillsOnly: input.frames, style: input.style ?? null, orientation: input.orientation, outFile: "preview.mp4" });
+export async function renderTsxStills(deps: TsxRendererDeps, ctx: StageContext, input: { source: string; frames: readonly number[]; style?: string | null; orientation?: TsxOrientation; toon?: ToonInput }): Promise<{ ok: true; files: string[]; frameCount: number } | { ok: false; message: string; problems: string[] }> {
+  const r = await renderTsx(deps, ctx, { source: input.source, stillsOnly: input.frames, style: input.style ?? null, orientation: input.orientation, ...(input.toon ? { toon: input.toon } : {}), outFile: "preview.mp4" });
   if (!r.ok) return { ok: false, message: r.error.message, problems: r.error.problems };
   return { ok: true, files: r.stills.map((n) => path.join(ctx.attemptDir, n)), frameCount: tsxDuration(input.source) ?? 0 };
 }

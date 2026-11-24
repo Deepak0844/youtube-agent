@@ -9,7 +9,11 @@ import { KnownFailure } from "@/server/core/paid-call";
 import { checkTsx, tsxDuration } from "@/server/core/tsx-check";
 import { tsxCaptionWords } from "@/server/core/tsx-captions";
 import { approvedOutline } from "@/server/db/stage-content";
-import { chapterBuildRequest } from "@/server/engine/build-prompt";
+import { cartoonBuildRequest, chapterBuildRequest } from "@/server/engine/build-prompt";
+import { checkToon } from "@/server/core/toon-check";
+import { toonInputFor } from "@/server/core/toon-input";
+import { isCartoonStyle } from "../../../remotion/kit/toon/styles";
+import { loadCartoonCast, takeEngineCast } from "./cartoon";
 import { EngineLimitError } from "@/server/engine/limit";
 import { runEngine } from "@/server/engine/run";
 import { buildEngineTools } from "@/server/engine/tools-factory";
@@ -76,6 +80,9 @@ export function longEngineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Att
     if (videoS > qa.maxS + tol) throw new KnownFailure(`The narration is ${videoS.toFixed(0)} s, but a long video may run at most ${qa.maxS} s (the QA setting "QA long: longest"). Nothing was drawn. Shorten the script or raise that setting, then run the narration again.`);
     if (cw.chapters.length > MAX_CHAPTERS) throw new KnownFailure(`The outline has ${cw.chapters.length} chapters; a code-scene video has at most ${MAX_CHAPTERS}.`);
 
+    const cartoon = isCartoonStyle(video.style) ? video.style : null;
+    const castState = cartoon ? await loadCartoonCast(deps.db, video.id) : null;
+    let cast = castState?.cast ?? null; // a series' first episode makes the cast while it draws chapter 1; later chapters then use it
     const saved = await savedChapters(deps.db, video.id);
     const total = cw.chapters.length;
     const clips: string[] = [];
@@ -90,11 +97,14 @@ export function longEngineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Att
       const have = saved.get(c.index);
       let source = have?.fingerprint === fp ? have.source : undefined;
       if (source === undefined) {
-        const { prompt, inputs, file } = chapterBuildRequest({ topic, chapter: c, total, style: video.style, orientation, ...(lookSource ? { lookSource } : {}) });
+        const { prompt, inputs, file } = cartoon
+          ? cartoonBuildRequest({ topic, beats, words, narrationS, style: cartoon, orientation, cast, series: castState?.series ?? false, chapter: { window: c, total, ...(lookSource ? { lookSource } : {}) } })
+          : chapterBuildRequest({ topic, chapter: c, total, style: video.style, orientation, ...(lookSource ? { lookSource } : {}) });
+        const chapterToon = cartoon ? toonInputFor({ beats: c.beats, words: c.words, durationS: c.frames / 30, orientation, cast: cast ?? [], style: cartoon }) : undefined;
         const r = await (e.runEngine ?? runEngine)(
           {
             db: deps.db, root: e.root, config: ctx.config.engine, registry: e.registry,
-            tools: (ws) => buildEngineTools({ db: deps.db, ctx, workDir: ws.workDir, orientation, storageRoot: deps.root, render: e.render, style: video.style }),
+            tools: (ws) => buildEngineTools({ db: deps.db, ctx, workDir: ws.workDir, orientation, storageRoot: deps.root, render: e.render, style: video.style, ...(chapterToon ? { toon: chapterToon } : {}) }),
           },
           { videoId: video.id, stageRunId: ctx.claim.stageRunId, kind: "build", prompt, inputs, long: false, signal: ctx.signal, model: engineModelFor(ctx.config, video.style) },
         );
@@ -105,6 +115,11 @@ export function longEngineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Att
         const fresh = await readSceneFile(r.workDir, file);
         const checked = checkTsx(fresh, orientation);
         if (!checked.ok) throw new KnownFailure(`Chapter ${c.index} of ${total}: the scene file did not pass the safety check: ${checked.problems.slice(0, 3).join(" ")}`);
+        if (chapterToon) {
+          if (castState?.series && !cast) cast = await takeEngineCast(deps.db, video.id, r.workDir);
+          const bad = checkToon(fresh, { ...chapterToon, cast: cast ?? [] });
+          if (bad.length > 0) throw new KnownFailure(`Chapter ${c.index} of ${total}: the cartoon scene did not pass the check: ${bad.slice(0, 3).join(" ")}`);
+        }
         const frames = tsxDuration(fresh);
         if (frames !== c.frames) throw new KnownFailure(`Chapter ${c.index} of ${total}: the scene file is ${frames ?? "an unknown number of"} frames; meta.durationInFrames must be ${c.frames} (this chapter's share of the narration). Run the step again.`);
         const chapterCues = (await engineCues(r.workDir, frames / 30)).cues; // sound is never a reason to fail: none or a bad file = no cues
@@ -122,7 +137,8 @@ export function longEngineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Att
       if (c.index === 1) lookSource = source;
 
       const name = `ch${pad(c.index)}`;
-      const rendered = await deps.tsx.renderTsx(ctx, { source, captions: tsxCaptionWords(c.words), style: video.style, orientation, outFile: `${name}.mp4` });
+      const renderToon = cartoon ? toonInputFor({ beats: c.beats, words: c.words, durationS: c.frames / 30, orientation, cast: cast ?? [], style: cartoon }) : undefined;
+      const rendered = await deps.tsx.renderTsx(ctx, { source, captions: renderToon ? [] : tsxCaptionWords(c.words), style: video.style, orientation, ...(renderToon ? { toon: renderToon } : {}), outFile: `${name}.mp4` });
       if (!rendered.ok) throw new KnownFailure(`Chapter ${c.index} of ${total} did not render: ${[rendered.error.message, ...rendered.error.problems.slice(0, 3)].join(" ")}`);
       // Every chapter's render writes its preview frames under the same names. The video page shows chapter 1's, so they are set aside now and put back
       // after the loop; the later chapters' frames are deleted.

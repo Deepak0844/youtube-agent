@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CAPTION_STYLE_IDS, STYLE_IDS } from "../../../remotion/kit/presets";
 import { CARTOON_STYLE_IDS } from "../../../remotion/kit/toon/styles";
+import { castSchema } from "@/server/core/cartoon-cast";
 import { cleanText } from "@/server/core/ideas";
 import { LANGS } from "@/server/core/lang";
 
@@ -14,6 +15,8 @@ export const seriesSettingsSchema = z.strictObject({
   voice: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "Use letters, numbers, - and _ for the voice id.").optional(),
   style: z.enum([...STYLE_IDS, ...CARTOON_STYLE_IDS], "Pick one of the listed styles.").optional(),
   captionStyle: z.enum(CAPTION_STYLE_IDS, "Pick a listed caption style.").optional(),
+  // A cartoon series: the cast its episodes share (written by the first episode, cleared on the series page). Never set from the form.
+  cartoon: z.strictObject({ cast: castSchema }).optional(),
 });
 export type SeriesSettings = z.infer<typeof seriesSettingsSchema>;
 

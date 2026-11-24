@@ -59,6 +59,24 @@ describe("cartoon-shorts runtime", () => {
     expect(html).toContain('viewBox="0 0 1080 1920"');
     expect(html).toContain("Noto Sans Devanagari");
   });
+  it("the film's own scene windows are made from beat marks, and a bad mark is refused plainly", () => {
+    const input: ToonInput = { timeline: { beats: tl.beats, scenes: [] }, cast: [], orientation: "portrait" };
+    const ok = renderToStaticMarkup(
+      <ToonContext.Provider value={input}>
+        <ToonFilm scenes={[{ id: "hook", from: "B0", to: "B1" }, { id: "big", from: "B1", to: "B1e" }]}>
+          <Scene id="hook" />
+        </ToonFilm>
+      </ToonContext.Provider>,
+    );
+    expect(ok).toContain('data-scene="hook"');
+    expect(() =>
+      renderToStaticMarkup(
+        <ToonContext.Provider value={input}>
+          <ToonFilm scenes={[{ id: "hook", from: "B0", to: "B9" }]} />
+        </ToonContext.Provider>,
+      ),
+    ).toThrow("no beat B9 (beats: 2)");
+  });
   it("a landscape film uses a 1920x1080 stage", () => {
     const html = renderToStaticMarkup(
       <ToonContext.Provider value={{ timeline: tl, cast: [], orientation: "landscape" }}>

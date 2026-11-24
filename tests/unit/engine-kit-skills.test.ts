@@ -16,7 +16,7 @@ const skills = readdirSync("engine-kit/skills").map((d) => path.join("engine-kit
 
 describe("engine-kit seeds", () => {
   it("skills_mention_only_engine_tools", () => {
-    expect(skills.length).toBe(6);
+    expect(skills.length).toBe(7); // the six old-app skills and cartoon-scenes
     for (const f of skills) {
       const t = readFileSync(f, "utf8");
       expect(t, f).not.toMatch(/\bpython3?\b|\bnpm\b|node (remotion|scripts)|Bash\(|tools\/[a-z_]+\.py|ElevenLabs/);

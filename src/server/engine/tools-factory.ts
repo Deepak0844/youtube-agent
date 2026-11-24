@@ -1,6 +1,8 @@
 import path from "node:path";
 import type { StageContext } from "@/server/core/stage-handler";
+import type { ToonInput } from "../../../remotion/kit/toon/context";
 import { checkTsx } from "@/server/core/tsx-check";
+import { checkToon } from "@/server/core/toon-check";
 import { EMPTY_BAND_MAX } from "@/server/core/tsx-preflight";
 import { engineAssetFile, engineListAssets } from "@/server/db/engine-assets";
 import type { Db } from "@/server/db/stages";
@@ -25,6 +27,8 @@ export interface EngineToolsOptions {
   render: TsxRendererDeps;
   /** The video's yt-kit style id for code-scene previews. */
   style?: string | null;
+  /** Cartoon styles: the beats and cast the scene draws from; previews draw with them and check_code checks the scene against them. */
+  toon?: ToonInput;
 }
 
 export function buildEngineTools(o: EngineToolsOptions): McpTool[] {
@@ -33,13 +37,15 @@ export function buildEngineTools(o: EngineToolsOptions): McpTool[] {
     orientation: o.orientation,
     check: async (src) => {
       const c = checkTsx(src, o.orientation);
-      return c.ok ? typeCheckInThread(src, 60_000) : c;
+      if (!c.ok) return c;
+      const cartoon = o.toon ? checkToon(src, o.toon) : []; // cast names and beat marks, before any render
+      return cartoon.length > 0 ? { ok: false as const, problems: cartoon } : typeCheckInThread(src, 60_000);
     },
     preflight: async (src) => {
-      const r = await renderTsx(o.render, o.ctx, { source: src, outFile: "preflight.mp4", style: o.style ?? null, preflightOnly: true, maxEmptyBand: EMPTY_BAND_MAX, orientation: o.orientation });
+      const r = await renderTsx(o.render, o.ctx, { source: src, outFile: "preflight.mp4", style: o.style ?? null, preflightOnly: true, maxEmptyBand: EMPTY_BAND_MAX, orientation: o.orientation, ...(o.toon ? { toon: o.toon } : {}) });
       return r.ok ? { ok: true, problems: [] } : { ok: false, problems: [r.error.message, ...r.error.problems] };
     },
-    stills: (src, frames) => renderTsxStills(o.render, o.ctx, { source: src, frames, style: o.style ?? null, orientation: o.orientation }),
+    stills: (src, frames) => renderTsxStills(o.render, o.ctx, { source: src, frames, style: o.style ?? null, orientation: o.orientation, ...(o.toon ? { toon: o.toon } : {}) }),
     omStills: async (props, orientation, frames, assets) => {
       const r = await renderOm(o.render, o.ctx, { props, orientation, stills: frames, assets, outFile: "om-preview.mp4" });
       return r.ok ? { ok: true, files: r.stills.map((n) => path.join(o.ctx.attemptDir, n)), frameCount: omDurationFrames(props) } : { ok: false, message: r.message, problems: r.problems };

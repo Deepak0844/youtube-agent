@@ -6,7 +6,8 @@ import { assertActionOrigin } from "@/lib/auth/action-origin";
 import { requireOwner } from "@/lib/auth/require-owner";
 import { parseEpisodeList, parseSeriesForm } from "@/server/core/series";
 import { getPool } from "@/server/db/pool";
-import { createSeries, dropPart, movePart, planParts, startPart } from "@/server/db/series";
+import { clearSeriesCast } from "@/server/db/cartoon-cast";
+import { createSeries, dropPart, movePart, planParts, setPartFormat, startPart } from "@/server/db/series";
 import { webStageQueue } from "@/server/queue/web-queues";
 
 export interface SeriesFormState {
@@ -85,4 +86,31 @@ export async function startPartAction(_prev: SeriesFormState, form: FormData): P
   const r = await startPart(getPool(), webStageQueue(), { kind: "session", sessionId: owner.sessionId }, id, n);
   if (!r.ok) return { error: r.message };
   redirect(`/videos/${r.videoId}`);
+}
+
+// A part of a mixed series is a Short or a Long video; the owner picks before starting it.
+export async function setPartFormatAction(_prev: SeriesFormState, form: FormData): Promise<SeriesFormState> {
+  await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { error: origin };
+  const id = text(form, "id");
+  const n = partNo(form);
+  const format = text(form, "format");
+  if (!UUID.test(id) || n === null || (format !== "short" && format !== "long")) return { error: "That part is no longer planned." };
+  const r = await setPartFormat(getPool(), id, n, format);
+  if (!r.ok) return { error: r.message };
+  refresh();
+  return { ok: true };
+}
+
+// Clears the cartoon cast of a series: the next NEW episode makes a new cast. Episodes already started keep theirs.
+export async function clearSeriesCastAction(_prev: SeriesFormState, form: FormData): Promise<SeriesFormState> {
+  await requireOwner();
+  const origin = await assertActionOrigin();
+  if (origin) return { error: origin };
+  const id = text(form, "id");
+  if (!UUID.test(id)) return { error: "That series was not found." };
+  await clearSeriesCast(getPool(), id);
+  refresh();
+  return { ok: true };
 }

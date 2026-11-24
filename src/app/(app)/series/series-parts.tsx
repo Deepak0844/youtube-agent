@@ -10,7 +10,7 @@ import { Button } from "@/ui/primitives/button";
 import { Label } from "@/ui/primitives/label";
 import { Pill } from "@/ui/primitives/pill";
 import { Progress } from "@/ui/primitives/progress";
-import { dropPartAction, movePartAction, planPartsAction, startPartAction, type SeriesFormState } from "./actions";
+import { clearSeriesCastAction, dropPartAction, movePartAction, planPartsAction, setPartFormatAction, startPartAction, type SeriesFormState } from "./actions";
 
 const areaClass = cn("w-full rounded-control border border-control bg-surface px-4 py-2 text-body text-text", control, fade, focusRing);
 
@@ -69,10 +69,11 @@ export function PlanPartsForm({ seriesId }: { seriesId: string }) {
 
 const STATUS_WORDS = { planned: "Planned", started: "Started", dropped: "Dropped" } as const;
 
-export function PartCard({ seriesId, part }: { seriesId: string; part: PartView }) {
+export function PartCard({ seriesId, part, mixed = false }: { seriesId: string; part: PartView; mixed?: boolean }) {
   const [startState, start, starting] = useActionState<SeriesFormState, FormData>(startPartAction, {});
   const [moveState, move, moving] = useActionState<SeriesFormState, FormData>(movePartAction, {});
   const [dropState, drop, dropping] = useActionState<SeriesFormState, FormData>(dropPartAction, {});
+  const [formatState, setFormat, formatting] = useActionState<SeriesFormState, FormData>(setPartFormatAction, {});
   const planned = part.status === "planned";
   const hidden = (
     <>
@@ -95,7 +96,7 @@ export function PartCard({ seriesId, part }: { seriesId: string; part: PartView 
         <div className="flex flex-wrap items-center gap-3">
           <form action={start}>
             {hidden}
-            <Button type="submit" disabled={starting || part.format === "long"}>Start this part</Button>
+            <Button type="submit" disabled={starting}>Start this part</Button>
           </form>
           <form action={move}>
             {hidden}
@@ -113,10 +114,43 @@ export function PartCard({ seriesId, part }: { seriesId: string; part: PartView 
           </form>
         </div>
       ) : null}
-      {planned && part.format === "long" ? <p className="m-0 text-small text-muted">Long videos come in a later release, so this part cannot start yet.</p> : null}
+      {planned && mixed ? (
+        <form action={setFormat} className="flex flex-wrap items-center gap-3">
+          {hidden}
+          <input type="hidden" name="format" value={part.format === "long" ? "short" : "long"} />
+          <Button type="submit" variant="secondary" disabled={formatting}>{part.format === "long" ? "Make it a Short" : "Make it a Long video"}</Button>
+        </form>
+      ) : null}
       <Msg s={startState} />
       <Msg s={moveState} />
       <Msg s={dropState} />
+      <Msg s={formatState} />
     </div>
+  );
+}
+
+/** The cast of a cartoon series (names and roles) and the button that clears it. */
+export function CastBox({ seriesId, cast }: { seriesId: string; cast: Array<{ name: string; role: string }> }) {
+  const [state, clear, clearing] = useActionState<SeriesFormState, FormData>(clearSeriesCastAction, {});
+  return (
+    <section aria-labelledby="cast-h" data-testid="series-cast" className="flex flex-col gap-3">
+      <h2 id="cast-h" className="text-title font-semibold">Cast</h2>
+      {cast.length === 0 ? (
+        <p className="m-0 text-body text-muted">No cast yet: the first episode makes one, and every later episode reuses it.</p>
+      ) : (
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
+          {cast.map((c, i) => (
+            <li key={i} className="text-body"><span className="font-medium">{c.name}</span><span className="text-muted">{`: ${c.role}`}</span></li>
+          ))}
+        </ul>
+      )}
+      {cast.length > 0 ? (
+        <form action={clear} className="flex flex-wrap items-center gap-3" onSubmit={(e) => { if (!window.confirm("The next new episode will make a new cast. Episodes already started keep theirs.")) e.preventDefault(); }}>
+          <input type="hidden" name="id" value={seriesId} />
+          <Button type="submit" variant="secondary" disabled={clearing}>Clear cast</Button>
+        </form>
+      ) : null}
+      <Msg s={state} />
+    </section>
   );
 }

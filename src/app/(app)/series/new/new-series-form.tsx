@@ -47,7 +47,7 @@ export function NewSeriesForm({ channels }: { channels: ReadonlyArray<{ channelI
         <Label htmlFor="series-formats">Formats allowed</Label>
         <select id="series-formats" name="formats" defaultValue="short" className={selectClass}>
           <option value="short">Shorts only</option>
-          <option value="long">Long videos only (starting them comes later)</option>
+          <option value="long">Long videos only</option>
           <option value="mixed">Mixed</option>
         </select>
       </div>

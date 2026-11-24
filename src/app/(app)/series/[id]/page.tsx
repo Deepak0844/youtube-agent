@@ -6,7 +6,9 @@ import { LANGUAGE_WORDS } from "@/server/core/videos-view";
 import { getPool } from "@/server/db/pool";
 import { getSeries } from "@/server/db/series";
 import { loadInrRate } from "@/server/db/system-settings";
-import { CostLine, PartCard, PlanPartsForm } from "../series-parts";
+import { isCartoonStyle } from "../../../../../remotion/kit/toon/styles";
+import { getSeriesCast } from "@/server/db/cartoon-cast";
+import { CastBox, CostLine, PartCard, PlanPartsForm } from "../series-parts";
 
 export const metadata = { title: "Series" };
 
@@ -36,6 +38,7 @@ async function Owned({ params }: { params: PageProps<"/series/[id]">["params"] }
         </Link>
       </div>
     );
+  const cast = isCartoonStyle(s.settings.style) ? ((await getSeriesCast(db, s.id)) ?? []) : null;
   const planned = s.parts.filter((p) => p.status === "planned").map((p) => p.partNo);
   const shown = s.parts.filter((p) => p.status !== "dropped");
   return (
@@ -46,6 +49,7 @@ async function Owned({ params }: { params: PageProps<"/series/[id]">["params"] }
         {s.premise ? <p className="m-0 max-w-prose break-words text-body text-muted">{s.premise}</p> : null}
         <CostLine spentMicroUsd={s.spentMicroUsd} capMicroUsd={s.capMicroUsd} state={s.cap.state} pct={s.cap.pct} rate={rate} />
       </header>
+      {cast !== null ? <CastBox seriesId={s.id} cast={cast.map((c) => ({ name: c.name, role: c.role }))} /> : null}
       <section aria-labelledby="parts-h" className="flex flex-col gap-3">
         <h2 id="parts-h" className="text-title font-semibold">Parts</h2>
         {shown.length === 0 ? (
@@ -56,6 +60,7 @@ async function Owned({ params }: { params: PageProps<"/series/[id]">["params"] }
               <li key={p.partNo} className="min-w-0 rounded-card border border-border bg-surface p-pad">
                 <PartCard
                   seriesId={s.id}
+                  mixed={s.formats === "mixed"}
                   part={{ ...p, canUp: planned.length > 0 && planned[0] !== p.partNo, canDown: planned.length > 0 && planned[planned.length - 1] !== p.partNo }}
                 />
               </li>

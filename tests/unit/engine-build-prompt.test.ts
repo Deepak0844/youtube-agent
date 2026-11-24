@@ -4,7 +4,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { prepareWorkspace } from "@/server/engine/workspace";
 import { targetFrames } from "@/server/core/tsx-prompt";
-import { chapterBuildRequest, chapterSceneFile, explainerBuildRequest } from "@/server/engine/build-prompt";
+import { cartoonBuildRequest, chapterBuildRequest, chapterSceneFile, explainerBuildRequest } from "@/server/engine/build-prompt";
+import { engineKitSeeds } from "@/server/engine/workspace";
 
 // OpenMontage parity, Phase D1: the engine's build request for a code-drawn Explainer, made from the approved script and the
 // narration's word times. The script and word times travel as read-only input files; the prompt names the skills and the
@@ -125,5 +126,51 @@ describe("chapterBuildRequest (long videos, L3)", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("cartoonBuildRequest", () => {
+  const base = { topic: "Where does your ₹20 go?", beats, words, narrationS: 4.2, style: "cartoon_comic" as const, orientation: "portrait" as const, cast: null };
+  it("names the skill, the style module and the size, and not the OpenMontage playbook", () => {
+    const { prompt, file } = cartoonBuildRequest(base);
+    for (const s of ["cartoon-scenes", "yt-toon/comic", "yt-toon/core", "ref/lib/toon.md", "ref/cartoon-shorts/styles/comic.md", "ref/examples/cartoon-", "scene/video.tsx", "check_frames", "do not render"]) expect(prompt.toLowerCase()).toContain(s.toLowerCase());
+    expect(prompt).toContain(`durationInFrames: ${targetFrames(4.2)}`);
+    expect(prompt).toContain("width: 1080, height: 1920 }");
+    expect(prompt).not.toContain("ref/openmontage/themes");
+    expect(prompt).not.toContain("openmontage-pipeline");
+    expect(file).toBe("scene/video.tsx");
+  });
+  it("a long video's chapter is landscape 1920x1080", () => {
+    const chapter = { index: 2, title: "Why", line: "x", beats, words, startS: 0, endS: 4, startFrame: 0, frames: 120 } as never;
+    const { prompt, file } = cartoonBuildRequest({ ...base, orientation: "landscape", chapter: { window: chapter, total: 3 } });
+    expect(prompt).toContain("width: 1920, height: 1080 }");
+    expect(prompt).toContain("durationInFrames: 120");
+    expect(file).toBe(chapterSceneFile(2));
+  });
+  it("with a cast, scenes must use those names; a series' first episode must write cast.json", () => {
+    const cast = [{ name: "Raju", role: "customer", style: "cartoon_comic" as const, options: {} }];
+    const withCast = cartoonBuildRequest({ ...base, cast });
+    expect(withCast.prompt).toContain('who="Name"');
+    expect(JSON.parse(withCast.inputs["cast.json"]!)[0].name).toBe("Raju");
+    const first = cartoonBuildRequest({ ...base, series: true });
+    expect(first.prompt).toContain("FIRST episode of a series");
+    expect(first.inputs["cast.json"]).toBeUndefined();
+    expect(cartoonBuildRequest(base).prompt).not.toContain("cast.json");
+  });
+  it("the beat marks, the beat count and the one-style imports are in the prompt", () => {
+    const { prompt } = cartoonBuildRequest({ ...base, style: "cartoon_manga" });
+    expect(prompt).toContain("B0 to B1");
+    expect(prompt).toContain("yt-toon/manga");
+    expect(prompt).toContain("yt-toon/anime");
+  });
+  it("an owner note sends the previous scene and the note as inputs and asks for a fix, not a redo", () => {
+    const { prompt, inputs } = cartoonBuildRequest({ ...base, ownerNote: { note: "ending too plain", previousScene: "export default 1;" } });
+    expect(inputs["owner-note.txt"]).toBe("ending too plain");
+    expect(inputs["previous-scene.txt"]).toBe("export default 1;");
+    expect(prompt).toContain("keep everything else");
+    expect(cartoonBuildRequest(base).inputs["owner-note.txt"]).toBeUndefined();
+  });
+  it("the workspace carries the cartoon-shorts style guides", () => {
+    expect(engineKitSeeds(process.cwd()).refDirs?.some((d) => d.to === "cartoon-shorts")).toBe(true);
   });
 });

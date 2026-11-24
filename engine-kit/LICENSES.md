@@ -343,3 +343,4 @@ MIT, Copyright (c) 2026 Matteoikarieth96 (https://github.com/Matteoikarieth96/ca
 - engine-kit/examples/cartoon-example-paper/video.tsx: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); beats are data of that episode
 - engine-kit/examples/cartoon-example-painted/toon.json: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); beats are data of that episode
 - engine-kit/examples/cartoon-example-painted/video.tsx: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); beats are data of that episode
+- engine-kit/skills/cartoon-scenes/SKILL.md: our own skill (written 2026-11-24) for drawing cartoon videos with yt-toon; it points at the cartoon-shorts style guides (MIT, see above).

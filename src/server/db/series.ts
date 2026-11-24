@@ -2,6 +2,7 @@ import type pg from "pg";
 import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approvals";
 import type { Lang } from "@/server/core/lang";
 import { capStatus, nextPartNo, seriesSettingsSchema, swapTarget, type CapState, type EpisodeInput, type NewSeriesInput, type SeriesSettings } from "@/server/core/series";
+import { LONG_DEFAULT_RANGE } from "@/server/core/long-form";
 import { newVideoSchema } from "@/server/core/videos-view";
 import { recordAudit } from "@/server/db/audit";
 import type { EnqueueOnly } from "@/server/db/pipeline";
@@ -147,24 +148,24 @@ export async function startPart(db: pg.Pool, queue: EnqueueOnly, actor: GateActo
   if (!s) return { ok: false, message: "That series was not found." };
   if (s.cap.state === "over") return { ok: false, message: "This series has reached its spend cap. Raise the cap or stop here." };
   const claim = await db.query<{ title: string; one_line: string; format: string }>(
-    "update series_parts set status = 'started' where series_id = $1 and part_no = $2 and status = 'planned' and format = 'short' returning title, one_line, format",
+    "update series_parts set status = 'started' where series_id = $1 and part_no = $2 and status = 'planned' returning title, one_line, format",
     [seriesId, partNo],
   );
   const part = claim.rows[0];
   if (!part) {
-    const p = s.parts.find((x) => x.partNo === partNo);
-    return { ok: false, message: p?.status === "planned" && p.format === "long" ? "Long videos come in a later release. This part stays planned." : "That part is no longer planned." };
+    return { ok: false, message: "That part is no longer planned." };
   }
   const release = () => db.query("update series_parts set status = 'planned' where series_id = $1 and part_no = $2 and status = 'started' and video_id is null", [seriesId, partNo]);
   const notes = [`Part ${partNo} of ${s.partsPlanned} of the series "${s.title}".`, s.premise && `Series idea: ${s.premise}`, part.one_line && `This part: ${part.one_line}`].filter(Boolean).join("\n");
-  const input = newVideoSchema.safeParse({ topic: part.title, language: s.language, kind: "tsx", format: "short", notes, style: s.settings.style });
+  const long = part.format === "long";
+  const input = newVideoSchema.safeParse({ topic: part.title, language: s.language, kind: "tsx", format: long ? "long" : "short", notes, style: s.settings.style });
   if (!input.success) {
     await release();
     return { ok: false, message: input.error.issues[0]?.message ?? "Check the part and try again." };
   }
   let r;
   try {
-    r = await startVideo(db, queue, actor.sessionId, input.data, s.channelId);
+    r = await startVideo(db, queue, actor.sessionId, long ? { ...input.data, lengthMin: LONG_DEFAULT_RANGE.min, lengthMax: LONG_DEFAULT_RANGE.max } : input.data, s.channelId);
   } catch {
     await release();
     return { ok: false, message: "Could not start the video. Nothing was saved. Try again in a minute." };
@@ -173,8 +174,18 @@ export async function startPart(db: pg.Pool, queue: EnqueueOnly, actor: GateActo
     await release();
     return r;
   }
-  await db.query("update videos set series_id = $2, part_no = $3 where id = $1", [r.videoId, seriesId, partNo]);
+  // A cartoon series keeps one cast: this episode takes a COPY of it now and builds from the copy (clearing the series cast later does not change it).
+  await db.query("update videos set series_id = $2, part_no = $3, cast_snapshot = (select settings->'cartoon'->'cast' from series where id = $2) where id = $1", [r.videoId, seriesId, partNo]);
   await db.query("update series_parts set video_id = $3 where series_id = $1 and part_no = $2", [seriesId, partNo, r.videoId]);
   await recordAudit(db, "series.part_started", { seriesId, partNo, videoId: r.videoId, sessionId: actor.sessionId });
   return r;
+}
+
+/** A part of a MIXED series is a Short or a Long video: the owner switches it before starting. Only a planned part of a mixed series changes. */
+export async function setPartFormat(db: pg.Pool, seriesId: string, partNo: number, format: "short" | "long"): Promise<Result> {
+  const r = await db.query(
+    "update series_parts p set format = $3 from series s where p.series_id = s.id and s.id = $1 and p.part_no = $2 and p.status = 'planned' and s.formats = 'mixed'",
+    [seriesId, partNo, format],
+  );
+  return (r.rowCount ?? 0) > 0 ? { ok: true } : { ok: false, message: "That part cannot change format: only planned parts of a mixed series can." };
 }

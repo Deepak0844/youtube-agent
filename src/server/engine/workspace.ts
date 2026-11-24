@@ -161,6 +161,7 @@ export function engineKitSeeds(repoRoot: string): WorkspaceSeeds {
       { from: path.join(kit, "brand"), to: "brand" },
       { from: path.join(kit, "examples"), to: "examples" },
       { from: path.join(kit, "lib"), to: "lib" },
+      { from: path.join(kit, "cartoon-shorts", "ref"), to: "cartoon-shorts" },
       { from: path.join(kit, "openmontage", "ref"), to: "openmontage" },
     ],
   };

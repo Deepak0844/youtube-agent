@@ -54,9 +54,23 @@ export function useToonBuild(fn: (rt: ToonRuntime) => void): void {
   }, []);
 }
 
-export const ToonFilm: React.FC<{ palette?: ToonPalette; bg?: string; children?: React.ReactNode }> = ({ palette, bg, children }) => {
-  const input = useContext(ToonContext);
-  if (!input) throw new Error("a cartoon scene needs the cartoon timeline from the host (ToonContext)");
+/** One scene of the film: its id (the same id as <Scene id>) and the beat marks it runs between. */
+export type ToonSceneWindow = { id: string; from: string | number; to: string | number };
+
+/**
+ * The film. `scenes` says when each <Scene> is on (beat marks such as "B0" .. "B2e", or seconds): a scene is shown from its `from` to its `to`, and
+ * marks like "hook" / "hooke" (scene start / end) work inside it. Write the scenes in order and let each start where the last one ends.
+ */
+export const ToonFilm: React.FC<{ scenes?: ToonSceneWindow[]; palette?: ToonPalette; bg?: string; children?: React.ReactNode }> = ({ scenes, palette, bg, children }) => {
+  const host = useContext(ToonContext);
+  if (!host) throw new Error("a cartoon scene needs the cartoon timeline from the host (ToonContext)");
+  // With `scenes` the film's own scene windows replace the host's (the host only knows the beats); marks in them can name beats and seconds only.
+  const input = useMemo(() => {
+    if (!scenes) return host;
+    const bare: ToonTimeline = { beats: host.timeline.beats, scenes: [] };
+    return { ...host, timeline: { beats: host.timeline.beats, scenes: scenes.map((s) => ({ id: s.id, startS: resolveMark(s.from, bare), endS: resolveMark(s.to, bare) })) } };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [host, JSON.stringify(scenes ?? null)]);
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const rt = useMemo(() => createToonRuntime(input.timeline, typeof document === "undefined" ? ({} as Document) : document), [input.timeline]);

@@ -1,5 +1,7 @@
 import { lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { checkToon } from "@/server/core/toon-check";
+import { toonInputFor } from "@/server/core/toon-input";
 import { engineModelFor } from "@/server/core/engine-config";
 import { reviewRecord } from "@/server/core/frame-review";
 import { KnownFailure } from "@/server/core/paid-call";
@@ -7,13 +9,15 @@ import { sanitizeCueSheet } from "@/server/core/sfx-plan";
 import { checkTsx, TSX_MAX_BYTES, tsxDuration, type TsxOrientation } from "@/server/core/tsx-check";
 import { tsxCaptionWords } from "@/server/core/tsx-captions";
 import { targetFrames } from "@/server/core/tsx-prompt";
-import { explainerBuildRequest } from "@/server/engine/build-prompt";
+import { cartoonBuildRequest, explainerBuildRequest } from "@/server/engine/build-prompt";
 import { EngineLimitError } from "@/server/engine/limit";
 import { runEngine } from "@/server/engine/run";
 import { buildEngineTools } from "@/server/engine/tools-factory";
 import type { TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 import type { ChildRegistry } from "@/server/render/child";
 import type { AttemptHandler } from "./attempt";
+import { isCartoonStyle } from "../../../remotion/kit/toon/styles";
+import { loadCartoonCast, takeEngineCast } from "./cartoon";
 import { loadVideo, type StageDeps } from "./deps";
 import { loadTsxInputs, tsxAuthorAttempt } from "./tsx-author";
 import { longEngineBuildAttempt } from "./engine-build-long";
@@ -78,12 +82,18 @@ export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Attempt
     const { beats, words, narrationS, topic } = await loadTsxInputs(deps, ctx, video.id, e.narrationSeconds);
     const want = targetFrames(narrationS);
     const orientation: TsxOrientation = e.orientation ?? "portrait";
-    const { prompt, inputs } = explainerBuildRequest({ topic, beats, words, narrationS, style: video.style, format: "short", orientation });
+    // A cartoon style draws with the yt-toon kit from the CURRENT beats and the series cast (a re-voiced narration moves the picture, the file is not changed).
+    const cartoon = isCartoonStyle(video.style) ? video.style : null;
+    const castState = cartoon ? await loadCartoonCast(deps.db, video.id) : null;
+    let toon = cartoon ? toonInputFor({ beats, words, durationS: narrationS, orientation, cast: castState?.cast ?? [], style: cartoon }) : undefined;
+    const { prompt, inputs } = cartoon
+      ? cartoonBuildRequest({ topic, beats, words, narrationS, style: cartoon, orientation, cast: castState?.cast ?? null, series: castState?.series ?? false })
+      : explainerBuildRequest({ topic, beats, words, narrationS, style: video.style, format: "short", orientation });
 
     const r = await (e.runEngine ?? runEngine)(
       {
         db: deps.db, root: e.root, config: ctx.config.engine, registry: e.registry,
-        tools: (ws) => buildEngineTools({ db: deps.db, ctx, workDir: ws.workDir, orientation, storageRoot: deps.root, render: e.render, style: video.style }),
+        tools: (ws) => buildEngineTools({ db: deps.db, ctx, workDir: ws.workDir, orientation, storageRoot: deps.root, render: e.render, style: video.style, ...(toon ? { toon } : {}) }),
       },
       { videoId: video.id, stageRunId: ctx.claim.stageRunId, kind: "build", prompt, inputs, long: false, signal: ctx.signal, model: engineModelFor(ctx.config, video.style) },
     );
@@ -97,10 +107,16 @@ export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Attempt
     const source = await readScene(r.workDir);
     const checked = checkTsx(source, orientation);
     if (!checked.ok) throw new KnownFailure(`The engine's scene file did not pass the safety check: ${checked.problems.slice(0, 3).join(" ")}`);
+    if (toon) {
+      // The first episode of a series made the cast: keep it (video and series) and draw with it. Then the cast names and beat marks are checked against it.
+      if (castState?.series && !castState.cast) toon = { ...toon, cast: await takeEngineCast(deps.db, video.id, r.workDir) };
+      const bad = checkToon(source, toon);
+      if (bad.length > 0) throw new KnownFailure(`The engine's cartoon scene did not pass the check: ${bad.slice(0, 3).join(" ")}`);
+    }
     const frames = tsxDuration(source);
     if (frames !== want) throw new KnownFailure(`The engine's scene file is ${frames ?? "an unknown number of"} frames; meta.durationInFrames must be ${want} (the narration length). Run the step again.`);
 
-    const rendered = await deps.tsx.renderTsx(ctx, { source, captions: tsxCaptionWords(words), style: video.style, orientation, outFile: "render.mp4" });
+    const rendered = await deps.tsx.renderTsx(ctx, { source, captions: toon ? [] : tsxCaptionWords(words), style: video.style, orientation, ...(toon ? { toon } : {}), outFile: "render.mp4" });
     if (!rendered.ok) throw new KnownFailure(`The engine's scene did not render: ${[rendered.error.message, ...rendered.error.problems.slice(0, 3)].join(" ")}`);
     const cues = await engineCues(r.workDir, narrationS);
     await writeFile(path.join(ctx.attemptDir, CUES), cues.json);
@@ -124,6 +140,8 @@ export function codeSceneAttempt(deps: StageDeps, e: EngineBuildDeps): AttemptHa
   const paid = tsxAuthorAttempt(deps);
   return async (ctx) => {
     if (!ctx.config.engine.enabled) {
+      // Cartoon styles are drawn by the engine with the yt-toon kit; the paid-model step knows only the ten yt-kit looks.
+      if (isCartoonStyle((await loadVideo(deps.db, ctx)).style)) throw new KnownFailure("A cartoon video is drawn by the engine. Switch the video engine on in Settings > System, then run this step again.");
       // The paid-model step draws ONE file of at most 90 s: it cannot draw a long video, and it says so instead of failing on the length.
       if ((await loadVideo(deps.db, ctx)).format === "long") throw new KnownFailure("A long video is drawn by the engine. Switch the video engine on in Settings > System, then run this step again.");
       return paid(ctx);
