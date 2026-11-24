@@ -55,3 +55,19 @@ export declare const Follow: React.FC<{
     place?: (t: number, joint: [number, number]) => [number, number, number, number];
     children?: React.ReactNode;
 }>;
+/**
+ * A line from a joint of the puppet with this `id` to wherever `to` says for time t (a fishing rod, a catching pole), with an optional ring at
+ * its tip. Draw it where it should sit in the stack, after the puppet.
+ */
+export declare const Tether: React.FC<{
+    of: string;
+    at?: Joint;
+    to: (t: number, joint: [number, number]) => [number, number];
+    stroke: string;
+    width: number;
+    tip?: {
+        r: number;
+        stroke: string;
+        width: number;
+    };
+}>;

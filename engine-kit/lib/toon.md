@@ -337,7 +337,7 @@ export {};
 
 ## yt-toon/comic
 
-`import { EASE, Follow, P, Puppet, cycle, mix, pose, track } from "yt-toon/comic";`
+`import { EASE, Follow, P, Puppet, Tether, cycle, mix, pose, track } from "yt-toon/comic";`
 
 ```ts
 import React from "react";
@@ -396,5 +396,21 @@ export declare const Follow: React.FC<{
     r?: number;
     place?: (t: number, joint: [number, number]) => [number, number, number, number];
     children?: React.ReactNode;
+}>;
+/**
+ * A line from a joint of the puppet with this `id` to wherever `to` says for time t (a fishing rod, a catching pole), with an optional ring at
+ * its tip. Draw it where it should sit in the stack, after the puppet.
+ */
+export declare const Tether: React.FC<{
+    of: string;
+    at?: Joint;
+    to: (t: number, joint: [number, number]) => [number, number];
+    stroke: string;
+    width: number;
+    tip?: {
+        r: number;
+        stroke: string;
+        width: number;
+    };
 }>;
 ```

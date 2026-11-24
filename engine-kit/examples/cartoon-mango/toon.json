@@ -1,0 +1,115 @@
+{
+ "timeline": {
+  "beats": [
+   {
+    "startS": 0.1,
+    "endS": 2.499,
+    "cap": "*Green* mango, *big* tree."
+   },
+   {
+    "startS": 2.619,
+    "endS": 5.218,
+    "cap": "The farmer picks it *by hand.*"
+   },
+   {
+    "startS": 5.537,
+    "endS": 8.136,
+    "cap": "Sorted by size: *S, M, L.*"
+   },
+   {
+    "startS": 8.256,
+    "endS": 10.455,
+    "cap": "Packed into *crates.*"
+   },
+   {
+    "startS": 10.775,
+    "endS": 13.374,
+    "cap": "An *overnight* truck ride..."
+   },
+   {
+    "startS": 13.493,
+    "endS": 15.692,
+    "cap": "...to the city *mandi!*"
+   },
+   {
+    "startS": 16.012,
+    "endS": 18.611,
+    "cap": "The agent shouts: *who bids?*"
+   },
+   {
+    "startS": 18.73,
+    "endS": 21.129,
+    "cap": "*SOLD!* To a wholesaler."
+   },
+   {
+    "startS": 21.449,
+    "endS": 24.248,
+    "cap": "A sealed room, *ethylene* gas..."
+   },
+   {
+    "startS": 24.368,
+    "endS": 26.767,
+    "cap": "1–2 days later: *golden!*"
+   },
+   {
+    "startS": 26.886,
+    "endS": 29.085,
+    "cap": "*Carbide?* Banned!"
+   },
+   {
+    "startS": 29.405,
+    "endS": 31.604,
+    "cap": "On the *shop* shelf..."
+   },
+   {
+    "startS": 31.724,
+    "endS": 34.123,
+    "cap": "...and into *your hands!*"
+   },
+   {
+    "startS": 34.442,
+    "endS": 38.441,
+    "cap": "India grows *~40%* of the world's mangoes!"
+   }
+  ],
+  "scenes": [
+   {
+    "id": "orchard",
+    "startS": 0,
+    "endS": 5.346
+   },
+   {
+    "id": "pack",
+    "startS": 5.346,
+    "endS": 10.583
+   },
+   {
+    "id": "truck",
+    "startS": 10.583,
+    "endS": 15.82
+   },
+   {
+    "id": "mandi",
+    "startS": 15.82,
+    "endS": 21.257
+   },
+   {
+    "id": "ripen",
+    "startS": 21.257,
+    "endS": 29.213
+   },
+   {
+    "id": "shop",
+    "startS": 29.213,
+    "endS": 34.251
+   },
+   {
+    "id": "big",
+    "startS": 34.251,
+    "endS": 40.841
+   }
+  ]
+ },
+ "cast": [],
+ "orientation": "portrait"
+}
