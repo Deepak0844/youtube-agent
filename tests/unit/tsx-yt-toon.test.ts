@@ -53,6 +53,10 @@ describe("yt-toon imports in the static check", () => {
     expect(checkTsx(src).problems).toEqual([]);
     expect(checkTsx(scene(`import { paperTileUrl } from "yt-toon/paper";`)).ok).toBe(false);
   });
+  it("a scene importing yt-toon/painted passes the check", () => {
+    const src = scene(`${PUPPET}\nimport { Cook, Kitchen, Counter } from "yt-toon/painted";`, `<AbsoluteFill><ToonFilm><Scene id="hook"><Kitchen /><Cook x={270} y={800} act={() => ({ talk: "voice", blink: "auto" })} /><Counter /></Scene></ToonFilm></AbsoluteFill>`);
+    expect(checkTsx(src).problems).toEqual([]);
+  });
   it("a default import from yt-toon is refused", () => {
     expect(checkTsx(scene(`import Toon from "yt-toon/comic";`)).problems.join(" ")).toMatch(/default import/);
   });

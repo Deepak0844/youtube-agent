@@ -3,8 +3,9 @@
 export const TOON_LIBS: Readonly<Record<string, readonly string[]>> = {
   "yt-toon/core": ["Anim","Camera","Chroma","DotsPattern","ENTRANCE_PRESETS","FlashAt","Impact","LinGrad","Ov","RadGrad","Scene","Shake","Show","ToonFilm","clamp","eio","eout","lerp","trf","useToon"],
   "yt-toon/fx": ["Box","Burst","CamRig","Confetti","Court","Crowd","Desk","Flames","Football","Hoop","House","Jersey","Palm","PopIn","Rain","Rays","Ring","School","Skyline","SpeedLines","Stars","Streaks","Streetlight","Trophy"],
-  "yt-toon/comic": ["EASE","Follow","P","Puppet","Tether","cycle","mix","pose","track"],
+  "yt-toon/comic": ["EASE","Follow","P","Puppet","Tether","cycle","mix","pose","registry","track"],
   "yt-toon/anime": ["BlurFilter","Bokeh","Bust","Grain","Sparkle","SpeedLines","Streaks","rng"],
   "yt-toon/manga": ["Bust","ConfettiRain","Hatch","Sfx"],
   "yt-toon/paper": ["Card","Dust","Figure","Glow","GradRect","Layer","PaperConfetti","Profile","Rays","StarField","Word","parallax","ridge","rng","thousands","torn"],
+  "yt-toon/painted": ["Bacon","Bottle","Bowl","Cloud","Cook","Counter","Flames","Garlic","Guanciale","Kitchen","Landscape","Nest","Onion","Pan","PastaNest","Pecorino","PepperMill","Peppercorns","Plate","Pot","SaltPinch","Sheep","SpaghettiPack","Steam","Strip","Tomato","TomatoTin","Twirl","Village","mixColor"],
 };

@@ -4,6 +4,7 @@ import animeFactory from "./upstream/anime.js";
 import coreFactory from "./upstream/core.js";
 import fxFactory from "./upstream/fx.js";
 import mangaFactory from "./upstream/manga.js";
+import paintedFactory from "./upstream/painted.js";
 import toonFactory from "./upstream/toon.js";
 import type { ToonTimeline } from "./time";
 
@@ -37,6 +38,7 @@ export function createToonRuntime(tl: ToonTimeline, doc: Document): ToonRuntime 
   fxFactory(win, doc);
   animeFactory(win, doc);
   mangaFactory(win, doc);
+  paintedFactory(win, doc);
   coreFactory(win, doc);
   return {
     short: win.Short,

@@ -80,7 +80,7 @@ export const ToonFilm: React.FC<{ palette?: ToonPalette; bg?: string; children?:
     state.current.t = frame / fps;
     if (state.current.ready) rt.seek(frame / fps);
   });
-  const tileUrl = useMemo(() => (input.style === "cartoon_paper" && typeof document !== "undefined" ? paperTileUrl() : ""), [input.style]);
+  const tileUrl = useMemo(() => ((input.style === "cartoon_paper" || input.style === "cartoon_painted") && typeof document !== "undefined" ? paperTileUrl() : ""), [input.style]);
   const [W, H] = input.orientation === "landscape" ? [1920, 1080] : [1080, 1920];
   const vars: Record<string, string> = { "--title": `'Anton',Impact,${NOTO},sans-serif`, "--comic": `'Bangers','Anton',${NOTO},sans-serif`, "--body": `'Inter',${NOTO},system-ui,sans-serif` };
   const look = CARTOON_LOOKS[cartoonStyleModule(input.style ?? "cartoon_comic")];
@@ -94,7 +94,7 @@ export const ToonFilm: React.FC<{ palette?: ToonPalette; bg?: string; children?:
           <div id="v" style={{ ...(vars as React.CSSProperties), background: bg ?? look.bg }} data-w={W} data-h={H}>
             <div id="world">{children}</div>
             <div id="flash" />
-            {input.style === "cartoon_paper" ? <div id="paper" style={typeof document === "undefined" ? undefined : { backgroundImage: `url(${tileUrl})` }} /> : null}
+            {input.style === "cartoon_paper" || input.style === "cartoon_painted" ? <div id="paper" style={typeof document === "undefined" ? undefined : { backgroundImage: `url(${tileUrl})` }} /> : null}
             <div id="vig" />
             <div id="grain" />
             <div id="cap" />

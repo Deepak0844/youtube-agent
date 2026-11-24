@@ -39,8 +39,8 @@ export type PuppetOptions = Record<string, string | number | boolean | null>;
 export type Joint = "hand" | "fhand" | "head" | "neck" | "hip" | "foot" | "ffoot" | "knee" | "elbow" | "shoulder" | "fshoulder";
 
 // puppets of this film by id, so a <Follow> can find the one it follows (a Follow must be written after its Puppet)
-type Rig = { at(j: string): number[] };
-const registry = (rt: { win: Record<string, unknown> }): Map<string, Rig> => {
+export type Rig = { at(j: string): number[] };
+export const registry = (rt: { win: Record<string, unknown> }): Map<string, Rig> => {
   const w = rt.win as { __puppets?: Map<string, Rig> };
   return (w.__puppets ??= new Map());
 };

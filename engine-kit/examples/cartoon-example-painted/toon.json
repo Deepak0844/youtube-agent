@@ -1,0 +1,45 @@
+{
+ "timeline": {
+  "beats": [
+   {
+    "startS": 0.35,
+    "endS": 3.682,
+    "cap": "Tomato pasta. *15 minutes,* *2 euros.*"
+   },
+   {
+    "startS": 3.932,
+    "endS": 7.1850000000000005,
+    "cap": "Warm *garlic* in olive oil, then crush in *the tomatoes.*"
+   },
+   {
+    "startS": 7.285,
+    "endS": 9.368,
+    "cap": "Let it *bubble* while the pasta cooks."
+   },
+   {
+    "startS": 9.617,
+    "endS": 12.589,
+    "cap": "Toss it together, add *basil.* *Dinner for two!*"
+   }
+  ],
+  "scenes": [
+   {
+    "id": "hook",
+    "startS": 0,
+    "endS": 3.782
+   },
+   {
+    "id": "kitchen",
+    "startS": 3.782,
+    "endS": 9.468
+   },
+   {
+    "id": "plate",
+    "startS": 9.468,
+    "endS": 14.589
+   }
+  ]
+ },
+ "cast": [],
+ "orientation": "portrait"
+}

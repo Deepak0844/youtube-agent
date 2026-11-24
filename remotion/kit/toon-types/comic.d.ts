@@ -29,6 +29,12 @@ export type PuppetFrame = {
 export type PuppetOptions = Record<string, string | number | boolean | null>;
 /** Joint names a puppet can report: hand, fhand (far hand), head, neck, hip, foot, ffoot, knee, elbow, shoulder, fshoulder. */
 export type Joint = "hand" | "fhand" | "head" | "neck" | "hip" | "foot" | "ffoot" | "knee" | "elbow" | "shoulder" | "fshoulder";
+export type Rig = {
+    at(j: string): number[];
+};
+export declare const registry: (rt: {
+    win: Record<string, unknown>;
+}) => Map<string, Rig>;
 /**
  * One character. `who` takes the look from the series cast (ref/cast.json); `options` is a one-off look (or overrides): the puppet
  * options of cartoon-shorts (skin, skinD, hair, hairStyle, top, shirt, shirtD, tie, pants, shoe, beard, cap, glasses, kid, build...).
