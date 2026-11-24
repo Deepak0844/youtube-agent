@@ -1,0 +1,50 @@
+{
+ "timeline": {
+  "beats": [
+   {
+    "startS": 0.3,
+    "endS": 3.473,
+    "cap": "A street cook made a *vow.*"
+   },
+   {
+    "startS": 3.573,
+    "endS": 5.6690000000000005,
+    "cap": "\"I will *win* the contest!\""
+   },
+   {
+    "startS": 5.919,
+    "endS": 7.624,
+    "cap": "The whole city *laughed.*"
+   },
+   {
+    "startS": 7.874,
+    "endS": 9.779,
+    "cap": "He just *grinned.* And cooked."
+   },
+   {
+    "startS": 9.88,
+    "endS": 12.166,
+    "cap": "*First prize.* Tears of joy."
+   }
+  ],
+  "scenes": [
+   {
+    "id": "vow",
+    "startS": 0,
+    "endS": 5.769
+   },
+   {
+    "id": "laugh",
+    "startS": 5.769,
+    "endS": 7.724
+   },
+   {
+    "id": "win",
+    "startS": 7.724,
+    "endS": 13.966
+   }
+  ]
+ },
+ "cast": [],
+ "orientation": "portrait"
+}

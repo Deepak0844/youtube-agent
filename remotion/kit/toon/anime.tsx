@@ -1,6 +1,5 @@
-import React, { useContext, useLayoutEffect, useRef } from "react";
-import { ToonContext, type ToonCharacter } from "./context";
-import { useSceneId } from "./scene-parts";
+import React, { useRef } from "react";
+import { makeBust } from "./bust";
 import { useRuntime, useToon, useToonBuild } from "./Stage";
 
 // yt-toon/anime: the anime look of cartoon-shorts (styles/anime.js): cel-shaded busts with big eyes and the effects of anime (focus lines,
@@ -78,37 +77,10 @@ function makeGirl(A: any): any {
  * An anime bust, drawn again for every frame from `act(t)`. `look` is the one-off look (skin, hair, hairStyle spiky | swept | buzz | long, iris,
  * eyeW, eyeH, eyeGap, lash, jaw, glasses, outfit kit | suit, shirt, tie, ...); `who` takes the look from the series cast.
  */
-export const Bust: React.FC<{ who?: string; look?: AnimeLook; act: (t: number) => BustFrame }> = ({ who, look, act }) => {
-  const rt = useRuntime();
-  const input = useContext(ToonContext);
-  const id = useSceneId();
-  const ref = useRef<SVGGElement>(null);
-  const actRef = useRef(act);
-  useLayoutEffect(() => {
-    actRef.current = act;
-  });
-  useToonBuild(() => {
-    const member: ToonCharacter | undefined = who ? input?.cast.find((c) => c.name === who) : undefined;
-    if (who && !member && !look) throw new Error(`cast: '${who}' is not in the cast (${(input?.cast ?? []).map((c) => c.name).join(", ") || "empty"})`);
-    const opts = { ...(member?.options ?? {}), ...(look ?? {}) };
-    const A = rt.win.Anime;
-    const Cls = opts.hairStyle === "long" ? makeGirl(A) : A.Bust;
-    const bust = new Cls(ref.current, opts);
-    const info = rt.short.sceneById[id];
-    let made: Element[] = [];
-    // draw() adds gradients and clip paths to <defs> on every call: drop the ones the last frame made
-    rt.short.ups.push((t: number) => {
-      if (!info || t < info.start || t >= info.end) return;
-      const defs = (ref.current as SVGGElement).ownerSVGElement!.querySelector("defs")!;
-      made.forEach((d) => d.remove());
-      const before = new Set(Array.from(defs.children));
-      const f = actRef.current(t);
-      bust.draw(f.x, f.y, f.s, f.ex ?? {});
-      made = Array.from(defs.children).filter((d) => !before.has(d));
-    });
-  });
-  return <g ref={ref} />;
-};
+export const Bust: React.FC<{ who?: string; look?: AnimeLook; act: (t: number) => BustFrame }> = makeBust((rt, opts) => {
+  const A = rt.win.Anime;
+  return opts.hairStyle === "long" ? makeGirl(A) : A.Bust;
+});
 
 type Mark = string | number;
 function piece<P extends object>(fn: string, args: (keyof P & string)[]): React.FC<P> {

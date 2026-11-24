@@ -44,6 +44,10 @@ describe("yt-toon imports in the static check", () => {
     const src = scene(`${PUPPET}\nimport { Bust } from "yt-toon/anime";`, `<AbsoluteFill><ToonFilm><Scene id="hook"><Bust look={{ hairStyle: "long" }} act={() => ({ x: 540, y: 800, s: 1.4, ex: { eyes: "open" } })} /></Scene></ToonFilm></AbsoluteFill>`);
     expect(checkTsx(src).problems).toEqual([]);
   });
+  it("a scene importing yt-toon/manga Bust passes the check", () => {
+    const src = scene(`${PUPPET}\nimport { Bust, Sfx } from "yt-toon/manga";`, `<AbsoluteFill><ToonFilm><Scene id="hook"><Bust look={{ head: "square", headband: "#2a7de1" }} act={() => ({ x: 540, y: 900, s: 1.2, ex: { mouth: "grin" } })} /><Sfx x={540} y={400} text="DON!!" /></Scene></ToonFilm></AbsoluteFill>`);
+    expect(checkTsx(src).problems).toEqual([]);
+  });
   it("a default import from yt-toon is refused", () => {
     expect(checkTsx(scene(`import Toon from "yt-toon/comic";`)).problems.join(" ")).toMatch(/default import/);
   });
