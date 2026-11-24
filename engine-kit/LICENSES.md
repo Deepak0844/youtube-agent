@@ -308,3 +308,83 @@ Source: OpenMontage, https://github.com/calesthio/OpenMontage, AGPL-3.0 (full te
 ## cartoon-shorts (`engine-kit/cartoon-shorts/`)
 
 MIT, Copyright (c) 2026 Matteoikarieth96 (https://github.com/Matteoikarieth96/cartoon-shorts); licence text in `engine-kit/cartoon-shorts/LICENSE`. `ref/` holds its style guides and gallery stills unchanged; `MANIFEST.json` records the upstream commit and a hash per file.
+
+### cartoon-shorts files (added 2026-11-24)
+
+- engine-kit/cartoon-shorts/MANIFEST.json: our list of the copied cartoon-shorts files, their upstream hashes and local patches (written by scripts/toon-manifest.ts)
+- engine-kit/cartoon-shorts/ref/engine-api.md: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/interview.md: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/platforms.md: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/storytelling.md: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/styles/anime.jpg: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/styles/anime.md: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/styles/comic.jpg: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/styles/comic.md: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/styles/manga.jpg: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/styles/manga.md: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/styles/painted.jpg: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/styles/painted.md: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/styles/paper.jpg: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/cartoon-shorts/ref/styles/paper.md: cartoon-shorts style guide / gallery still, copied unchanged (MIT, Copyright (c) 2026 Matteoikarieth96)
+- engine-kit/examples/cartoon-docker/stills/beat-00.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/stills/beat-01.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/stills/beat-02.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/stills/beat-03.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/stills/beat-04.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/stills/beat-05.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/stills/beat-06.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/stills/beat-07.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/stills/beat-08.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/stills/beat-09.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/stills/beat-10.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/stills/beat-11.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/toon.json: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-docker/video.tsx: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-00.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-01.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-02.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-03.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-04.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-05.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-06.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-07.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-08.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-09.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-10.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-11.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-12.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/stills/beat-13.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/toon.json: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-mango/video.tsx: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-00.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-01.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-02.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-03.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-04.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-05.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-06.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-07.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-08.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-09.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-10.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-11.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/stills/beat-12.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/toon.json: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-traffic/video.tsx: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-00.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-01.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-02.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-03.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-04.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-05.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-06.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-07.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-08.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-09.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-10.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-11.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-12.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/stills/beat-13.jpg: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/toon.json: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/examples/cartoon-upi-chai/video.tsx: our own port of a cartoon-shorts episode to yt-toon components (episode made with cartoon-shorts, MIT); stills and beats are renders / data of that episode
+- engine-kit/lib/toon.md: generated by scripts/sync-toon-dts.ts from remotion/kit/toon (the yt-toon index for the engine)
