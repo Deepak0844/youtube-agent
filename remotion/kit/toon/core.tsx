@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useLayoutEffect, useRef } from "react";
+import React, { useContext, useLayoutEffect, useRef } from "react";
+import { SceneContext, sceneParts, useSceneId } from "./scene-parts";
 import { clamp, eio, eout, lerp, ToonFilm, useRuntime, useToon, useToonBuild, type ToonClock, type ToonPalette } from "./Stage";
-import { useContext as useCtx } from "react";
 import { ToonContext, type ToonCharacter, type ToonInput } from "./context";
 
 // yt-toon/core: the film, scenes, text overlays, entrance presets, camera and whole-frame effects of cartoon-shorts.
@@ -12,30 +12,12 @@ export const ENTRANCE_PRESETS = ["slam", "smash", "up", "down", "left", "right",
 export type EntrancePreset = (typeof ENTRANCE_PRESETS)[number];
 export type Transition = "flash" | "zoom" | "whip" | "glitch" | "cut";
 
-const SceneContext = createContext<string | null>(null);
-export const useSceneId = (): string => {
-  const id = useContext(SceneContext);
-  if (!id) throw new Error("this yt-toon component must be inside a <Scene>");
-  return id;
-};
-
-/** The pieces of one scene, found in the page when needed (the scene's React nodes attach after their children ran). */
-export function sceneParts(id: string) {
-  const div = document.querySelector<HTMLElement>(`.scene[data-scene="${id}"]`);
-  if (!div) throw new Error(`scene ${id} is not drawn`);
-  const svg = div.querySelector(":scope > svg") as (SVGSVGElement & { defs?: Element }) | null;
-  if (!svg) throw new Error(`scene ${id} has no drawing layer`);
-  const defs = svg.querySelector(":scope > defs") as Element;
-  svg.defs = defs; // cartoon-shorts' FX helpers look for svg.defs
-  return { id, div, svg, defs, cam: svg.querySelector(":scope > g.cam") as SVGGElement };
-}
-
 /**
  * One scene of the film: shown only between its start and its end (the scene id must be in the timeline), entered with `tr`.
  * `children` are drawn in the scene's SVG layer (1080 x 1920 portrait, 1920 x 1080 landscape); `overlays` are HTML text boxes (<Ov>) above it.
  */
 export const Scene: React.FC<{ id: string; tr?: Transition; children?: React.ReactNode; overlays?: React.ReactNode }> = ({ id, tr = "zoom", children, overlays }) => {
-  const input = useCtx(ToonContext);
+  const input = useContext(ToonContext);
   const [W, H] = input?.orientation === "landscape" ? [1920, 1080] : [1080, 1920];
   return (
     <SceneContext.Provider value={id}>

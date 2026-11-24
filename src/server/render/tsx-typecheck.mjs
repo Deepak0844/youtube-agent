@@ -23,6 +23,9 @@ const YT_OLD = /^yt-old\/([a-z][a-z0-9]*)$/;
 // "yt-om/<Component>" (OpenMontage's composer components) is typed by the generated declarations in remotion/kit/om-types.
 const OM_TYPES = fileURLToPath(new URL("../../../remotion/kit/om-types/", import.meta.url));
 const YT_OM = /^yt-om\/([A-Z][A-Za-z]*)$/;
+// "yt-toon/<module>" (the cartoon kit) is typed by the generated declarations in remotion/kit/toon-types.
+const TOON_TYPES = fileURLToPath(new URL("../../../remotion/kit/toon-types/", import.meta.url));
+const YT_TOON = /^yt-toon\/([a-z]+)$/;
 const MAX_PROBLEMS = 10;
 const OPTIONS = {
   strict: true,
@@ -61,6 +64,11 @@ export function typeCheckTsx(source) {
       const om = containing === SCENE ? YT_OM.exec(l.text) : null;
       if (om) {
         const file = path.join(OM_TYPES, `${om[1]}.d.ts`);
+        return fileExists(file) ? { resolvedModule: { resolvedFileName: file, extension: ts.Extension.Dts, isExternalLibraryImport: false } } : { resolvedModule: undefined };
+      }
+      const toon = containing === SCENE ? YT_TOON.exec(l.text) : null;
+      if (toon) {
+        const file = path.join(TOON_TYPES, `${toon[1]}.d.ts`);
         return fileExists(file) ? { resolvedModule: { resolvedFileName: file, extension: ts.Extension.Dts, isExternalLibraryImport: false } } : { resolvedModule: undefined };
       }
       return containing === SCENE && !ALLOWED.has(l.text) ? { resolvedModule: undefined } : ts.resolveModuleName(l.text, containing, options, host, undefined, redirected);

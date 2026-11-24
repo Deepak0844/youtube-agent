@@ -101,6 +101,9 @@ const withScene = (r) => {
   const omDir = path.join(import.meta.dirname, "om", "components");
   const omComponents = ["", "charts"].flatMap((sub) => readdirSync(path.join(omDir, sub)).filter((f) => /^[A-Z][A-Za-z]*\.tsx$/.test(f)).map((f) => ({ name: "yt-om/" + f.replace(/\.tsx$/, ""), file: path.join(omDir, sub, f) })));
   old.push(...omComponents);
+  // "yt-toon/<module>" (exactly) resolves to the cartoon kit module of that name (toon/, read-only kit mount): core, fx and one file per style.
+  const toonDir = path.join(import.meta.dirname, "toon");
+  old.push(...readdirSync(toonDir).filter((f) => /^(core|fx|comic|anime|manga|paper|painted)\.tsx$/.test(f)).map((f) => ({ name: "yt-toon/" + f.replace(/\.tsx$/, ""), file: path.join(toonDir, f) })));
   const a = r.alias;
   return {
     ...r,

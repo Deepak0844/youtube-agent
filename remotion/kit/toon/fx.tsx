@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { sceneParts, useSceneId } from "./core";
+import { sceneParts, useSceneId } from "./scene-parts";
 import { useRuntime, useToonBuild } from "./Stage";
 
 // yt-toon/fx: the set pieces of cartoon-shorts (styles/fx.js), one component each. The drawing is cartoon-shorts' own code; props are its

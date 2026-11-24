@@ -1,6 +1,6 @@
 import React, { useContext, useLayoutEffect, useRef } from "react";
 import { useRuntime, useToonBuild } from "./Stage";
-import { useSceneId } from "./core";
+import { useSceneId } from "./scene-parts";
 import toonFactory from "./upstream/toon.js";
 import { ToonContext, type ToonCharacter } from "./context";
 
