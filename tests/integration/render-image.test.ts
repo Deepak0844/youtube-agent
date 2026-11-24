@@ -70,8 +70,8 @@ describe("render image", () => {
     expect(r.status, r.stderr).toBe(0);
     const files = r.stdout.split("\n").filter(Boolean).sort();
     const families = [
-      "ArchivoBlack", "Fraunces", "IBMPlexMono", "IBMPlexSans", "Inter", "JetBrainsMono", "NotoSerif", "Poppins", "NotoSansDevanagari", "NotoSansKannada", "NotoSansMalayalam",
-      "NotoSansTamil", "NotoSansTelugu", "SourceSerif4", "SpaceGrotesk", "Spectral",
+      "Anton", "ArchivoBlack", "Bangers", "Fraunces", "IBMPlexMono", "IBMPlexSans", "Inter", "JetBrainsMono", "NotoSerif", "Poppins", "NotoSansDevanagari", "NotoSansKannada", "NotoSansMalayalam",
+      "NotoSansTamil", "NotoSansTelugu", "Nunito", "SourceSerif4", "SpaceGrotesk", "Spectral",
     ];
     expect(files).toEqual([...families.map((f) => `OFL-${f}.txt`), "README.md"].sort());
   });
