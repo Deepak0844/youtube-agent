@@ -23,7 +23,13 @@ All files are licensed under the SIL Open Font License 1.1 (see the matching OFL
 | NotoSansTelugu-Variable.ttf | Noto Sans Telugu | https://github.com/google/fonts/raw/main/ofl/notosanstelugu/NotoSansTelugu%5Bwdth%2Cwght%5D.ttf | OFL-1.1, OFL-NotoSansTelugu.txt |
 | NotoSansMalayalam-Variable.ttf | Noto Sans Malayalam | https://github.com/google/fonts/raw/main/ofl/notosansmalayalam/NotoSansMalayalam%5Bwdth%2Cwght%5D.ttf | OFL-1.1, OFL-NotoSansMalayalam.txt |
 | NotoSansKannada-Variable.ttf | Noto Sans Kannada | https://github.com/google/fonts/raw/main/ofl/notosanskannada/NotoSansKannada%5Bwdth%2Cwght%5D.ttf | OFL-1.1, OFL-NotoSansKannada.txt |
+| Anton-Regular.ttf | Anton | https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf | OFL-1.1, OFL-Anton.txt |
+| Bangers-Regular.ttf | Bangers | https://github.com/google/fonts/raw/main/ofl/bangers/Bangers-Regular.ttf | OFL-1.1, OFL-Bangers.txt |
+| Nunito-Variable.ttf | Nunito | https://github.com/google/fonts/raw/main/ofl/nunito/Nunito%5Bwght%5D.ttf | OFL-1.1, OFL-Nunito.txt |
+| Fraunces-Italic-Variable.ttf | Fraunces (italic) | https://github.com/google/fonts/raw/main/ofl/fraunces/Fraunces-Italic%5BSOFT%2CWONK%2Copsz%2Cwght%5D.ttf | OFL-1.1, OFL-Fraunces.txt |
 
 Brand families come from the old project's fonts.ts (Space Grotesk display, Inter body, JetBrains Mono mono, Spectral serif, Source Serif 4 editorial). Indic fallbacks are the Noto Sans families named in its INDIC_FALLBACK. Variable fonts are used where upstream ships only a variable file; Spectral is static upstream.
 
 Style fonts (Archivo Black, Fraunces, IBM Plex Sans/Mono, Noto Serif, Poppins) serve the ten video styles in remotion/kit/presets.ts. Static files carry only the weights used (Poppins 600/800, Plex Mono 400/500); Noto Serif has no static file upstream, so the variable one (about 1.9 MB) is used.
+
+Cartoon styles (Anton, Bangers, Nunito, Fraunces italic) serve the `yt-toon` kit (cartoon-shorts, 2026-11-24); the render image has no network, so they are installed here.
