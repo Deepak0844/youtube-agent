@@ -3,6 +3,8 @@ import { chmod, lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
+import type { ToonInput } from "../../../../remotion/kit/toon/context";
+import { isCartoonStyle } from "../../../../remotion/kit/toon/styles";
 import { isTsxStyleId } from "../../../../remotion/kit/tsxlib/styledata";
 import { redactLine } from "@/server/core/log-redact";
 import type { ProbeResult } from "@/server/core/qa";
@@ -63,6 +65,8 @@ export interface TsxRenderInput {
   captions?: { word: string; startS: number; endS: number }[];
   /** The video's style id (one of the ten picker ids; null or unknown = ai_studio). Passed in meta.json; picks the yt-kit look. */
   style?: string | null;
+  /** Cartoon styles only: the beats (current narration), the series cast and the frame shape the scene draws from. Written to meta.json (at most 64 KB), never to the scene's props. */
+  toon?: ToonInput;
   /** Frame orientation: portrait (the default, 1080x1920) or landscape (1920x1080). Written to meta.json; the scene's meta must match. */
   orientation?: TsxOrientation;
   /** A plain file name inside ctx.attemptDir. */
@@ -178,6 +182,8 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
     return failure("infra", "The scene props are not a plain JSON object.");
   }
   if (Buffer.byteLength(propsJson) > MAX_PROPS_BYTES) return failure("infra", "The scene props are bigger than 64 KB.");
+  const toonJson = input.toon === undefined ? null : JSON.stringify(input.toon);
+  if (toonJson !== null && Buffer.byteLength(toonJson) > MAX_PROPS_BYTES) return failure("infra", "The scene props are bigger than 64 KB.");
 
   // 2. Type-check (worker thread, timeout).
   const typed = await (deps.typeCheck ?? typeCheckInThread)(source, TYPECHECK_TIMEOUT_MS).catch(() => ({ ok: false, problems: ["The type-check could not run."] }));
@@ -208,7 +214,7 @@ export async function renderTsx(deps: TsxRendererDeps, ctx: StageContext, input:
       await mkdir(stillsDir, { mode: 0o700 });
       await writeFile(path.join(inDir, "video.tsx"), source, { mode: 0o644, flag: "wx" });
       await writeFile(path.join(inDir, "props.json"), propsJson, { mode: 0o644, flag: "wx" });
-      await writeFile(path.join(inDir, "meta.json"), JSON.stringify({ durationInFrames: frames, stills: stillList, ...(input.orientation === "landscape" ? { orientation: "landscape" } : {}), captions: (input.captions ?? []).slice(0, 1500), ...(isTsxStyleId(input.style) ? { style: input.style } : {}) }), { mode: 0o644, flag: "wx" });
+      await writeFile(path.join(inDir, "meta.json"), JSON.stringify({ durationInFrames: frames, stills: stillList, ...(input.orientation === "landscape" ? { orientation: "landscape" } : {}), captions: (input.captions ?? []).slice(0, 1500), ...(isTsxStyleId(input.style) || isCartoonStyle(input.style) ? { style: input.style } : {}), ...(toonJson !== null && isCartoonStyle(input.style) ? { toon: JSON.parse(toonJson) as unknown } : {}) }), { mode: 0o644, flag: "wx" });
     } catch (e) {
       return failure("infra", `The TSX render folders could not be prepared (${e instanceof Error ? e.message : "unknown"}).`);
     }

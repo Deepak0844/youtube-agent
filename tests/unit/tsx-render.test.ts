@@ -219,8 +219,18 @@ describe("renderTsx", () => {
     }
     expect((await failed(deps(), input({ props: { big: "x".repeat(70_000) } }))).message).toMatch(/64 KB/);
     expect((await failed(deps(), input({ props: [] as never }))).kind).toBe("infra");
+    const cast = Array.from({ length: 3 }, (_, i) => ({ name: `C${i}`, role: "r", style: "cartoon_comic" as const, options: { note: "x".repeat(30_000) } }));
+    expect((await failed(deps(), input({ style: "cartoon_comic", toon: { timeline: { beats: [], scenes: [] }, cast, orientation: "portrait" } }))).message).toMatch(/64 KB/);
     await expect(renderTsx(deps(), ctx(), input({ outFile: "../x.mp4" }))).rejects.toThrow(/plain file name/);
     expect(runs()).toHaveLength(0);
+  });
+
+  it("a cartoon render writes the style and the beats to meta.json, never to the props", async () => {
+    const toon = { timeline: { beats: [{ startS: 0, endS: 1, cap: "*Hi*" }], scenes: [{ id: "hook", startS: 0, endS: 3 }] }, cast: [], orientation: "portrait" as const };
+    const r = await renderTsx(deps(), ctx(), input({ style: "cartoon_comic", toon }));
+    expect(r.ok).toBe(true);
+    expect(JSON.parse(seen.meta!)).toMatchObject({ style: "cartoon_comic", toon });
+    expect(JSON.parse(seen.props!)).toEqual({ title: "Hi" });
   });
 
   it("a cancelled stage throws instead of returning a model error", async () => {

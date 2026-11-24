@@ -59,7 +59,6 @@ export const ToonFilm: React.FC<{ palette?: ToonPalette; bg?: string; children?:
   const { fps } = useVideoConfig();
   const rt = useMemo(() => createToonRuntime(input.timeline, typeof document === "undefined" ? ({} as Document) : document), [input.timeline]);
   const state = useRef({ ready: false, t: 0 });
-  state.current.t = frame / fps;
   useLayoutEffect(() => {
     const h = delayRender("cartoon film");
     let live = true;
@@ -76,6 +75,7 @@ export const ToonFilm: React.FC<{ palette?: ToonPalette; bg?: string; children?:
     };
   }, [rt]);
   useLayoutEffect(() => {
+    state.current.t = frame / fps;
     if (state.current.ready) rt.seek(frame / fps);
   });
   const [W, H] = input.orientation === "landscape" ? [1920, 1080] : [1080, 1920];

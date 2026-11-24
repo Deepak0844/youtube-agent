@@ -55,7 +55,18 @@ if (tsx) {
   if (typeof style !== "string" || !/^[a-z_]{1,32}$/.test(style)) throw new Error("meta.json: bad style");
   // Orientation: portrait unless meta.json says "landscape" (the host writes it only for landscape). Anything else is refused.
   if (meta.orientation !== undefined && meta.orientation !== "landscape" && meta.orientation !== "portrait") throw new Error("meta.json: bad orientation");
-  inputProps = { props: readJson("props.json"), frames: n, captions: caps, style, orientation: meta.orientation === "landscape" ? "landscape" : "portrait" };
+  // Cartoon styles: the beats, cast and frame shape (host-written, checked here). Anything else is refused.
+  let toon;
+  if (meta.toon !== undefined) {
+    const t = meta.toon;
+    const num = (v) => typeof v === "number" && Number.isFinite(v);
+    const ok = t && typeof t === "object" && (t.orientation === "portrait" || t.orientation === "landscape") && Array.isArray(t.cast) && t.cast.length <= 8 &&
+      t.timeline && Array.isArray(t.timeline.beats) && t.timeline.beats.length <= 2000 && t.timeline.beats.every((b) => b && num(b.startS) && num(b.endS) && (b.cap === null || typeof b.cap === "string")) &&
+      Array.isArray(t.timeline.scenes) && t.timeline.scenes.length <= 200 && t.timeline.scenes.every((s) => s && typeof s.id === "string" && /^[a-z][a-z0-9_]{0,40}$/.test(s.id) && num(s.startS) && num(s.endS));
+    if (!ok) throw new Error("meta.json: bad toon");
+    toon = t;
+  }
+  inputProps = { props: readJson("props.json"), frames: n, captions: caps, style, orientation: meta.orientation === "landscape" ? "landscape" : "portrait", ...(toon ? { toon } : {}) };
 } else if (clip) {
   meta = readJson("meta.json");
   const n = meta.durationInFrames;
