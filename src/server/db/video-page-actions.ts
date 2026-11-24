@@ -3,6 +3,8 @@ import { actorProblem, ACTOR_REASON, type GateActor } from "@/server/core/approv
 import { STAGE_NAMES, type StageName } from "@/server/core/pipeline-plan";
 import { approvalReaders } from "@/server/db/approval-readers";
 import { recordAudit } from "@/server/db/audit";
+import { addSceneNote, deleteSceneNote } from "@/server/db/scene-notes";
+import { isCartoonStyle } from "../../../remotion/kit/toon/styles";
 import { forceRerunStage, rerunStage, swapMontageClip, type EnqueueOnly } from "@/server/db/pipeline";
 import type { ActionResult } from "@/server/db/queue-actions";
 
@@ -43,9 +45,20 @@ const FORCE_REFUSALS: Record<string, string> = {
 };
 
 /** Owner "Re-run this step" for a finished free step. forceRerunStage owns the rules; refusals are plain sentences. */
-export async function forceRerunStageById(db: pg.Pool, queue: EnqueueOnly, actor: GateActor, videoId: string, stage: string): Promise<ActionResult> {
+export async function forceRerunStageById(db: pg.Pool, queue: EnqueueOnly, actor: GateActor, videoId: string, stage: string, note?: string): Promise<ActionResult> {
   if (actorProblem(actor)) return refuse(ACTOR_REASON);
   if (!(STAGE_NAMES as readonly string[]).includes(stage)) return refuse("That step is not part of this video.");
+  // A note goes only with the scene step of a cartoon Short: the build reads it with the previous scene file and fixes that scene.
+  let noteId: string | null = null;
+  if (note !== undefined && note.trim() !== "") {
+    if (stage !== "tsx_author") return refuse("A note can only be sent with the scene step.");
+    const v = (await db.query<{ style: string | null; format: string }>("select style, format from videos where id = $1", [videoId])).rows[0];
+    if (!v || !isCartoonStyle(v.style)) return refuse("A note can only be sent with a cartoon video's scene.");
+    if (v.format !== "short") return refuse("A note can be sent with a Short's scene. For a long video, run the scene step again.");
+    const added = await addSceneNote(db, videoId, note);
+    if (!added.ok) return refuse(added.message);
+    noteId = added.id;
+  }
   let r;
   try {
     r = await forceRerunStage(db, queue, videoId, stage as StageName, approvalReaders);
@@ -53,6 +66,7 @@ export async function forceRerunStageById(db: pg.Pool, queue: EnqueueOnly, actor
     const m = e instanceof Error ? e.message : "";
     if (/^video is /.test(m)) return refuse("This video is no longer in production.");
     if (m.startsWith("voice_problem:")) return refuse(m.slice("voice_problem:".length));
+    if (noteId) await deleteSceneNote(db, noteId); // the step did not start: the note is not spent
     return refuse(FORCE_REFUSALS[m] ?? "That step could not be run again.");
   }
   await recordAudit(db, "stage.force_rerun_requested", { videoId, stage, sessionId: actor.sessionId, ...(r.routed && { voiceProvider: r.routed.provider, voiceName: r.routed.voice }) });

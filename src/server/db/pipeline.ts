@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { isCartoonStyle } from "../../../remotion/kit/toon/styles";
 import { insertEvent } from "./events";
 import { canonicalJson, sha256Hex } from "@/server/core/content-hash";
 import type { GateId } from "@/server/core/gates";
@@ -302,7 +303,7 @@ export async function forceRerunStage(db: pg.Pool, queue: EnqueueOnly, videoId: 
   const decided = await inTx(db, async (c) => {
     const v = await lockVideo(c, videoId);
     if (!LIVE_VIDEO.includes(v.status)) throw new Error(`video is ${v.status}`);
-    if (FORCE_RERUN_LONG_ONLY.includes(stage) && v.format !== "long") throw new Error("force_rerun_not_allowed");
+    if (FORCE_RERUN_LONG_ONLY.includes(stage) && v.format !== "long" && !isCartoonStyle(v.style)) throw new Error("force_rerun_not_allowed");
     const view = await buildView(c, v, readers);
     const plan = routeFor(view);
     const idx = plan.findIndex((s) => s.stage === stage);

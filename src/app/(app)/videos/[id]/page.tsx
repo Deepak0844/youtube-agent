@@ -30,6 +30,7 @@ import { Pill } from "@/ui/primitives/pill";
 import { Spinner } from "@/ui/primitives/spinner";
 import { PageSkeleton } from "@/ui/states/page-skeleton";
 import { Check, X } from "lucide-react";
+import { isCartoonStyle } from "../../../../../remotion/kit/toon/styles";
 import { ForceRerunForm, ReframeButtons, RerunForm, SaveToLibraryForm, SceneButtons } from "./controls";
 import { MakeVersionForm } from "./version-form";
 import { SoundTabPanel } from "./sound-tab";
@@ -187,7 +188,7 @@ function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
       <h2 className="text-section font-semibold">Steps</h2>
       <ol data-testid="stage-strip" className="m-0 grid list-none gap-4 p-0 sm:grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
         {p.stages.map((s: StageView) => {
-          const force = forceRerunOffered(s.stage as StageName, p.runStatus[s.stage as StageName], p.head.status, anyActive, p.hasUpload, p.voice.current?.provider ?? null, p.voice.localUrl, p.head.format);
+          const force = forceRerunOffered(s.stage as StageName, p.runStatus[s.stage as StageName], p.head.status, anyActive, p.hasUpload, p.voice.current?.provider ?? null, p.voice.localUrl, p.head.format, isCartoonStyle(p.head.style));
           const isTts = s.stage === "tts";
           const paidVoice = isTts && p.runStatus.tts === "succeeded" && !anyActive && !p.hasUpload ? ttsRerunProblem(p.voice.current?.provider, p.voice.localUrl) : null;
           const again = rerunOffered(p.runStatus[s.stage as StageName], p.head.status);
@@ -202,7 +203,7 @@ function StageStrip({ p, live }: { p: VideoPage; live: boolean }) {
               {s.state === "running" && s.percent !== null ? <progress value={s.percent} max={100} aria-label={`${s.label} progress`} className="h-1 w-full" /> : null}
               {live && again ? <RerunForm videoId={p.head.id} stage={s.stage} label={STAGE_LABELS[s.stage as StageName]} estimate={estimateLabel(p.estimates[s.stage as StageName] ?? null)} costNote={rerunCostNote(s.stage as StageName, p.costPlanTotalMicroUsd)} /> : null}
               {live && paidVoice ? <p data-testid="paid-voice" className="m-0 text-small text-muted">{paidVoice}</p> : null}
-              {live && force ? <ForceRerunForm videoId={p.head.id} stage={s.stage} label={STAGE_LABELS[s.stage as StageName]} {...(isTts && { hint: "Narration, picture render, mix and check run again.", changed: voiceChanged(p.voice.stored, p.voice.current) })} {...(s.stage === "tsx_author" && { hint: "Saved chapters are reused (no new drawing); they are re-rendered. Voice, sound and check run again." })} /> : null}
+              {live && force ? <ForceRerunForm videoId={p.head.id} stage={s.stage} label={STAGE_LABELS[s.stage as StageName]} {...(isTts && { hint: "Narration, picture render, mix and check run again.", changed: voiceChanged(p.voice.stored, p.voice.current) })} {...(s.stage === "tsx_author" && { hint: p.head.format === "long" ? "Saved chapters are reused (no new drawing); they are re-rendered. Voice, sound and check run again." : "Claude draws the scene again. Voice, sound and check run again." })} {...(s.stage === "tsx_author" && isCartoonStyle(p.head.style) && p.head.format === "short" && { noteBox: true })} /> : null}
             </li>
           );
         })}

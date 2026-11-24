@@ -17,6 +17,8 @@ import type { TsxRendererDeps } from "@/server/providers/renderer/tsx-render";
 import type { ChildRegistry } from "@/server/render/child";
 import type { AttemptHandler } from "./attempt";
 import { isCartoonStyle } from "../../../remotion/kit/toon/styles";
+import { latestContent } from "@/server/db/videos";
+import { markSceneNoteUsed, unusedSceneNote } from "@/server/db/scene-notes";
 import { loadCartoonCast, takeEngineCast } from "./cartoon";
 import { loadVideo, type StageDeps } from "./deps";
 import { loadTsxInputs, tsxAuthorAttempt } from "./tsx-author";
@@ -86,8 +88,12 @@ export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Attempt
     const cartoon = isCartoonStyle(video.style) ? video.style : null;
     const castState = cartoon ? await loadCartoonCast(deps.db, video.id) : null;
     let toon = cartoon ? toonInputFor({ beats, words, durationS: narrationS, orientation, cast: castState?.cast ?? [], style: cartoon }) : undefined;
+    // The owner may have sent the scene back with a note: the engine gets the previous scene file and the note, and fixes that scene.
+    const noteRow = cartoon ? await unusedSceneNote(deps.db, video.id) : null;
+    const previous = noteRow ? ((await latestContent(deps.db, video.id, "tsx"))?.body as { source?: unknown } | undefined)?.source : undefined;
+    const ownerNote = noteRow && typeof previous === "string" ? { note: noteRow.note, previousScene: previous } : undefined;
     const { prompt, inputs } = cartoon
-      ? cartoonBuildRequest({ topic, beats, words, narrationS, style: cartoon, orientation, cast: castState?.cast ?? null, series: castState?.series ?? false })
+      ? cartoonBuildRequest({ topic, beats, words, narrationS, style: cartoon, orientation, cast: castState?.cast ?? null, series: castState?.series ?? false, ...(ownerNote ? { ownerNote } : {}) })
       : explainerBuildRequest({ topic, beats, words, narrationS, style: video.style, format: "short", orientation });
 
     const r = await (e.runEngine ?? runEngine)(
@@ -102,6 +108,7 @@ export function engineBuildAttempt(deps: StageDeps, e: EngineBuildDeps): Attempt
       throw new KnownFailure(r.message);
     }
     ctx.log(`engine: finished in ${r.turns} turns`);
+    if (noteRow && ownerNote) await markSceneNoteUsed(deps.db, noteRow.id); // the engine read it: a retry of the step does not apply it twice
 
     // Checked again here, before anything renders (the engine's own check_code ran on its side of the boundary).
     const source = await readScene(r.workDir);

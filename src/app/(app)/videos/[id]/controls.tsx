@@ -22,13 +22,21 @@ export function RerunForm({ videoId, stage, label, estimate, costNote }: { video
 }
 
 /** "Re-run this step" for a finished free step. A tick is needed so a stray click cannot start it. */
-export function ForceRerunForm({ videoId, stage, label, hint, changed }: { videoId: string; stage: string; label: string; hint?: string; changed?: boolean }) {
+export function ForceRerunForm({ videoId, stage, label, hint, changed, noteBox }: { videoId: string; stage: string; label: string; hint?: string; changed?: boolean; noteBox?: boolean }) {
   const [state, run, pending] = useActionState<RerunState, FormData>(forceRerunStageAction, {});
   const [sure, setSure] = useState(false);
+  const [note, setNote] = useState("");
   return (
     <form action={run} className="flex min-w-0 flex-col gap-2">
       <input type="hidden" name="videoId" value={videoId} />
       <input type="hidden" name="stage" value={stage} />
+      {noteBox ? (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="scene-note" className="text-small font-medium">Note for the scene (optional)</label>
+          <textarea id="scene-note" name="note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} rows={3} placeholder="For example: the ending is too plain, or the bubble covers the face" className="w-full rounded-control border border-control bg-surface px-3 py-2 text-body text-text" />
+          <span className="text-small text-muted">{`${note.length} / 500. Claude fixes this scene for your note and keeps everything else. At most 3 notes per video.`}</span>
+        </div>
+      ) : null}
       <p className="m-0 text-small text-muted">Runs it again from the same inputs (free, local). {hint ?? "Later steps run again too."}</p>
       {changed ? <p data-testid="voice-changed" className="m-0 text-small text-pill-negative-ink">The narration voice setting changed. Re-run narration to use it.</p> : null}
       <label className="flex items-center gap-2 text-small"><input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} /> Yes, run {label} again</label>

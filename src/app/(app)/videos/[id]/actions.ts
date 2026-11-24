@@ -36,7 +36,8 @@ export async function forceRerunStageAction(_prev: RerunState, form: FormData): 
   const id = parseIdForm(form, "videoId");
   const stage = z.string().max(20).safeParse(form.get("stage"));
   if (!id.ok || !stage.success) return { ok: false, message: BAD_FORM };
-  const r = await forceRerunStageById(getPool(), webStageQueue(), { kind: "session", sessionId: owner.sessionId }, id.value, stage.data);
+  const note = typeof form.get("note") === "string" ? (form.get("note") as string) : undefined;
+  const r = await forceRerunStageById(getPool(), webStageQueue(), { kind: "session", sessionId: owner.sessionId }, id.value, stage.data, note);
   refresh();
   return r;
 }

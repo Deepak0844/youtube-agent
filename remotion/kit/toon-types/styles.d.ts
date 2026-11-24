@@ -10,3 +10,9 @@ export type CartoonLook = {
     css: string;
 };
 export declare const CARTOON_LOOKS: Record<CartoonModule, CartoonLook>;
+/** What the New video / Series screens say about each cartoon style (cartoon-shorts' own style guides, in a line each). */
+export declare const CARTOON_INFO: Record<CartoonStyleId, {
+    label: string;
+    mood: string;
+    bestFor: string;
+}>;

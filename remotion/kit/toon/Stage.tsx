@@ -65,12 +65,13 @@ export const ToonFilm: React.FC<{ scenes?: ToonSceneWindow[]; palette?: ToonPale
   const host = useContext(ToonContext);
   if (!host) throw new Error("a cartoon scene needs the cartoon timeline from the host (ToonContext)");
   // With `scenes` the film's own scene windows replace the host's (the host only knows the beats); marks in them can name beats and seconds only.
+  const scenesKey = JSON.stringify(scenes ?? null); // a new array with the same windows (every frame) must not rebuild the film
   const input = useMemo(() => {
     if (!scenes) return host;
     const bare: ToonTimeline = { beats: host.timeline.beats, scenes: [] };
     return { ...host, timeline: { beats: host.timeline.beats, scenes: scenes.map((s) => ({ id: s.id, startS: resolveMark(s.from, bare), endS: resolveMark(s.to, bare) })) } };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [host, JSON.stringify(scenes ?? null)]);
+  }, [host, scenesKey]);
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const rt = useMemo(() => createToonRuntime(input.timeline, typeof document === "undefined" ? ({} as Document) : document), [input.timeline]);

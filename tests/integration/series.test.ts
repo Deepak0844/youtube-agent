@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createSeries, dropPart, getSeries, listSeries, movePart, planParts, startPart } from "@/server/db/series";
+import { createSeries, dropPart, getSeries, listSeries, movePart, planParts, setPartFormat, startPart } from "@/server/db/series";
 import { withTestDb, type TestDb } from "../support/db";
 
 let db: TestDb;
@@ -101,12 +101,28 @@ describe("startPart", () => {
     expect(await dropPart(db.pool, id, 1)).toMatchObject({ ok: false });
     expect(await movePart(db.pool, id, 1, "down")).toMatchObject({ ok: false });
   });
-  it("a long part waits for long-form support and creates nothing", async () => {
+  it("a long series' part starts a long video with the default range of minutes", async () => {
     const id = await make({ formats: "long" });
     await planParts(db.pool, id, episodes);
-    expect(await startPart(db.pool, queue, actor, id, 1)).toMatchObject({ ok: false });
-    expect((await db.ownerPool.query("select 1 from videos")).rows).toHaveLength(0);
-    expect((await getSeries(db.pool, id))!.parts[0]!.status).toBe("planned");
+    const r = await startPart(db.pool, queue, actor, id, 1);
+    if (!r.ok) throw new Error(r.message);
+    const v = await db.ownerPool.query("select format, kind, length_min_minutes, length_max_minutes from videos where id = $1", [r.videoId]);
+    expect(v.rows[0]).toMatchObject({ format: "long", kind: "tsx", length_min_minutes: 3, length_max_minutes: 8 });
+    expect((await getSeries(db.pool, id))!.parts[0]!.status).toBe("started");
+  });
+  it("a mixed series' part switched to long starts a long video; a short series' part stays short", async () => {
+    const mixed = await make({ formats: "mixed" });
+    await planParts(db.pool, mixed, episodes);
+    expect(await setPartFormat(db.pool, mixed, 2, "long")).toEqual({ ok: true });
+    const r = await startPart(db.pool, queue, actor, mixed, 2);
+    if (!r.ok) throw new Error(r.message);
+    expect((await db.ownerPool.query("select format, length_min_minutes, length_max_minutes from videos where id = $1", [r.videoId])).rows[0]).toMatchObject({ format: "long", length_min_minutes: 3, length_max_minutes: 8 });
+    const short = await make({ formats: "short" });
+    await planParts(db.pool, short, episodes);
+    expect(await setPartFormat(db.pool, short, 1, "long")).toMatchObject({ ok: false });
+    const s = await startPart(db.pool, queue, actor, short, 1);
+    if (!s.ok) throw new Error(s.message);
+    expect((await db.ownerPool.query("select format from videos where id = $1", [s.videoId])).rows[0]).toMatchObject({ format: "short" });
   });
   it("refuses once the series spend has reached its cap", async () => {
     const id = await make({ capMicroUsd: 1000 });
