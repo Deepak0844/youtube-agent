@@ -1,4 +1,4 @@
-import React, { useContext, useRef } from "react";
+import React, { useContext, useLayoutEffect, useRef } from "react";
 import { useRuntime, useToonBuild } from "./Stage";
 import { useSceneId } from "./core";
 import toonFactory from "./upstream/toon.js";
@@ -45,9 +45,11 @@ export const Puppet: React.FC<{ who?: string; options?: PuppetOptions; act: (t: 
   const ref = useRef<SVGGElement>(null);
   const heldRefs = useRef<(SVGGElement | null)[]>([]);
   const actRef = useRef(act);
-  actRef.current = act;
   const heldRef = useRef(held);
-  heldRef.current = held;
+  useLayoutEffect(() => {
+    actRef.current = act;
+    heldRef.current = held;
+  });
   useSceneId();
   useToonBuild(() => {
     const member: ToonCharacter | undefined = who ? input?.cast.find((c) => c.name === who) : undefined;
