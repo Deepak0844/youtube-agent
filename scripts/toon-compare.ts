@@ -1,7 +1,7 @@
 // Exact-match proof for the cartoon kit (dev only; not in CI, no render in CI). Draws a frame every 0.5 s of an upstream cartoon-shorts episode
 // with cartoon-shorts' own renderer (headless Chrome) and the same frames of the yt-toon port (Remotion, same chromium settings as the app's
 // render), then prints the pixel difference. Writes .data/compare/toon/<name>/sheet.png (upstream | port per frame).
-//   npx tsx scripts/toon-compare.ts <upstreamEpisodeDir> <exampleDir> [--until <s>] [--from <s>] [--step <s>] [--stills]
+//   npx tsx scripts/toon-compare.ts <upstreamEpisodeDir> <exampleDir> [--until <s>] [--from <s>] [--step <s>] [--stills] [--style cartoon_anime]
 // --stills also writes <exampleDir>/stills/beat-NN.jpg (the port at the middle of every beat, 540 px wide) for the engine to look at.
 // <upstreamEpisodeDir> holds short.html, scenes.js, timeline.js (an episode made with cartoon-shorts); <exampleDir> holds video.tsx and
 // toon.json (the beats and scenes from timeline.js; written here when missing). Exit 1 when a frame's mean difference is over 2/255 (mean of
@@ -19,13 +19,14 @@ const WORST_MAX = 4;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const flag = (n: string, d: number) => (args.includes(n) ? Number(args[args.indexOf(n) + 1]) : d);
-const [epDir0, exDir0] = args.filter((a, i) => !a.startsWith("--") && !args[i - 1]?.startsWith("--")).map((p) => path.resolve(p.replace(/^~/, os.homedir())));
+const [epDir0, exDir0] = args.filter((a, i) => !a.startsWith("--") && !(args[i - 1]?.startsWith("--") && args[i - 1] !== "--stills")).map((p) => path.resolve(p.replace(/^~/, os.homedir())));
 if (!epDir0 || !exDir0) throw new Error("usage: toon-compare.ts <upstreamEpisodeDir> <exampleDir> [--from s] [--until s] [--step s]");
 const epDir: string = epDir0;
 const exDir: string = exDir0;
 const name = path.basename(exDir);
 const out = path.join(root, ".data/compare/toon", name);
 const STEP = flag("--step", 0.5);
+const STYLE = args.includes("--style") ? args[args.indexOf("--style") + 1]! : "cartoon_comic";
 const FROM = flag("--from", 0);
 
 type Timeline = { total: number; scenes: { id: string; start: number; end: number }[]; lines: { t: number; d: number; cap: string | null }[] };
@@ -103,7 +104,7 @@ async function ours(tmp: string): Promise<string[]> {
     webpackOverride: (c) => ({ ...c, resolve: { ...c.resolve, alias: { ...(c.resolve?.alias ?? {}), ...alias } } }),
   });
   const total = Math.ceil(TL.total * 30);
-  const inputProps = { props: {}, frames: total, captions: [], style: "cartoon_comic", orientation: toon.orientation, toon };
+  const inputProps = { props: {}, frames: total, captions: [], style: STYLE, orientation: toon.orientation, toon };
   const chromiumOptions = { gl: "swangle" as const };
   const composition = await selectComposition({ serveUrl, id: "tsx-video", inputProps, chromiumOptions });
   const files: string[] = [];

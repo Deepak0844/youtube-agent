@@ -15,11 +15,12 @@ export type TsxFrameInput = { props?: Record<string, unknown>; frames?: number; 
 
 export const TsxFrame: React.FC<TsxFrameInput & { Scene: React.ComponentType<Record<string, unknown>> }> = ({ props, captions, style, toon, Scene }) => {
   const st = setActiveStyle(style); // before any child renders: PALETTE / FONTS / MOTION / PACE read this style for the whole render
-  const cartoon = isCartoonStyle(style) && toon !== undefined;
+  const cs = isCartoonStyle(style) ? style : undefined;
+  const cartoon = cs !== undefined && toon !== undefined;
   const scene = <Scene {...(props ?? {})} />;
   return (
     <StyleContext.Provider value={st}>
-      {cartoon ? <ToonContext.Provider value={toon}>{scene}</ToonContext.Provider> : scene}
+      {cartoon ? <ToonContext.Provider value={{ ...toon, style: cs }}>{scene}</ToonContext.Provider> : scene}
       {!cartoon && captions && captions.length > 0 ? <TsxCaptions words={captions} /> : null}
     </StyleContext.Provider>
   );

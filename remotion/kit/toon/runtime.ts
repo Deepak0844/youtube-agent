@@ -1,5 +1,6 @@
 // Runs cartoon-shorts' own drawing code (upstream/*.js, copied with a module wrapper) for one film. The upstream code builds SVG/HTML
 // with the real DOM and moves everything by seek(t): a pure function of time, so Remotion can ask for any frame in any order.
+import animeFactory from "./upstream/anime.js";
 import coreFactory from "./upstream/core.js";
 import fxFactory from "./upstream/fx.js";
 import toonFactory from "./upstream/toon.js";
@@ -33,6 +34,7 @@ export function createToonRuntime(tl: ToonTimeline, doc: Document): ToonRuntime 
   const win: Record<string, any> = { TIMELINE: upstreamTimeline(tl) };
   toonFactory(win, doc);
   fxFactory(win, doc);
+  animeFactory(win, doc);
   coreFactory(win, doc);
   return {
     short: win.Short,
