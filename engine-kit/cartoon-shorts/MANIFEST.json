@@ -1,0 +1,76 @@
+{
+  "upstream": "https://github.com/Matteoikarieth96/cartoon-shorts",
+  "commit": "984fb659e1c614a5d6205c9bb0604f0cbdccf452",
+  "files": [
+    {
+      "path": "engine-kit/cartoon-shorts/ref/engine-api.md",
+      "sha256": "f2dc1ba6648d8ad072d04ccb1d9787d4fc9bf118e69b17ccd7ca8615eacf9fd5",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/interview.md",
+      "sha256": "cf4440f15b6202669e5aacf2f73d79b8287d550135a9cd6c2ee01f1b6b0a19c1",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/platforms.md",
+      "sha256": "91fa0897ebcc936c5171db06371f4637f197de7d20102135207b5c86a7efc3ec",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/storytelling.md",
+      "sha256": "66ce391ce79ccca927f2e9f4d28bac01739ca2f7960bc9fe4368d534ad4de915",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/styles/anime.jpg",
+      "sha256": "e45182425c2b4a43e6a9d515ae392eb6de1d7ad37eff5d143f7993185303dae3",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/styles/anime.md",
+      "sha256": "01bb6f03f7d0c460573f6bd89939bb9e9f8aa945fb9087cd7ca61df9e12f3a99",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/styles/comic.jpg",
+      "sha256": "307a5278a08e8595caabb2157408ecaf9a98d24a9e09b13f5eec1b8a348b759d",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/styles/comic.md",
+      "sha256": "2ca09d26ce0657ad0bc3bf39a96bb662cb098f53bce39dbd76d21ca08a755899",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/styles/manga.jpg",
+      "sha256": "2d8125505888913af9d2efcea76e03ff193d20faf1e1d2f115ac2d348707429d",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/styles/manga.md",
+      "sha256": "3001631d6249a7dfcadb03c16e8e7f29103340e404911aba8939ff253558c4c5",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/styles/painted.jpg",
+      "sha256": "3fc29c3dc68f95f4d06f0abece2f117e749a0163bcc604ae45fc2ea4c0b27f43",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/styles/painted.md",
+      "sha256": "57630db47c7b794fdb1b6fc2c6446c061bf34d1b7103b95d2d75acc157c9d8d3",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/styles/paper.jpg",
+      "sha256": "bf50efdc0f6fc5b9df601bad01a42c461f8ac2f4bdf123d03d4f3aad95dd0e35",
+      "patched": false
+    },
+    {
+      "path": "engine-kit/cartoon-shorts/ref/styles/paper.md",
+      "sha256": "00e29ba3a085a60a99b06e671a24398f6d50b25688ca394ee410d7b1d30bf2e2",
+      "patched": false
+    }
+  ]
+}
