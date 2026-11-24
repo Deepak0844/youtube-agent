@@ -2,7 +2,7 @@
 // with cartoon-shorts' own renderer (headless Chrome) and the same frames of the yt-toon port (Remotion, same chromium settings as the app's
 // render), then prints the pixel difference. Writes .data/compare/toon/<name>/sheet.png (upstream | port per frame).
 //   npx tsx scripts/toon-compare.ts <upstreamEpisodeDir> <exampleDir> [--until <s>] [--from <s>] [--step <s>] [--stills] [--style cartoon_anime]
-// --stills also writes <exampleDir>/stills/beat-NN.jpg (the port at the middle of every beat, 540 px wide) for the engine to look at.
+// --stills also writes .data/compare/toon/<name>/stills/beat-NN.jpg (the port at the middle of every beat, 540 px wide) for a person to look at; they are not kept in the repo.
 // <upstreamEpisodeDir> holds short.html, scenes.js, timeline.js (an episode made with cartoon-shorts); <exampleDir> holds video.tsx and
 // toon.json (the beats and scenes from timeline.js; written here when missing). Exit 1 when a frame's mean difference is over 2/255 (mean of
 // frames) or any frame is over 4/255. A failing frame is fixed in the kit, never by changing these numbers.
@@ -114,7 +114,7 @@ async function ours(tmp: string): Promise<string[]> {
     files.push(f);
   }
   if (args.includes("--stills")) {
-    const dir = path.join(exDir, "stills");
+    const dir = path.join(out, "stills");
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
     for (const [i, b] of (toon.timeline as { beats: { startS: number; endS: number }[] }).beats.entries()) {
@@ -138,10 +138,10 @@ function diff(a: string, b: string): number {
 async function main() {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "toon-compare-"));
   try {
-    const up = await upstream(tmp);
-    const mine = await ours(tmp);
     rmSync(out, { recursive: true, force: true });
     mkdirSync(out, { recursive: true });
+    const up = await upstream(tmp);
+    const mine = await ours(tmp);
     const diffs = times.map((_, i) => diff(up[i]!, mine[i]!));
     // sheet: upstream | port for every frame, 4 pairs across
     times.forEach((t, i) => {
