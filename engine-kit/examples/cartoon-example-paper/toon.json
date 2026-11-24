@@ -1,0 +1,50 @@
+{
+ "timeline": {
+  "beats": [
+   {
+    "startS": 0.3,
+    "endS": 3.448,
+    "cap": "For *forty years,* one man lit the lamp."
+   },
+   {
+    "startS": 3.648,
+    "endS": 4.8870000000000005,
+    "cap": "Every *single night.*"
+   },
+   {
+    "startS": 5.437,
+    "endS": 8.409,
+    "cap": "Tonight, he climbs for the *last time.*"
+   },
+   {
+    "startS": 8.959,
+    "endS": 11.951,
+    "cap": "Down on the shore, the *whole village* lights a candle."
+   },
+   {
+    "startS": 12.151,
+    "endS": 12.826,
+    "cap": "*For him.*"
+   }
+  ],
+  "scenes": [
+   {
+    "id": "lamp",
+    "startS": 0,
+    "endS": 5.107
+   },
+   {
+    "id": "last",
+    "startS": 5.107,
+    "endS": 8.629
+   },
+   {
+    "id": "shore",
+    "startS": 8.629,
+    "endS": 15.226
+   }
+  ]
+ },
+ "cast": [],
+ "orientation": "portrait"
+}

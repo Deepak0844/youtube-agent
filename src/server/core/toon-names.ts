@@ -6,4 +6,5 @@ export const TOON_LIBS: Readonly<Record<string, readonly string[]>> = {
   "yt-toon/comic": ["EASE","Follow","P","Puppet","Tether","cycle","mix","pose","track"],
   "yt-toon/anime": ["BlurFilter","Bokeh","Bust","Grain","Sparkle","SpeedLines","Streaks","rng"],
   "yt-toon/manga": ["Bust","ConfettiRain","Hatch","Sfx"],
+  "yt-toon/paper": ["Card","Dust","Figure","Glow","GradRect","Layer","PaperConfetti","Profile","Rays","StarField","Word","parallax","ridge","rng","thousands","torn"],
 };

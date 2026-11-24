@@ -1,5 +1,6 @@
 import React, { useContext, useLayoutEffect, useRef } from "react";
 import { Burst, PopIn } from "./fx";
+import { PaperFilters } from "./paper-defs";
 import { SceneContext, sceneParts, useSceneId } from "./scene-parts";
 import { clamp, eio, eout, lerp, ToonFilm, useRuntime, useToon, useToonBuild, type ToonClock, type ToonPalette } from "./Stage";
 import { ToonContext, type ToonCharacter, type ToonInput } from "./context";
@@ -32,7 +33,7 @@ export const Scene: React.FC<{ id: string; tr?: Transition; children?: React.Rea
     <SceneContext.Provider value={id}>
       <div className="scene" data-scene={id} data-tr={tr}>
         <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H}>
-          <defs />
+          <defs>{input?.style === "cartoon_paper" ? <PaperFilters scene={id} /> : null}</defs>
           <g className="cam">{children}</g>
           {words.map((w, i) => {
             const size = w.size ?? 140;

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useLayoutEffect, useMemo, useRef } fr
 import { AbsoluteFill, continueRender, delayRender, useCurrentFrame, useVideoConfig } from "remotion";
 import { ToonContext } from "./context";
 import { CORE_CSS } from "./css";
+import { paperTileUrl } from "./paper-defs";
 import { createToonRuntime, type ToonRuntime } from "./runtime";
 import { CARTOON_LOOKS, cartoonStyleModule } from "./styles";
 import { resolveMark, type ToonTimeline } from "./time";
@@ -79,6 +80,7 @@ export const ToonFilm: React.FC<{ palette?: ToonPalette; bg?: string; children?:
     state.current.t = frame / fps;
     if (state.current.ready) rt.seek(frame / fps);
   });
+  const tileUrl = useMemo(() => (input.style === "cartoon_paper" && typeof document !== "undefined" ? paperTileUrl() : ""), [input.style]);
   const [W, H] = input.orientation === "landscape" ? [1920, 1080] : [1080, 1920];
   const vars: Record<string, string> = { "--title": `'Anton',Impact,${NOTO},sans-serif`, "--comic": `'Bangers','Anton',${NOTO},sans-serif`, "--body": `'Inter',${NOTO},system-ui,sans-serif` };
   const look = CARTOON_LOOKS[cartoonStyleModule(input.style ?? "cartoon_comic")];
@@ -92,6 +94,7 @@ export const ToonFilm: React.FC<{ palette?: ToonPalette; bg?: string; children?:
           <div id="v" style={{ ...(vars as React.CSSProperties), background: bg ?? look.bg }} data-w={W} data-h={H}>
             <div id="world">{children}</div>
             <div id="flash" />
+            {input.style === "cartoon_paper" ? <div id="paper" style={typeof document === "undefined" ? undefined : { backgroundImage: `url(${tileUrl})` }} /> : null}
             <div id="vig" />
             <div id="grain" />
             <div id="cap" />

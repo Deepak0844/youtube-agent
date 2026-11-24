@@ -24,6 +24,11 @@ export const CARTOON_LOOKS: Record<CartoonModule, CartoonLook> = {
   // the other looks arrive with their style (paper, painted); until then they draw like comic
   // Manga look: ink black, paper white, a hot red and gold.
   manga: { palette: { ink: "#151214", paper: "#fbf3e4", gold: "#ffc93c", red: "#e23b2e", sky: "#4fb3ff" }, bg: "#151214", css: `.scene svg{display:block}` },
-  paper: { palette: COMIC_PALETTE, bg: "#1b1630", css: "" },
+  // Paper and light: soft documentary captions, paper grain over the whole frame.
+  paper: {
+    palette: { ink: "#0b1020", paper: "#f7eedb", gold: "#ffd97a" },
+    bg: "#05070f",
+    css: `#cap{z-index:10;font:900 76px/1.04 'Fraunces','Noto Sans Devanagari','Noto Sans Tamil','Noto Sans Telugu','Noto Sans Kannada','Noto Sans Malayalam',serif;text-transform:none;letter-spacing:0;color:#fbf6ea;-webkit-text-stroke:0;text-shadow:0 4px 18px rgba(0,0,0,.85),0 2px 3px rgba(0,0,0,.9);filter:none}#cap b{color:var(--gold);font-style:italic;font-weight:900}#paper{position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;opacity:.35;background-size:512px 512px}#vig{background:radial-gradient(ellipse 80% 62% at 50% 44%,transparent 50%,rgba(0,0,0,.6) 100%)}#grain{opacity:.06}`,
+  },
   painted: { palette: COMIC_PALETTE, bg: "#1b1630", css: "" },
 };

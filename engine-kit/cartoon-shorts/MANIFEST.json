@@ -101,6 +101,11 @@
       "path": "remotion/kit/toon/upstream/manga.js",
       "sha256": "199482d56d7d2c6bcd0d50f522c7cebda9ca8740cb2f070f0b9efa3c6ac1108d",
       "patched": true
+    },
+    {
+      "path": "remotion/kit/toon/upstream/paper.js",
+      "sha256": "7fd90ba3c65f3ab2c78b7fb25d26a0d7ba7c906b8c02051704fb2585eda26c67",
+      "patched": true
     }
   ]
 }
