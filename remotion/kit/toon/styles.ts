@@ -21,8 +21,9 @@ export const CARTOON_LOOKS: Record<CartoonModule, CartoonLook> = {
     bg: "#1d1a3a",
     css: `#cap{-webkit-text-stroke:16px #2b1a3a}#cap b{color:#ffd166}`,
   },
-  // the other looks arrive with their style (manga, paper, painted); until then they draw like comic
-  manga: { palette: COMIC_PALETTE, bg: "#1b1630", css: "" },
+  // the other looks arrive with their style (paper, painted); until then they draw like comic
+  // Manga look: ink black, paper white, a hot red and gold.
+  manga: { palette: { ink: "#151214", paper: "#fbf3e4", gold: "#ffc93c", red: "#e23b2e", sky: "#4fb3ff" }, bg: "#151214", css: `.scene svg{display:block}` },
   paper: { palette: COMIC_PALETTE, bg: "#1b1630", css: "" },
   painted: { palette: COMIC_PALETTE, bg: "#1b1630", css: "" },
 };

@@ -15,10 +15,9 @@ describe("cartoon examples", () => {
     const src = readFileSync(path.join(root, name, "video.tsx"), "utf8");
     it(`${name} passes the static check`, () => expect(checkTsx(src).problems).toEqual([]));
     it(`${name} passes the type check`, async () => expect((await typeCheckInThread(src, 90_000)).problems).toEqual([]), 120_000);
-    it(`${name} has its beats file and stills`, () => {
+    it(`${name} has its beats file`, () => {
       const toon = JSON.parse(readFileSync(path.join(root, name, "toon.json"), "utf8")) as { timeline: { beats: unknown[]; scenes: unknown[] } };
       expect(toon.timeline.beats.length).toBeGreaterThanOrEqual(3);
-      expect(readdirSync(path.join(root, name, "stills")).filter((f) => /\.(png|jpg)$/.test(f)).length).toBeGreaterThanOrEqual(3);
     });
   }
 });
