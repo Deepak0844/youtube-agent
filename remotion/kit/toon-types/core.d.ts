@@ -3,17 +3,21 @@ import { clamp, eio, eout, lerp, ToonFilm, useToon, type ToonClock, type ToonPal
 import { type ToonCharacter, type ToonInput } from "./context";
 export { ToonFilm, useToon, eout, eio, clamp, lerp };
 export type { ToonClock, ToonPalette, ToonCharacter, ToonInput };
+/** The SVG transform string cartoon-shorts uses for a moved piece: translate(x,y) rotate(r) scale(s). */
+export declare const trf: (x: number, y: number, s?: number, r?: number) => string;
 export declare const ENTRANCE_PRESETS: readonly ["slam", "smash", "up", "down", "left", "right", "fade", "out", "pop", "stamp", "growx", "growy", "nudge", "wipe"];
 export type EntrancePreset = (typeof ENTRANCE_PRESETS)[number];
 export type Transition = "flash" | "zoom" | "whip" | "glitch" | "cut";
 /**
  * One scene of the film: shown only between its start and its end (the scene id must be in the timeline), entered with `tr`.
- * `children` are drawn in the scene's SVG layer (1080 x 1920 portrait, 1920 x 1080 landscape); `overlays` are HTML text boxes (<Ov>) above it.
+ * `children` are drawn in the scene's SVG layer (1080 x 1920 portrait, 1920 x 1080 landscape) and move with <Camera>; `above` is SVG drawn over
+ * that layer which the camera does not move (sound words, bursts); `overlays` are HTML text boxes (<Ov>) above both.
  */
 export declare const Scene: React.FC<{
     id: string;
     tr?: Transition;
     children?: React.ReactNode;
+    above?: React.ReactNode;
     overlays?: React.ReactNode;
 }>;
 /** `slam@B3+.2` style entrance list: one preset at a time or several ("slam" in, "out" later). */

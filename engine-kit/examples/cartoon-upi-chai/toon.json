@@ -1,0 +1,115 @@
+{
+ "timeline": {
+  "beats": [
+   {
+    "startS": 0.1,
+    "endS": 2.799,
+    "cap": "*₹20* for a chai. Scan. Pay. *Done.*"
+   },
+   {
+    "startS": 2.919,
+    "endS": 5.318,
+    "cap": "But where did your *₹20* go?"
+   },
+   {
+    "startS": 5.637,
+    "endS": 8.236,
+    "cap": "Does a *coin* fly out of your phone?"
+   },
+   {
+    "startS": 8.356,
+    "endS": 10.754999999999999,
+    "cap": "*NOPE.* Only a *message* does."
+   },
+   {
+    "startS": 11.075,
+    "endS": 13.873999999999999,
+    "cap": "A sealed message zooms to the *UPI switch*,"
+   },
+   {
+    "startS": 13.993,
+    "endS": 16.692,
+    "cap": "run by *NPCI*, wired to *every bank.*"
+   },
+   {
+    "startS": 17.012,
+    "endS": 19.511,
+    "cap": "Shop's bank: *whose QR* is this?"
+   },
+   {
+    "startS": 19.63,
+    "endS": 22.329,
+    "cap": "Your bank checks the *PIN*: *−₹20*"
+   },
+   {
+    "startS": 22.449,
+    "endS": 24.548000000000002,
+    "cap": "Shop's bank: *+₹20*"
+   },
+   {
+    "startS": 24.868,
+    "endS": 27.067,
+    "cap": "Two *YES* replies fly back..."
+   },
+   {
+    "startS": 27.186,
+    "endS": 29.485,
+    "cap": "*DING!* Payment received!"
+   },
+   {
+    "startS": 29.805,
+    "endS": 32.204,
+    "cap": "But *no coin* ever moved."
+   },
+   {
+    "startS": 32.324,
+    "endS": 34.923,
+    "cap": "Banks settle the real money *later.*"
+   },
+   {
+    "startS": 35.242,
+    "endS": 39.041,
+    "cap": "*820 million* times a day!"
+   }
+  ],
+  "scenes": [
+   {
+    "id": "hook",
+    "startS": 0,
+    "endS": 5.446
+   },
+   {
+    "id": "phone",
+    "startS": 5.446,
+    "endS": 10.883
+   },
+   {
+    "id": "switch",
+    "startS": 10.883,
+    "endS": 16.82
+   },
+   {
+    "id": "banks",
+    "startS": 16.82,
+    "endS": 24.676
+   },
+   {
+    "id": "back",
+    "startS": 24.676,
+    "endS": 29.613
+   },
+   {
+    "id": "twist",
+    "startS": 29.613,
+    "endS": 35.051
+   },
+   {
+    "id": "big",
+    "startS": 35.051,
+    "endS": 41.441
+   }
+  ]
+ },
+ "cast": [],
+ "orientation": "portrait"
+}

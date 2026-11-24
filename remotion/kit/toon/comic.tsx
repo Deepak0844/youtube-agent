@@ -33,7 +33,16 @@ export const EASE = lib.EASE;
 export type PuppetFrame = { pose: Pose; x: number; y: number; dir?: 1 | -1; s?: number };
 export type PuppetOptions = Record<string, string | number | boolean | null>;
 /** A thing the puppet holds or wears at a joint: an SVG child moved with it (e.g. a phone in the hand). `at` is a joint name: hand, fhand, head, neck, hip, foot, ffoot, knee, elbow, shoulder. */
-export type Held = { at: "hand" | "fhand" | "head" | "neck" | "hip" | "foot" | "ffoot" | "knee" | "elbow" | "shoulder" | "fshoulder"; dx?: number; dy?: number; s?: number; r?: number | ((t: number) => number); node: React.ReactNode };
+export type Held = {
+  at: "hand" | "fhand" | "head" | "neck" | "hip" | "foot" | "ffoot" | "knee" | "elbow" | "shoulder" | "fshoulder";
+  dx?: number;
+  dy?: number;
+  s?: number;
+  r?: number | ((t: number) => number);
+  /** Full control: where the held piece goes for time t, given the joint's position: [x, y, scale, rotation]. Replaces dx, dy, s and r. */
+  place?: (t: number, joint: [number, number]) => [number, number, number, number];
+  node: React.ReactNode;
+};
 
 /**
  * One character. `who` takes the look from the series cast (ref/cast.json); `options` is a one-off look (or overrides): the puppet
@@ -63,8 +72,13 @@ export const Puppet: React.FC<{ who?: string; options?: PuppetOptions; act: (t: 
         const el = heldRefs.current[i];
         if (!el) return;
         const p = puppet.at(h.at);
-        const r = typeof h.r === "function" ? h.r(t) : (h.r ?? 0);
-        rt.short.tr(el, p[0] + (h.dx ?? 0), p[1] + (h.dy ?? 0), h.s ?? 1, r);
+        if (h.place) {
+          const q = h.place(t, [p[0], p[1]]);
+          rt.short.tr(el, q[0], q[1], q[2], q[3]);
+        } else {
+          const r = typeof h.r === "function" ? h.r(t) : (h.r ?? 0);
+          rt.short.tr(el, p[0] + (h.dx ?? 0), p[1] + (h.dy ?? 0), h.s ?? 1, r);
+        }
       });
     });
   });

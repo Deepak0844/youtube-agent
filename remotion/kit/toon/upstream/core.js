@@ -239,15 +239,15 @@ export default (window, document) => {
         const v = document.getElementById('v');
         if (build) await build();
         wire(v); scenes(v); captions(); grain();
-        await seek(0);
+        await window.seek(0); // yt-toon patch: window is the film's own object, seek is not a global
         const overflow = [];
         for (const sc of TL.scenes) {
-          await seek((sc.start + sc.end) / 2);
+          await window.seek((sc.start + sc.end) / 2); // yt-toon patch: see above
           document.querySelectorAll(`.scene[data-scene="${sc.id}"] [data-fit]`).forEach(el => {
             if (el.scrollWidth > el.clientWidth + 1) overflow.push(sc.id + ':' + (el.id || el.className));
           });
         }
-        await seek(0);
+        await window.seek(0); // yt-toon patch: see above
         return {total: TL.total, fonts, overflow};
       })();
     },
