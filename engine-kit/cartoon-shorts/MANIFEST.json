@@ -71,6 +71,26 @@
       "path": "engine-kit/cartoon-shorts/ref/styles/paper.md",
       "sha256": "00e29ba3a085a60a99b06e671a24398f6d50b25688ca394ee410d7b1d30bf2e2",
       "patched": false
+    },
+    {
+      "path": "remotion/kit/toon/upstream/core.js",
+      "sha256": "4e15d28dde5ac24ba4a19791964647a3ddea3b5e626be11a2162d87a0299fd87",
+      "patched": true
+    },
+    {
+      "path": "remotion/kit/toon/upstream/core.css",
+      "sha256": "aba1b83d3abae08d99ed2a029347796b8aa8f4dfa1c0398265a363bf34599bd5",
+      "patched": false
+    },
+    {
+      "path": "remotion/kit/toon/upstream/fx.js",
+      "sha256": "1e2676a687bbfbab14930d832786428cc3e42e761720ef0676a1e743fb0a5b3a",
+      "patched": true
+    },
+    {
+      "path": "remotion/kit/toon/upstream/toon.js",
+      "sha256": "76f9990512599dceb752fe5f1842a4b6b068450936150bed4790dd4c2b4e431e",
+      "patched": true
     }
   ]
 }
